@@ -182,3 +182,16 @@
 - `detectColorSupport()` checks `NO_COLOR` env and `process.stdout.isTTY` before CLI flags override
 - Exit codes match SPEC-CLI.md: 0=success, 1=error, 2=invalid args, 3=not found, 4=validation, 5=conflict
 - 91 new tests (45 parser + 21 formatter + 25 commands), total 573 across monorepo
+
+### 015: CLI: Install and init commands (completed)
+- Four new command handlers in `install-commands.ts`: handleInstall, handleInit, handleUpdate, handleUninstall
+- Each handler is a thin adapter: parse flags → resolve paths → call core → format output (no business logic in CLI)
+- `resolveArtifactsDir()` uses `import.meta.url` to walk from `packages/cli/src/` up to repo root → `artifacts/variants/backlog-json/`
+- Preflight display runs before install (unless `--yes`): shows ✓/✗/⚠ for each check, maps directory_exists failure to NOT_FOUND exit code
+- Profile override flags (`--test-cmd`, `--typecheck-cmd`, etc.) are only passed to core when at least one is specified — `undefined` vs empty object matters
+- `handleCoreError()` maps core `ErrorCodes` → CLI `ExitCode`: FILE_NOT_FOUND→NOT_FOUND, NOT_INSTALLED→NOT_FOUND, VALIDATION_ERROR→VALIDATION, CONFLICT→CONFLICT
+- Init validates `--stack` preset against a known set before calling `initProject()` — fail-fast with INVALID_ARGS instead of a core error
+- Init checks for existing `.ralph.json` and returns CONFLICT — prevents accidentally re-initializing a project
+- Uninstall preserves data files by default (`keepBacklog: true`, `keepProgress: true`, `keepLog: true`)
+- JSON output mode (`--json`): install/init/update output the full `InstallationReport`, uninstall outputs `{success, path, keepData}`
+- 27 new tests covering all commands, all flag combinations, error paths, JSON output, and registry integration; total 600 tests across monorepo
