@@ -17,6 +17,11 @@ import {
   handleBacklogShow,
   handleBacklogRestore,
 } from "./backlog-commands.js";
+import {
+  handleStatus,
+  handleLog,
+  handleProgress,
+} from "./status-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -124,16 +129,19 @@ export const COMMANDS: CommandDef[] = [
     name: "status",
     description: "Show loop status for a project",
     usage: "ralph status <path>",
+    handler: handleStatus,
   },
   {
     name: "log",
     description: "View loop log for a project",
     usage: "ralph log <path> [--tail N] [--follow]",
+    handler: handleLog,
   },
   {
     name: "progress",
     description: "View progress notes for a project",
     usage: "ralph progress <path>",
+    handler: handleProgress,
   },
   {
     name: "profile",
