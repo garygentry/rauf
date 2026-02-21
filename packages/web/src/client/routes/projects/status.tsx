@@ -1,6 +1,8 @@
-import { useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { BacklogItem, DerivedStatus } from "@ralph/core";
 import { ralphFetchJson } from "../../lib/fetch";
 
@@ -278,6 +280,198 @@ function BacklogSummaryGrid({
   );
 }
 
+// ─── LogPanel ─────────────────────────────────────────────────────
+//
+// Connects to the SSE log/stream endpoint. Shows last 50 lines in a
+// monospaced scrollable panel. Auto-scrolls to bottom; pauses when
+// the user scrolls up and shows a "Resume" button.
+
+function LogPanel({ projectId }: { projectId: string }) {
+  const [lines, setLines] = useState<string[]>([]);
+  const [connected, setConnected] = useState(false);
+  // autoScroll drives the "Paused" UI; autoScrollRef is the sync value
+  // used inside effects and event handlers to avoid stale closures.
+  const [autoScroll, setAutoScroll] = useState(true);
+  const autoScrollRef = useRef(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Connect to SSE endpoint. Re-connects when projectId changes.
+  useEffect(() => {
+    if (!projectId) return;
+
+    const url = `/api/projects/${encodeURIComponent(projectId)}/log/stream`;
+    const es = new EventSource(url);
+
+    es.onopen = () => setConnected(true);
+
+    es.onerror = () => setConnected(false);
+
+    es.addEventListener("log", (e) => {
+      try {
+        const newLines = JSON.parse((e as MessageEvent<string>).data) as string[];
+        if (!Array.isArray(newLines)) return;
+        setLines((prev) => [...prev, ...newLines].slice(-50));
+      } catch {
+        // Ignore parse errors — malformed SSE data
+      }
+    });
+
+    return () => {
+      es.close();
+      setConnected(false);
+    };
+  }, [projectId]);
+
+  // After lines state updates: scroll to bottom if autoScroll is active.
+  useEffect(() => {
+    if (autoScrollRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [lines]);
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
+    autoScrollRef.current = isAtBottom;
+    setAutoScroll(isAtBottom);
+  }
+
+  function resumeAutoScroll() {
+    autoScrollRef.current = true;
+    setAutoScroll(true);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }
+
+  return (
+    <div
+      className="flex flex-col overflow-hidden rounded-lg border"
+      style={{
+        backgroundColor: "var(--color-surface-raised)",
+        borderColor: "var(--color-border)",
+      }}
+    >
+      {/* ── Panel header ────────────────────────────────────── */}
+      <div
+        className="flex flex-shrink-0 items-center justify-between border-b px-3 py-2"
+        style={{
+          borderColor: "var(--color-border)",
+          backgroundColor: "var(--color-surface)",
+        }}
+      >
+        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+          Live Log
+        </span>
+        <div className="flex items-center gap-3">
+          {/* Pause indicator + resume button */}
+          {!autoScroll && (
+            <button
+              onClick={resumeAutoScroll}
+              className="rounded px-2 py-0.5 text-xs font-medium"
+              style={{
+                backgroundColor: "rgba(202, 138, 4, 0.12)",
+                color: "#ca8a04",
+                border: "1px solid rgba(202, 138, 4, 0.25)",
+              }}
+            >
+              ↓ Resume
+            </button>
+          )}
+          {/* Connection indicator */}
+          <span
+            className="flex items-center gap-1.5 text-xs"
+            style={{ color: connected ? "#16a34a" : "#9ca3af" }}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full bg-current ${connected ? "animate-pulse" : ""}`}
+              aria-hidden="true"
+            />
+            {connected ? "live" : "connecting…"}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Log lines ───────────────────────────────────────── */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="overflow-y-auto"
+        style={{
+          height: "360px",
+          padding: "8px 12px",
+          scrollbarWidth: "thin",
+        }}
+      >
+        {lines.length === 0 ? (
+          <p
+            className="mt-1 text-xs italic"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            {connected ? "Waiting for log output…" : "Connecting to log stream…"}
+          </p>
+        ) : (
+          lines.map((line, i) => (
+            <div
+              key={i}
+              className="whitespace-pre font-mono text-xs leading-relaxed"
+              style={{ color: "var(--color-text)" }}
+            >
+              {line || "\u00a0"}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ProgressViewer ───────────────────────────────────────────────
+//
+// Fetches .ralph/progress.md and renders it as formatted markdown.
+// Shows nothing when the file is missing (empty string response).
+
+function ProgressViewer({ projectId }: { projectId: string }) {
+  const { data: markdown, isLoading } = useQuery({
+    queryKey: ["projects", projectId, "progress"],
+    queryFn: () =>
+      ralphFetchJson<string>(
+        `/api/projects/${encodeURIComponent(projectId)}/progress`,
+      ),
+    enabled: !!projectId,
+    // Refresh every 60s — progress.md changes less frequently than status
+    refetchInterval: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div
+        className="h-16 animate-pulse rounded-lg"
+        style={{ backgroundColor: "var(--color-surface-raised)" }}
+      />
+    );
+  }
+
+  // API returns empty string when progress.md is missing — show nothing
+  if (!markdown) return null;
+
+  return (
+    <div
+      className="rounded-lg border p-5"
+      style={{
+        backgroundColor: "var(--color-surface-raised)",
+        borderColor: "var(--color-border)",
+      }}
+    >
+      <SectionHeading>Progress Notes</SectionHeading>
+      <div className="ralph-prose">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
 // ─── StatusView ───────────────────────────────────────────────────
 
 export function StatusView() {
@@ -409,168 +603,191 @@ export function StatusView() {
         </button>
       </div>
 
-      {/* ── Loop state header ─────────────────────────────────── */}
-      <Card>
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Prominent state badge */}
-          <LoopStateBadge loopState={status.loopState} />
+      {/* ── Two-column layout: left = status info, right = log ── */}
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
 
-          {/* Meta info column */}
-          <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
-            {/* Source indicator */}
-            <span>
-              <span className="font-medium">Source:</span>{" "}
-              <span
-                className="rounded px-1 py-0.5 font-mono text-xs"
+        {/* ── Left column ─────────────────────────────────────── */}
+        <div className="min-w-0 flex-1 space-y-6">
+
+          {/* Loop state header */}
+          <Card>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Prominent state badge */}
+              <LoopStateBadge loopState={status.loopState} />
+
+              {/* Meta info column */}
+              <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                {/* Source indicator */}
+                <span>
+                  <span className="font-medium">Source:</span>{" "}
+                  <span
+                    className="rounded px-1 py-0.5 font-mono text-xs"
+                    style={{
+                      backgroundColor: "var(--color-surface)",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text)",
+                    }}
+                  >
+                    {sourceLabel}
+                  </span>
+                </span>
+
+                {/* Elapsed time when running */}
+                {elapsedDisplay && (
+                  <span>
+                    <span className="font-medium">Elapsed:</span>{" "}
+                    <span style={{ color: "#16a34a", fontWeight: 600 }}>{elapsedDisplay}</span>
+                  </span>
+                )}
+
+                {/* Iteration progress when running */}
+                {status.iteration != null && status.maxIterations != null && (
+                  <span>
+                    <span className="font-medium">Iteration:</span>{" "}
+                    {status.iteration} / {status.maxIterations}
+                  </span>
+                )}
+
+                {/* Started at */}
+                {status.startedAt && (
+                  <span>
+                    <span className="font-medium">Started:</span>{" "}
+                    {new Date(status.startedAt).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
+
+                {/* Last signal */}
+                {status.lastSignal && (
+                  <span>
+                    <span className="font-medium">Last signal:</span>{" "}
+                    <span
+                      className="rounded px-1 py-0.5 font-mono text-xs"
+                      style={{
+                        backgroundColor: "var(--color-surface)",
+                        border: "1px solid var(--color-border)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      {status.lastSignal}
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Backlog summary */}
+          <div>
+            <SectionHeading>Backlog Summary</SectionHeading>
+            <BacklogSummaryGrid summary={status.backlogSummary} />
+            <p className="mt-2 text-right text-xs" style={{ color: "var(--color-text-muted)" }}>
+              {status.backlogSummary.total} items total
+            </p>
+          </div>
+
+          {/* In-progress item */}
+          {(currentItem || (status.currentItem && !currentItem)) && (
+            <div>
+              <SectionHeading>Current Item</SectionHeading>
+              {currentItem ? (
+                <CurrentItemCard item={currentItem} />
+              ) : (
+                <Card>
+                  <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    Item{" "}
+                    <span className="font-mono">#{status.currentItem}</span>{" "}
+                    loading…
+                  </p>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Blocked items */}
+          {blockedItems.length > 0 && (
+            <div>
+              <SectionHeading>
+                Blocked Items{" "}
+                <span
+                  className="ml-1 rounded-full px-2 py-0.5 font-mono text-xs font-bold"
+                  style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444" }}
+                >
+                  {blockedItems.length}
+                </span>
+              </SectionHeading>
+              <div className="space-y-3">
+                {blockedItems.map((item) => (
+                  <BlockedItemCard key={item.id} item={item} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recently completed */}
+          {recentlyCompleted.length > 0 && (
+            <div>
+              <SectionHeading>Recently Completed</SectionHeading>
+              <div
+                className="rounded-lg border"
                 style={{
-                  backgroundColor: "var(--color-surface)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text)",
+                  backgroundColor: "var(--color-surface-raised)",
+                  borderColor: "var(--color-border)",
                 }}
               >
-                {sourceLabel}
-              </span>
-            </span>
-
-            {/* Elapsed time when running */}
-            {elapsedDisplay && (
-              <span>
-                <span className="font-medium">Elapsed:</span>{" "}
-                <span style={{ color: "#16a34a", fontWeight: 600 }}>{elapsedDisplay}</span>
-              </span>
-            )}
-
-            {/* Iteration progress when running */}
-            {status.iteration != null && status.maxIterations != null && (
-              <span>
-                <span className="font-medium">Iteration:</span>{" "}
-                {status.iteration} / {status.maxIterations}
-              </span>
-            )}
-
-            {/* Started at */}
-            {status.startedAt && (
-              <span>
-                <span className="font-medium">Started:</span>{" "}
-                {new Date(status.startedAt).toLocaleString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            )}
-
-            {/* Last signal */}
-            {status.lastSignal && (
-              <span>
-                <span className="font-medium">Last signal:</span>{" "}
-                <span
-                  className="rounded px-1 py-0.5 font-mono text-xs"
-                  style={{
-                    backgroundColor: "var(--color-surface)",
-                    border: "1px solid var(--color-border)",
-                    color: "var(--color-text)",
-                  }}
-                >
-                  {status.lastSignal}
-                </span>
-              </span>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      {/* ── Backlog summary ───────────────────────────────────── */}
-      <div className="mt-6">
-        <SectionHeading>Backlog Summary</SectionHeading>
-        <BacklogSummaryGrid summary={status.backlogSummary} />
-        <p className="mt-2 text-xs text-right" style={{ color: "var(--color-text-muted)" }}>
-          {status.backlogSummary.total} items total
-        </p>
-      </div>
-
-      {/* ── In-progress item ──────────────────────────────────── */}
-      {(currentItem || (status.currentItem && !currentItem)) && (
-        <div className="mt-6">
-          <SectionHeading>Current Item</SectionHeading>
-          {currentItem ? (
-            <CurrentItemCard item={currentItem} />
-          ) : (
-            <Card>
-              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-                Item{" "}
-                <span className="font-mono">#{status.currentItem}</span>{" "}
-                loading…
-              </p>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* ── Blocked items ─────────────────────────────────────── */}
-      {blockedItems.length > 0 && (
-        <div className="mt-6">
-          <SectionHeading>
-            Blocked Items{" "}
-            <span
-              className="ml-1 rounded-full px-2 py-0.5 font-mono text-xs font-bold"
-              style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", color: "#ef4444" }}
-            >
-              {blockedItems.length}
-            </span>
-          </SectionHeading>
-          <div className="space-y-3">
-            {blockedItems.map((item) => (
-              <BlockedItemCard key={item.id} item={item} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Recently completed ────────────────────────────────── */}
-      {recentlyCompleted.length > 0 && (
-        <div className="mt-6">
-          <SectionHeading>Recently Completed</SectionHeading>
-          <div
-            className="rounded-lg border"
-            style={{
-              backgroundColor: "var(--color-surface-raised)",
-              borderColor: "var(--color-border)",
-            }}
-          >
-            <div className="px-4">
-              {recentlyCompleted.map((item, i) => (
-                <div
-                  key={item.id}
-                  style={{
-                    borderBottom: i < recentlyCompleted.length - 1 ? "1px solid var(--color-border)" : "none",
-                  }}
-                >
-                  <CompletedItemRow item={item} />
+                <div className="px-4">
+                  {recentlyCompleted.map((item, i) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        borderBottom: i < recentlyCompleted.length - 1 ? "1px solid var(--color-border)" : "none",
+                      }}
+                    >
+                      <CompletedItemRow item={item} />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* ── Empty state when not installed / no data ─────────── */}
-      {status.loopState === "NOT_INSTALLED" && (
-        <div
-          className="mt-6 flex flex-col items-center justify-center rounded-lg border py-12 text-center"
-          style={{
-            borderColor: "var(--color-border)",
-            backgroundColor: "var(--color-surface-raised)",
-            color: "var(--color-text-muted)",
-          }}
-        >
-          <p className="text-base font-medium">Ralph is not installed in this project</p>
-          <p className="mt-1 text-sm">
-            Use the{" "}
-            <span className="font-mono text-xs">ralph install</span> command or the Install wizard
-            to get started.
-          </p>
+          {/* Empty state when not installed / no data */}
+          {status.loopState === "NOT_INSTALLED" && (
+            <div
+              className="flex flex-col items-center justify-center rounded-lg border py-12 text-center"
+              style={{
+                borderColor: "var(--color-border)",
+                backgroundColor: "var(--color-surface-raised)",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <p className="text-base font-medium">Ralph is not installed in this project</p>
+              <p className="mt-1 text-sm">
+                Use the{" "}
+                <span className="font-mono text-xs">ralph install</span> command or the Install wizard
+                to get started.
+              </p>
+            </div>
+          )}
+
+        </div>{/* end left column */}
+
+        {/* ── Right column: live log panel ─────────────────────── */}
+        <div className="w-full xl:w-96 xl:flex-shrink-0 2xl:w-[480px]">
+          <SectionHeading>Live Log</SectionHeading>
+          <LogPanel projectId={projectId} />
+        </div>
+
+      </div>{/* end two-column layout */}
+
+      {/* ── Progress notes (full-width below) ────────────────── */}
+      {!!projectId && (
+        <div className="mt-6">
+          <ProgressViewer projectId={projectId} />
         </div>
       )}
 
