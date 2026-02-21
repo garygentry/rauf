@@ -820,8 +820,8 @@
         "ralph-add.sh validates required fields",
         "Both scripts work standalone with only jq dependency"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T23:12:50+00:00",
       "dependsOn": [
         "035"
       ]
