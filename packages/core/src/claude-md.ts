@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { type Result, ok, err, ErrorCodes } from "./errors.js";
+import { type Result, ok } from "./errors.js";
 import { atomicWrite } from "./fs-utils.js";
 import { updateSentinelBlock } from "./template.js";
 
@@ -52,12 +52,7 @@ export function mergeClaudeMd(
   // ── Scenario 1: CLAUDE.md does not exist ──────────────────────
   if (existingContent === null) {
     const content =
-      CLAUDE_MD_SENTINEL_START +
-      "\n" +
-      ralphBlockContent +
-      "\n" +
-      CLAUDE_MD_SENTINEL_END +
-      "\n";
+      CLAUDE_MD_SENTINEL_START + "\n" + ralphBlockContent + "\n" + CLAUDE_MD_SENTINEL_END + "\n";
 
     const writeResult = atomicWrite(claudeMdPath, content);
     if (!writeResult.ok) return writeResult;
@@ -68,15 +63,11 @@ export function mergeClaudeMd(
   // ── Check for existing sentinels ──────────────────────────────
   const startIdx = existingContent.indexOf(CLAUDE_MD_SENTINEL_START);
   const endIdx = existingContent.indexOf(CLAUDE_MD_SENTINEL_END);
-  const hasSentinels =
-    startIdx !== -1 && endIdx !== -1 && endIdx > startIdx;
+  const hasSentinels = startIdx !== -1 && endIdx !== -1 && endIdx > startIdx;
 
   if (hasSentinels) {
     // Extract current content between sentinels
-    const currentInner = existingContent.slice(
-      startIdx + CLAUDE_MD_SENTINEL_START.length,
-      endIdx,
-    );
+    const currentInner = existingContent.slice(startIdx + CLAUDE_MD_SENTINEL_START.length, endIdx);
 
     // Normalize for comparison: trim leading/trailing whitespace
     const normalizedCurrent = currentInner.trim();
@@ -129,10 +120,7 @@ export function extractRalphBlock(addonContent: string): string {
     return addonContent.trim();
   }
 
-  const inner = addonContent.slice(
-    startIdx + CLAUDE_MD_SENTINEL_START.length,
-    endIdx,
-  );
+  const inner = addonContent.slice(startIdx + CLAUDE_MD_SENTINEL_START.length, endIdx);
 
   return inner.trim();
 }

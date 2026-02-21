@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -44,8 +44,16 @@ beforeEach(() => {
   }
 
   // Remove them so tests start clean
-  try { fs.unlinkSync(SERVER_PID_FILE); } catch { /* ok */ }
-  try { fs.unlinkSync(SERVER_LOG_FILE); } catch { /* ok */ }
+  try {
+    fs.unlinkSync(SERVER_PID_FILE);
+  } catch {
+    /* ok */
+  }
+  try {
+    fs.unlinkSync(SERVER_LOG_FILE);
+  } catch {
+    /* ok */
+  }
 });
 
 afterEach(() => {
@@ -53,8 +61,16 @@ afterEach(() => {
   configureOutput({ noColor: true, quiet: false, json: false });
 
   // Restore backed-up files
-  try { fs.unlinkSync(SERVER_PID_FILE); } catch { /* ok */ }
-  try { fs.unlinkSync(SERVER_LOG_FILE); } catch { /* ok */ }
+  try {
+    fs.unlinkSync(SERVER_PID_FILE);
+  } catch {
+    /* ok */
+  }
+  try {
+    fs.unlinkSync(SERVER_LOG_FILE);
+  } catch {
+    /* ok */
+  }
   if (originalPidFileContents !== null) {
     fs.mkdirSync(path.dirname(SERVER_PID_FILE), { recursive: true });
     fs.writeFileSync(SERVER_PID_FILE, originalPidFileContents);
@@ -91,13 +107,15 @@ function captureStdout(fn: () => Promise<number>): Promise<{ code: number; outpu
     chunks.push(s.toString());
     return true;
   };
-  return fn().then((code) => {
-    process.stdout.write = orig;
-    return { code, output: chunks.join("") };
-  }).catch((err) => {
-    process.stdout.write = orig;
-    throw err;
-  });
+  return fn()
+    .then((code) => {
+      process.stdout.write = orig;
+      return { code, output: chunks.join("") };
+    })
+    .catch((err) => {
+      process.stdout.write = orig;
+      throw err;
+    });
 }
 
 // ─── readPidFile / writePidFile / removePidFile ──────────────────
@@ -289,9 +307,7 @@ describe("handleServerLogs", () => {
     fs.writeFileSync(SERVER_LOG_FILE, lines.join("\n") + "\n");
 
     configureOutput({ noColor: true, quiet: false, json: false });
-    const { code, output } = await captureStdout(() =>
-      handleServerLogs(makeCtx({ tail: "5" })),
-    );
+    const { code, output } = await captureStdout(() => handleServerLogs(makeCtx({ tail: "5" })));
     configureOutput({ noColor: true, quiet: true, json: false });
 
     expect(code).toBe(ExitCode.SUCCESS);
@@ -307,9 +323,7 @@ describe("handleServerLogs", () => {
     fs.writeFileSync(SERVER_LOG_FILE, lines.join("\n") + "\n");
 
     configureOutput({ noColor: true, quiet: false, json: false });
-    const { code, output } = await captureStdout(() =>
-      handleServerLogs(makeCtx()),
-    );
+    const { code, output } = await captureStdout(() => handleServerLogs(makeCtx()));
     configureOutput({ noColor: true, quiet: true, json: false });
 
     expect(code).toBe(ExitCode.SUCCESS);
@@ -339,9 +353,7 @@ describe("handleServerLogs", () => {
     fs.mkdirSync(path.dirname(SERVER_LOG_FILE), { recursive: true });
     fs.writeFileSync(SERVER_LOG_FILE, lines.join("\n") + "\n");
 
-    const { code } = await captureStdout(() =>
-      handleServerLogs(makeCtx({ tail: "50" })),
-    );
+    const { code } = await captureStdout(() => handleServerLogs(makeCtx({ tail: "50" })));
     expect(code).toBe(ExitCode.SUCCESS);
   });
 });

@@ -19,9 +19,6 @@ export interface ParsedArgs {
   globalFlags: GlobalFlags;
 }
 
-const GLOBAL_BOOL_FLAGS = new Set(["--json", "--no-color", "--quiet", "-q"]);
-const GLOBAL_VALUE_FLAGS = new Set(["--root"]);
-
 /**
  * Parse CLI arguments into structured form.
  *
@@ -33,10 +30,7 @@ const GLOBAL_VALUE_FLAGS = new Set(["--root"]);
  * @param subcommandNames - Set of valid subcommand names for the resolved command.
  *   If the second positional matches, it's treated as a subcommand rather than an arg.
  */
-export function parseArgs(
-  argv: string[],
-  subcommandNames?: Set<string>,
-): ParsedArgs {
+export function parseArgs(argv: string[], subcommandNames?: Set<string>): ParsedArgs {
   const globalFlags: GlobalFlags = {
     json: false,
     noColor: false,
@@ -139,10 +133,7 @@ export function parseArgs(
 /**
  * Extract a boolean flag from a flags map, removing it if present.
  */
-export function extractBoolFlag(
-  flags: Map<string, string | true>,
-  name: string,
-): boolean {
+export function extractBoolFlag(flags: Map<string, string | true>, name: string): boolean {
   if (flags.has(name)) {
     flags.delete(name);
     return true;
@@ -153,10 +144,7 @@ export function extractBoolFlag(
 /**
  * Extract a string-valued flag from a flags map, removing it if present.
  */
-export function extractStringFlag(
-  flags: Map<string, string | true>,
-  name: string,
-): string | null {
+export function extractStringFlag(flags: Map<string, string | true>, name: string): string | null {
   const val = flags.get(name);
   if (val === undefined) return null;
   flags.delete(name);
@@ -167,10 +155,7 @@ export function extractStringFlag(
  * Extract a numeric flag from a flags map, removing it if present.
  * Returns null if not present or not a valid number.
  */
-export function extractNumberFlag(
-  flags: Map<string, string | true>,
-  name: string,
-): number | null {
+export function extractNumberFlag(flags: Map<string, string | true>, name: string): number | null {
   const val = extractStringFlag(flags, name);
   if (val === null) return null;
   const num = Number(val);
@@ -184,10 +169,7 @@ export function extractNumberFlag(
  * Note: the standard Map-based flag parser only stores the last value.
  * For repeatable flags, callers should use extractRepeatableFlag on the raw argv.
  */
-export function extractRepeatableFlag(
-  argv: string[],
-  flagName: string,
-): string[] {
+export function extractRepeatableFlag(argv: string[], flagName: string): string[] {
   const values: string[] = [];
   const flag = flagName.startsWith("--") ? flagName : `--${flagName}`;
   for (let i = 0; i < argv.length; i++) {

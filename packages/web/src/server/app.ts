@@ -18,11 +18,7 @@ export interface ApiErrorResponse {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-export function errorResponse(
-  code: string,
-  message: string,
-  details?: unknown,
-): ApiErrorResponse {
+export function errorResponse(code: string, message: string, details?: unknown): ApiErrorResponse {
   const error: ApiError = { code, message };
   if (details !== undefined) {
     error.details = details;
@@ -117,10 +113,7 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
 
   app.notFound((c) => {
     return c.json(
-      errorResponse(
-        "NOT_FOUND",
-        `Route not found: ${c.req.method} ${c.req.path}`,
-      ),
+      errorResponse("NOT_FOUND", `Route not found: ${c.req.method} ${c.req.path}`),
       404,
     );
   });

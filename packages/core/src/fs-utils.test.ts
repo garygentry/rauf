@@ -132,10 +132,7 @@ describe("readJsonFile", () => {
 
   it("returns VALIDATION_ERROR for schema mismatch", () => {
     const filePath = tmpFile("wrong-shape.json");
-    fs.writeFileSync(
-      filePath,
-      JSON.stringify({ name: 123, value: "not a number" }),
-    );
+    fs.writeFileSync(filePath, JSON.stringify({ name: 123, value: "not a number" }));
 
     const result = readJsonFile(filePath, TestSchema);
     expect(result.ok).toBe(false);
@@ -177,10 +174,7 @@ describe("readJsonFile", () => {
       items: z.array(z.object({ id: z.string() })),
     });
     const filePath = tmpFile("nested.json");
-    fs.writeFileSync(
-      filePath,
-      JSON.stringify({ items: [{ id: "001" }, { id: "002" }] }),
-    );
+    fs.writeFileSync(filePath, JSON.stringify({ items: [{ id: "001" }, { id: "002" }] }));
 
     const result = readJsonFile(filePath, NestedSchema);
     expect(result.ok).toBe(true);
@@ -198,10 +192,7 @@ describe("computeHash", () => {
     const content = "hello world";
     fs.writeFileSync(filePath, content);
 
-    const expected = crypto
-      .createHash("sha256")
-      .update(Buffer.from(content))
-      .digest("hex");
+    const expected = crypto.createHash("sha256").update(Buffer.from(content)).digest("hex");
 
     const result = computeHash(filePath);
     expect(result.ok).toBe(true);
@@ -267,9 +258,7 @@ describe("computeHash", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       // SHA-256 of empty string is well-known
-      expect(result.value).toBe(
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      );
+      expect(result.value).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     }
   });
 });
@@ -278,15 +267,10 @@ describe("computeHash", () => {
 
 describe("validatePath", () => {
   it("accepts a path within an allowed root", () => {
-    const result = validatePath(
-      path.join(tmpDir, "project", "file.txt"),
-      [tmpDir],
-    );
+    const result = validatePath(path.join(tmpDir, "project", "file.txt"), [tmpDir]);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value).toBe(
-        path.resolve(tmpDir, "project", "file.txt"),
-      );
+      expect(result.value).toBe(path.resolve(tmpDir, "project", "file.txt"));
     }
   });
 
@@ -307,10 +291,7 @@ describe("validatePath", () => {
   });
 
   it("rejects .. traversal escaping root", () => {
-    const result = validatePath(
-      path.join(tmpDir, "subdir", "..", "..", "escape"),
-      [tmpDir],
-    );
+    const result = validatePath(path.join(tmpDir, "subdir", "..", "..", "escape"), [tmpDir]);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe(ErrorCodes.PATH_VIOLATION);
@@ -318,10 +299,7 @@ describe("validatePath", () => {
   });
 
   it("accepts .. traversal staying within root", () => {
-    const result = validatePath(
-      path.join(tmpDir, "a", "..", "b", "file.txt"),
-      [tmpDir],
-    );
+    const result = validatePath(path.join(tmpDir, "a", "..", "b", "file.txt"), [tmpDir]);
     expect(result.ok).toBe(true);
   });
 
@@ -341,10 +319,7 @@ describe("validatePath", () => {
     fs.mkdirSync(root1);
     fs.mkdirSync(root2);
 
-    const result = validatePath(
-      path.join(tmpDir, "root3", "file.txt"),
-      [root1, root2],
-    );
+    const result = validatePath(path.join(tmpDir, "root3", "file.txt"), [root1, root2]);
     expect(result.ok).toBe(false);
   });
 
@@ -367,9 +342,7 @@ describe("validatePath", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.details).toBeDefined();
-      expect(result.error.details!.resolved).toBe(
-        path.resolve("/outside/path"),
-      );
+      expect(result.error.details!.resolved).toBe(path.resolve("/outside/path"));
       expect(result.error.details!.allowedRoots).toBeInstanceOf(Array);
     }
   });

@@ -92,10 +92,7 @@ function LoopStateBadge({ loopState }: { loopState: string }) {
       }}
     >
       {loopState === "RUNNING" && (
-        <span
-          className="h-2.5 w-2.5 animate-pulse rounded-full bg-current"
-          aria-hidden="true"
-        />
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
       )}
       {cfg.label}
     </span>
@@ -130,7 +127,10 @@ function Card({ children, highlight }: { children: React.ReactNode; highlight?: 
 function ItemTitle({ item }: { item: BacklogItem }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-mono text-xs font-semibold" style={{ color: "var(--color-text-muted)" }}>
+      <span
+        className="font-mono text-xs font-semibold"
+        style={{ color: "var(--color-text-muted)" }}
+      >
         #{item.id}
       </span>
       <span
@@ -174,8 +174,15 @@ function CurrentItemCard({ item }: { item: BacklogItem }) {
           </p>
           <ul className="space-y-1">
             {item.acceptanceCriteria.map((criterion, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "var(--color-text)" }}>
-                <span className="mt-0.5 flex-shrink-0 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              <li
+                key={i}
+                className="flex items-start gap-2 text-xs"
+                style={{ color: "var(--color-text)" }}
+              >
+                <span
+                  className="mt-0.5 flex-shrink-0 text-xs"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
                   ·
                 </span>
                 {criterion}
@@ -245,16 +252,36 @@ function CompletedItemRow({ item }: { item: BacklogItem }) {
 
 // ─── Backlog summary counts ───────────────────────────────────────
 
-function BacklogSummaryGrid({
-  summary,
-}: {
-  summary: DerivedStatus["backlogSummary"];
-}) {
+function BacklogSummaryGrid({ summary }: { summary: DerivedStatus["backlogSummary"] }) {
   const pills = [
-    { key: "pending", label: "Pending", value: summary.pending, color: "#6b7280", bg: "rgba(107, 114, 128, 0.10)" },
-    { key: "inProgress", label: "In Progress", value: summary.inProgress, color: "#16a34a", bg: "rgba(22, 163, 74, 0.10)" },
-    { key: "blocked", label: "Blocked", value: summary.blocked, color: "#ef4444", bg: "rgba(239, 68, 68, 0.10)" },
-    { key: "done", label: "Done", value: summary.done, color: "#2563eb", bg: "rgba(37, 99, 235, 0.10)" },
+    {
+      key: "pending",
+      label: "Pending",
+      value: summary.pending,
+      color: "#6b7280",
+      bg: "rgba(107, 114, 128, 0.10)",
+    },
+    {
+      key: "inProgress",
+      label: "In Progress",
+      value: summary.inProgress,
+      color: "#16a34a",
+      bg: "rgba(22, 163, 74, 0.10)",
+    },
+    {
+      key: "blocked",
+      label: "Blocked",
+      value: summary.blocked,
+      color: "#ef4444",
+      bg: "rgba(239, 68, 68, 0.10)",
+    },
+    {
+      key: "done",
+      label: "Done",
+      value: summary.done,
+      color: "#2563eb",
+      bg: "rgba(37, 99, 235, 0.10)",
+    },
   ];
 
   return (
@@ -361,7 +388,10 @@ function LogPanel({ projectId }: { projectId: string }) {
           backgroundColor: "var(--color-surface)",
         }}
       >
-        <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+        <span
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-text-muted)" }}
+        >
           Live Log
         </span>
         <div className="flex items-center gap-3">
@@ -405,10 +435,7 @@ function LogPanel({ projectId }: { projectId: string }) {
         }}
       >
         {lines.length === 0 ? (
-          <p
-            className="mt-1 text-xs italic"
-            style={{ color: "var(--color-text-muted)" }}
-          >
+          <p className="mt-1 text-xs italic" style={{ color: "var(--color-text-muted)" }}>
             {connected ? "Waiting for log output…" : "Connecting to log stream…"}
           </p>
         ) : (
@@ -436,9 +463,7 @@ function ProgressViewer({ projectId }: { projectId: string }) {
   const { data: markdown, isLoading } = useQuery({
     queryKey: ["projects", projectId, "progress"],
     queryFn: () =>
-      ralphFetchJson<string>(
-        `/api/projects/${encodeURIComponent(projectId)}/progress`,
-      ),
+      ralphFetchJson<string>(`/api/projects/${encodeURIComponent(projectId)}/progress`),
     enabled: !!projectId,
     // Refresh every 60s — progress.md changes less frequently than status
     refetchInterval: 60_000,
@@ -479,26 +504,26 @@ export function StatusView() {
   const queryClient = useQueryClient();
   const projectId = id ?? "";
 
-  const { data: status, isLoading: statusLoading, isError: statusError, isFetching } = useQuery({
+  const {
+    data: status,
+    isLoading: statusLoading,
+    isError: statusError,
+    isFetching,
+  } = useQuery({
     queryKey: ["projects", projectId, "status"],
     queryFn: () =>
-      ralphFetchJson<DerivedStatus>(
-        `/api/projects/${encodeURIComponent(projectId)}/status`,
-      ),
+      ralphFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
     enabled: !!projectId,
     // Refresh faster when the loop is actively running
-    refetchInterval: (query) =>
-      query.state.data?.loopState === "RUNNING" ? 10_000 : 30_000,
+    refetchInterval: (query) => (query.state.data?.loopState === "RUNNING" ? 10_000 : 30_000),
   });
 
   const { data: allItems } = useQuery({
     queryKey: ["projects", projectId, "backlog"],
     queryFn: () =>
-      ralphFetchJson<BacklogItem[]>(
-        `/api/projects/${encodeURIComponent(projectId)}/backlog`,
-      ),
+      ralphFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
     enabled: !!projectId,
-    refetchInterval: (query) => {
+    refetchInterval: () => {
       // Align with status refresh rate
       const statusData = queryClient.getQueryData<DerivedStatus>(["projects", projectId, "status"]);
       return statusData?.loopState === "RUNNING" ? 10_000 : 30_000;
@@ -532,10 +557,17 @@ export function StatusView() {
   if (statusLoading) {
     return (
       <div className="p-6">
-        <div className="mb-6 h-10 w-40 animate-pulse rounded-lg" style={{ backgroundColor: "var(--color-surface-raised)" }} />
+        <div
+          className="mb-6 h-10 w-40 animate-pulse rounded-lg"
+          style={{ backgroundColor: "var(--color-surface-raised)" }}
+        />
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 animate-pulse rounded-lg" style={{ backgroundColor: "var(--color-surface-raised)" }} />
+            <div
+              key={i}
+              className="h-24 animate-pulse rounded-lg"
+              style={{ backgroundColor: "var(--color-surface-raised)" }}
+            />
           ))}
         </div>
       </div>
@@ -572,13 +604,10 @@ export function StatusView() {
         : "no data source";
 
   const elapsedDisplay =
-    status.loopState === "RUNNING" && status.elapsed != null
-      ? formatElapsed(status.elapsed)
-      : null;
+    status.loopState === "RUNNING" && status.elapsed != null ? formatElapsed(status.elapsed) : null;
 
   return (
     <div className="p-6">
-
       {/* ── Page header ──────────────────────────────────────── */}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -605,10 +634,8 @@ export function StatusView() {
 
       {/* ── Two-column layout: left = status info, right = log ── */}
       <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
-
         {/* ── Left column ─────────────────────────────────────── */}
         <div className="min-w-0 flex-1 space-y-6">
-
           {/* Loop state header */}
           <Card>
             <div className="flex flex-wrap items-center gap-4">
@@ -616,7 +643,10 @@ export function StatusView() {
               <LoopStateBadge loopState={status.loopState} />
 
               {/* Meta info column */}
-              <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              <div
+                className="flex flex-col gap-1 text-xs"
+                style={{ color: "var(--color-text-muted)" }}
+              >
                 {/* Source indicator */}
                 <span>
                   <span className="font-medium">Source:</span>{" "}
@@ -643,8 +673,8 @@ export function StatusView() {
                 {/* Iteration progress when running */}
                 {status.iteration != null && status.maxIterations != null && (
                   <span>
-                    <span className="font-medium">Iteration:</span>{" "}
-                    {status.iteration} / {status.maxIterations}
+                    <span className="font-medium">Iteration:</span> {status.iteration} /{" "}
+                    {status.maxIterations}
                   </span>
                 )}
 
@@ -699,9 +729,7 @@ export function StatusView() {
               ) : (
                 <Card>
                   <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-                    Item{" "}
-                    <span className="font-mono">#{status.currentItem}</span>{" "}
-                    loading…
+                    Item <span className="font-mono">#{status.currentItem}</span> loading…
                   </p>
                 </Card>
               )}
@@ -744,7 +772,10 @@ export function StatusView() {
                     <div
                       key={item.id}
                       style={{
-                        borderBottom: i < recentlyCompleted.length - 1 ? "1px solid var(--color-border)" : "none",
+                        borderBottom:
+                          i < recentlyCompleted.length - 1
+                            ? "1px solid var(--color-border)"
+                            : "none",
                       }}
                     >
                       <CompletedItemRow item={item} />
@@ -767,22 +798,21 @@ export function StatusView() {
             >
               <p className="text-base font-medium">Ralph is not installed in this project</p>
               <p className="mt-1 text-sm">
-                Use the{" "}
-                <span className="font-mono text-xs">ralph install</span> command or the Install wizard
-                to get started.
+                Use the <span className="font-mono text-xs">ralph install</span> command or the
+                Install wizard to get started.
               </p>
             </div>
           )}
-
-        </div>{/* end left column */}
+        </div>
+        {/* end left column */}
 
         {/* ── Right column: live log panel ─────────────────────── */}
         <div className="w-full xl:w-96 xl:flex-shrink-0 2xl:w-[480px]">
           <SectionHeading>Live Log</SectionHeading>
           <LogPanel projectId={projectId} />
         </div>
-
-      </div>{/* end two-column layout */}
+      </div>
+      {/* end two-column layout */}
 
       {/* ── Progress notes (full-width below) ────────────────── */}
       {!!projectId && (
@@ -790,7 +820,6 @@ export function StatusView() {
           <ProgressViewer projectId={projectId} />
         </div>
       )}
-
     </div>
   );
 }

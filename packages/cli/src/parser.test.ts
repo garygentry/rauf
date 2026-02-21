@@ -120,10 +120,7 @@ describe("parseArgs", () => {
 
     it("allows global flags interspersed", () => {
       const subs = new Set(["list"]);
-      const result = parseArgs(
-        ["--json", "backlog", "--no-color", "list", "."],
-        subs,
-      );
+      const result = parseArgs(["--json", "backlog", "--no-color", "list", "."], subs);
       expect(result.globalFlags.json).toBe(true);
       expect(result.globalFlags.noColor).toBe(true);
       expect(result.command).toBe("backlog");
@@ -265,18 +262,8 @@ describe("extractNumberFlag", () => {
 
 describe("extractRepeatableFlag", () => {
   it("extracts multiple values for repeated flag", () => {
-    const argv = [
-      "backlog",
-      "add",
-      "--ac",
-      "Tests pass",
-      "--ac",
-      "Linting passes",
-    ];
-    expect(extractRepeatableFlag(argv, "ac")).toEqual([
-      "Tests pass",
-      "Linting passes",
-    ]);
+    const argv = ["backlog", "add", "--ac", "Tests pass", "--ac", "Linting passes"];
+    expect(extractRepeatableFlag(argv, "ac")).toEqual(["Tests pass", "Linting passes"]);
   });
 
   it("returns empty array when flag not present", () => {

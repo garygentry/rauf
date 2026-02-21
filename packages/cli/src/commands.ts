@@ -6,7 +6,7 @@
 
 import { VERSION } from "@ralph/core";
 import type { GlobalFlags } from "./parser.js";
-import { c, info, print, outputJson, renderTable } from "./formatter.js";
+import { c, print, outputJson, renderTable } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
 import { handleInstall, handleInit, handleUpdate, handleUninstall } from "./install-commands.js";
 import {
@@ -17,11 +17,7 @@ import {
   handleBacklogShow,
   handleBacklogRestore,
 } from "./backlog-commands.js";
-import {
-  handleStatus,
-  handleLog,
-  handleProgress,
-} from "./status-commands.js";
+import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import {
   handleProfileShow,
   handleProfileDetect,
@@ -186,7 +182,11 @@ export const COMMANDS: CommandDef[] = [
     usage: "ralph projects <subcommand>",
     subcommands: [
       { name: "list", description: "List discovered projects", handler: handleProjectsList },
-      { name: "status", description: "Show status for all projects", handler: handleProjectsStatus },
+      {
+        name: "status",
+        description: "Show status for all projects",
+        handler: handleProjectsStatus,
+      },
     ],
   },
 ];
@@ -207,10 +207,7 @@ export function getSubcommandNames(cmd: CommandDef): Set<string> {
   return new Set(cmd.subcommands.map((sc) => sc.name));
 }
 
-export function findSubcommand(
-  cmd: CommandDef,
-  name: string,
-): SubcommandDef | undefined {
+export function findSubcommand(cmd: CommandDef, name: string): SubcommandDef | undefined {
   return cmd.subcommands?.find((sc) => sc.name === name);
 }
 
@@ -276,30 +273,23 @@ function showGeneralHelp(ctx: CommandContext): number {
   lines.push("");
   lines.push(c.bold("Global Flags:"));
   lines.push(`  ${c.cyan("--json")}            Machine-readable JSON output`);
-  lines.push(
-    `  ${c.cyan("--no-color")}        Suppress ANSI color codes`,
-  );
-  lines.push(
-    `  ${c.cyan("--quiet")}, ${c.cyan("-q")}      Suppress informational output`,
-  );
+  lines.push(`  ${c.cyan("--no-color")}        Suppress ANSI color codes`);
+  lines.push(`  ${c.cyan("--quiet")}, ${c.cyan("-q")}      Suppress informational output`);
   lines.push(`  ${c.cyan("--root")} <path>     Override root directory`);
   lines.push("");
-  lines.push(
-    c.dim("Run 'ralph help <command>' for details on a specific command."),
-  );
+  lines.push(c.dim("Run 'ralph help <command>' for details on a specific command."));
 
   print(lines.join("\n"));
   return ExitCode.SUCCESS;
 }
 
-function showCommandHelp(
-  commandName: string,
-  ctx: CommandContext,
-): number {
+function showCommandHelp(commandName: string, ctx: CommandContext): number {
   const cmd = findCommand(commandName);
   if (!cmd) {
     if (ctx.globalFlags.json) {
-      outputJson({ error: { code: "UNKNOWN_COMMAND", message: `Unknown command: ${commandName}` } });
+      outputJson({
+        error: { code: "UNKNOWN_COMMAND", message: `Unknown command: ${commandName}` },
+      });
     } else {
       print(
         `${c.red("Unknown command:")} ${commandName}\n\nRun ${c.cyan("ralph help")} for available commands.`,

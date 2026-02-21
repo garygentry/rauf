@@ -74,12 +74,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   function resolveProjectPath(id: string): string | null {
     const decoded = decodeURIComponent(id);
     // Reject traversal attempts — the id must be a plain directory name
-    if (
-      decoded.includes("/") ||
-      decoded.includes("\\") ||
-      decoded === "." ||
-      decoded === ".."
-    ) {
+    if (decoded.includes("/") || decoded.includes("\\") || decoded === "." || decoded === "..") {
       return null;
     }
     return path.join(getRootDirectory(), decoded);
@@ -115,26 +110,17 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
 
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const markerResult = readMarkerFile(projectPath);
     if (!markerResult.ok) {
-      return c.json(
-        errorResponse("NOT_FOUND", `Project not found: ${id}`),
-        404,
-      );
+      return c.json(errorResponse("NOT_FOUND", `Project not found: ${id}`), 404);
     }
 
     const project = {
@@ -161,10 +147,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const { targetPath, name, description, preset, requirements } = body;
 
     if (!targetPath || typeof targetPath !== "string") {
-      return c.json(
-        errorResponse("VALIDATION_ERROR", "targetPath is required"),
-        400,
-      );
+      return c.json(errorResponse("VALIDATION_ERROR", "targetPath is required"), 400);
     }
 
     const opts: InitOptions = {
@@ -194,21 +177,15 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
 
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const body = ((await c.req.json().catch(() => ({}))) as Record<string, unknown>);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
     const opts: InstallOptions = {
       artifactsDir: resolveArtifactsDir(),
@@ -236,18 +213,12 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
 
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const opts: UpdateOptions = {
@@ -272,30 +243,21 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
 
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     // Verify project exists before uninstalling
     const markerResult = readMarkerFile(projectPath);
     if (!markerResult.ok) {
-      return c.json(
-        errorResponse("NOT_FOUND", `Project not found: ${id}`),
-        404,
-      );
+      return c.json(errorResponse("NOT_FOUND", `Project not found: ${id}`), 404);
     }
 
-    const body = ((await c.req.json().catch(() => ({}))) as Record<string, unknown>);
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
     const opts: UninstallOptions = {
       keepBacklog: typeof body.keepBacklog === "boolean" ? body.keepBacklog : true,
@@ -327,26 +289,17 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const backlogResult = readBacklog(projectPath);
     if (!backlogResult.ok) {
       const status = backlogResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
-      return c.json(
-        errorResponse(backlogResult.error.code, backlogResult.error.message),
-        status,
-      );
+      return c.json(errorResponse(backlogResult.error.code, backlogResult.error.message), status);
     }
 
     let items = backlogResult.value.items;
@@ -380,17 +333,11 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const result = restoreFromBackup(projectPath);
@@ -413,17 +360,11 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
@@ -442,16 +383,10 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
     const validPriorities = [1, 2, 3, 4];
     if (typeof priority !== "number" || !validPriorities.includes(priority)) {
-      return c.json(
-        errorResponse("VALIDATION_ERROR", "priority must be 1, 2, 3, or 4"),
-        400,
-      );
+      return c.json(errorResponse("VALIDATION_ERROR", "priority must be 1, 2, 3, or 4"), 400);
     }
     if (typeof title !== "string" || !title.trim()) {
-      return c.json(
-        errorResponse("VALIDATION_ERROR", "title must be a non-empty string"),
-        400,
-      );
+      return c.json(errorResponse("VALIDATION_ERROR", "title must be a non-empty string"), 400);
     }
 
     const input: CreateItemInput = {
@@ -460,9 +395,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       title,
       description: typeof body.description === "string" ? body.description : undefined,
       acceptanceCriteria: Array.isArray(body.acceptanceCriteria)
-        ? (body.acceptanceCriteria as unknown[]).filter(
-            (s): s is string => typeof s === "string",
-          )
+        ? (body.acceptanceCriteria as unknown[]).filter((s): s is string => typeof s === "string")
         : undefined,
       dependsOn: Array.isArray(body.dependsOn)
         ? (body.dependsOn as unknown[]).filter((s): s is string => typeof s === "string")
@@ -491,26 +424,17 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const itemId = c.req.param("itemId");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const backlogResult = readBacklog(projectPath);
     if (!backlogResult.ok) {
       const status = backlogResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
-      return c.json(
-        errorResponse(backlogResult.error.code, backlogResult.error.message),
-        status,
-      );
+      return c.json(errorResponse(backlogResult.error.code, backlogResult.error.message), status);
     }
 
     const item = backlogResult.value.items.find((i) => i.id === itemId);
@@ -530,17 +454,11 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const itemId = c.req.param("itemId");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
@@ -564,19 +482,13 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
     if (body.priority !== undefined) {
       if (typeof body.priority !== "number" || !validPriorities.includes(body.priority)) {
-        return c.json(
-          errorResponse("VALIDATION_ERROR", "priority must be 1, 2, 3, or 4"),
-          400,
-        );
+        return c.json(errorResponse("VALIDATION_ERROR", "priority must be 1, 2, 3, or 4"), 400);
       }
       updates.priority = body.priority as 1 | 2 | 3 | 4;
     }
     if (body.title !== undefined) {
       if (typeof body.title !== "string") {
-        return c.json(
-          errorResponse("VALIDATION_ERROR", "title must be a string"),
-          400,
-        );
+        return c.json(errorResponse("VALIDATION_ERROR", "title must be a string"), 400);
       }
       updates.title = body.title;
     }
@@ -607,10 +519,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
     if (body.dependsOn !== undefined) {
       if (!Array.isArray(body.dependsOn)) {
-        return c.json(
-          errorResponse("VALIDATION_ERROR", "dependsOn must be an array"),
-          400,
-        );
+        return c.json(errorResponse("VALIDATION_ERROR", "dependsOn must be an array"), 400);
       }
       updates.dependsOn = (body.dependsOn as unknown[]).filter(
         (s): s is string => typeof s === "string",
@@ -653,17 +562,11 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const itemId = c.req.param("itemId");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
-      return c.json(
-        errorResponse("INVALID_ID", `Invalid project ID: ${id}`),
-        400,
-      );
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
     const violation = validateProjectPath(projectPath);
     if (violation) {
-      return c.json(
-        errorResponse("PATH_VIOLATION", "Project ID escapes root directory"),
-        400,
-      );
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
     const result = deleteItem(projectPath, itemId);

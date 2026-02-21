@@ -1,14 +1,9 @@
 import * as path from "node:path";
 import * as os from "node:os";
 
-import { type Result, ok, err, ErrorCodes } from "./errors.js";
+import { type Result, ok, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, ensureDir } from "./fs-utils.js";
-import {
-  MarkerFileSchema,
-  ToolConfigSchema,
-  type MarkerFile,
-  type ToolConfig,
-} from "./schemas.js";
+import { MarkerFileSchema, ToolConfigSchema, type MarkerFile, type ToolConfig } from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -36,10 +31,7 @@ export function readMarkerFile(projectPath: string): Result<MarkerFile> {
 //
 // Atomic write of .ralph.json into projectPath.
 
-export function writeMarkerFile(
-  projectPath: string,
-  marker: MarkerFile,
-): Result<void> {
+export function writeMarkerFile(projectPath: string, marker: MarkerFile): Result<void> {
   const markerPath = path.join(path.resolve(projectPath), MARKER_FILENAME);
   const content = JSON.stringify(marker, null, 2) + "\n";
   return atomicWrite(markerPath, content);
@@ -85,10 +77,7 @@ export function writeToolConfig(config: ToolConfig): Result<void> {
 // Resolution order: cliRoot → RALPH_ROOT env → config file → cwd.
 // Returns an absolute path.
 
-export function resolveRootDirectory(
-  cliRoot?: string,
-  envRoot?: string,
-): string {
+export function resolveRootDirectory(cliRoot?: string, envRoot?: string): string {
   // 1. CLI flag takes highest priority
   if (cliRoot) {
     return path.resolve(cliRoot);

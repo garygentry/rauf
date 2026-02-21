@@ -87,27 +87,32 @@ This repository IS a ralph-managed project. The `.ralph/` directory at the repo 
 ---
 
 <!-- ralph:start -->
+
 ## Autonomous Loop (Ralph)
 
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
+
 1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
 2. Read `.ralph/backlog.json` — find the current `in_progress` item
 3. The item's `acceptanceCriteria` define "done" for this iteration
 
 ### Working
+
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
 6. Run the verification command before considering work complete
 
 ### Completing
+
 7. If all acceptance criteria pass: output `RALPH_DONE` as your final line
 8. If blocked (missing dependency, unclear requirement): output `RALPH_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RALPH_NEEDS_HUMAN:<reason>`
 10. Commit your changes with message: `[ralph] <item-id>: <title>`
 
 ### Rules
+
 - ONE item per iteration — do not work on multiple items
 - Do not modify `.ralph/backlog.json` — the loop runner manages status
 - Do not modify `.ralph/state.json` — the loop runner manages state

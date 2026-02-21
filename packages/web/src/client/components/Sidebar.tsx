@@ -14,15 +14,11 @@ const TOP_NAV: NavItem[] = [
   { label: "Init", to: "/init", icon: "+", exact: true },
 ];
 
-const BOTTOM_NAV: NavItem[] = [
-  { label: "Settings", to: "/settings", icon: "⚙", exact: true },
-];
+const BOTTOM_NAV: NavItem[] = [{ label: "Settings", to: "/settings", icon: "⚙", exact: true }];
 
 function NavLink({ item }: { item: NavItem }) {
   const { location } = useRouterState();
-  const active = item.exact
-    ? location.pathname === item.to
-    : location.pathname.startsWith(item.to);
+  const active = item.exact ? location.pathname === item.to : location.pathname.startsWith(item.to);
 
   return (
     <Link
@@ -68,10 +64,16 @@ export function Sidebar() {
         className="flex h-14 items-center gap-2 border-b px-4"
         style={{ borderColor: "var(--color-sidebar-border)" }}
       >
-        <span className="text-lg font-bold" style={{ color: resolvedTheme === "dark" ? "#a5b4fc" : "#818cf8" }}>
+        <span
+          className="text-lg font-bold"
+          style={{ color: resolvedTheme === "dark" ? "#a5b4fc" : "#818cf8" }}
+        >
           Ralph
         </span>
-        <span className="text-xs font-medium" style={{ color: "var(--color-sidebar-fg)", opacity: 0.5 }}>
+        <span
+          className="text-xs font-medium"
+          style={{ color: "var(--color-sidebar-fg)", opacity: 0.5 }}
+        >
           Manager
         </span>
       </div>
@@ -84,7 +86,10 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom nav */}
-      <div className="space-y-0.5 border-t p-3" style={{ borderColor: "var(--color-sidebar-border)" }}>
+      <div
+        className="space-y-0.5 border-t p-3"
+        style={{ borderColor: "var(--color-sidebar-border)" }}
+      >
         {BOTTOM_NAV.map((item) => (
           <NavLink key={item.to} item={item} />
         ))}

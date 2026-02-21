@@ -668,10 +668,7 @@ describe("detectProfile — edge cases", () => {
   });
 
   it("handles package.json without scripts key", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "no-scripts" }),
-    );
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "no-scripts" }));
 
     const profile = detectProfile(tmpDir);
 

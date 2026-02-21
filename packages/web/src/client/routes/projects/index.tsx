@@ -61,23 +61,14 @@ function StateBadge({ state }: { state: string }) {
       style={{ backgroundColor: config.bgColor, color: config.textColor }}
     >
       {state === "RUNNING" && (
-        <span
-          className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
-          aria-hidden="true"
-        />
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
       )}
       {config.label}
     </span>
   );
 }
 
-function StackBadge({
-  stack,
-  packageManager,
-}: {
-  stack: string;
-  packageManager: string | null;
-}) {
+function StackBadge({ stack, packageManager }: { stack: string; packageManager: string | null }) {
   const label = getStackLabel(stack);
   return (
     <span
@@ -85,23 +76,22 @@ function StackBadge({
       style={{ backgroundColor: "rgba(99, 102, 241, 0.12)", color: "var(--color-accent)" }}
     >
       {label}
-      {packageManager && (
-        <span style={{ opacity: 0.65 }}>· {packageManager}</span>
-      )}
+      {packageManager && <span style={{ opacity: 0.65 }}>· {packageManager}</span>}
     </span>
   );
 }
 
 function BacklogCounts({ summary }: { summary: DerivedStatus["backlogSummary"] }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
+    <div
+      className="flex flex-wrap items-center gap-2 text-xs"
+      style={{ color: "var(--color-text-muted)" }}
+    >
       <span>{summary.pending} pending</span>
       {summary.inProgress > 0 && (
         <span style={{ color: "#16a34a" }}>{summary.inProgress} active</span>
       )}
-      {summary.blocked > 0 && (
-        <span style={{ color: "#ea580c" }}>{summary.blocked} blocked</span>
-      )}
+      {summary.blocked > 0 && <span style={{ color: "#ea580c" }}>{summary.blocked} blocked</span>}
       <span>
         {summary.done}/{summary.total} done
       </span>
@@ -111,19 +101,11 @@ function BacklogCounts({ summary }: { summary: DerivedStatus["backlogSummary"] }
 
 // ─── ProjectCard ──────────────────────────────────────────────────
 
-function ProjectCard({
-  project,
-  muted = false,
-}: {
-  project: DiscoveredProject;
-  muted?: boolean;
-}) {
+function ProjectCard({ project, muted = false }: { project: DiscoveredProject; muted?: boolean }) {
   const { data: status, isLoading: statusLoading } = useQuery({
     queryKey: ["projects", project.id, "status"],
     queryFn: () =>
-      ralphFetchJson<DerivedStatus>(
-        `/api/projects/${encodeURIComponent(project.id)}/status`,
-      ),
+      ralphFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(project.id)}/status`),
     refetchInterval: 30_000,
   });
 
@@ -258,10 +240,7 @@ function EmptyState() {
       <p className="text-lg font-medium" style={{ color: "var(--color-text)" }}>
         No projects found
       </p>
-      <p
-        className="mt-2 max-w-sm text-sm"
-        style={{ color: "var(--color-text-muted)" }}
-      >
+      <p className="mt-2 max-w-sm text-sm" style={{ color: "var(--color-text-muted)" }}>
         Configure your root directory in Settings, then install Ralph on an existing project or
         initialize a new one.
       </p>
@@ -381,9 +360,7 @@ export function ProjectsDashboard() {
       )}
 
       {/* ── Empty state ────────────────────────────────────── */}
-      {!isLoading && !isError && projects.length === 0 && ignored.length === 0 && (
-        <EmptyState />
-      )}
+      {!isLoading && !isError && projects.length === 0 && ignored.length === 0 && <EmptyState />}
 
       {/* ── Active project cards ───────────────────────────── */}
       {!isLoading && !isError && projects.length > 0 && (
@@ -397,10 +374,7 @@ export function ProjectsDashboard() {
       {/* ── Ignored projects (muted, bottom) ───────────────── */}
       {!isLoading && !isError && ignored.length > 0 && (
         <div className="mt-8">
-          <h2
-            className="mb-3 text-sm font-medium"
-            style={{ color: "var(--color-text-muted)" }}
-          >
+          <h2 className="mb-3 text-sm font-medium" style={{ color: "var(--color-text-muted)" }}>
             Ignored Projects ({ignored.length})
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

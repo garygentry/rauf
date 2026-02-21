@@ -5,13 +5,7 @@
 
 import { parseArgs } from "./parser.js";
 import { configureOutput, detectColorSupport, error, c, info } from "./formatter.js";
-import {
-  COMMANDS,
-  findCommand,
-  getSubcommandNames,
-  findSubcommand,
-  ExitCode,
-} from "./commands.js";
+import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 
 async function main(): Promise<number> {
@@ -99,9 +93,7 @@ async function main(): Promise<number> {
     }
 
     if (!subcmd.handler) {
-      error(
-        `'${commandName} ${parsed.subcommand}' is not yet implemented.`,
-      );
+      error(`'${commandName} ${parsed.subcommand}' is not yet implemented.`);
       return ExitCode.ERROR;
     }
 
@@ -147,11 +139,7 @@ function levenshtein(a: string, b: string): number {
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[i]![j] = Math.min(
-        dp[i - 1]![j]! + 1,
-        dp[i]![j - 1]! + 1,
-        dp[i - 1]![j - 1]! + cost,
-      );
+      dp[i]![j] = Math.min(dp[i - 1]![j]! + 1, dp[i]![j - 1]! + 1, dp[i - 1]![j - 1]! + cost);
     }
   }
 

@@ -51,17 +51,10 @@ function makeMarker(overrides: Partial<MarkerFile> = {}): MarkerFile {
 }
 
 /** Create a project directory with a .ralph.json marker */
-function createProject(
-  name: string,
-  marker?: MarkerFile,
-  parent?: string,
-): string {
+function createProject(name: string, marker?: MarkerFile, parent?: string): string {
   const dir = path.join(parent ?? tmpDir, name);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, ".ralph.json"),
-    JSON.stringify(marker ?? makeMarker(), null, 2),
-  );
+  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker ?? makeMarker(), null, 2));
   return dir;
 }
 
@@ -98,10 +91,7 @@ describe("discoverProjects", () => {
 
   it("includes rootDir itself if it has .ralph.json", () => {
     // Place a marker in the root directory itself
-    fs.writeFileSync(
-      path.join(tmpDir, ".ralph.json"),
-      JSON.stringify(makeMarker()),
-    );
+    fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(makeMarker()));
     createProject("child-project");
 
     const result = discoverProjects(tmpDir);
@@ -111,9 +101,7 @@ describe("discoverProjects", () => {
     // rootDir + child = 2 projects
     expect(result.value.projects).toHaveLength(2);
     // rootDir should be one of the discovered projects
-    const rootProject = result.value.projects.find(
-      (p) => p.path === path.resolve(tmpDir),
-    );
+    const rootProject = result.value.projects.find((p) => p.path === path.resolve(tmpDir));
     expect(rootProject).toBeDefined();
     expect(rootProject!.id).toBe(path.basename(tmpDir));
   });
@@ -137,10 +125,7 @@ describe("discoverProjects", () => {
     // Create artifacts directory (simulating ralph's own artifact templates)
     const artifactsDir = path.join(tmpDir, "artifacts");
     fs.mkdirSync(artifactsDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(artifactsDir, ".ralph.json"),
-      JSON.stringify(makeMarker()),
-    );
+    fs.writeFileSync(path.join(artifactsDir, ".ralph.json"), JSON.stringify(makeMarker()));
 
     createProject("real-project");
 

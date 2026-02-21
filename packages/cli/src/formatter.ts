@@ -131,10 +131,7 @@ export interface TableColumn {
  * @param rows - Array of objects with keys matching column.key
  * @returns Formatted string with header + separator + data rows
  */
-export function renderTable(
-  columns: TableColumn[],
-  rows: Record<string, string>[],
-): string {
+export function renderTable(columns: TableColumn[], rows: Record<string, string>[]): string {
   if (columns.length === 0) return "";
 
   // Compute effective widths: max of header length and all data values
@@ -187,6 +184,7 @@ export function renderTable(
 // ─── Helpers ─────────────────────────────────────────────────────
 
 // Simple ANSI escape stripping for width calculations
+// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 export function stripAnsi(s: string): string {

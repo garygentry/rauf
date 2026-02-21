@@ -68,10 +68,7 @@ export function readBacklog(projectPath: string): Result<Backlog> {
 //
 // Atomic write with .bak backup (handled by atomicWrite for backlog.json).
 
-export function writeBacklog(
-  projectPath: string,
-  backlog: Backlog,
-): Result<void> {
+export function writeBacklog(projectPath: string, backlog: Backlog): Result<void> {
   const content = JSON.stringify(backlog, null, 2) + "\n";
   return atomicWrite(getBacklogPath(projectPath), content);
 }
@@ -94,10 +91,7 @@ export function validateStatusTransition(
 // Auto-assigns zero-padded ID (max+1), injects smart default
 // criterion if no AC provided, validates dependsOn references.
 
-export function addItem(
-  projectPath: string,
-  input: CreateItemInput,
-): Result<BacklogItem> {
+export function addItem(projectPath: string, input: CreateItemInput): Result<BacklogItem> {
   // 1. Read current backlog
   const backlogResult = readBacklog(projectPath);
   if (!backlogResult.ok) return backlogResult;
@@ -136,9 +130,7 @@ export function addItem(
   let criteria = input.acceptanceCriteria ?? [];
   if (criteria.length === 0) {
     const markerResult = readMarkerFile(projectPath);
-    const verifyCommand = markerResult.ok
-      ? markerResult.value.profile.verify
-      : "";
+    const verifyCommand = markerResult.ok ? markerResult.value.profile.verify : "";
     const defaultCriterion = verifyCommand
       ? `${verifyCommand} passes`
       : "All verification checks pass";
@@ -155,9 +147,7 @@ export function addItem(
     acceptanceCriteria: criteria,
     status: "pending",
     completedAt: null,
-    ...(input.dependsOn && input.dependsOn.length > 0
-      ? { dependsOn: input.dependsOn }
-      : {}),
+    ...(input.dependsOn && input.dependsOn.length > 0 ? { dependsOn: input.dependsOn } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
     ...(input.estimatedIterations !== undefined
       ? { estimatedIterations: input.estimatedIterations }
@@ -231,15 +221,12 @@ export function updateItem(
   if (updates.type !== undefined) updatedItem.type = updates.type;
   if (updates.priority !== undefined) updatedItem.priority = updates.priority;
   if (updates.title !== undefined) updatedItem.title = updates.title;
-  if (updates.description !== undefined)
-    updatedItem.description = updates.description;
+  if (updates.description !== undefined) updatedItem.description = updates.description;
   if (updates.acceptanceCriteria !== undefined)
     updatedItem.acceptanceCriteria = updates.acceptanceCriteria;
   if (updates.status !== undefined) updatedItem.status = updates.status;
-  if (updates.blockedReason !== undefined)
-    updatedItem.blockedReason = updates.blockedReason;
-  if (updates.dependsOn !== undefined)
-    updatedItem.dependsOn = updates.dependsOn;
+  if (updates.blockedReason !== undefined) updatedItem.blockedReason = updates.blockedReason;
+  if (updates.dependsOn !== undefined) updatedItem.dependsOn = updates.dependsOn;
   if (updates.notes !== undefined) updatedItem.notes = updates.notes;
   if (updates.estimatedIterations !== undefined)
     updatedItem.estimatedIterations = updates.estimatedIterations;
@@ -262,10 +249,7 @@ export function updateItem(
 // Blocks deletion of in_progress items if loop is active (state.json
 // shows running/starting). Warns about dependent items via details.
 
-export function deleteItem(
-  projectPath: string,
-  itemId: string,
-): Result<void> {
+export function deleteItem(projectPath: string, itemId: string): Result<void> {
   // 1. Read backlog, find item
   const backlogResult = readBacklog(projectPath);
   if (!backlogResult.ok) return backlogResult;

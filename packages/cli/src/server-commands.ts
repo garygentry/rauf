@@ -39,10 +39,10 @@ const HEALTH_PING_TIMEOUT_MS = 2000;
  */
 export function resolveServerEntry(): string {
   const thisFile = new URL(import.meta.url).pathname;
-  const cliSrc = path.dirname(thisFile);      // packages/cli/src
-  const cliPkg = path.dirname(cliSrc);        // packages/cli
-  const packages = path.dirname(cliPkg);      // packages
-  const repoRoot = path.dirname(packages);    // repo root
+  const cliSrc = path.dirname(thisFile); // packages/cli/src
+  const cliPkg = path.dirname(cliSrc); // packages/cli
+  const packages = path.dirname(cliPkg); // packages
+  const repoRoot = path.dirname(packages); // repo root
   return path.join(repoRoot, "packages", "web", "src", "server", "index.ts");
 }
 

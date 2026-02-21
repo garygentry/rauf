@@ -20,16 +20,7 @@ import {
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractStringFlag } from "./parser.js";
-import {
-  c,
-  info,
-  print,
-  error,
-  warn,
-  success,
-  outputJson,
-  symbols,
-} from "./formatter.js";
+import { c, info, error, warn, success, outputJson, symbols } from "./formatter.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -99,7 +90,7 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
   });
 
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   const report = result.value;
@@ -169,7 +160,7 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   });
 
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   const report = result.value;
@@ -194,7 +185,7 @@ export async function handleUpdate(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
-  const _yes = extractBoolFlag(ctx.flags, "yes");
+  extractBoolFlag(ctx.flags, "yes"); // consume --yes flag (not yet used for confirmation)
 
   // Resolve artifacts directory
   const artifactsDir = resolveArtifactsDir();
@@ -202,7 +193,7 @@ export async function handleUpdate(ctx: CommandContext): Promise<number> {
   const result = update(resolved, { artifactsDir });
 
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   const report = result.value;
@@ -227,7 +218,7 @@ export async function handleUninstall(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
-  const _yes = extractBoolFlag(ctx.flags, "yes");
+  extractBoolFlag(ctx.flags, "yes"); // consume --yes flag (not yet used for confirmation)
   const keepData = extractBoolFlag(ctx.flags, "keep-data");
 
   const result = uninstall(resolved, {
@@ -238,7 +229,7 @@ export async function handleUninstall(ctx: CommandContext): Promise<number> {
   });
 
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   if (ctx.globalFlags.json) {
@@ -266,13 +257,7 @@ function extractProfileOverrides(ctx: CommandContext): ProfileOverrides | undefi
   const format = extractStringFlag(ctx.flags, "format-cmd");
 
   // Only return overrides if at least one was specified
-  if (
-    test === null &&
-    typecheck === null &&
-    lint === null &&
-    build === null &&
-    format === null
-  ) {
+  if (test === null && typecheck === null && lint === null && build === null && format === null) {
     return undefined;
   }
 
@@ -286,15 +271,41 @@ function extractProfileOverrides(ctx: CommandContext): ProfileOverrides | undefi
   return overrides;
 }
 
-/** Map core error codes to CLI exit codes and print */
+/** Map core error codes to CLI exit codes and print with suggested fix */
 function handleCoreError(
   err: { code: string; message: string; details?: unknown },
   ctx: CommandContext,
+  projectPath?: string,
 ): number {
   if (ctx.globalFlags.json) {
     outputJson({ error: err });
   } else {
     error(err.message);
+    // Print a suggested fix (suppressed by --quiet)
+    switch (err.code) {
+      case ErrorCodes.FILE_NOT_FOUND:
+        info(
+          `Ensure the directory exists, then run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+        );
+        break;
+      case ErrorCodes.NOT_INSTALLED:
+        info(
+          `Ralph is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+        );
+        break;
+      case ErrorCodes.INVALID_JSON:
+      case ErrorCodes.VALIDATION_ERROR:
+        info(
+          `A project file may be corrupted. Try re-running: ${c.cyan(projectPath ? `ralph install ${projectPath} --yes` : "ralph install <path> --yes")}`,
+        );
+        break;
+      case ErrorCodes.ALREADY_INSTALLED:
+      case ErrorCodes.CONFLICT:
+        info(
+          `Use ${c.cyan(projectPath ? `ralph update ${projectPath}` : "ralph update <path>")} to update an existing installation.`,
+        );
+        break;
+    }
   }
 
   switch (err.code) {
@@ -302,6 +313,8 @@ function handleCoreError(
       return ExitCode.NOT_FOUND;
     case ErrorCodes.NOT_INSTALLED:
       return ExitCode.NOT_FOUND;
+    case ErrorCodes.INVALID_JSON:
+      return ExitCode.VALIDATION;
     case ErrorCodes.VALIDATION_ERROR:
       return ExitCode.VALIDATION;
     case ErrorCodes.CONFLICT:
@@ -386,10 +399,7 @@ function printActions(actions: InstallationReport["actions"]): void {
         : action.action === "updated" || action.action === "rendered"
           ? c.yellow("~")
           : c.dim("-");
-    const label =
-      action.action === "skipped"
-        ? c.dim(action.file)
-        : action.file;
+    const label = action.action === "skipped" ? c.dim(action.file) : action.file;
     info(`  ${icon} ${label}  ${c.dim(action.detail ?? "")}`);
   }
 }

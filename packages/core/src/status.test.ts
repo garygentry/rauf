@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -82,10 +82,7 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
 }
 
 /** Create a minimal valid Backlog */
-function makeBacklog(
-  items: BacklogItem[] = [],
-  overrides: Partial<Backlog> = {},
-): Backlog {
+function makeBacklog(items: BacklogItem[] = [], overrides: Partial<Backlog> = {}): Backlog {
   return {
     project: "test-project",
     description: "A test project",
@@ -201,9 +198,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
   });
 
   it("downgrades running to PAUSED when updatedAt is stale (>5 min)", () => {
-    const staleTime = new Date(
-      Date.now() - STALENESS_THRESHOLD_MS - 1000,
-    ).toISOString();
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 1000).toISOString();
     const state = makeLoopState({
       status: "running",
       updatedAt: staleTime,
@@ -218,9 +213,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
   });
 
   it("downgrades starting to PAUSED when updatedAt is stale (>5 min)", () => {
-    const staleTime = new Date(
-      Date.now() - STALENESS_THRESHOLD_MS - 1000,
-    ).toISOString();
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 1000).toISOString();
     const state = makeLoopState({
       status: "starting",
       updatedAt: staleTime,
@@ -248,9 +241,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
   });
 
   it("does not apply staleness check to non-running statuses", () => {
-    const staleTime = new Date(
-      Date.now() - STALENESS_THRESHOLD_MS - 1000,
-    ).toISOString();
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 1000).toISOString();
     const state = makeLoopState({
       status: "complete",
       updatedAt: staleTime,
@@ -448,10 +439,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
   it("falls back to Tier 2 when state.json fails schema validation", () => {
     createRalphDir();
     const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
-    fs.writeFileSync(
-      statePath,
-      JSON.stringify({ status: "invalid_status" }),
-    );
+    fs.writeFileSync(statePath, JSON.stringify({ status: "invalid_status" }));
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
 
     const result = deriveStatus(tmpDir);
@@ -558,13 +546,7 @@ describe("readLogTail", () => {
     const result = readLogTail(tmpDir, 5);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value).toEqual([
-      "Line 16",
-      "Line 17",
-      "Line 18",
-      "Line 19",
-      "Line 20",
-    ]);
+    expect(result.value).toEqual(["Line 16", "Line 17", "Line 18", "Line 19", "Line 20"]);
   });
 
   it("returns all lines when N exceeds file length", () => {

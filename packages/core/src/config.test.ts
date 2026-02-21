@@ -67,10 +67,7 @@ function makeMarker(overrides: Partial<MarkerFile> = {}): MarkerFile {
 describe("readMarkerFile", () => {
   it("reads and validates a valid .ralph.json", () => {
     const marker = makeMarker();
-    fs.writeFileSync(
-      path.join(tmpDir, MARKER_FILENAME),
-      JSON.stringify(marker, null, 2),
-    );
+    fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), JSON.stringify(marker, null, 2));
 
     const result = readMarkerFile(tmpDir);
     expect(result.ok).toBe(true);
@@ -90,10 +87,7 @@ describe("readMarkerFile", () => {
   });
 
   it("returns INVALID_JSON for malformed JSON", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, MARKER_FILENAME),
-      "{ not valid json }}}",
-    );
+    fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), "{ not valid json }}}");
 
     const result = readMarkerFile(tmpDir);
     expect(result.ok).toBe(false);
@@ -117,10 +111,7 @@ describe("readMarkerFile", () => {
 
   it("rejects marker with ralph !== true", () => {
     const marker = { ...makeMarker(), ralph: "yes" };
-    fs.writeFileSync(
-      path.join(tmpDir, MARKER_FILENAME),
-      JSON.stringify(marker),
-    );
+    fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), JSON.stringify(marker));
 
     const result = readMarkerFile(tmpDir);
     expect(result.ok).toBe(false);
@@ -132,10 +123,7 @@ describe("readMarkerFile", () => {
   it("resolves relative paths", () => {
     const subDir = path.join(tmpDir, "sub");
     fs.mkdirSync(subDir);
-    fs.writeFileSync(
-      path.join(subDir, MARKER_FILENAME),
-      JSON.stringify(makeMarker()),
-    );
+    fs.writeFileSync(path.join(subDir, MARKER_FILENAME), JSON.stringify(makeMarker()));
 
     // Use resolved path to avoid relative path issues in test runner
     const result = readMarkerFile(subDir);
@@ -177,9 +165,7 @@ describe("writeMarkerFile", () => {
     const result = writeMarkerFile(tmpDir, updated);
     expect(result.ok).toBe(true);
 
-    const content = JSON.parse(
-      fs.readFileSync(path.join(tmpDir, MARKER_FILENAME), "utf-8"),
-    );
+    const content = JSON.parse(fs.readFileSync(path.join(tmpDir, MARKER_FILENAME), "utf-8"));
     expect(content.version).toBe("2");
   });
 
@@ -204,10 +190,7 @@ describe("writeMarkerFile", () => {
     const marker = makeMarker();
     writeMarkerFile(tmpDir, marker);
 
-    const raw = fs.readFileSync(
-      path.join(tmpDir, MARKER_FILENAME),
-      "utf-8",
-    );
+    const raw = fs.readFileSync(path.join(tmpDir, MARKER_FILENAME), "utf-8");
     // Pretty-printed means multiline
     expect(raw.split("\n").length).toBeGreaterThan(1);
     // Trailing newline
@@ -215,10 +198,7 @@ describe("writeMarkerFile", () => {
   });
 
   it("returns error when directory doesn't exist", () => {
-    const result = writeMarkerFile(
-      path.join(tmpDir, "nonexistent", "sub"),
-      makeMarker(),
-    );
+    const result = writeMarkerFile(path.join(tmpDir, "nonexistent", "sub"), makeMarker());
     expect(result.ok).toBe(false);
   });
 });
@@ -256,9 +236,7 @@ describe("readToolConfig", () => {
   });
 
   it("TOOL_CONFIG_PATH is under ~/.ralph/", () => {
-    expect(TOOL_CONFIG_PATH).toBe(
-      path.join(os.homedir(), ".ralph", "config.json"),
-    );
+    expect(TOOL_CONFIG_PATH).toBe(path.join(os.homedir(), ".ralph", "config.json"));
   });
 });
 
@@ -479,9 +457,7 @@ describe("resolveRootDirectory", () => {
     process.env[RALPH_ROOT_ENV] = "/from-env-var";
 
     // Flag wins
-    expect(resolveRootDirectory("/from-flag")).toBe(
-      path.resolve("/from-flag"),
-    );
+    expect(resolveRootDirectory("/from-flag")).toBe(path.resolve("/from-flag"));
 
     // Without flag, env param wins
     expect(resolveRootDirectory(undefined, "/from-env-param")).toBe(

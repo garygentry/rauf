@@ -9,26 +9,16 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 describe("repo integrity", () => {
   it("ralph.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph.sh", () => {
     const rootScript = resolve(REPO_ROOT, "ralph.sh");
-    const canonicalScript = resolve(
-      REPO_ROOT,
-      "artifacts/variants/backlog-json/ralph.sh",
-    );
+    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph.sh");
 
     // Canonical file must exist as a regular file
-    expect(existsSync(canonicalScript), "canonical ralph.sh must exist").toBe(
-      true,
-    );
+    expect(existsSync(canonicalScript), "canonical ralph.sh must exist").toBe(true);
     const canonicalStat = lstatSync(canonicalScript);
-    expect(
-      canonicalStat.isFile(),
-      "canonical ralph.sh must be a regular file",
-    ).toBe(true);
+    expect(canonicalStat.isFile(), "canonical ralph.sh must be a regular file").toBe(true);
 
     // Root ralph.sh must be a symlink
     const rootStat = lstatSync(rootScript);
-    expect(rootStat.isSymbolicLink(), "root ralph.sh must be a symlink").toBe(
-      true,
-    );
+    expect(rootStat.isSymbolicLink(), "root ralph.sh must be a symlink").toBe(true);
 
     // Symlink must point to the canonical location
     const target = readlinkSync(rootScript);
@@ -37,17 +27,11 @@ describe("repo integrity", () => {
 
   it("ralph-add.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-add.sh", () => {
     const rootScript = resolve(REPO_ROOT, "ralph-add.sh");
-    const canonicalScript = resolve(
-      REPO_ROOT,
-      "artifacts/variants/backlog-json/ralph-add.sh",
-    );
+    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph-add.sh");
 
     expect(existsSync(canonicalScript), "canonical ralph-add.sh must exist").toBe(true);
     const canonicalStat = lstatSync(canonicalScript);
-    expect(
-      canonicalStat.isFile(),
-      "canonical ralph-add.sh must be a regular file",
-    ).toBe(true);
+    expect(canonicalStat.isFile(), "canonical ralph-add.sh must be a regular file").toBe(true);
 
     const rootStat = lstatSync(rootScript);
     expect(rootStat.isSymbolicLink(), "root ralph-add.sh must be a symlink").toBe(true);
@@ -58,17 +42,11 @@ describe("repo integrity", () => {
 
   it("ralph-status.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-status.sh", () => {
     const rootScript = resolve(REPO_ROOT, "ralph-status.sh");
-    const canonicalScript = resolve(
-      REPO_ROOT,
-      "artifacts/variants/backlog-json/ralph-status.sh",
-    );
+    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph-status.sh");
 
     expect(existsSync(canonicalScript), "canonical ralph-status.sh must exist").toBe(true);
     const canonicalStat = lstatSync(canonicalScript);
-    expect(
-      canonicalStat.isFile(),
-      "canonical ralph-status.sh must be a regular file",
-    ).toBe(true);
+    expect(canonicalStat.isFile(), "canonical ralph-status.sh must be a regular file").toBe(true);
 
     const rootStat = lstatSync(rootScript);
     expect(rootStat.isSymbolicLink(), "root ralph-status.sh must be a symlink").toBe(true);
@@ -79,17 +57,11 @@ describe("repo integrity", () => {
 
   it("ralph-stop.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-stop.sh", () => {
     const rootScript = resolve(REPO_ROOT, "ralph-stop.sh");
-    const canonicalScript = resolve(
-      REPO_ROOT,
-      "artifacts/variants/backlog-json/ralph-stop.sh",
-    );
+    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph-stop.sh");
 
     expect(existsSync(canonicalScript), "canonical ralph-stop.sh must exist").toBe(true);
     const canonicalStat = lstatSync(canonicalScript);
-    expect(
-      canonicalStat.isFile(),
-      "canonical ralph-stop.sh must be a regular file",
-    ).toBe(true);
+    expect(canonicalStat.isFile(), "canonical ralph-stop.sh must be a regular file").toBe(true);
 
     const rootStat = lstatSync(rootScript);
     expect(rootStat.isSymbolicLink(), "root ralph-stop.sh must be a symlink").toBe(true);
@@ -137,9 +109,7 @@ describe("artifact templates", () => {
     it("contains all expected template variables", () => {
       const content = readFileSync(templatePath, "utf-8");
       for (const varName of Object.keys(RALPH_MD_VARS)) {
-        expect(content, `RALPH.md.tmpl must contain {{${varName}}}`).toContain(
-          `{{${varName}}}`,
-        );
+        expect(content, `RALPH.md.tmpl must contain {{${varName}}}`).toContain(`{{${varName}}}`);
       }
     });
 
@@ -242,10 +212,9 @@ describe("artifact templates", () => {
     it("contains all expected template variables", () => {
       const content = readFileSync(templatePath, "utf-8");
       for (const varName of Object.keys(GREENFIELD_VARS)) {
-        expect(
-          content,
-          `CLAUDE_GREENFIELD.md.tmpl must contain {{${varName}}}`,
-        ).toContain(`{{${varName}}}`);
+        expect(content, `CLAUDE_GREENFIELD.md.tmpl must contain {{${varName}}}`).toContain(
+          `{{${varName}}}`,
+        );
       }
     });
 

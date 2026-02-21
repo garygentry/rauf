@@ -2,25 +2,11 @@ import { z } from "zod";
 
 // ─── Enums & Primitives ────────────────────────────────────────────
 
-export const BacklogItemTypeSchema = z.enum([
-  "bug",
-  "refactor",
-  "feature",
-  "chore",
-]);
+export const BacklogItemTypeSchema = z.enum(["bug", "refactor", "feature", "chore"]);
 
-export const BacklogItemStatusSchema = z.enum([
-  "pending",
-  "in_progress",
-  "done",
-  "blocked",
-]);
+export const BacklogItemStatusSchema = z.enum(["pending", "in_progress", "done", "blocked"]);
 
-export const BacklogItemPrioritySchema = z
-  .number()
-  .int()
-  .min(1)
-  .max(4) as z.ZodType<1 | 2 | 3 | 4>;
+export const BacklogItemPrioritySchema = z.number().int().min(1).max(4) as z.ZodType<1 | 2 | 3 | 4>;
 
 /** Zero-padded sequential ID: "001", "002", etc. */
 export const BacklogItemIdSchema = z.string().regex(/^\d{3,}$/, {
@@ -107,12 +93,7 @@ export const LoopStateStatusSchema = z.enum([
   "error",
 ]);
 
-export const LoopStateSignalSchema = z.enum([
-  "clean",
-  "blocked",
-  "needs_human",
-  "error",
-]);
+export const LoopStateSignalSchema = z.enum(["clean", "blocked", "needs_human", "error"]);
 
 export const LoopStateSchema = z.object({
   status: LoopStateStatusSchema,
@@ -223,8 +204,7 @@ export const RalphErrorSchema = z.object({
 export const LOG_PATTERNS = {
   loopStart: /Ralph Loop starting \| max=(\d+) iterations/,
   iteration: /--- Iteration (\d+) \/ (\d+) ---/,
-  status:
-    /Status → pending:(\d+)\s+in_progress:(\d+)\s+blocked:(\d+)\s+done:(\d+)\s+total:(\d+)/,
+  status: /Status → pending:(\d+)\s+in_progress:(\d+)\s+blocked:(\d+)\s+done:(\d+)\s+total:(\d+)/,
   done: /✓ Clean completion signal received/,
   blocked: /⚠ Task blocked: ([^\s]+)/,
   needsHuman: /⛔ Loop paused — human input needed: (.+)/,
@@ -235,10 +215,7 @@ export const LOG_PATTERNS = {
 
 // ─── Valid Status Transitions ──────────────────────────────────────
 
-export const VALID_STATUS_TRANSITIONS: Record<
-  BacklogItemStatus,
-  BacklogItemStatus[]
-> = {
+export const VALID_STATUS_TRANSITIONS: Record<BacklogItemStatus, BacklogItemStatus[]> = {
   pending: ["in_progress", "blocked"],
   in_progress: ["done", "blocked", "pending"],
   blocked: ["pending"],

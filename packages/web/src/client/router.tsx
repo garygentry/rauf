@@ -1,4 +1,10 @@
-import { createRootRoute, createRoute, createRouter, redirect, Outlet } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+  Outlet,
+} from "@tanstack/react-router";
 import { Layout } from "./components/Layout";
 import { ProjectsDashboard } from "./routes/projects/index";
 import { BacklogView } from "./routes/projects/backlog";

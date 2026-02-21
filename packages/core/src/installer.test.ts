@@ -12,11 +12,7 @@ import {
   isCommandInPath,
   threeWayCompare,
   SCRIPT_ARTIFACTS,
-  DIR_FILES,
-  DOT_RALPH,
   type InstallOptions,
-  type UpdateOptions,
-  type UninstallOptions,
 } from "./installer.js";
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
@@ -26,10 +22,7 @@ import type { ProjectProfile } from "./schemas.js";
 // ─── Test Fixtures ────────────────────────────────────────────────
 
 /** Path to the real artifacts directory in this repo */
-const ARTIFACTS_DIR = path.resolve(
-  __dirname,
-  "../../../artifacts/variants/backlog-json",
-);
+const ARTIFACTS_DIR = path.resolve(__dirname, "../../../artifacts/variants/backlog-json");
 
 let tmpDir: string;
 
@@ -123,17 +116,12 @@ describe("preflight", () => {
   it("fails when already installed", () => {
     createFakeProject(tmpDir, { git: true });
     // Create a .ralph.json to simulate existing installation
-    fs.writeFileSync(
-      path.join(tmpDir, MARKER_FILENAME),
-      JSON.stringify({ ralph: true }),
-    );
+    fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), JSON.stringify({ ralph: true }));
 
     const result = preflight(tmpDir);
 
     expect(result.passed).toBe(false);
-    const installedCheck = result.checks.find(
-      (c) => c.name === "not_already_installed",
-    );
+    const installedCheck = result.checks.find((c) => c.name === "not_already_installed");
     expect(installedCheck?.passed).toBe(false);
   });
 
@@ -193,10 +181,7 @@ describe("install", () => {
 
     install(tmpDir, installOpts());
 
-    const ralphMd = fs.readFileSync(
-      path.join(tmpDir, ".ralph", "RALPH.md"),
-      "utf-8",
-    );
+    const ralphMd = fs.readFileSync(path.join(tmpDir, ".ralph", "RALPH.md"), "utf-8");
 
     // Should contain rendered commands (not raw {{var}})
     expect(ralphMd).toContain("pnpm test");
@@ -208,10 +193,7 @@ describe("install", () => {
 
     install(tmpDir, installOpts());
 
-    const claudeMd = fs.readFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const claudeMd = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_END);
     expect(claudeMd).toContain("Autonomous Loop (Ralph)");
@@ -225,10 +207,7 @@ describe("install", () => {
     const result = install(tmpDir, installOpts());
     expect(result.ok).toBe(true);
 
-    const claudeMd = fs.readFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const claudeMd = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("# My Project");
     expect(claudeMd).toContain("Custom content here.");
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
@@ -325,10 +304,7 @@ describe("install", () => {
       }),
     );
 
-    const backlogContent = fs.readFileSync(
-      path.join(tmpDir, ".ralph", "backlog.json"),
-      "utf-8",
-    );
+    const backlogContent = fs.readFileSync(path.join(tmpDir, ".ralph", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogContent);
     expect(backlog.project).toBe("my-project");
     expect(backlog.description).toBe("A test project");
@@ -365,10 +341,7 @@ describe("install", () => {
   });
 
   it("fails for non-existent project directory", () => {
-    const result = install(
-      path.join(tmpDir, "nonexistent"),
-      installOpts(),
-    );
+    const result = install(path.join(tmpDir, "nonexistent"), installOpts());
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -397,28 +370,16 @@ describe("install — idempotency", () => {
     expect(r1.ok).toBe(true);
 
     // Capture state after first install
-    const ralphMd1 = fs.readFileSync(
-      path.join(tmpDir, ".ralph", "RALPH.md"),
-      "utf-8",
-    );
-    const claudeMd1 = fs.readFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const ralphMd1 = fs.readFileSync(path.join(tmpDir, ".ralph", "RALPH.md"), "utf-8");
+    const claudeMd1 = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
 
     // Second install (idempotent — already installed)
     const r2 = install(tmpDir, installOpts({ projectName: "test" }));
     expect(r2.ok).toBe(true);
 
     // Files should be identical
-    const ralphMd2 = fs.readFileSync(
-      path.join(tmpDir, ".ralph", "RALPH.md"),
-      "utf-8",
-    );
-    const claudeMd2 = fs.readFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const ralphMd2 = fs.readFileSync(path.join(tmpDir, ".ralph", "RALPH.md"), "utf-8");
+    const claudeMd2 = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
 
     expect(ralphMd2).toBe(ralphMd1);
     expect(claudeMd2).toBe(claudeMd1);
@@ -434,9 +395,7 @@ describe("install — idempotency", () => {
     if (!r2.ok) return;
 
     // Scripts should be skipped on second run
-    const scriptActions = r2.value.actions.filter(
-      (a) => SCRIPT_ARTIFACTS.includes(a.file),
-    );
+    const scriptActions = r2.value.actions.filter((a) => SCRIPT_ARTIFACTS.includes(a.file));
     for (const action of scriptActions) {
       expect(action.action).toBe("skipped");
     }
@@ -493,9 +452,7 @@ describe("update", () => {
     if (!result.ok) return;
 
     // Scripts should be up_to_date (skipped)
-    const scriptActions = result.value.actions.filter(
-      (a) => SCRIPT_ARTIFACTS.includes(a.file),
-    );
+    const scriptActions = result.value.actions.filter((a) => SCRIPT_ARTIFACTS.includes(a.file));
     for (const action of scriptActions) {
       expect(action.action).toBe("skipped");
     }
@@ -509,15 +466,11 @@ describe("update", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const backlogAction = result.value.actions.find(
-      (a) => a.file === ".ralph/backlog.json",
-    );
+    const backlogAction = result.value.actions.find((a) => a.file === ".ralph/backlog.json");
     expect(backlogAction?.action).toBe("skipped");
     expect(backlogAction?.detail).toContain("preserved");
 
-    const progressAction = result.value.actions.find(
-      (a) => a.file === ".ralph/progress.md",
-    );
+    const progressAction = result.value.actions.find((a) => a.file === ".ralph/progress.md");
     expect(progressAction?.action).toBe("skipped");
   });
 
@@ -535,9 +488,7 @@ describe("update", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const ralphAction = result.value.actions.find(
-      (a) => a.file === "ralph.sh",
-    );
+    const ralphAction = result.value.actions.find((a) => a.file === "ralph.sh");
     expect(ralphAction?.action).toBe("skipped");
     expect(ralphAction?.detail).toContain("Local modifications preserved");
 
@@ -560,9 +511,7 @@ describe("update", () => {
     if (!markerAfter.ok) return;
 
     // Marker action should be present
-    expect(
-      markerAfter.value.installedBy.startsWith("ralph-manager@"),
-    ).toBe(true);
+    expect(markerAfter.value.installedBy.startsWith("ralph-manager@")).toBe(true);
   });
 
   it("returns InstallationReport with profile", () => {
@@ -685,18 +634,12 @@ describe("uninstall", () => {
     createFakeProject(tmpDir, { git: true });
 
     // Create CLAUDE.md with existing content
-    fs.writeFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "# My Project\n\nKeep this content.\n",
-    );
+    fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), "# My Project\n\nKeep this content.\n");
 
     install(tmpDir, installOpts());
     uninstall(tmpDir);
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(content).toContain("# My Project");
     expect(content).toContain("Keep this content.");
     expect(content).not.toContain(CLAUDE_MD_SENTINEL_START);
@@ -708,10 +651,7 @@ describe("uninstall", () => {
 
     uninstall(tmpDir, { removeClaudeMdSection: false });
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(content).toContain(CLAUDE_MD_SENTINEL_START);
   });
 
@@ -746,10 +686,7 @@ describe("full lifecycle", () => {
     createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
 
     // Install
-    const installResult = install(
-      tmpDir,
-      installOpts({ projectName: "lifecycle-test" }),
-    );
+    const installResult = install(tmpDir, installOpts({ projectName: "lifecycle-test" }));
     expect(installResult.ok).toBe(true);
 
     // Verify installation
@@ -804,9 +741,7 @@ describe("buildTemplateVars", () => {
     expect(vars.lintCommand).toBe("pnpm lint");
     expect(vars.buildCommand).toBe("pnpm build");
     expect(vars.formatCommand).toBeNull();
-    expect(vars.verifyCommand).toBe(
-      "pnpm test && pnpm typecheck && pnpm lint && pnpm build",
-    );
+    expect(vars.verifyCommand).toBe("pnpm test && pnpm typecheck && pnpm lint && pnpm build");
     expect(vars.stackDescription).toBe("node-typescript");
   });
 });
@@ -926,19 +861,13 @@ describe("edge cases", () => {
     fs.mkdirSync(ralphDir, { recursive: true });
     fs.writeFileSync(
       path.join(ralphDir, "backlog.json"),
-      JSON.stringify(
-        { project: "existing", description: "Pre-existing", items: [] },
-        null,
-        2,
-      ),
+      JSON.stringify({ project: "existing", description: "Pre-existing", items: [] }, null, 2),
     );
 
     const result = install(tmpDir, installOpts({ projectName: "new-name" }));
     expect(result.ok).toBe(true);
 
-    const backlog = JSON.parse(
-      fs.readFileSync(path.join(ralphDir, "backlog.json"), "utf-8"),
-    );
+    const backlog = JSON.parse(fs.readFileSync(path.join(ralphDir, "backlog.json"), "utf-8"));
     expect(backlog.project).toBe("existing"); // Not overwritten
   });
 
@@ -947,17 +876,11 @@ describe("edge cases", () => {
 
     const ralphDir = path.join(tmpDir, ".ralph");
     fs.mkdirSync(ralphDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(ralphDir, "progress.md"),
-      "# Custom Progress\n\nMy learnings.",
-    );
+    fs.writeFileSync(path.join(ralphDir, "progress.md"), "# Custom Progress\n\nMy learnings.");
 
     install(tmpDir, installOpts());
 
-    const content = fs.readFileSync(
-      path.join(ralphDir, "progress.md"),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(ralphDir, "progress.md"), "utf-8");
     expect(content).toContain("# Custom Progress");
   });
 
@@ -1010,15 +933,11 @@ describe("edge cases", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const statusAction = result.value.actions.find(
-      (a) => a.file === "ralph-status.sh",
-    );
+    const statusAction = result.value.actions.find((a) => a.file === "ralph-status.sh");
     expect(statusAction?.action).toBe("skipped");
     expect(statusAction?.detail).toContain("Conflict");
 
     // Should have a warning about the conflict
-    expect(
-      result.value.warnings.some((w) => w.includes("ralph-status.sh")),
-    ).toBe(true);
+    expect(result.value.warnings.some((w) => w.includes("ralph-status.sh"))).toBe(true);
   });
 });

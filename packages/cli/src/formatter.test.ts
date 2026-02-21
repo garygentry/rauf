@@ -91,9 +91,7 @@ describe("stripAnsi", () => {
   });
 
   it("handles nested ANSI codes", () => {
-    expect(stripAnsi("\x1b[1m\x1b[31mbold red\x1b[39m\x1b[22m")).toBe(
-      "bold red",
-    );
+    expect(stripAnsi("\x1b[1m\x1b[31mbold red\x1b[39m\x1b[22m")).toBe("bold red");
   });
 
   it("returns plain text unchanged", () => {

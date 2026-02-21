@@ -80,9 +80,7 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
   return mapping[status];
 }
 
-function deriveFromStateJson(
-  projectPath: string,
-): Result<DerivedStatus | null> {
+function deriveFromStateJson(projectPath: string): Result<DerivedStatus | null> {
   const statePath = getStatePath(projectPath);
   const stateResult = readJsonFile(statePath, LoopStateSchema);
 
@@ -95,10 +93,7 @@ function deriveFromStateJson(
   let loopState = mapLoopStateStatus(state.status);
 
   // Staleness check: running >5min old → PAUSED
-  if (
-    (state.status === "running" || state.status === "starting") &&
-    state.updatedAt
-  ) {
+  if ((state.status === "running" || state.status === "starting") && state.updatedAt) {
     const updatedAt = new Date(state.updatedAt).getTime();
     const now = Date.now();
     if (now - updatedAt > STALENESS_THRESHOLD_MS) {
@@ -194,8 +189,7 @@ function parseDoneFileState(content: string): LoopStateEnum {
   if (!content) return "COMPLETE";
 
   const lower = content.toLowerCase();
-  if (lower.includes("human") || lower.includes("needs_human"))
-    return "PAUSED_HUMAN";
+  if (lower.includes("human") || lower.includes("needs_human")) return "PAUSED_HUMAN";
   if (lower.includes("limit")) return "LIMIT_REACHED";
   if (lower.includes("error")) return "ERROR";
   return "COMPLETE";
@@ -232,8 +226,7 @@ function parseLogForDetails(logPath: string): Partial<DerivedStatus> {
   for (const line of head) {
     const startMatch = LOG_PATTERNS.loopStart.exec(line);
     if (startMatch) {
-      details.maxIterations =
-        details.maxIterations ?? parseInt(startMatch[1]!, 10);
+      details.maxIterations = details.maxIterations ?? parseInt(startMatch[1]!, 10);
 
       // Try to extract timestamp from same or preceding line
       const tsMatch = LOG_PATTERNS.timestamp.exec(line);
@@ -319,10 +312,7 @@ export function deriveStatus(projectPath: string): Result<DerivedStatus> {
 //
 // Read last N lines of ralph.log. Cap at MAX_LOG_TAIL_LINES.
 
-export function readLogTail(
-  projectPath: string,
-  lines: number = 50,
-): Result<string[]> {
+export function readLogTail(projectPath: string, lines: number = 50): Result<string[]> {
   const logPath = getLogPath(projectPath);
   const cappedLines = Math.min(Math.max(lines, 1), MAX_LOG_TAIL_LINES);
 
@@ -354,10 +344,7 @@ export function readLogTail(
 // Watch ralph.log for changes using fs.watch. Calls callback with
 // new lines as they appear. Returns cleanup function to stop watching.
 
-export function watchLog(
-  projectPath: string,
-  callback: (lines: string[]) => void,
-): () => void {
+export function watchLog(projectPath: string, callback: (lines: string[]) => void): () => void {
   const logPath = getLogPath(projectPath);
   let lastSize = 0;
 
@@ -406,10 +393,4 @@ export function watchLog(
 
 // ─── Exported constants (for testing) ────────────────────────────
 
-export {
-  RALPH_DIR,
-  LOG_FILENAME,
-  DONE_FILENAME,
-  STALENESS_THRESHOLD_MS,
-  LOG_ACTIVE_THRESHOLD_MS,
-};
+export { RALPH_DIR, LOG_FILENAME, DONE_FILENAME, STALENESS_THRESHOLD_MS, LOG_ACTIVE_THRESHOLD_MS };

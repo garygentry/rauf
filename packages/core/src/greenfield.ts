@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
-import { ensureDir, atomicWrite, fileExists, validatePath } from "./fs-utils.js";
+import { ensureDir, atomicWrite, validatePath } from "./fs-utils.js";
 import { renderTemplate } from "./template.js";
 import { install, type InstallOptions } from "./installer.js";
 import { getPreset, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
@@ -11,7 +11,6 @@ import { writeMarkerFile, readMarkerFile } from "./config.js";
 import { addItem, type CreateItemInput } from "./backlog.js";
 import {
   BacklogSchema,
-  BacklogItemSchema,
   type InstallationReport,
   type InstallAction,
   type ProjectProfile,
@@ -33,13 +32,7 @@ const GITIGNORE_TEMPLATES: Record<string, string> = {
     ".env.*",
     "!.env.example",
   ].join("\n"),
-  "node-javascript": [
-    "node_modules/",
-    "dist/",
-    ".env",
-    ".env.*",
-    "!.env.example",
-  ].join("\n"),
+  "node-javascript": ["node_modules/", "dist/", ".env", ".env.*", "!.env.example"].join("\n"),
   python: [
     "__pycache__/",
     "*.py[cod]",
@@ -97,10 +90,7 @@ export interface InitOptions {
 // scratch with git, .gitignore, CLAUDE.md, ralph artifacts, and
 // optional backlog seed.
 
-export function initProject(
-  targetPath: string,
-  options: InitOptions,
-): Result<InstallationReport> {
+export function initProject(targetPath: string, options: InitOptions): Result<InstallationReport> {
   const resolved = path.resolve(targetPath);
   const artifactsDir = path.resolve(options.artifactsDir);
   const projectName = options.projectName || path.basename(resolved);
@@ -169,11 +159,7 @@ export function initProject(
 
   // 7. Seed backlog if seed source provided
   const seedActions: InstallAction[] = [];
-  const seedResult = seedBacklog(
-    resolved,
-    options.seedFile,
-    options.seedItems,
-  );
+  const seedResult = seedBacklog(resolved, options.seedFile, options.seedItems);
   if (!seedResult.ok) return seedResult;
   seedActions.push(...seedResult.value);
 
@@ -195,9 +181,7 @@ export function initProject(
 // - JSON: Backlog schema (use .items) or array of partial items
 // - Markdown: `- [ ] [type] title` format
 
-export function parseBacklogSeed(
-  seedPath: string,
-): Result<CreateItemInput[]> {
+export function parseBacklogSeed(seedPath: string): Result<CreateItemInput[]> {
   const resolved = path.resolve(seedPath);
 
   let content: string;
@@ -236,10 +220,7 @@ export function parseBacklogSeed(
 // Uses spawnSync with array arguments (safe against shell injection).
 // All arguments are hardcoded strings — no user input in commands.
 
-function initGitRepo(
-  projectPath: string,
-  preset: string,
-): Result<InstallAction[]> {
+function initGitRepo(projectPath: string, preset: string): Result<InstallAction[]> {
   const actions: InstallAction[] = [];
 
   // git init
@@ -290,26 +271,19 @@ function initGitRepo(
     });
   }
 
-  const gitCommit = spawnSync(
-    "git",
-    ["commit", "-m", "Initial commit"],
-    {
-      cwd: projectPath,
-      stdio: "pipe",
-      encoding: "utf-8",
-      env: {
-        ...process.env,
-        // Ensure git commit works in CI/headless environments
-        GIT_AUTHOR_NAME: process.env["GIT_AUTHOR_NAME"] || "Ralph",
-        GIT_AUTHOR_EMAIL:
-          process.env["GIT_AUTHOR_EMAIL"] || "ralph@localhost",
-        GIT_COMMITTER_NAME:
-          process.env["GIT_COMMITTER_NAME"] || "Ralph",
-        GIT_COMMITTER_EMAIL:
-          process.env["GIT_COMMITTER_EMAIL"] || "ralph@localhost",
-      },
+  const gitCommit = spawnSync("git", ["commit", "-m", "Initial commit"], {
+    cwd: projectPath,
+    stdio: "pipe",
+    encoding: "utf-8",
+    env: {
+      ...process.env,
+      // Ensure git commit works in CI/headless environments
+      GIT_AUTHOR_NAME: process.env["GIT_AUTHOR_NAME"] || "Ralph",
+      GIT_AUTHOR_EMAIL: process.env["GIT_AUTHOR_EMAIL"] || "ralph@localhost",
+      GIT_COMMITTER_NAME: process.env["GIT_COMMITTER_NAME"] || "Ralph",
+      GIT_COMMITTER_EMAIL: process.env["GIT_COMMITTER_EMAIL"] || "ralph@localhost",
     },
-  );
+  });
 
   if (gitCommit.status !== 0) {
     return err({
@@ -383,10 +357,7 @@ function scaffoldClaudeMd(
 
 // ─── Internal: Patch marker with correct profile ──────────────────
 
-function patchMarkerProfile(
-  projectPath: string,
-  profile: ProjectProfile,
-): Result<void> {
+function patchMarkerProfile(projectPath: string, profile: ProjectProfile): Result<void> {
   const markerResult = readMarkerFile(projectPath);
   if (!markerResult.ok) return markerResult;
 
@@ -455,10 +426,7 @@ function seedBacklog(
 
 // ─── Internal: JSON seed parsing ──────────────────────────────────
 
-function parseJsonSeed(
-  content: string,
-  filePath: string,
-): Result<CreateItemInput[]> {
+function parseJsonSeed(content: string, filePath: string): Result<CreateItemInput[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -512,9 +480,7 @@ function parseMarkdownSeed(content: string): Result<CreateItemInput[]> {
     if (!title) continue;
 
     const type: BacklogItemType =
-      rawType && VALID_TYPES.has(rawType)
-        ? (rawType as BacklogItemType)
-        : "feature";
+      rawType && VALID_TYPES.has(rawType) ? (rawType as BacklogItemType) : "feature";
 
     // Priority from position: 1, 2, 3, 4, 4, 4, ...
     const priority = Math.min(position + 1, 4) as 1 | 2 | 3 | 4;
@@ -548,13 +514,9 @@ function backlogItemsToInputs(
     ...(item.acceptanceCriteria && item.acceptanceCriteria.length > 0
       ? { acceptanceCriteria: item.acceptanceCriteria }
       : {}),
-    ...(item.dependsOn && item.dependsOn.length > 0
-      ? { dependsOn: item.dependsOn }
-      : {}),
+    ...(item.dependsOn && item.dependsOn.length > 0 ? { dependsOn: item.dependsOn } : {}),
     ...(item.notes ? { notes: item.notes } : {}),
-    ...(item.estimatedIterations
-      ? { estimatedIterations: item.estimatedIterations }
-      : {}),
+    ...(item.estimatedIterations ? { estimatedIterations: item.estimatedIterations } : {}),
   }));
 }
 
@@ -562,10 +524,7 @@ function backlogItemsToInputs(
 
 function partialItemsToInputs(items: unknown[]): CreateItemInput[] {
   return items.map((raw, index) => {
-    const item = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
-      string,
-      unknown
-    >;
+    const item = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
 
     const type =
       typeof item["type"] === "string" && VALID_TYPES.has(item["type"])
@@ -573,9 +532,7 @@ function partialItemsToInputs(items: unknown[]): CreateItemInput[] {
         : "feature";
 
     const priority =
-      typeof item["priority"] === "number" &&
-      item["priority"] >= 1 &&
-      item["priority"] <= 4
+      typeof item["priority"] === "number" && item["priority"] >= 1 && item["priority"] <= 4
         ? (item["priority"] as 1 | 2 | 3 | 4)
         : (Math.min(index + 1, 4) as 1 | 2 | 3 | 4);
 
@@ -586,16 +543,13 @@ function partialItemsToInputs(items: unknown[]): CreateItemInput[] {
 
     const input: CreateItemInput = { type, priority, title };
 
-    if (typeof item["description"] === "string")
-      input.description = item["description"];
+    if (typeof item["description"] === "string") input.description = item["description"];
     if (Array.isArray(item["acceptanceCriteria"]))
       input.acceptanceCriteria = item["acceptanceCriteria"].filter(
         (c): c is string => typeof c === "string",
       );
     if (Array.isArray(item["dependsOn"]))
-      input.dependsOn = item["dependsOn"].filter(
-        (d): d is string => typeof d === "string",
-      );
+      input.dependsOn = item["dependsOn"].filter((d): d is string => typeof d === "string");
     if (typeof item["notes"] === "string") input.notes = item["notes"];
     if (typeof item["estimatedIterations"] === "number")
       input.estimatedIterations = item["estimatedIterations"];
@@ -606,9 +560,4 @@ function partialItemsToInputs(items: unknown[]): CreateItemInput[] {
 
 // ─── Exported constants (for testing) ─────────────────────────────
 
-export {
-  CLAUDE_GREENFIELD_TEMPLATE,
-  GITIGNORE_TEMPLATES,
-  RALPH_GITIGNORE,
-  MARKDOWN_ITEM_RE,
-};
+export { CLAUDE_GREENFIELD_TEMPLATE, GITIGNORE_TEMPLATES, RALPH_GITIGNORE, MARKDOWN_ITEM_RE };

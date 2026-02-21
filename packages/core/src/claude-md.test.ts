@@ -50,10 +50,7 @@ describe("mergeClaudeMd — scenario 1: create", () => {
     expect(result.value.action).toBe("created");
     expect(result.value.filePath).toBe(path.join(tmpDir, CLAUDE_MD_FILENAME));
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     expect(content).toContain(CLAUDE_MD_SENTINEL_START);
     expect(content).toContain(CLAUDE_MD_SENTINEL_END);
     expect(content).toContain("## Autonomous Loop (Ralph)");
@@ -62,19 +59,11 @@ describe("mergeClaudeMd — scenario 1: create", () => {
   it("created file has correct sentinel structure", () => {
     mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
     // Should be: sentinel_start\n<content>\nsentinel_end\n
     const expected =
-      CLAUDE_MD_SENTINEL_START +
-      "\n" +
-      SAMPLE_RALPH_BLOCK +
-      "\n" +
-      CLAUDE_MD_SENTINEL_END +
-      "\n";
+      CLAUDE_MD_SENTINEL_START + "\n" + SAMPLE_RALPH_BLOCK + "\n" + CLAUDE_MD_SENTINEL_END + "\n";
     expect(content).toBe(expected);
   });
 });
@@ -100,10 +89,7 @@ describe("mergeClaudeMd — scenario 2: append", () => {
 
     mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     expect(content).toContain("# My Project");
     expect(content).toContain("Existing instructions here.");
     expect(content).toContain(CLAUDE_MD_SENTINEL_START);
@@ -117,10 +103,7 @@ describe("mergeClaudeMd — scenario 2: append", () => {
 
     mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     const projectIdx = content.indexOf("# My Project");
     const sentinelIdx = content.indexOf(CLAUDE_MD_SENTINEL_START);
     expect(projectIdx).toBeLessThan(sentinelIdx);
@@ -160,12 +143,8 @@ describe("mergeClaudeMd — scenario 3: skip", () => {
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    const statBefore = fs.statSync(path.join(tmpDir, CLAUDE_MD_FILENAME));
     mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
-    const contentAfter = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const contentAfter = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
     expect(contentAfter).toBe(existingContent);
   });
@@ -234,10 +213,7 @@ describe("mergeClaudeMd — scenario 4: replace", () => {
 
     mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
     // Content outside sentinels preserved
     expect(content).toContain("# My Project");
@@ -268,10 +244,7 @@ describe("mergeClaudeMd — scenario 4: replace", () => {
 
     expect(result.value.action).toBe("updated");
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     expect(content).toContain("## Autonomous Loop (Ralph) v2");
     expect(content).toContain("Updated instructions for the ralph loop.");
     expect(content).not.toContain("Read `.ralph/RALPH.md` for instructions");
@@ -309,10 +282,7 @@ describe("mergeClaudeMd — content preservation", () => {
 
     mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
 
-    const content = fs.readFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
     // All sections preserved
     expect(content).toContain("# My Application");
@@ -342,10 +312,7 @@ describe("mergeClaudeMd — content preservation", () => {
 
   it("idempotent: append then merge again results in skip", () => {
     // Set up existing file without sentinels
-    fs.writeFileSync(
-      path.join(tmpDir, CLAUDE_MD_FILENAME),
-      "# Existing\n",
-    );
+    fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "# Existing\n");
 
     // First call: merge (append)
     const r1 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
@@ -360,11 +327,7 @@ describe("mergeClaudeMd — content preservation", () => {
 
   it("idempotent: replace then merge again results in skip", () => {
     // Set up existing file with old sentinel content
-    const existing = [
-      CLAUDE_MD_SENTINEL_START,
-      "old content",
-      CLAUDE_MD_SENTINEL_END,
-    ].join("\n");
+    const existing = [CLAUDE_MD_SENTINEL_START, "old content", CLAUDE_MD_SENTINEL_END].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existing);
 
     // First call: update (replace)
@@ -433,10 +396,7 @@ describe("extractRalphBlock", () => {
 
 describe("mergeClaudeMd — error handling", () => {
   it("returns error for non-existent project directory", () => {
-    const result = mergeClaudeMd(
-      path.join(tmpDir, "nonexistent-project"),
-      SAMPLE_RALPH_BLOCK,
-    );
+    const result = mergeClaudeMd(path.join(tmpDir, "nonexistent-project"), SAMPLE_RALPH_BLOCK);
 
     expect(result.ok).toBe(false);
   });

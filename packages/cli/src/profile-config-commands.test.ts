@@ -155,7 +155,10 @@ describe("handleProfileShow", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([projectDir], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -203,15 +206,21 @@ describe("handleProfileDetect", () => {
   it("detects profile from filesystem (node-typescript project)", async () => {
     const projectDir = path.join(tmpDir, "ts-project");
     fs.mkdirSync(projectDir);
-    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({
-      scripts: { test: "vitest", typecheck: "tsc --noEmit", lint: "eslint ." },
-    }));
+    fs.writeFileSync(
+      path.join(projectDir, "package.json"),
+      JSON.stringify({
+        scripts: { test: "vitest", typecheck: "tsc --noEmit", lint: "eslint ." },
+      }),
+    );
     fs.writeFileSync(path.join(projectDir, "tsconfig.json"), "{}");
     fs.writeFileSync(path.join(projectDir, "pnpm-lock.yaml"), "");
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([projectDir], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -328,7 +337,10 @@ describe("handleProfileSet", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([projectDir, "lint", "eslint --fix ."], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -375,7 +387,10 @@ describe("handleConfigList", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -393,11 +408,18 @@ describe("handleConfigList", () => {
 
   it("returns defaults when no config file exists", async () => {
     // Remove the config file for this test
-    try { fs.unlinkSync(TOOL_CONFIG_PATH); } catch { /* ignore */ }
+    try {
+      fs.unlinkSync(TOOL_CONFIG_PATH);
+    } catch {
+      /* ignore */
+    }
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -434,7 +456,10 @@ describe("handleConfigGet", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx(["theme"], {}, { quiet: false });
     configureOutput({ noColor: true, quiet: false, json: false });
@@ -452,7 +477,10 @@ describe("handleConfigGet", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx(["port"], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -534,7 +562,10 @@ describe("handleConfigSet", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx(["theme", "light"], {}, { json: true, quiet: false });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -569,7 +600,10 @@ describe("handleProjectsList", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([], {}, { json: true, quiet: false, root: rootDir });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -593,11 +627,16 @@ describe("handleProjectsList", () => {
     fs.mkdirSync(ignoredDir, { recursive: true });
 
     createMarkerFile(activeDir);
-    createMarkerFile(ignoredDir, { options: { ignoreInTool: true, gitignoreScripts: false, maxIterations: 20 } });
+    createMarkerFile(ignoredDir, {
+      options: { ignoreInTool: true, gitignoreScripts: false, maxIterations: 20 },
+    });
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([], {}, { json: true, quiet: false, root: rootDir });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -649,7 +688,10 @@ describe("handleProjectsStatus", () => {
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
-    process.stdout.write = (s: string | Uint8Array) => { output += s.toString(); return true; };
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
 
     const ctx = makeCtx([], {}, { json: true, quiet: false, root: rootDir });
     configureOutput({ noColor: true, quiet: false, json: true });
@@ -659,7 +701,10 @@ describe("handleProjectsStatus", () => {
     configureOutput({ noColor: true, quiet: true, json: false });
 
     expect(code).toBe(ExitCode.SUCCESS);
-    const parsed = JSON.parse(output) as Array<{ name: string; status: { loopState: string } | null }>;
+    const parsed = JSON.parse(output) as Array<{
+      name: string;
+      status: { loopState: string } | null;
+    }>;
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed).toHaveLength(1);
     expect(parsed[0]).toHaveProperty("name", "project-x");

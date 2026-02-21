@@ -52,9 +52,7 @@ const MARKER_TEMPLATE = {
 function writeMarker(dir: string, profileOverride?: Record<string, unknown>): void {
   const marker = {
     ...MARKER_TEMPLATE,
-    ...(profileOverride
-      ? { profile: { ...MARKER_TEMPLATE.profile, ...profileOverride } }
-      : {}),
+    ...(profileOverride ? { profile: { ...MARKER_TEMPLATE.profile, ...profileOverride } } : {}),
   };
   fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
 }
@@ -316,7 +314,10 @@ describe("PUT /api/projects/:id/profile", () => {
 describe("POST /api/projects/:id/profile/detect", () => {
   it("returns detected profile for a Node.js TypeScript project", async () => {
     // Set up a minimal Node.js TS project in projectDir
-    fs.writeFileSync(path.join(projectDir, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }));
+    fs.writeFileSync(
+      path.join(projectDir, "package.json"),
+      JSON.stringify({ scripts: { test: "vitest" } }),
+    );
     fs.writeFileSync(path.join(projectDir, "tsconfig.json"), "{}");
     fs.writeFileSync(path.join(projectDir, "pnpm-lock.yaml"), "");
 

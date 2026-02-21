@@ -58,10 +58,7 @@ function writeBacklog(
     items,
     ...extra,
   };
-  fs.writeFileSync(
-    path.join(ralphDir, "backlog.json"),
-    JSON.stringify(backlog, null, 2),
-  );
+  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 }
 
 function makeItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -213,9 +210,7 @@ describe("GET /api/projects/:id/backlog", () => {
       makeItem({ id: "003", status: "done", type: "feature" }),
     ]);
     const app = makeApp(tmpDir);
-    const res = await app.request(
-      "/api/projects/my-project/backlog?status=pending&type=feature",
-    );
+    const res = await app.request("/api/projects/my-project/backlog?status=pending&type=feature");
     const body = (await json(res)) as { data: { id: string }[] };
     expect(body.data).toHaveLength(1);
     expect(body.data[0]!.id).toBe("001");

@@ -47,7 +47,11 @@ const STATUS_SORT_ORDER: Record<string, number> = {
 // ─── Small reusable badges ─────────────────────────────────────────
 
 function TypeBadge({ type }: { type: string }) {
-  const cfg = TYPE_CONFIG[type] ?? { label: type, bg: "rgba(107, 114, 128, 0.12)", text: "#6b7280" };
+  const cfg = TYPE_CONFIG[type] ?? {
+    label: type,
+    bg: "rgba(107, 114, 128, 0.12)",
+    text: "#6b7280",
+  };
   return (
     <span
       className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
@@ -59,7 +63,11 @@ function TypeBadge({ type }: { type: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, bg: "rgba(107, 114, 128, 0.12)", text: "#6b7280" };
+  const cfg = STATUS_CONFIG[status] ?? {
+    label: status,
+    bg: "rgba(107, 114, 128, 0.12)",
+    text: "#6b7280",
+  };
   return (
     <span
       className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
@@ -394,13 +402,14 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
 
   const createMutation = useMutation({
     mutationFn: async (data: unknown) => {
-      const res = await ralphFetch(
-        `/api/projects/${encodeURIComponent(projectId)}/backlog`,
-        { method: "POST", body: JSON.stringify(data) },
-      );
+      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/backlog`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        const msg = (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        const msg =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
       return res.json() as Promise<unknown>;
@@ -422,7 +431,8 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        const msg = (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        const msg =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
       return res.json() as Promise<unknown>;
@@ -444,7 +454,8 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
       );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        const msg = (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        const msg =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
         throw new Error(msg);
       }
       return res.json() as Promise<unknown>;
@@ -518,16 +529,12 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
   }
 
   function toggleDep(id: string) {
-    setDependsOn((prev) =>
-      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id],
-    );
+    setDependsOn((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
   }
 
   // Valid status options for edit mode (original item status + valid transitions)
   const validNextStatuses: BacklogItemStatus[] =
-    mode === "edit" && item
-      ? [item.status, ...(VALID_STATUS_TRANSITIONS[item.status] ?? [])]
-      : [];
+    mode === "edit" && item ? [item.status, ...(VALID_STATUS_TRANSITIONS[item.status] ?? [])] : [];
 
   // Items available as dependencies (all except the item being edited)
   const depCandidates = allItems.filter((i) => i.id !== item?.id);
@@ -586,7 +593,6 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
         {/* ── Scrollable form ───────────────────────────────── */}
         <div className="flex-1 overflow-y-auto px-5 py-5">
           <div className="space-y-4">
-
             {/* Title */}
             <div>
               <label
@@ -831,12 +837,8 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
                         onClick={() => toggleDep(dep.id)}
                         className="inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs transition-colors"
                         style={{
-                          borderColor: isSelected
-                            ? "var(--color-accent)"
-                            : "var(--color-border)",
-                          backgroundColor: isSelected
-                            ? "rgba(99, 102, 241, 0.1)"
-                            : "transparent",
+                          borderColor: isSelected ? "var(--color-accent)" : "var(--color-border)",
+                          backgroundColor: isSelected ? "rgba(99, 102, 241, 0.1)" : "transparent",
                           color: isSelected ? "var(--color-accent)" : "var(--color-text-muted)",
                         }}
                         title={dep.title}
@@ -934,11 +936,7 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
                 color: "#ffffff",
               }}
             >
-              {isSaving
-                ? "Saving…"
-                : mode === "create"
-                  ? "Create Item"
-                  : "Save Changes"}
+              {isSaving ? "Saving…" : mode === "create" ? "Create Item" : "Save Changes"}
             </button>
           </div>
         </div>
@@ -972,9 +970,7 @@ export function BacklogView() {
   } = useQuery({
     queryKey: ["projects", projectId, "backlog"],
     queryFn: () =>
-      ralphFetchJson<BacklogItem[]>(
-        `/api/projects/${encodeURIComponent(projectId)}/backlog`,
-      ),
+      ralphFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
     enabled: !!projectId,
     refetchInterval: 30_000,
   });
@@ -982,9 +978,7 @@ export function BacklogView() {
   const { data: status } = useQuery({
     queryKey: ["projects", projectId, "status"],
     queryFn: () =>
-      ralphFetchJson<DerivedStatus>(
-        `/api/projects/${encodeURIComponent(projectId)}/status`,
-      ),
+      ralphFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
     enabled: !!projectId,
     refetchInterval: 30_000,
   });
@@ -1210,9 +1204,7 @@ export function BacklogView() {
               style={{ color: "var(--color-text-muted)" }}
             >
               <p className="text-base">
-                {hasActiveFilters
-                  ? "No items match the active filters"
-                  : "No backlog items yet"}
+                {hasActiveFilters ? "No items match the active filters" : "No backlog items yet"}
               </p>
               {hasActiveFilters ? (
                 <button

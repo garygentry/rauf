@@ -3,11 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-import {
-  handleStatus,
-  handleLog,
-  handleProgress,
-} from "./status-commands.js";
+import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
@@ -33,10 +29,7 @@ function createRalphProject(projectDir: string): string {
 }
 
 /** Create a valid backlog.json in the .ralph directory */
-function createBacklog(
-  ralphDir: string,
-  items: object[] = [],
-): void {
+function createBacklog(ralphDir: string, items: object[] = []): void {
   fs.writeFileSync(
     path.join(ralphDir, "backlog.json"),
     JSON.stringify({ project: "test", description: "test", items }, null, 2),
@@ -44,10 +37,7 @@ function createBacklog(
 }
 
 /** Create a state.json in the .ralph directory */
-function createStateJson(
-  ralphDir: string,
-  overrides: Record<string, unknown> = {},
-): void {
+function createStateJson(ralphDir: string, overrides: Record<string, unknown> = {}): void {
   // All required fields per LoopStateSchema
   const state = {
     status: "running",
@@ -56,17 +46,14 @@ function createStateJson(
     iteration: 3,
     maxIterations: 20,
     currentItem: "007",
-    lastSignal: "clean",  // non-null required
+    lastSignal: "clean", // non-null required
     completedItems: [],
     blockedItems: [],
     error: null,
     pid: 12345,
     ...overrides,
   };
-  fs.writeFileSync(
-    path.join(ralphDir, "state.json"),
-    JSON.stringify(state, null, 2),
-  );
+  fs.writeFileSync(path.join(ralphDir, "state.json"), JSON.stringify(state, null, 2));
 }
 
 /** Build a CommandContext for testing */
@@ -328,10 +315,7 @@ describe("handleLog", () => {
   it("returns all lines when log has fewer lines than tail", async () => {
     const projectDir = path.join(tmpDir, "short-log");
     const ralphDir = createRalphProject(projectDir);
-    fs.writeFileSync(
-      path.join(ralphDir, "ralph.log"),
-      "line 1\nline 2\nline 3\n",
-    );
+    fs.writeFileSync(path.join(ralphDir, "ralph.log"), "line 1\nline 2\nline 3\n");
 
     const output: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -397,10 +381,7 @@ describe("handleProgress", () => {
   it("outputs JSON with content when --json flag is set", async () => {
     const projectDir = path.join(tmpDir, "json-progress");
     const ralphDir = createRalphProject(projectDir);
-    fs.writeFileSync(
-      path.join(ralphDir, "progress.md"),
-      "# Progress\n\nSome notes.",
-    );
+    fs.writeFileSync(path.join(ralphDir, "progress.md"), "# Progress\n\nSome notes.");
 
     let output = "";
     const origWrite = process.stdout.write.bind(process.stdout);

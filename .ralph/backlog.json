@@ -443,7 +443,7 @@
         "--quiet respected across all commands",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "completedAt": null,
       "dependsOn": [
         "015",

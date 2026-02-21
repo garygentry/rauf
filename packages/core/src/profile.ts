@@ -76,10 +76,7 @@ export function detectProfile(projectPath: string): ProjectProfile {
 
 // ─── detectPackageManager ────────────────────────────────────────
 
-function detectPackageManager(
-  projectPath: string,
-  stack: string,
-): string | null {
+function detectPackageManager(projectPath: string, stack: string): string | null {
   if (!stack.startsWith("node")) {
     return null;
   }
@@ -174,10 +171,7 @@ function deriveCommands(
 // For Node.js projects, read package.json scripts and only suggest
 // commands that actually exist in the scripts field.
 
-function deriveNodeCommands(
-  projectPath: string,
-  packageManager: string,
-): ProfileCommands {
+function deriveNodeCommands(projectPath: string, packageManager: string): ProfileCommands {
   const pkgJson = readPackageJsonSafe(projectPath);
   const scripts = pkgJson?.scripts ?? {};
   const run = packageManager === "npm" ? "npm run" : packageManager;
@@ -206,14 +200,9 @@ interface PackageJsonPartial {
   workspaces?: string[] | { packages: string[] };
 }
 
-function readPackageJsonSafe(
-  projectPath: string,
-): PackageJsonPartial | null {
+function readPackageJsonSafe(projectPath: string): PackageJsonPartial | null {
   try {
-    const content = fs.readFileSync(
-      path.join(projectPath, "package.json"),
-      "utf-8",
-    );
+    const content = fs.readFileSync(path.join(projectPath, "package.json"), "utf-8");
     return JSON.parse(content) as PackageJsonPartial;
   } catch {
     return null;
@@ -306,8 +295,7 @@ const PRESETS: Record<string, ProjectProfile> = {
       build: "cargo build",
       format: null,
     },
-    verify:
-      "cargo test && cargo check && cargo clippy && cargo build",
+    verify: "cargo test && cargo check && cargo clippy && cargo build",
   },
   custom: {
     stack: "custom",

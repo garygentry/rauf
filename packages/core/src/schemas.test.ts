@@ -16,7 +16,6 @@ import {
   BacklogItemPrioritySchema,
   BacklogItemTypeSchema,
   BacklogItemStatusSchema,
-  ProfileCommandsSchema,
   ProjectProfileSchema,
   MarkerOptionsSchema,
   LoopStateEnumSchema,
@@ -172,33 +171,23 @@ describe("BacklogItemSchema", () => {
   });
 
   it("rejects empty title", () => {
-    expect(() =>
-      BacklogItemSchema.parse({ ...validBacklogItem, title: "" }),
-    ).toThrow();
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, title: "" })).toThrow();
   });
 
   it("rejects invalid priority", () => {
-    expect(() =>
-      BacklogItemSchema.parse({ ...validBacklogItem, priority: 5 }),
-    ).toThrow();
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, priority: 5 })).toThrow();
   });
 
   it("rejects invalid type", () => {
-    expect(() =>
-      BacklogItemSchema.parse({ ...validBacklogItem, type: "epic" }),
-    ).toThrow();
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, type: "epic" })).toThrow();
   });
 
   it("rejects invalid status", () => {
-    expect(() =>
-      BacklogItemSchema.parse({ ...validBacklogItem, status: "archived" }),
-    ).toThrow();
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, status: "archived" })).toThrow();
   });
 
   it("rejects invalid id format", () => {
-    expect(() =>
-      BacklogItemSchema.parse({ ...validBacklogItem, id: "1" }),
-    ).toThrow();
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, id: "1" })).toThrow();
   });
 
   it("accepts completedAt as ISO string or null", () => {
@@ -209,8 +198,7 @@ describe("BacklogItemSchema", () => {
       }).completedAt,
     ).toBe("2026-02-21T19:00:00Z");
     expect(
-      BacklogItemSchema.parse({ ...validBacklogItem, completedAt: null })
-        .completedAt,
+      BacklogItemSchema.parse({ ...validBacklogItem, completedAt: null }).completedAt,
     ).toBeNull();
   });
 
@@ -228,9 +216,7 @@ describe("BacklogItemSchema", () => {
   });
 
   it("rejects model as non-string", () => {
-    expect(() =>
-      BacklogItemSchema.parse({ ...validBacklogItem, model: 42 }),
-    ).toThrow();
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, model: 42 })).toThrow();
   });
 });
 
@@ -252,9 +238,7 @@ describe("BacklogSchema", () => {
   });
 
   it("rejects missing project field", () => {
-    expect(() =>
-      BacklogSchema.parse({ description: "test", items: [] }),
-    ).toThrow();
+    expect(() => BacklogSchema.parse({ description: "test", items: [] })).toThrow();
   });
 });
 
@@ -269,25 +253,20 @@ describe("MarkerFileSchema", () => {
   });
 
   it("rejects ralph !== true (sentinel check)", () => {
-    expect(() =>
-      MarkerFileSchema.parse({ ...validMarkerFile, ralph: false }),
-    ).toThrow();
+    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, ralph: false })).toThrow();
   });
 
   it("rejects ralph as a string", () => {
-    expect(() =>
-      MarkerFileSchema.parse({ ...validMarkerFile, ralph: "true" }),
-    ).toThrow();
+    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, ralph: "true" })).toThrow();
   });
 
   it("rejects invalid variant", () => {
-    expect(() =>
-      MarkerFileSchema.parse({ ...validMarkerFile, variant: "other" }),
-    ).toThrow();
+    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, variant: "other" })).toThrow();
   });
 
   it("rejects missing profile", () => {
-    const { profile: _, ...noProfile } = validMarkerFile;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { profile: _profile, ...noProfile } = validMarkerFile;
     expect(() => MarkerFileSchema.parse(noProfile)).toThrow();
   });
 });
@@ -302,12 +281,8 @@ describe("MarkerOptionsSchema", () => {
   });
 
   it("rejects non-positive maxIterations", () => {
-    expect(() =>
-      MarkerOptionsSchema.parse({ ...validMarkerOptions, maxIterations: 0 }),
-    ).toThrow();
-    expect(() =>
-      MarkerOptionsSchema.parse({ ...validMarkerOptions, maxIterations: -1 }),
-    ).toThrow();
+    expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, maxIterations: 0 })).toThrow();
+    expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, maxIterations: -1 })).toThrow();
   });
 
   it("accepts model field as optional string", () => {
@@ -324,9 +299,7 @@ describe("MarkerOptionsSchema", () => {
   });
 
   it("rejects model as non-string", () => {
-    expect(() =>
-      MarkerOptionsSchema.parse({ ...validMarkerOptions, model: true }),
-    ).toThrow();
+    expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, model: true })).toThrow();
   });
 });
 
@@ -396,31 +369,24 @@ describe("LoopStateSchema", () => {
       "error",
     ] as const;
     for (const status of statuses) {
-      expect(
-        LoopStateSchema.parse({ ...validLoopState, status }).status,
-      ).toBe(status);
+      expect(LoopStateSchema.parse({ ...validLoopState, status }).status).toBe(status);
     }
   });
 
   it("accepts all valid signals", () => {
     for (const signal of ["clean", "blocked", "needs_human", "error"]) {
-      expect(
-        LoopStateSchema.parse({ ...validLoopState, lastSignal: signal })
-          .lastSignal,
-      ).toBe(signal);
+      expect(LoopStateSchema.parse({ ...validLoopState, lastSignal: signal }).lastSignal).toBe(
+        signal,
+      );
     }
   });
 
   it("rejects invalid status", () => {
-    expect(() =>
-      LoopStateSchema.parse({ ...validLoopState, status: "stopped" }),
-    ).toThrow();
+    expect(() => LoopStateSchema.parse({ ...validLoopState, status: "stopped" })).toThrow();
   });
 
   it("rejects negative iteration", () => {
-    expect(() =>
-      LoopStateSchema.parse({ ...validLoopState, iteration: -1 }),
-    ).toThrow();
+    expect(() => LoopStateSchema.parse({ ...validLoopState, iteration: -1 })).toThrow();
   });
 });
 
@@ -647,18 +613,11 @@ describe("RalphErrorSchema", () => {
 
 describe("VALID_STATUS_TRANSITIONS", () => {
   it("pending can transition to in_progress or blocked", () => {
-    expect(VALID_STATUS_TRANSITIONS.pending).toEqual([
-      "in_progress",
-      "blocked",
-    ]);
+    expect(VALID_STATUS_TRANSITIONS.pending).toEqual(["in_progress", "blocked"]);
   });
 
   it("in_progress can transition to done, blocked, or pending", () => {
-    expect(VALID_STATUS_TRANSITIONS.in_progress).toEqual([
-      "done",
-      "blocked",
-      "pending",
-    ]);
+    expect(VALID_STATUS_TRANSITIONS.in_progress).toEqual(["done", "blocked", "pending"]);
   });
 
   it("blocked can only transition to pending", () => {
@@ -674,9 +633,7 @@ describe("VALID_STATUS_TRANSITIONS", () => {
 
 describe("LOG_PATTERNS", () => {
   it("loopStart matches expected format", () => {
-    const match = "Ralph Loop starting | max=20 iterations".match(
-      LOG_PATTERNS.loopStart,
-    );
+    const match = "Ralph Loop starting | max=20 iterations".match(LOG_PATTERNS.loopStart);
     expect(match).not.toBeNull();
     expect(match![1]).toBe("20");
   });
@@ -689,19 +646,16 @@ describe("LOG_PATTERNS", () => {
   });
 
   it("status matches expected format", () => {
-    const match =
-      "Status → pending:5 in_progress:1 blocked:0 done:2 total:8".match(
-        LOG_PATTERNS.status,
-      );
+    const match = "Status → pending:5 in_progress:1 blocked:0 done:2 total:8".match(
+      LOG_PATTERNS.status,
+    );
     expect(match).not.toBeNull();
     expect(match![1]).toBe("5");
     expect(match![5]).toBe("8");
   });
 
   it("timestamp matches ISO-style log prefix", () => {
-    const match = "[2026-02-21 19:05:00] Some message".match(
-      LOG_PATTERNS.timestamp,
-    );
+    const match = "[2026-02-21 19:05:00] Some message".match(LOG_PATTERNS.timestamp);
     expect(match).not.toBeNull();
     expect(match![1]).toBe("2026-02-21 19:05:00");
   });

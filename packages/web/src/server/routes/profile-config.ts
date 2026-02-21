@@ -53,12 +53,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
    */
   function resolveProjectPath(id: string): string | null {
     const decoded = decodeURIComponent(id);
-    if (
-      decoded.includes("/") ||
-      decoded.includes("\\") ||
-      decoded === "." ||
-      decoded === ".."
-    ) {
+    if (decoded.includes("/") || decoded.includes("\\") || decoded === "." || decoded === "..") {
       return null;
     }
     return path.join(getRootDirectory(), decoded);
@@ -90,10 +85,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
     const markerResult = readMarkerFile(projectPath);
     if (!markerResult.ok) {
       const status = markerResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
-      return c.json(
-        errorResponse(markerResult.error.code, markerResult.error.message),
-        status,
-      );
+      return c.json(errorResponse(markerResult.error.code, markerResult.error.message), status);
     }
 
     return c.json({ data: markerResult.value.profile });
@@ -143,10 +135,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
     const markerResult = readMarkerFile(projectPath);
     if (!markerResult.ok) {
       const status = markerResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
-      return c.json(
-        errorResponse(markerResult.error.code, markerResult.error.message),
-        status,
-      );
+      return c.json(errorResponse(markerResult.error.code, markerResult.error.message), status);
     }
 
     const body = (await c.req.json().catch(() => null)) as unknown;
@@ -157,11 +146,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
     const parseResult = ProjectProfileSchema.safeParse(body);
     if (!parseResult.success) {
       return c.json(
-        errorResponse(
-          "VALIDATION_ERROR",
-          "Invalid profile data",
-          parseResult.error.flatten(),
-        ),
+        errorResponse("VALIDATION_ERROR", "Invalid profile data", parseResult.error.flatten()),
         400,
       );
     }
@@ -169,10 +154,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
     const updatedMarker = { ...markerResult.value, profile: parseResult.data };
     const writeResult = writeMarkerFile(projectPath, updatedMarker);
     if (!writeResult.ok) {
-      return c.json(
-        errorResponse(writeResult.error.code, writeResult.error.message),
-        500,
-      );
+      return c.json(errorResponse(writeResult.error.code, writeResult.error.message), 500);
     }
 
     return c.json({ data: parseResult.data });
@@ -197,10 +179,7 @@ export function createConfigRouter(): Hono {
   router.get("/", (c) => {
     const result = readToolConfig();
     if (!result.ok) {
-      return c.json(
-        errorResponse(result.error.code, result.error.message),
-        500,
-      );
+      return c.json(errorResponse(result.error.code, result.error.message), 500);
     }
     return c.json({ data: result.value });
   });
@@ -219,21 +198,14 @@ export function createConfigRouter(): Hono {
     const parseResult = ToolConfigSchema.safeParse(body);
     if (!parseResult.success) {
       return c.json(
-        errorResponse(
-          "VALIDATION_ERROR",
-          "Invalid config data",
-          parseResult.error.flatten(),
-        ),
+        errorResponse("VALIDATION_ERROR", "Invalid config data", parseResult.error.flatten()),
         400,
       );
     }
 
     const writeResult = writeToolConfig(parseResult.data);
     if (!writeResult.ok) {
-      return c.json(
-        errorResponse(writeResult.error.code, writeResult.error.message),
-        500,
-      );
+      return c.json(errorResponse(writeResult.error.code, writeResult.error.message), 500);
     }
 
     return c.json({ data: parseResult.data });

@@ -29,10 +29,7 @@ afterEach(() => {
 });
 
 /** Create a project dir with a populated .ralph/backlog.json */
-function createProjectWithBacklog(
-  projectDir: string,
-  items: object[] = [],
-): void {
+function createProjectWithBacklog(projectDir: string, items: object[] = []): void {
   const ralphDir = path.join(projectDir, ".ralph");
   fs.mkdirSync(ralphDir, { recursive: true });
 
@@ -42,10 +39,7 @@ function createProjectWithBacklog(
     items,
   };
 
-  fs.writeFileSync(
-    path.join(ralphDir, "backlog.json"),
-    JSON.stringify(backlog, null, 2),
-  );
+  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 }
 
 /** Sample backlog items for testing — must match BacklogItemSchema (description required) */
@@ -357,7 +351,17 @@ describe("handleBacklogAdd", () => {
         ["priority", "2"],
       ]),
       globalFlags: { json: true, noColor: true, quiet: false, root: null },
-      rawArgv: ["backlog", "add", projectDir, "--title", "New feature", "--type", "feature", "--priority", "2"],
+      rawArgv: [
+        "backlog",
+        "add",
+        projectDir,
+        "--title",
+        "New feature",
+        "--type",
+        "feature",
+        "--priority",
+        "2",
+      ],
     });
 
     const output = await captureOutput(async () => {
@@ -385,12 +389,19 @@ describe("handleBacklogAdd", () => {
       ]),
       globalFlags: { json: true, noColor: true, quiet: false, root: null },
       rawArgv: [
-        "backlog", "add", projectDir,
-        "--title", "Task with criteria",
-        "--type", "feature",
-        "--ac", "First criterion",
-        "--ac", "Second criterion",
-        "--ac", "Third criterion",
+        "backlog",
+        "add",
+        projectDir,
+        "--title",
+        "Task with criteria",
+        "--type",
+        "feature",
+        "--ac",
+        "First criterion",
+        "--ac",
+        "Second criterion",
+        "--ac",
+        "Third criterion",
       ],
     });
 
@@ -430,10 +441,7 @@ describe("handleBacklogAdd", () => {
     expect(output.stderr).toContain("smart default");
 
     // Verify the item was created with an AC (smart default)
-    const backlogRaw = fs.readFileSync(
-      path.join(projectDir, ".ralph", "backlog.json"),
-      "utf-8",
-    );
+    const backlogRaw = fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items).toHaveLength(1);
     expect(backlog.items[0].acceptanceCriteria.length).toBeGreaterThan(0);
@@ -477,11 +485,17 @@ describe("handleBacklogAdd", () => {
       ]),
       globalFlags: { json: true, noColor: true, quiet: false, root: null },
       rawArgv: [
-        "backlog", "add", projectDir,
-        "--title", "Dependent task",
-        "--type", "feature",
-        "--ac", "It works",
-        "--depends-on", "001, 002",
+        "backlog",
+        "add",
+        projectDir,
+        "--title",
+        "Dependent task",
+        "--type",
+        "feature",
+        "--ac",
+        "It works",
+        "--depends-on",
+        "001, 002",
       ],
     });
 
@@ -563,10 +577,7 @@ describe("handleBacklogEdit", () => {
       args: [projectDir, "001"],
       flags: new Map<string, string | true>([]),
       globalFlags: { json: true, noColor: true, quiet: false, root: null },
-      rawArgv: [
-        "backlog", "edit", projectDir, "001",
-        "--ac", "Only new criterion",
-      ],
+      rawArgv: ["backlog", "edit", projectDir, "001", "--ac", "Only new criterion"],
     });
 
     const output = await captureOutput(async () => {
@@ -677,10 +688,7 @@ describe("handleBacklogDelete", () => {
     expect(output.stdout).toContain("001");
 
     // Verify item removed from backlog
-    const backlogRaw = fs.readFileSync(
-      path.join(projectDir, ".ralph", "backlog.json"),
-      "utf-8",
-    );
+    const backlogRaw = fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items.find((i: { id: string }) => i.id === "001")).toBeUndefined();
   });
@@ -864,9 +872,7 @@ describe("handleBacklogRestore", () => {
     expect(output.stdout).toContain("restored");
 
     // Verify the backlog now contains backup content
-    const restored = JSON.parse(
-      fs.readFileSync(path.join(ralphDir, "backlog.json"), "utf-8"),
-    );
+    const restored = JSON.parse(fs.readFileSync(path.join(ralphDir, "backlog.json"), "utf-8"));
     expect(restored.items).toHaveLength(1);
     expect(restored.items[0].title).toBe("Backup item");
   });
@@ -877,10 +883,7 @@ describe("handleBacklogRestore", () => {
 
     // Create a .bak file
     const ralphDir = path.join(projectDir, ".ralph");
-    fs.copyFileSync(
-      path.join(ralphDir, "backlog.json"),
-      path.join(ralphDir, "backlog.json.bak"),
-    );
+    fs.copyFileSync(path.join(ralphDir, "backlog.json"), path.join(ralphDir, "backlog.json.bak"));
 
     configureOutput({ noColor: true, quiet: false, json: true });
     const ctx = makeCtx({
@@ -912,6 +915,136 @@ describe("handleBacklogRestore", () => {
     const code = await handleBacklogRestore(ctx);
     // Should return an error (not success)
     expect(code).not.toBe(ExitCode.SUCCESS);
+  });
+});
+
+// ─── Error handling polish ─────────────────────────────────────────
+
+describe("error handling and recovery messages", () => {
+  it("malformed backlog.json returns VALIDATION (not ERROR)", async () => {
+    const projectDir = path.join(tmpDir, "corrupt-project");
+    const ralphDir = path.join(projectDir, ".ralph");
+    fs.mkdirSync(ralphDir, { recursive: true });
+    fs.writeFileSync(path.join(ralphDir, "backlog.json"), "{ invalid json {{{");
+
+    configureOutput({ noColor: true, quiet: false, json: false });
+    const ctx = makeCtx({ args: [projectDir] });
+
+    const code = await handleBacklogList(ctx);
+    expect(code).toBe(ExitCode.VALIDATION);
+  });
+
+  it("malformed backlog.json includes recovery suggestion on stdout", async () => {
+    const projectDir = path.join(tmpDir, "corrupt-project");
+    const ralphDir = path.join(projectDir, ".ralph");
+    fs.mkdirSync(ralphDir, { recursive: true });
+    fs.writeFileSync(path.join(ralphDir, "backlog.json"), "{ invalid json {{{");
+
+    configureOutput({ noColor: true, quiet: false, json: false });
+    const ctx = makeCtx({ args: [projectDir] });
+
+    const output = await captureOutput(async () => {
+      await handleBacklogList(ctx);
+    });
+
+    // Error on stderr, suggestion on stdout
+    expect(output.stderr.length).toBeGreaterThan(0);
+    expect(output.stdout).toContain("restore");
+  });
+
+  it("missing installation returns NOT_FOUND with install suggestion", async () => {
+    const projectDir = path.join(tmpDir, "no-ralph");
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    configureOutput({ noColor: true, quiet: false, json: false });
+    const ctx = makeCtx({ args: [projectDir] });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogList(ctx);
+      expect(code).toBe(ExitCode.NOT_FOUND);
+    });
+
+    // Suggestion should mention install
+    expect(output.stdout).toContain("install");
+  });
+
+  it("--quiet suppresses suggestion but not error", async () => {
+    const projectDir = path.join(tmpDir, "no-ralph");
+    fs.mkdirSync(projectDir, { recursive: true });
+
+    // beforeEach sets quiet: true, but we need the ctx to reflect it too
+    configureOutput({ noColor: true, quiet: true, json: false });
+    const ctx = makeCtx({
+      args: [projectDir],
+      globalFlags: { json: false, noColor: true, quiet: true, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      await handleBacklogList(ctx);
+    });
+
+    // Error still appears on stderr
+    expect(output.stderr.length).toBeGreaterThan(0);
+    // Suggestion suppressed (stdout is empty in quiet mode)
+    expect(output.stdout).toBe("");
+  });
+
+  it("delete without --yes outputs error on stderr (visible even in quiet mode)", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
+
+    configureOutput({ noColor: true, quiet: true, json: false });
+    const ctx = makeCtx({
+      args: [projectDir, "001"],
+      globalFlags: { json: false, noColor: true, quiet: true, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogDelete(ctx);
+      expect(code).toBe(ExitCode.INVALID_ARGS);
+    });
+
+    // Error should appear on stderr even with --quiet
+    expect(output.stderr.length).toBeGreaterThan(0);
+    expect(output.stderr).toContain("requires confirmation");
+  });
+
+  it("restore without --yes outputs error on stderr (visible even in quiet mode)", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
+
+    configureOutput({ noColor: true, quiet: true, json: false });
+    const ctx = makeCtx({
+      args: [projectDir],
+      globalFlags: { json: false, noColor: true, quiet: true, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogRestore(ctx);
+      expect(code).toBe(ExitCode.INVALID_ARGS);
+    });
+
+    expect(output.stderr.length).toBeGreaterThan(0);
+    expect(output.stderr).toContain("requires confirmation");
+  });
+
+  it("invalid status transition includes hint about valid transitions", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
+
+    configureOutput({ noColor: true, quiet: false, json: false });
+    const ctx = makeCtx({
+      args: [projectDir, "003"],
+      flags: new Map([["status", "in_progress"]]),
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogEdit(ctx);
+      expect(code).toBe(ExitCode.VALIDATION);
+    });
+
+    // Should mention valid transitions
+    expect(output.stdout).toContain("transition");
   });
 });
 

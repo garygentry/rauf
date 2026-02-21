@@ -57,12 +57,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
    */
   function resolveProjectPath(id: string): string | null {
     const decoded = decodeURIComponent(id);
-    if (
-      decoded.includes("/") ||
-      decoded.includes("\\") ||
-      decoded === "." ||
-      decoded === ".."
-    ) {
+    if (decoded.includes("/") || decoded.includes("\\") || decoded === "." || decoded === "..") {
       return null;
     }
     return path.join(getRootDirectory(), decoded);
@@ -152,9 +147,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       let lastStatusJson = "";
       if (statusResult.ok) {
         lastStatusJson = JSON.stringify(statusResult.value);
-        await stream
-          .writeSSE({ data: lastStatusJson, event: "status" })
-          .catch(() => {});
+        await stream.writeSSE({ data: lastStatusJson, event: "status" }).catch(() => {});
       }
 
       // ── Live log watching ───────────────────────────────────
@@ -165,9 +158,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       try {
         const stopLog = watchLog(projectPath, (newLines) => {
           if (stream.aborted || stream.closed) return;
-          stream
-            .writeSSE({ data: JSON.stringify(newLines), event: "log" })
-            .catch(() => {});
+          stream.writeSSE({ data: JSON.stringify(newLines), event: "log" }).catch(() => {});
         });
         cleanups.push(stopLog);
       } catch {
@@ -198,9 +189,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
 
       const heartbeatInterval = setInterval(() => {
         if (stream.aborted || stream.closed) return;
-        stream
-          .writeSSE({ data: new Date().toISOString(), event: "heartbeat" })
-          .catch(() => {});
+        stream.writeSSE({ data: new Date().toISOString(), event: "heartbeat" }).catch(() => {});
       }, SSE_HEARTBEAT_MS);
       cleanups.push(() => clearInterval(heartbeatInterval));
 

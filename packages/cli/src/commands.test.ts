@@ -1,13 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { VERSION } from "@ralph/core";
-import {
-  COMMANDS,
-  findCommand,
-  getSubcommandNames,
-  findSubcommand,
-  ExitCode,
-} from "./commands.js";
-import type { CommandContext, CommandDef } from "./commands.js";
+import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
+import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
 
 // Helper to capture stdout/stderr

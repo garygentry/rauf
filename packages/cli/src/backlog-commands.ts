@@ -73,7 +73,7 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
 
   const result = readBacklog(resolved);
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   let items = result.value.items;
@@ -123,7 +123,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog add <path> --title \"...\" --type <t> --priority N [options]");
+    info('Usage: ralph backlog add <path> --title "..." --type <t> --priority N [options]');
     return ExitCode.INVALID_ARGS;
   }
 
@@ -165,7 +165,10 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
 
   // Parse dependsOn comma-separated list
   const dependsOn = dependsOnRaw
-    ? dependsOnRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    ? dependsOnRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : undefined;
 
   // Build input
@@ -187,7 +190,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
 
   const result = addItem(resolved, input);
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   const newItem = result.value;
@@ -243,14 +246,20 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   }
 
   // Validate priority if provided
-  if (priorityNum !== null && (priorityNum < 1 || priorityNum > 4 || !Number.isInteger(priorityNum))) {
+  if (
+    priorityNum !== null &&
+    (priorityNum < 1 || priorityNum > 4 || !Number.isInteger(priorityNum))
+  ) {
     error("Priority must be an integer from 1 to 4");
     return ExitCode.INVALID_ARGS;
   }
 
   // Parse dependsOn
   const dependsOn = dependsOnRaw
-    ? dependsOnRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    ? dependsOnRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : undefined;
 
   // Build updates (only include fields that were specified)
@@ -268,7 +277,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
 
   const result = updateItem(resolved, itemId, updates);
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   if (ctx.globalFlags.json) {
@@ -297,13 +306,14 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
 
   // Confirmation check — in non-interactive CLI mode, require --yes
   if (!yes) {
-    warn(`Deleting item ${itemId}. Pass --yes to confirm.`);
+    error(`Deleting item ${itemId} requires confirmation.`);
+    info("Pass --yes to confirm the deletion.");
     return ExitCode.INVALID_ARGS;
   }
 
   const result = deleteItem(resolved, itemId);
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   if (ctx.globalFlags.json) {
@@ -331,7 +341,7 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
 
   const result = readBacklog(resolved);
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   const item = result.value.items.find((i) => i.id === itemId);
@@ -363,13 +373,14 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
   const yes = extractBoolFlag(ctx.flags, "yes");
 
   if (!yes) {
-    warn("Restoring backlog from backup. Pass --yes to confirm.");
+    error("Restoring backlog from backup requires confirmation.");
+    info("Pass --yes to confirm the restore.");
     return ExitCode.INVALID_ARGS;
   }
 
   const result = restoreFromBackup(resolved);
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   if (ctx.globalFlags.json) {
@@ -383,15 +394,41 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
 
 // ─── Shared helpers ──────────────────────────────────────────────
 
-/** Map core error codes to CLI exit codes and print */
+/** Map core error codes to CLI exit codes and print with suggested fix */
 function handleCoreError(
   err: { code: string; message: string; details?: unknown },
   ctx: CommandContext,
+  projectPath?: string,
 ): number {
   if (ctx.globalFlags.json) {
     outputJson({ error: err });
   } else {
     error(err.message);
+    // Print a suggested fix (suppressed by --quiet)
+    switch (err.code) {
+      case ErrorCodes.FILE_NOT_FOUND:
+      case ErrorCodes.NOT_INSTALLED:
+        info(
+          `Ralph is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+        );
+        break;
+      case ErrorCodes.INVALID_JSON:
+      case ErrorCodes.VALIDATION_ERROR:
+        info(
+          `The backlog file may be corrupted. Recover with: ${c.cyan(projectPath ? `ralph backlog restore ${projectPath} --yes` : "ralph backlog restore <path> --yes")}`,
+        );
+        break;
+      case ErrorCodes.TRANSITION_INVALID:
+        info(
+          "Valid transitions: pending → in_progress, in_progress → done or blocked, blocked → pending.",
+        );
+        break;
+      case ErrorCodes.CONFLICT:
+        info(
+          `A loop may be running. Check with: ${c.cyan(projectPath ? `ralph status ${projectPath}` : "ralph status <path>")}`,
+        );
+        break;
+    }
   }
 
   switch (err.code) {
@@ -399,6 +436,8 @@ function handleCoreError(
       return ExitCode.NOT_FOUND;
     case ErrorCodes.NOT_INSTALLED:
       return ExitCode.NOT_FOUND;
+    case ErrorCodes.INVALID_JSON:
+      return ExitCode.VALIDATION;
     case ErrorCodes.VALIDATION_ERROR:
       return ExitCode.VALIDATION;
     case ErrorCodes.CONFLICT:

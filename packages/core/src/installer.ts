@@ -2,18 +2,24 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
+import { atomicWrite, computeHash, fileExists, ensureDir, readJsonFile } from "./fs-utils.js";
 import {
-  atomicWrite,
-  computeHash,
-  fileExists,
-  ensureDir,
-  readJsonFile,
-} from "./fs-utils.js";
-import { BacklogSchema, type MarkerFile, type InstallAction, type InstallationReport, type ProjectProfile, type MarkerOptions } from "./schemas.js";
+  BacklogSchema,
+  type MarkerFile,
+  type InstallAction,
+  type InstallationReport,
+  type ProjectProfile,
+  type MarkerOptions,
+} from "./schemas.js";
 import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
 import { detectProfile, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
 import { renderTemplate } from "./template.js";
-import { mergeClaudeMd, extractRalphBlock, CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
+import {
+  mergeClaudeMd,
+  extractRalphBlock,
+  CLAUDE_MD_SENTINEL_START,
+  CLAUDE_MD_SENTINEL_END,
+} from "./claude-md.js";
 
 // Avoid circular import by not importing VERSION from index.ts
 // This will be set to match the version in index.ts
@@ -95,9 +101,7 @@ export function preflight(projectPath: string): PreflightResult {
   checks.push({
     name: "directory_exists",
     passed: dirExists,
-    message: dirExists
-      ? `Directory exists: ${resolved}`
-      : `Directory not found: ${resolved}`,
+    message: dirExists ? `Directory exists: ${resolved}` : `Directory not found: ${resolved}`,
     severity: "error",
   });
 
@@ -128,9 +132,7 @@ export function preflight(projectPath: string): PreflightResult {
   checks.push({
     name: "jq_available",
     passed: hasJq,
-    message: hasJq
-      ? "jq found in PATH"
-      : "jq not found in PATH (required by ralph.sh loop runner)",
+    message: hasJq ? "jq found in PATH" : "jq not found in PATH (required by ralph.sh loop runner)",
     severity: "warning",
   });
 
@@ -146,9 +148,7 @@ export function preflight(projectPath: string): PreflightResult {
   });
 
   // Overall pass: all error-severity checks must pass
-  const passed = checks
-    .filter((c) => c.severity === "error")
-    .every((c) => c.passed);
+  const passed = checks.filter((c) => c.severity === "error").every((c) => c.passed);
 
   return { passed, checks };
 }
@@ -158,10 +158,7 @@ export function preflight(projectPath: string): PreflightResult {
 // Full installation flow for existing projects.
 // Idempotent: running twice produces the same result.
 
-export function install(
-  projectPath: string,
-  options: InstallOptions,
-): Result<InstallationReport> {
+export function install(projectPath: string, options: InstallOptions): Result<InstallationReport> {
   const resolved = path.resolve(projectPath);
   const artifactsDir = path.resolve(options.artifactsDir);
   const actions: InstallAction[] = [];
@@ -266,7 +263,8 @@ export function install(
   // On re-install, preserve existing options unless explicitly overridden
   const markerOptions: MarkerOptions = {
     ignoreInTool: options.options?.ignoreInTool ?? existingOptions?.ignoreInTool ?? false,
-    gitignoreScripts: options.options?.gitignoreScripts ?? existingOptions?.gitignoreScripts ?? false,
+    gitignoreScripts:
+      options.options?.gitignoreScripts ?? existingOptions?.gitignoreScripts ?? false,
     maxIterations: options.options?.maxIterations ?? existingOptions?.maxIterations ?? 20,
   };
 
@@ -307,10 +305,7 @@ export function install(
 // Auto-updates unmodified files, reports conflicts for customized files.
 // Never touches backlog.json or progress.md.
 
-export function update(
-  projectPath: string,
-  options: UpdateOptions,
-): Result<InstallationReport> {
+export function update(projectPath: string, options: UpdateOptions): Result<InstallationReport> {
   const resolved = path.resolve(projectPath);
   const artifactsDir = path.resolve(options.artifactsDir);
   const actions: InstallAction[] = [];
@@ -335,11 +330,7 @@ export function update(
     const srcPath = path.join(artifactsDir, script);
     const destPath = path.join(resolved, script);
 
-    const compResult = threeWayCompare(
-      storedHashes[script],
-      destPath,
-      srcPath,
-    );
+    const compResult = threeWayCompare(storedHashes[script], destPath, srcPath);
     if (!compResult.ok) return compResult;
 
     const comparison = compResult.value;
@@ -377,9 +368,7 @@ export function update(
         break;
 
       case "conflict":
-        warnings.push(
-          `${script}: local modifications conflict with new canonical version`,
-        );
+        warnings.push(`${script}: local modifications conflict with new canonical version`);
         actions.push({
           file: script,
           action: "skipped",
@@ -392,11 +381,7 @@ export function update(
   // Re-render RALPH.md managed sections
   const profile = marker.profile;
   const templateVars = buildTemplateVars(profile);
-  const ralphMdResult = deployRalphMd(
-    artifactsDir,
-    path.join(resolved, DOT_RALPH),
-    templateVars,
-  );
+  const ralphMdResult = deployRalphMd(artifactsDir, path.join(resolved, DOT_RALPH), templateVars);
   if (!ralphMdResult.ok) return ralphMdResult;
   actions.push(ralphMdResult.value);
 
@@ -453,10 +438,7 @@ export function update(
 //
 // Remove ralph artifacts. Preserves backlog/progress/log by default.
 
-export function uninstall(
-  projectPath: string,
-  options: UninstallOptions = {},
-): Result<void> {
+export function uninstall(projectPath: string, options: UninstallOptions = {}): Result<void> {
   const resolved = path.resolve(projectPath);
 
   // Must be installed first
@@ -518,9 +500,7 @@ export function uninstall(
 // ─── Internal helpers ─────────────────────────────────────────────
 
 /** Build template variables from a profile */
-function buildTemplateVars(
-  profile: ProjectProfile,
-): Record<string, string | null | undefined> {
+function buildTemplateVars(profile: ProjectProfile): Record<string, string | null | undefined> {
   return {
     projectName: "",
     projectDescription: "",
@@ -535,10 +515,7 @@ function buildTemplateVars(
 }
 
 /** Deploy a script artifact: copy if not exists, compare hash if exists */
-function deployScript(
-  srcPath: string,
-  destPath: string,
-): Result<InstallAction> {
+function deployScript(srcPath: string, destPath: string): Result<InstallAction> {
   const scriptName = path.basename(srcPath);
 
   if (!fileExists(srcPath)) {
@@ -585,11 +562,7 @@ function deployScript(
 }
 
 /** Copy a file and set permissions */
-function copyFileWithMode(
-  srcPath: string,
-  destPath: string,
-  mode: number,
-): Result<void> {
+function copyFileWithMode(srcPath: string, destPath: string, mode: number): Result<void> {
   try {
     fs.copyFileSync(srcPath, destPath);
     fs.chmodSync(destPath, mode);
@@ -697,11 +670,7 @@ function deployBacklog(
     templateContent = fs.readFileSync(templatePath, "utf-8");
   } catch {
     // Fallback: create minimal empty backlog
-    templateContent = JSON.stringify(
-      { project: "", description: "", items: [] },
-      null,
-      2,
-    );
+    templateContent = JSON.stringify({ project: "", description: "", items: [] }, null, 2);
   }
 
   let backlog: { project: string; description: string; items: unknown[] };
@@ -731,10 +700,7 @@ function deployBacklog(
 }
 
 /** Copy progress.md template if missing */
-function deployProgress(
-  artifactsDir: string,
-  ralphDir: string,
-): Result<InstallAction> {
+function deployProgress(artifactsDir: string, ralphDir: string): Result<InstallAction> {
   const destPath = path.join(ralphDir, "progress.md");
 
   if (fileExists(destPath)) {
@@ -772,10 +738,7 @@ function deployProgress(
 }
 
 /** Merge ralph section into CLAUDE.md using the CLAUDE_ADDON.md template */
-function deployClaudeMd(
-  artifactsDir: string,
-  projectPath: string,
-): Result<InstallAction> {
+function deployClaudeMd(artifactsDir: string, projectPath: string): Result<InstallAction> {
   const addonPath = path.join(artifactsDir, CLAUDE_ADDON_FILE);
 
   let addonContent: string;
@@ -941,12 +904,7 @@ function tryRemoveEmptyDir(dirPath: string): void {
 
 // ─── Exported constants (for testing) ────────────────────────────
 
-export {
-  DOT_RALPH,
-  SCRIPT_ARTIFACTS,
-  DIR_FILES,
-  CLAUDE_ADDON_FILE,
-};
+export { DOT_RALPH, SCRIPT_ARTIFACTS, DIR_FILES, CLAUDE_ADDON_FILE };
 
 // ─── Exported helpers (for testing) ──────────────────────────────
 

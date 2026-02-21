@@ -24,9 +24,7 @@ export interface DiscoveryResult {
 // - Invalid .ralph.json files are skipped with warnings
 // - Returns projects sorted by name, with ignored projects separate
 
-export function discoverProjects(
-  rootDir: string,
-): Result<DiscoveryResult> {
+export function discoverProjects(rootDir: string): Result<DiscoveryResult> {
   const resolved = path.resolve(rootDir);
 
   // Verify rootDir exists and is a directory
@@ -74,8 +72,10 @@ export function discoverProjects(
 
   for (const candidatePath of candidates) {
     // Filter: exclude paths containing /artifacts/ segment
-    if (candidatePath.includes(`${path.sep}artifacts${path.sep}`) ||
-        candidatePath.endsWith(`${path.sep}artifacts`)) {
+    if (
+      candidatePath.includes(`${path.sep}artifacts${path.sep}`) ||
+      candidatePath.endsWith(`${path.sep}artifacts`)
+    ) {
       continue;
     }
 

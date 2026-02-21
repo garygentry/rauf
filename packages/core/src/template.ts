@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { type Result, ok, err, ErrorCodes } from "./errors.js";
+import { type Result, err, ErrorCodes } from "./errors.js";
 import { atomicWrite } from "./fs-utils.js";
 
 // ─── renderTemplate ──────────────────────────────────────────────
@@ -74,9 +74,7 @@ export function updateSentinelBlock(
 
   if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
     // Sentinels not found (or malformed) — append the block
-    const separator = fileContent.length > 0 && !fileContent.endsWith("\n")
-      ? "\n"
-      : "";
+    const separator = fileContent.length > 0 && !fileContent.endsWith("\n") ? "\n" : "";
     const trailingNewline = fileContent.length > 0 ? "\n" : "";
     return (
       fileContent +
@@ -95,13 +93,5 @@ export function updateSentinelBlock(
   const before = fileContent.slice(0, startIdx);
   const after = fileContent.slice(endIdx + sentinelEnd.length);
 
-  return (
-    before +
-    sentinelStart +
-    "\n" +
-    newBlockContent +
-    "\n" +
-    sentinelEnd +
-    after
-  );
+  return before + sentinelStart + "\n" + newBlockContent + "\n" + sentinelEnd + after;
 }

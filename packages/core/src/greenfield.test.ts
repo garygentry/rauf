@@ -7,7 +7,6 @@ import { spawnSync } from "node:child_process";
 import {
   initProject,
   parseBacklogSeed,
-  CLAUDE_GREENFIELD_TEMPLATE,
   GITIGNORE_TEMPLATES,
   RALPH_GITIGNORE,
   MARKDOWN_ITEM_RE,
@@ -22,10 +21,7 @@ import { ErrorCodes } from "./errors.js";
 
 // ─── Test Fixtures ────────────────────────────────────────────────
 
-const ARTIFACTS_DIR = path.resolve(
-  __dirname,
-  "../../../artifacts/variants/backlog-json",
-);
+const ARTIFACTS_DIR = path.resolve(__dirname, "../../../artifacts/variants/backlog-json");
 
 let tmpDir: string;
 
@@ -86,10 +82,7 @@ describe("initProject", () => {
     const projectDir = path.join(tmpDir, "node-ts-project");
     initProject(projectDir, baseOpts({ preset: "node-typescript" }));
 
-    const gitignore = fs.readFileSync(
-      path.join(projectDir, ".gitignore"),
-      "utf-8",
-    );
+    const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("node_modules/");
     expect(gitignore).toContain("*.tsbuildinfo");
     expect(gitignore).toContain(".ralph/state.json");
@@ -99,10 +92,7 @@ describe("initProject", () => {
     const projectDir = path.join(tmpDir, "python-project");
     initProject(projectDir, baseOpts({ preset: "python" }));
 
-    const gitignore = fs.readFileSync(
-      path.join(projectDir, ".gitignore"),
-      "utf-8",
-    );
+    const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("__pycache__/");
     expect(gitignore).toContain(".venv/");
     expect(gitignore).toContain(".ralph/state.json");
@@ -112,10 +102,7 @@ describe("initProject", () => {
     const projectDir = path.join(tmpDir, "go-project");
     initProject(projectDir, baseOpts({ preset: "go" }));
 
-    const gitignore = fs.readFileSync(
-      path.join(projectDir, ".gitignore"),
-      "utf-8",
-    );
+    const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("bin/");
     expect(gitignore).toContain(".ralph/DONE");
   });
@@ -124,10 +111,7 @@ describe("initProject", () => {
     const projectDir = path.join(tmpDir, "rust-project");
     initProject(projectDir, baseOpts({ preset: "rust" }));
 
-    const gitignore = fs.readFileSync(
-      path.join(projectDir, ".gitignore"),
-      "utf-8",
-    );
+    const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("target/");
     expect(gitignore).toContain("Cargo.lock");
   });
@@ -136,10 +120,7 @@ describe("initProject", () => {
     const projectDir = path.join(tmpDir, "custom-project");
     initProject(projectDir, baseOpts({ preset: "custom" }));
 
-    const gitignore = fs.readFileSync(
-      path.join(projectDir, ".gitignore"),
-      "utf-8",
-    );
+    const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     // Should still have ralph entries
     expect(gitignore).toContain(".ralph/state.json");
     expect(gitignore).toContain(".ralph/ralph.log");
@@ -157,10 +138,7 @@ describe("initProject", () => {
       }),
     );
 
-    const claudeMd = fs.readFileSync(
-      path.join(projectDir, "CLAUDE.md"),
-      "utf-8",
-    );
+    const claudeMd = fs.readFileSync(path.join(projectDir, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain("# My Project");
     expect(claudeMd).toContain("A great project");
     expect(claudeMd).toContain("Must be fast");
@@ -189,10 +167,7 @@ describe("initProject", () => {
 
   it("returns an InstallationReport with all actions", () => {
     const projectDir = path.join(tmpDir, "report-project");
-    const result = initProject(
-      projectDir,
-      baseOpts({ projectName: "test-report" }),
-    );
+    const result = initProject(projectDir, baseOpts({ projectName: "test-report" }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -252,10 +227,7 @@ describe("initProject", () => {
     const rootDir = path.join(tmpDir, "allowed");
     fs.mkdirSync(rootDir, { recursive: true });
 
-    const result = initProject(
-      projectDir,
-      baseOpts({ rootDirectory: rootDir }),
-    );
+    const result = initProject(projectDir, baseOpts({ rootDirectory: rootDir }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -267,10 +239,7 @@ describe("initProject", () => {
     const rootDir = tmpDir;
     const projectDir = path.join(tmpDir, "inside-project");
 
-    const result = initProject(
-      projectDir,
-      baseOpts({ rootDirectory: rootDir }),
-    );
+    const result = initProject(projectDir, baseOpts({ rootDirectory: rootDir }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -322,10 +291,7 @@ describe("initProject: backlog seeding", () => {
     };
     fs.writeFileSync(seedPath, JSON.stringify(seedData));
 
-    const result = initProject(
-      projectDir,
-      baseOpts({ seedFile: seedPath }),
-    );
+    const result = initProject(projectDir, baseOpts({ seedFile: seedPath }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -350,10 +316,7 @@ describe("initProject: backlog seeding", () => {
     ];
     fs.writeFileSync(seedPath, JSON.stringify(seedData));
 
-    const result = initProject(
-      projectDir,
-      baseOpts({ seedFile: seedPath }),
-    );
+    const result = initProject(projectDir, baseOpts({ seedFile: seedPath }));
 
     expect(result.ok).toBe(true);
 
@@ -378,10 +341,7 @@ describe("initProject: backlog seeding", () => {
     ].join("\n");
     fs.writeFileSync(seedPath, seedContent);
 
-    const result = initProject(
-      projectDir,
-      baseOpts({ seedFile: seedPath }),
-    );
+    const result = initProject(projectDir, baseOpts({ seedFile: seedPath }));
 
     expect(result.ok).toBe(true);
 
@@ -421,17 +381,12 @@ describe("initProject: backlog seeding", () => {
     const seedPath = path.join(tmpDir, "seed-report.md");
     fs.writeFileSync(seedPath, "- [ ] [feature] A task\n");
 
-    const result = initProject(
-      projectDir,
-      baseOpts({ seedFile: seedPath }),
-    );
+    const result = initProject(projectDir, baseOpts({ seedFile: seedPath }));
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    const seedAction = result.value.actions.find(
-      (a) => a.detail.includes("Seeded"),
-    );
+    const seedAction = result.value.actions.find((a) => a.detail.includes("Seeded"));
     expect(seedAction).toBeDefined();
     expect(seedAction!.detail).toContain("1 backlog item");
   });
@@ -512,13 +467,7 @@ describe("parseBacklogSeed", () => {
 
     it("assigns sequential priorities to partial items without priority", () => {
       const seedPath = path.join(tmpDir, "no-priority.json");
-      const data = [
-        { title: "A" },
-        { title: "B" },
-        { title: "C" },
-        { title: "D" },
-        { title: "E" },
-      ];
+      const data = [{ title: "A" }, { title: "B" }, { title: "C" }, { title: "D" }, { title: "E" }];
       fs.writeFileSync(seedPath, JSON.stringify(data));
 
       const result = parseBacklogSeed(seedPath);

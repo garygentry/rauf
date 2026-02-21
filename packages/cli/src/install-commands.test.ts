@@ -10,12 +10,6 @@ import { configureOutput } from "./formatter.js";
 
 // ─── Fixtures ──────────────────────────────────────────────────────
 
-/** Path to the real artifacts directory in this repo */
-const ARTIFACTS_DIR = path.resolve(
-  __dirname,
-  "../../../artifacts/variants/backlog-json",
-);
-
 let tmpDir: string;
 
 beforeEach(() => {
@@ -288,10 +282,7 @@ describe("handleInit", () => {
   it("returns CONFLICT if path already has .ralph.json", async () => {
     const projectDir = path.join(tmpDir, "existing-ralph");
     fs.mkdirSync(projectDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(projectDir, ".ralph.json"),
-      JSON.stringify({ ralph: true }),
-    );
+    fs.writeFileSync(path.join(projectDir, ".ralph.json"), JSON.stringify({ ralph: true }));
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleInit(ctx);
@@ -339,10 +330,7 @@ describe("handleInit", () => {
     const code = await handleInit(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    const gitignore = fs.readFileSync(
-      path.join(projectDir, ".gitignore"),
-      "utf-8",
-    );
+    const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("__pycache__");
     expect(gitignore).toContain(".venv");
   });

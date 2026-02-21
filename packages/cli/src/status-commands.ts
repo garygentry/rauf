@@ -41,6 +41,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
       outputJson({ error: result.error });
     } else {
       error(result.error.message);
+      info(`Ensure ralph is installed. Run: ${c.cyan(`ralph install ${resolved}`)}`);
     }
     return ExitCode.ERROR;
   }
@@ -82,6 +83,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
       outputJson({ error: result.error });
     } else {
       error(result.error.message);
+      info(`No log yet. Start the loop with: ${c.cyan("./ralph.sh")}`);
     }
     return ExitCode.ERROR;
   }
@@ -130,19 +132,15 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
     }
     return ExitCode.SUCCESS;
   } catch (e) {
-    error(
-      `Failed to read progress file: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    error(`Failed to read progress file: ${e instanceof Error ? e.message : String(e)}`);
+    info("Check that .ralph/progress.md is readable and not corrupted.");
     return ExitCode.ERROR;
   }
 }
 
 // ─── Internal: log follow mode ───────────────────────────────────
 
-async function handleLogFollow(
-  projectPath: string,
-  initialLines: number,
-): Promise<number> {
+async function handleLogFollow(projectPath: string, initialLines: number): Promise<number> {
   // Show existing tail first
   const tailResult = readLogTail(projectPath, initialLines);
   if (tailResult.ok && tailResult.value.length > 0) {
@@ -236,14 +234,10 @@ function formatStateSource(source: DerivedStatus["stateSource"]): string {
 /** Print human-readable status summary */
 function printStatusSummary(status: DerivedStatus): void {
   const sourceLabel = c.dim(`(${formatStateSource(status.stateSource)})`);
-  print(
-    `${c.bold("Loop State:")} ${colorLoopState(status.loopState)} ${sourceLabel}`,
-  );
+  print(`${c.bold("Loop State:")} ${colorLoopState(status.loopState)} ${sourceLabel}`);
 
   if (status.iteration !== null && status.maxIterations !== null) {
-    print(
-      `${c.bold("Iteration:")}  ${status.iteration} / ${status.maxIterations}`,
-    );
+    print(`${c.bold("Iteration:")}  ${status.iteration} / ${status.maxIterations}`);
   }
 
   if (status.currentItem) {

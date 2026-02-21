@@ -22,17 +22,7 @@ import {
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
-import { extractStringFlag } from "./parser.js";
-import {
-  c,
-  info,
-  print,
-  error,
-  success,
-  outputJson,
-  renderTable,
-  symbols,
-} from "./formatter.js";
+import { c, info, print, error, success, outputJson, renderTable, symbols } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
 
 // ─── PROFILE SHOW ──────────────────────────────────────────────────
@@ -49,7 +39,7 @@ export async function handleProfileShow(ctx: CommandContext): Promise<number> {
   const result = readMarkerFile(resolved);
 
   if (!result.ok) {
-    return handleCoreError(result.error, ctx);
+    return handleCoreError(result.error, ctx, resolved);
   }
 
   const { profile } = result.value;
@@ -83,7 +73,9 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
     return ExitCode.SUCCESS;
   }
 
-  print(c.bold("Detected Profile (read-only — use 'ralph profile set' or 'ralph update' to apply):"));
+  print(
+    c.bold("Detected Profile (read-only — use 'ralph profile set' or 'ralph update' to apply):"),
+  );
   print("");
   printProfile(detected);
   return ExitCode.SUCCESS;
@@ -119,7 +111,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
   const markerResult = readMarkerFile(resolved);
 
   if (!markerResult.ok) {
-    return handleCoreError(markerResult.error, ctx);
+    return handleCoreError(markerResult.error, ctx, resolved);
   }
 
   const marker = markerResult.value;
@@ -149,7 +141,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
 
   const writeResult = writeMarkerFile(resolved, { ...marker, profile });
   if (!writeResult.ok) {
-    return handleCoreError(writeResult.error, ctx);
+    return handleCoreError(writeResult.error, ctx, resolved);
   }
 
   if (ctx.globalFlags.json) {
@@ -157,7 +149,9 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
     return ExitCode.SUCCESS;
   }
 
-  success(`Profile updated: ${c.bold(key)} = ${value === "" ? c.dim("(disabled)") : c.cyan(value)}`);
+  success(
+    `Profile updated: ${c.bold(key)} = ${value === "" ? c.dim("(disabled)") : c.cyan(value)}`,
+  );
   return ExitCode.SUCCESS;
 }
 
@@ -392,9 +386,7 @@ export async function handleProjectsStatus(ctx: CommandContext): Promise<number>
   const rows = projectStatuses.map(({ project, status }) => ({
     name: c.cyan(project.name),
     state: status ? colorLoopState(status.loopState) : c.dim("unknown"),
-    backlog: status
-      ? `${status.backlogSummary.done}/${status.backlogSummary.total}`
-      : c.dim("—"),
+    backlog: status ? `${status.backlogSummary.done}/${status.backlogSummary.total}` : c.dim("—"),
     projectPath: c.dim(project.path),
   }));
 
@@ -404,15 +396,42 @@ export async function handleProjectsStatus(ctx: CommandContext): Promise<number>
 
 // ─── Shared helpers ───────────────────────────────────────────────
 
-/** Map core error codes to CLI exit codes and print */
+/** Map core error codes to CLI exit codes and print with suggested fix */
 function handleCoreError(
   err: { code: string; message: string; details?: unknown },
   ctx: CommandContext,
+  projectPath?: string,
 ): number {
   if (ctx.globalFlags.json) {
     outputJson({ error: err });
   } else {
     error(err.message);
+    // Print a suggested fix (suppressed by --quiet)
+    switch (err.code) {
+      case ErrorCodes.FILE_NOT_FOUND:
+      case ErrorCodes.NOT_INSTALLED:
+        if (projectPath) {
+          info(`Ralph is not installed here. Run: ${c.cyan(`ralph install ${projectPath}`)}`);
+        } else {
+          info("Ensure ralph is installed in the target directory.");
+        }
+        break;
+      case ErrorCodes.INVALID_JSON:
+      case ErrorCodes.VALIDATION_ERROR:
+        if (projectPath) {
+          info(
+            `A project file may be corrupted. Try reinstalling: ${c.cyan(`ralph install ${projectPath} --yes`)}`,
+          );
+        } else {
+          info("A config file may be corrupted. Check ~/.ralph/config.json manually.");
+        }
+        break;
+      case ErrorCodes.CONFLICT:
+        if (projectPath) {
+          info(`A loop may be running. Check with: ${c.cyan(`ralph status ${projectPath}`)}`);
+        }
+        break;
+    }
   }
 
   switch (err.code) {
@@ -420,6 +439,8 @@ function handleCoreError(
       return ExitCode.NOT_FOUND;
     case ErrorCodes.NOT_INSTALLED:
       return ExitCode.NOT_FOUND;
+    case ErrorCodes.INVALID_JSON:
+      return ExitCode.VALIDATION;
     case ErrorCodes.VALIDATION_ERROR:
       return ExitCode.VALIDATION;
     case ErrorCodes.CONFLICT:

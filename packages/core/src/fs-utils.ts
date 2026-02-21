@@ -10,10 +10,7 @@ import { type Result, ok, err, ErrorCodes } from "./errors.js";
 // Write content atomically: write to .tmp then rename.
 // For backlog.json files, also create a .bak backup first.
 
-export function atomicWrite(
-  filePath: string,
-  content: string,
-): Result<void> {
+export function atomicWrite(filePath: string, content: string): Result<void> {
   const resolved = path.resolve(filePath);
   const tmpPath = `${resolved}.tmp`;
 
@@ -50,10 +47,7 @@ export function atomicWrite(
 // Read a JSON file and validate against a Zod schema.
 // Returns structured errors for missing file, bad JSON, and validation failures.
 
-export function readJsonFile<T>(
-  filePath: string,
-  schema: z.ZodType<T>,
-): Result<T> {
+export function readJsonFile<T>(filePath: string, schema: z.ZodType<T>): Result<T> {
   const resolved = path.resolve(filePath);
 
   // Read file
@@ -130,19 +124,13 @@ export function computeHash(filePath: string): Result<string> {
 // Verify that a target path resolves to a location within at least
 // one of the allowed roots. Prevents directory traversal attacks.
 
-export function validatePath(
-  targetPath: string,
-  allowedRoots: string[],
-): Result<string> {
+export function validatePath(targetPath: string, allowedRoots: string[]): Result<string> {
   const resolved = path.resolve(targetPath);
 
   const isWithinRoot = allowedRoots.some((root) => {
     const resolvedRoot = path.resolve(root);
     // Must start with the root + separator, or be the root itself
-    return (
-      resolved === resolvedRoot ||
-      resolved.startsWith(resolvedRoot + path.sep)
-    );
+    return resolved === resolvedRoot || resolved.startsWith(resolvedRoot + path.sep);
   });
 
   if (!isWithinRoot) {
