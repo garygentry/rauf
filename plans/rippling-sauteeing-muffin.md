@@ -1,82 +1,97 @@
-# Plan: Validate Ralph Loop Readiness for Self-Hosting Bootstrap
+# Plan: Introduce `artifacts/variants/` Directory for Variant Organization
 
 ## Context
 
-Ralph is a CLI + web tool for managing autonomous coding loops. The project is bootstrapping itself — using a manually-created ralph loop infrastructure (`.ralph/`, `ralph.sh`, `backlog.json`) to build the actual ralph tool code. The backlog contains 42 items covering all functionality described in the docs/ specifications.
+Ralph's `artifacts/` directory holds canonical template files deployed to target projects. The current variant is `backlog-json` (a simple JSON file for tracking items), but the architecture is designed for future variants (Linear, GitHub Issues, Beads, etc.). The `variant` field already exists in the `MarkerFile` schema (`.ralph.json`).
 
-Before running `./ralph.sh` to kick off the first iteration, we need to fix one critical bug and commit the scaffolded baseline so the loop can run cleanly.
+Currently the path is `artifacts/backlog-json/` — which works, but doesn't self-document that `backlog-json` is one of many possible *variants*. Adding an intermediate `variants/` directory makes the extensibility immediately visible:
 
-## Findings Summary
-
-### What's Ready
-- **42 backlog items** — all pending, valid dependency DAG, no circular deps, no missing references
-- **Backlog coverage** — comprehensive across core (001-012), CLI (013-019), web API (020-025), frontend (026-034), artifacts (035-037), integration (038-042)
-- **ralph.sh** — fully implemented, handles state.json writes, targeted jq updates, exit signal parsing, cleanup trap
-- **Helper scripts** — ralph-add.sh, ralph-status.sh both complete and executable
-- **RALPH.md** — proper per-iteration instructions with verification commands
-- **Prerequisites** — jq 1.6 installed, claude CLI available, all scripts chmod +x
-- **.ralph.json** — valid marker file with correct profile for node-typescript/pnpm monorepo
-
-### Critical Bug: `select_next_item()` Ignores Dependencies
-
-**File:** `ralph.sh` (line 128-130) and `artifacts/backlog-json/ralph.sh` (identical)
-
-```bash
-select_next_item() {
-  jq -r '[.items[] | select(.status == "pending")] | sort_by(.priority) | .[0].id // empty' "$BACKLOG"
-}
+```
+artifacts/
+└── variants/
+    └── backlog-json/    ← current default variant
+    # └── linear/        ← future
+    # └── github-issues/ ← future
 ```
 
-**Problem:** This selects the first pending item by priority without checking if `dependsOn` items are all `"done"`. Within Priority 1, array ordering happens to work (deps come before dependents). But in Priority 2, item 014 depends on 020 — and 014 comes first in the array. The loop will:
-1. Select 014 before 020 is done
-2. Agent will RALPH_BLOCKED (dependency not met)
-3. 014 stays blocked **permanently** — even after 020 completes later
+This also reserves `artifacts/` for potential shared/common files that aren't variant-specific in the future.
 
-**Affected P2 items**: 014 (depends on 020), plus 021-024 all depend on 020 and various P1 items.
+## Implementation
 
-**Fix:** Update `select_next_item()` to filter out items whose `dependsOn` are not all `"done"`:
+### Step 1: Move the directory
 
 ```bash
-select_next_item() {
-  jq -r '
-    [.items[] | select(.status == "done")] | map(.id) as $done_ids |
-    [.items[] | select(.status == "pending") | select(
-      (.dependsOn == null) or (.dependsOn | length == 0) or
-      (.dependsOn | all(. as $d | $done_ids | index($d) != null))
-    )] | sort_by(.priority) | .[0].id // empty
-  ' "$BACKLOG"
-}
+mkdir -p artifacts/variants
+git mv artifacts/backlog-json artifacts/variants/backlog-json
 ```
 
-This must be updated in **both** `ralph.sh` (project root) and `artifacts/backlog-json/ralph.sh` (canonical template).
+### Step 2: Recreate the ralph.sh symlink
 
-### Minor Issue: Uncommitted Mode Changes
+The root `ralph.sh` currently points to `artifacts/backlog-json/ralph.sh`. Update it:
 
-`ralph.sh`, `ralph-add.sh`, `ralph-status.sh` have mode-only diffs (644→755). These should be committed before the loop starts so the first iteration starts from a clean git state.
+```bash
+rm ralph.sh
+ln -s artifacts/variants/backlog-json/ralph.sh ralph.sh
+```
 
-### Note: Pre-existing Artifacts (035-037)
+### Step 3: Update documentation files
 
-Items 035, 036, 037 describe creating artifacts that already exist and are fully implemented. The loop agent should recognize they're complete, verify against spec, and signal RALPH_DONE. This is expected behavior — the bootstrap manually created these files.
+**`CLAUDE.md`** (repo root) — 2 locations:
+- Line ~15: Repository layout tree (`artifacts/` → show `variants/backlog-json/`)
+- Line ~84: Self-hosting note (`artifacts/backlog-json/` → `artifacts/variants/backlog-json/`)
 
-## Changes to Make
+**`docs/SPEC-ARTIFACTS.md`** — 3 locations:
+- Line 3: Reference path
+- Line 5: Prose description
+- Lines 9-10: File inventory tree header
 
-### 1. Fix `select_next_item()` in ralph.sh (root)
-- **File:** `/home/gary/workspace/ralph/ralph.sh`
-- Replace the `select_next_item` function with dependency-aware version
+**`docs/SPEC-CORE.md`** — Line 80:
+- Discovery filter: currently `exclude any path containing /artifacts/` — this still works since `/artifacts/` is a parent segment of the new path. **No change needed** for discovery logic itself, but update the comment if it references the exact path.
 
-### 2. Fix `select_next_item()` in artifacts/backlog-json/ralph.sh
-- **File:** `/home/gary/workspace/ralph/artifacts/backlog-json/ralph.sh`
-- Same fix — keep both files in sync
+**`docs/SCHEMAS.md`** — **No change needed**. The `variant: "backlog-json"` field is the variant *name*, not a filesystem path.
 
-### 3. Commit the baseline
-- Stage mode changes (ralph.sh, ralph-add.sh, ralph-status.sh) + the dependency fix
-- Commit with descriptive message
+**`docs/SPEC-CLI.md`** — **No change needed**. Only mentions "install artifacts" generically.
+
+### Step 4: Update backlog item descriptions
+
+**`.ralph/backlog.json`** — 2 items have path references in their descriptions:
+- Item 035: `"Create the canonical ralph.sh script in artifacts/backlog-json/."` → `artifacts/variants/backlog-json/`
+- Item 036: `"Create the ralph-status.sh and ralph-add.sh canonical scripts in artifacts/backlog-json/."` → `artifacts/variants/backlog-json/`
+
+### Step 5: Update the repo-integrity test
+
+**`packages/core/src/repo-integrity.test.ts`** — 3 string literals:
+- Test description string
+- `canonicalScript` path: `"artifacts/backlog-json/ralph.sh"` → `"artifacts/variants/backlog-json/ralph.sh"`
+- Symlink target assertion: `"artifacts/backlog-json/ralph.sh"` → `"artifacts/variants/backlog-json/ralph.sh"`
+
+### Step 6: Update `.ralph.json` maxIterations
+
+While we're here, update `maxIterations` from 20 → 100 to match the ralph.sh change we already made:
+- `.ralph.json` line 24: `"maxIterations": 20` → `"maxIterations": 100`
+
+## Files Modified (complete list)
+
+| File | Change |
+|------|--------|
+| `artifacts/variants/backlog-json/` | **Moved from** `artifacts/backlog-json/` |
+| `ralph.sh` (symlink) | Retarget to `artifacts/variants/backlog-json/ralph.sh` |
+| `CLAUDE.md` | Update 2 path references |
+| `docs/SPEC-ARTIFACTS.md` | Update 3 path references |
+| `.ralph/backlog.json` | Update items 035, 036 descriptions |
+| `packages/core/src/repo-integrity.test.ts` | Update 3 string literals |
+| `.ralph.json` | Update maxIterations to 100 |
+
+**No changes needed:**
+- `docs/SCHEMAS.md` — variant is a name, not a path
+- `docs/SPEC-CORE.md` — discovery filter uses `/artifacts/` which still matches
+- `docs/SPEC-CLI.md` — no specific path references
+- `.ralph/RALPH.md` — no artifact path references
 
 ## Verification
 
-After making changes:
-1. Run `./ralph.sh` with `MAX_ITERATIONS=1` to process item 001
-2. Confirm item 001 gets selected (it has no deps, should be first)
-3. Confirm the agent creates ESLint/Prettier/Vitest configs and runs `pnpm install`
-4. Confirm RALPH_DONE signal is detected and item marked done
-5. After item 001, the next eligible items should be 002 and 035 (both depend only on 001)
+1. `bash -n ralph.sh` — symlink resolves and script parses
+2. `pnpm test` — repo-integrity test passes with new symlink target
+3. `ls -la ralph.sh` — shows symlink to `artifacts/variants/backlog-json/ralph.sh`
+4. `ls artifacts/variants/backlog-json/` — all 5 artifact files present
+5. `grep -r "artifacts/backlog-json" .` (excluding node_modules, .git) — returns zero results, confirming no stale references

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # ralph.sh — Autonomous Claude Code loop runner
-# Usage: ./ralph.sh [max_iterations]
-# Example: ./ralph.sh 20
+# Usage: ./ralph.sh [max_iterations] [max_retries]
+# Example: ./ralph.sh 100 3
 #
 # The loop runner manages all backlog status transitions. Claude does NOT
 # modify backlog.json — it focuses on implementation and emits exit signals.
@@ -18,13 +18,15 @@ PROGRESS="$RALPH_DIR/progress.md"
 RALPH_MD="$RALPH_DIR/RALPH.md"
 LOG="$RALPH_DIR/ralph.log"
 STATE="$RALPH_DIR/state.json"
-MAX_ITERATIONS=${1:-20}
+MAX_ITERATIONS=${1:-100}
+MAX_RETRIES=${2:-3}
 ITER=0
 START_TIME=$(date +%s)
 START_ISO=$(date -Iseconds)
 COMPLETED_IDS="[]"
 BLOCKED_IDS="[]"
 CURRENT_ITEM_ID=""
+declare -A RETRY_COUNTS  # Track per-item retry count (in-memory only)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -196,7 +198,7 @@ fi
 # Main loop
 # ---------------------------------------------------------------------------
 log "============================================"
-log "Ralph Loop starting | max=$MAX_ITERATIONS iterations"
+log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item"
 print_status
 write_state "starting"
 
@@ -339,10 +341,20 @@ $PROGRESS_SNAPSHOT
     exit 2
 
   else
-    log "⚠ No exit signal from Claude for item $CURRENT_ITEM_ID"
-    log "  Resetting to pending — will retry on next iteration"
-    reset_to_pending "$CURRENT_ITEM_ID"
-    write_state "running" "null" "error" "No exit signal received"
+    RETRY_COUNTS["$CURRENT_ITEM_ID"]=$(( ${RETRY_COUNTS["$CURRENT_ITEM_ID"]:-0} + 1 ))
+    RETRIES=${RETRY_COUNTS["$CURRENT_ITEM_ID"]}
+    log "⚠ No exit signal from Claude for item $CURRENT_ITEM_ID (attempt $RETRIES/$MAX_RETRIES)"
+
+    if [[ $RETRIES -ge $MAX_RETRIES ]]; then
+      log "✗ Item $CURRENT_ITEM_ID exceeded retry limit — marking as blocked"
+      mark_blocked "$CURRENT_ITEM_ID" "Failed after $RETRIES attempts (no exit signal)"
+      BLOCKED_IDS=$(echo "$BLOCKED_IDS" | jq --arg id "$CURRENT_ITEM_ID" '. + [$id]')
+      write_state "running" "null" "error" "Item $CURRENT_ITEM_ID auto-blocked after $RETRIES retries"
+    else
+      log "  Resetting to pending — will retry (attempt $RETRIES/$MAX_RETRIES)"
+      reset_to_pending "$CURRENT_ITEM_ID"
+      write_state "running" "null" "error" "No exit signal received (attempt $RETRIES/$MAX_RETRIES)"
+    fi
   fi
 
   # Clear current item (cleanup trap should not reset a completed/blocked item)

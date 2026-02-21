@@ -13,7 +13,8 @@ ralph/
 │   ├── cli/     — CLI tool (commands call core directly or HTTP when server is running)
 │   └── web/     — Hono API server + React frontend (TanStack Router + Query)
 ├── artifacts/   — Canonical template files installed into target projects
-│   └── backlog-json/
+│   └── variants/
+│       └── backlog-json/
 ├── docs/        — Specifications (ARCHITECTURE, SCHEMAS, SPEC-CORE, SPEC-CLI, SPEC-WEB, SPEC-ARTIFACTS)
 └── .ralph/      — This project's own ralph loop state (self-hosting)
 ```
@@ -81,7 +82,7 @@ This project uses `.ralph/backlog.json` as the persistent task queue for the ral
 
 ## Self-Hosting Note
 
-This repository IS a ralph-managed project. The `.ralph/` directory at the repo root and `ralph.sh` etc. are this project's own ralph installation. The `artifacts/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
+This repository IS a ralph-managed project. The `.ralph/` directory at the repo root and `ralph.sh` etc. are this project's own ralph installation. The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
 
 ---
 

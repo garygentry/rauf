@@ -1,13 +1,13 @@
 # Artifact Templates Specification
 
-Reference: `artifacts/backlog-json/`
+Reference: `artifacts/variants/backlog-json/`
 
-These are the canonical template files that get installed into target projects. They live in the ralph tool's repo under `artifacts/backlog-json/` and are embedded into the compiled binary.
+These are the canonical template files that get installed into target projects. They live in the ralph tool's repo under `artifacts/variants/backlog-json/` and are embedded into the compiled binary.
 
 ## File Inventory
 
 ```
-artifacts/backlog-json/
+artifacts/variants/backlog-json/
 ├── ralph.sh                     # Main loop runner
 ├── ralph-status.sh              # Quick status snapshot
 ├── ralph-add.sh                 # Add items to backlog

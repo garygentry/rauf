@@ -21,6 +21,6 @@
   "options": {
     "ignoreInTool": false,
     "gitignoreScripts": false,
-    "maxIterations": 20
+    "maxIterations": 100
   }
 }

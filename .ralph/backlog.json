@@ -783,7 +783,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Artifact: ralph.sh with state.json writes and targeted jq updates",
-      "description": "Create the canonical ralph.sh script in artifacts/backlog-json/. Must use targeted jq writes for backlog status updates and write state.json on every state change. This is the main loop runner.",
+      "description": "Create the canonical ralph.sh script in artifacts/variants/backlog-json/. Must use targeted jq writes for backlog status updates and write state.json on every state change. This is the main loop runner.",
       "acceptanceCriteria": [
         "Reads backlog.json, finds first pending item by priority",
         "Marks item in_progress via targeted jq write",
@@ -810,7 +810,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Artifact: ralph-status.sh and ralph-add.sh scripts",
-      "description": "Create the ralph-status.sh and ralph-add.sh canonical scripts in artifacts/backlog-json/.",
+      "description": "Create the ralph-status.sh and ralph-add.sh canonical scripts in artifacts/variants/backlog-json/.",
       "acceptanceCriteria": [
         "ralph-status.sh reads backlog.json and shows summary counts",
         "ralph-status.sh reads state.json for loop state if available",
