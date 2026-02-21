@@ -150,3 +150,15 @@
 - `rootDirectory` validation is a warning, not blocking — project is created but may not appear in discovery
 - No export collision issues — `CLAUDE_GREENFIELD_TEMPLATE` and other constants are unique names
 - 49 new tests, total 482 across core package
+
+### 035: Artifact: ralph.sh with state.json writes and targeted jq updates (completed)
+- Canonical ralph.sh lives at `artifacts/variants/backlog-json/ralph.sh` — root `ralph.sh` is a **symlink** to it (enforced by `repo-integrity.test.ts`)
+- maxIterations resolution chain: CLI arg → `.ralph.json` options.maxIterations → default 20 (spec default)
+- `jq -r '.options.maxIterations // 20' ".ralph.json"` reads marker file with fallback — `2>/dev/null || echo 20` handles missing jq gracefully
+- Script was already feature-complete from project bootstrapping — main change was aligning default with spec (100 → 20) and making `.ralph.json` options functional
+- `write_state()` produces valid JSON matching all 10 LoopState schema fields via cat heredoc + mv atomic write
+- Targeted jq writes (`mark_in_progress`, `mark_done`, `mark_blocked`, `reset_to_pending`) each operate on a single item by ID — safe for concurrent manager tool access
+- `select_next_item()` includes dependency checking: only picks pending items whose `dependsOn` IDs are all in `done` status
+- Retry logic (beyond spec minimum): `declare -A RETRY_COUNTS` tracks per-item failures in memory, auto-blocks after MAX_RETRIES
+- `cleanup` EXIT trap resets stranded in_progress items on unexpected termination — CURRENT_ITEM_ID cleared after each iteration to prevent false resets
+- Self-hosting pattern: this project's `.ralph.json` has `maxIterations: 100`, so the symlinked script reads that value rather than defaulting to 20
