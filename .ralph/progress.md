@@ -162,3 +162,23 @@
 - Retry logic (beyond spec minimum): `declare -A RETRY_COUNTS` tracks per-item failures in memory, auto-blocks after MAX_RETRIES
 - `cleanup` EXIT trap resets stranded in_progress items on unexpected termination — CURRENT_ITEM_ID cleared after each iteration to prevent false resets
 - Self-hosting pattern: this project's `.ralph.json` has `maxIterations: 100`, so the symlinked script reads that value rather than defaulting to 20
+
+### 013: CLI: Command framework, arg parsing, help, output formatting (completed)
+- Custom lightweight arg parser in `parser.ts` — no external deps (commander/yargs)
+- Parser separates global flags (`--json`, `--no-color`, `--quiet`/`-q`, `--root`) from per-command args
+- `parseArgs(argv, subcommandNames?)` takes optional subcommand set for two-level routing (e.g. `backlog list`)
+- Flag helpers: `extractBoolFlag`, `extractStringFlag`, `extractNumberFlag`, `extractRepeatableFlag` — consume from Map and remove
+- `extractRepeatableFlag` works on raw argv (not Map) since Map can't store duplicates
+- Output formatter in `formatter.ts` wraps picocolors with runtime `--no-color` gating
+- picocolors checks NO_COLOR/TTY at import time; our wrapper adds runtime `colorEnabled` toggle for CLI flags
+- In non-TTY (vitest), picocolors returns plain text regardless — tests can't assert ANSI presence without FORCE_COLOR
+- `configureOutput()` sets global state: `colorEnabled`, `quietMode`, `jsonMode` — affects `info()`, `warn()`, `success()` output
+- `renderTable(columns, rows)` computes column widths from headers and data, supports right-align and max-width truncation
+- `stripAnsi()` regex for width calculation of colored strings in table alignment
+- Command registry in `commands.ts` — all 14 SPEC-CLI.md commands registered with descriptions and subcommands
+- Only `version` and `help` have handlers; unimplemented commands return exit 1 with "not yet implemented" message
+- Unknown commands (not in registry) return exit 2 with Levenshtein-based "did you mean?" suggestion
+- Entry point `index.ts` does two-pass parsing: first pass identifies command, second re-parses with subcommand awareness
+- `detectColorSupport()` checks `NO_COLOR` env and `process.stdout.isTTY` before CLI flags override
+- Exit codes match SPEC-CLI.md: 0=success, 1=error, 2=invalid args, 3=not found, 4=validation, 5=conflict
+- 91 new tests (45 parser + 21 formatter + 25 commands), total 573 across monorepo
