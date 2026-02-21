@@ -183,6 +183,21 @@
 - Exit codes match SPEC-CLI.md: 0=success, 1=error, 2=invalid args, 3=not found, 4=validation, 5=conflict
 - 91 new tests (45 parser + 21 formatter + 25 commands), total 573 across monorepo
 
+### 020: Web: Hono server setup — middleware, CSRF, health endpoint (completed)
+- `createApp(startedAt?)` factory function in `app.ts` — no Bun-specific imports, fully testable in Vitest/Node
+- `index.ts` (entry point) calls `Bun.serve({ hostname: "127.0.0.1", ... })` — never 0.0.0.0
+- CSRF middleware: POST/PUT/DELETE require `X-Ralph-Request: true` exactly — `"false"`, `"1"`, missing all return 403
+- GET/HEAD/OPTIONS pass through without CSRF check — read-only methods are safe
+- No CORS headers added — browser blocks cross-origin reads automatically; custom header adds defense-in-depth
+- `GET /api/health` returns `{ data: { version, uptime, rootDirectory, projectCount } }` — uptime in seconds
+- `projectCount: 0` is hardcoded until `/api/projects` route (021) is implemented
+- `app.onError()` + `app.notFound()` both return standard `{ error: { code, message } }` format
+- `errorResponse()` helper omits `details` key entirely when not provided (not set to `undefined`)
+- Static serving via `hono/bun`'s `serveStatic` — only in entry point, not in `app.ts` (avoids Bun coupling in tests)
+- Test strategy: `app.request(path, init)` — Hono's built-in test helper, no real HTTP server needed
+- `startedAt` injected into factory so tests can control uptime (e.g., pass `Date.now() - 2000` to test uptime >= 1)
+- 20 new tests in web package, total ~723 across monorepo
+
 ### 015: CLI: Install and init commands (completed)
 - Four new command handlers in `install-commands.ts`: handleInstall, handleInit, handleUpdate, handleUninstall
 - Each handler is a thin adapter: parse flags → resolve paths → call core → format output (no business logic in CLI)
