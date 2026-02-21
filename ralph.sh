@@ -125,8 +125,14 @@ reset_to_pending() {
 # Item selection — first pending item sorted by priority (1=highest)
 # ---------------------------------------------------------------------------
 select_next_item() {
-  # Returns the ID of the highest-priority pending item, or empty string
-  jq -r '[.items[] | select(.status == "pending")] | sort_by(.priority) | .[0].id // empty' "$BACKLOG"
+  # Returns the ID of the highest-priority pending item whose dependencies are all done
+  jq -r '
+    [.items[] | select(.status == "done") | .id] as $done_ids |
+    [.items[] | select(.status == "pending") | select(
+      (.dependsOn == null) or (.dependsOn | length == 0) or
+      (.dependsOn | all(IN($done_ids[])))
+    )] | sort_by(.priority) | .[0].id // empty
+  ' "$BACKLOG"
 }
 
 get_item_json() {
