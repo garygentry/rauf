@@ -21,3 +21,13 @@
 - Prettier formats docs/ and CLAUDE.md — `.prettierignore` excludes .ralph, .claude, artifacts, plans
 - `@eslint/js` v9 matches eslint v9; v10 requires eslint v10 (peer dep mismatch)
 - *.tsbuildinfo added to .gitignore (build artifact from composite projects)
+
+### 002: Core Zod Schemas (completed)
+- All schemas in `packages/core/src/schemas.ts`, types inferred via `z.infer<>`
+- BacklogItemPrioritySchema uses `.min(1).max(4)` with cast to `z.ZodType<1|2|3|4>` for literal union type
+- MarkerFile uses `z.literal(true)` for ralph sentinel — rejects `false` and `"true"`
+- BacklogItemIdSchema regex `^\d{3,}$` — requires minimum 3 digits, zero-padded
+- `VALID_STATUS_TRANSITIONS` map and `LOG_PATTERNS` regexes also live in schemas.ts
+- `apiSuccessSchema()` is a factory function (generic over data schema) since Zod can't infer generics statically
+- Result<T,E> is a structural type alias, not a Zod schema — it's used at compile time only
+- 60 unit tests covering valid/invalid for every schema

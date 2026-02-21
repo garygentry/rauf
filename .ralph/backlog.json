@@ -34,8 +34,8 @@
         "Unit tests verify valid data accepted, invalid rejected",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T20:00:34+00:00",
       "dependsOn": [
         "001"
       ],
