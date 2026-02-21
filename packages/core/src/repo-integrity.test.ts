@@ -76,6 +76,27 @@ describe("repo integrity", () => {
     const target = readlinkSync(rootScript);
     expect(target).toBe("artifacts/variants/backlog-json/ralph-status.sh");
   });
+
+  it("ralph-stop.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-stop.sh", () => {
+    const rootScript = resolve(REPO_ROOT, "ralph-stop.sh");
+    const canonicalScript = resolve(
+      REPO_ROOT,
+      "artifacts/variants/backlog-json/ralph-stop.sh",
+    );
+
+    expect(existsSync(canonicalScript), "canonical ralph-stop.sh must exist").toBe(true);
+    const canonicalStat = lstatSync(canonicalScript);
+    expect(
+      canonicalStat.isFile(),
+      "canonical ralph-stop.sh must be a regular file",
+    ).toBe(true);
+
+    const rootStat = lstatSync(rootScript);
+    expect(rootStat.isSymbolicLink(), "root ralph-stop.sh must be a symlink").toBe(true);
+
+    const target = readlinkSync(rootScript);
+    expect(target).toBe("artifacts/variants/backlog-json/ralph-stop.sh");
+  });
 });
 
 // ─── Artifact template rendering tests ───────────────────────────

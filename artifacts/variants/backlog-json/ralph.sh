@@ -234,6 +234,19 @@ while [ $ITER -lt $MAX_ITERATIONS ]; do
   git pull --rebase --quiet 2>/dev/null || true
 
   # -----------------------------------------------------------------------
+  # CANCEL signal check — fires before item selection (iteration boundary)
+  # -----------------------------------------------------------------------
+  if [[ -f "$RALPH_DIR/CANCEL" ]]; then
+    log "CANCEL signal detected — stopping loop gracefully"
+    rm -f "$RALPH_DIR/CANCEL"
+    write_state "paused" "null" "clean"
+    echo "cancel" > "$RALPH_DIR/DONE"
+    log "Loop cancelled. State: paused. Run ./ralph.sh to resume."
+    trap - EXIT
+    exit 0
+  fi
+
+  # -----------------------------------------------------------------------
   # Select next item
   # -----------------------------------------------------------------------
   # First check for any in_progress items (resume from interrupted loop)
