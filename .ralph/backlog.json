@@ -421,8 +421,8 @@
         "projects list shows discovered projects",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T21:59:22+00:00",
       "dependsOn": [
         "013",
         "005",
