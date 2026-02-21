@@ -249,3 +249,12 @@
 - Vite dev server proxies `/api` → `127.0.0.1:5173` — allows frontend dev on 5174 to hit the Hono server on 5173
 - Build outputs: `build/index.html` + `build/assets/*.{css,js}` — these are the static assets served by Hono's `serveStatic`
 - Provider stack in main.tsx: ThemeProvider → QueryClientProvider → RouterProvider (order: theme outermost)
+
+### 039: Self-hosting validation: ralph install . --yes (completed)
+- `ralph install . --yes` works on the ralph repo itself — idempotent re-install
+- Installer bug fixed: `markerOptions` was always initialized with defaults (maxIterations=20), discarding existing values. Fix: read existing marker on re-install, use existing values as fallback
+- Profile detection for pnpm monorepo reads root package.json scripts; `pnpm typecheck` in root = `pnpm -r typecheck` (script wraps the recursive flag) — both are equivalent
+- CLAUDE.md smart merge replaced old hand-crafted ralph section with canonical CLAUDE_ADDON.md content
+- Discovery correctly filters `artifacts/` paths via `candidatePath.endsWith(sep + "artifacts")` check
+- `.ralph.json` artifactHashes were empty on bootstrap; running `install` populates them from deployed files
+- Pre-existing test failure: `handleServerStatus` expected `uptime: null` but gets real uptime when ralph server happens to be running — fixed by accepting `null | number`
