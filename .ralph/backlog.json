@@ -974,8 +974,8 @@
         "Unit tests: schemas accept/reject model field correctly",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T23:26:25+00:00",
       "dependsOn": [
         "002",
         "035"
