@@ -32,6 +32,13 @@ import {
   handleProjectsList,
   handleProjectsStatus,
 } from "./profile-config-commands.js";
+import {
+  handleServerStart,
+  handleServerStop,
+  handleServerRestart,
+  handleServerStatus,
+  handleServerLogs,
+} from "./server-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -91,11 +98,11 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage the ralph web server",
     usage: "ralph server <subcommand>",
     subcommands: [
-      { name: "start", description: "Start the web server" },
-      { name: "stop", description: "Stop the web server" },
-      { name: "restart", description: "Restart the web server" },
-      { name: "status", description: "Show server status" },
-      { name: "logs", description: "View server logs" },
+      { name: "start", description: "Start the web server", handler: handleServerStart },
+      { name: "stop", description: "Stop the web server", handler: handleServerStop },
+      { name: "restart", description: "Restart the web server", handler: handleServerRestart },
+      { name: "status", description: "Show server status", handler: handleServerStatus },
+      { name: "logs", description: "View server logs", handler: handleServerLogs },
     ],
   },
   {
