@@ -8,3 +8,4 @@ export * from "./errors.js";
 export * from "./fs-utils.js";
 export * from "./discovery.js";
 export * from "./config.js";
+export * from "./profile.js";
