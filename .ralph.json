@@ -2,22 +2,27 @@
   "ralph": true,
   "version": "1",
   "variant": "backlog-json",
-  "installedAt": "2026-02-21T00:00:00Z",
-  "installedBy": "manual/bootstrap",
+  "installedAt": "2026-02-21T23:20:19.145Z",
+  "installedBy": "ralph-manager@0.1.0",
   "profile": {
     "stack": "node-typescript",
     "packageManager": "pnpm",
     "monorepo": true,
     "commands": {
       "test": "pnpm test",
-      "typecheck": "pnpm -r typecheck",
-      "lint": "pnpm -r lint",
+      "typecheck": "pnpm typecheck",
+      "lint": "pnpm lint",
       "build": "pnpm build",
-      "format": "pnpm run format:check"
+      "format": "pnpm format:check"
     },
-    "verify": "pnpm test && pnpm -r typecheck"
+    "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
   },
-  "artifactHashes": {},
+  "artifactHashes": {
+    "ralph.sh": "62c5064bf8cb3d1ef7a6837d28afdc9f439a8a3112b841b2999ef55aeb1facdb",
+    "ralph-status.sh": "e39a3f2a69e655a9a919fd5bef14fa7ab518fac642949cfd5ede692c33e88483",
+    "ralph-add.sh": "ad5b4e7bb5388993c291344eced743c99ad4d4f5ca161b4fe5bed598d9bf259f",
+    "RALPH.md": "555b435833e7d49831a20fb4bc7d6c44174a88cb2c8308742d51f94b4b620a8d"
+  },
   "options": {
     "ignoreInTool": false,
     "gitignoreScripts": false,

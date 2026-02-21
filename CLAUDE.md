@@ -87,16 +87,30 @@ This repository IS a ralph-managed project. The `.ralph/` directory at the repo 
 ---
 
 <!-- ralph:start -->
-
 ## Autonomous Loop (Ralph)
 
-When running as a ralph loop iteration (`claude -p`), follow these rules:
+When running as a ralph loop iteration, follow these operational rules:
 
-1. Read `.ralph/RALPH.md` for per-iteration instructions
-2. Read `.ralph/backlog.json` to find the current task (first `pending` item by priority)
-3. Mark the item `in_progress` using targeted jq write
-4. Implement the task, following acceptance criteria
-5. Run verification: `pnpm test && pnpm typecheck`
-6. Commit changes with a descriptive message referencing the item ID
-7. Emit the appropriate exit signal (RALPH_DONE, RALPH_BLOCKED, RALPH_NEEDS_HUMAN)
+### Reading Your Task
+1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
+2. Read `.ralph/backlog.json` — find the current `in_progress` item
+3. The item's `acceptanceCriteria` define "done" for this iteration
+
+### Working
+4. Implement the changes described in the item's description
+5. Follow acceptance criteria precisely — each one must pass
+6. Run the verification command before considering work complete
+
+### Completing
+7. If all acceptance criteria pass: output `RALPH_DONE` as your final line
+8. If blocked (missing dependency, unclear requirement): output `RALPH_BLOCKED:<reason>`
+9. If human input needed (API key, design decision): output `RALPH_NEEDS_HUMAN:<reason>`
+10. Commit your changes with message: `[ralph] <item-id>: <title>`
+
+### Rules
+- ONE item per iteration — do not work on multiple items
+- Do not modify `.ralph/backlog.json` — the loop runner manages status
+- Do not modify `.ralph/state.json` — the loop runner manages state
+- Read `.ralph/progress.md` for accumulated project learnings
+- Append new learnings to `.ralph/progress.md` if you discover important patterns
 <!-- ralph:end -->

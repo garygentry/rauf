@@ -191,6 +191,15 @@ export function install(
   );
   const isReinstall = alreadyInstalledCheck && !alreadyInstalledCheck.passed;
 
+  // Read existing marker options to preserve them during re-install
+  let existingOptions: MarkerOptions | undefined;
+  if (isReinstall) {
+    const existingMarker = readMarkerFile(resolved);
+    if (existingMarker.ok) {
+      existingOptions = existingMarker.value.options;
+    }
+  }
+
   // 2. Profile detection + overrides
   const profile = options.profileOverrides
     ? mergeProfileOverrides(detectProfile(resolved), options.profileOverrides)
@@ -254,10 +263,11 @@ export function install(
   actions.push(claudeMdResult.value);
 
   // 9. Write .ralph.json marker file
+  // On re-install, preserve existing options unless explicitly overridden
   const markerOptions: MarkerOptions = {
-    ignoreInTool: options.options?.ignoreInTool ?? false,
-    gitignoreScripts: options.options?.gitignoreScripts ?? false,
-    maxIterations: options.options?.maxIterations ?? 20,
+    ignoreInTool: options.options?.ignoreInTool ?? existingOptions?.ignoreInTool ?? false,
+    gitignoreScripts: options.options?.gitignoreScripts ?? existingOptions?.gitignoreScripts ?? false,
+    maxIterations: options.options?.maxIterations ?? existingOptions?.maxIterations ?? 20,
   };
 
   const marker: MarkerFile = {
