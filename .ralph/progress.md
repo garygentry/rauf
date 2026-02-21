@@ -135,3 +135,18 @@
 - Idempotency: install() handles already-installed case gracefully (re-deploys artifacts, skips identical files)
 - backlog.json never overwritten if it exists — validated and skipped
 - 57 new tests, total 433 across core package
+
+### 012: Core: Greenfield project initialization (completed)
+- `initProject(targetPath, options)` implements 8-step greenfield flow: mkdir → validate path → git init → profile from preset → scaffold CLAUDE.md → install artifacts → seed backlog → return report
+- Uses `spawnSync("git", [...])` with array args for git init/add/commit — safe against injection, explicit env vars for CI headless environments
+- Profile fixup pattern: installer's `detectProfile()` returns `stack: "unknown"` on empty dir — greenfield calls `getPreset()`, passes commands as `profileOverrides`, then patches marker file with correct profile after install completes
+- CLAUDE.md two-pass: greenfield renders `CLAUDE_GREENFIELD.md.tmpl` (includes ralph sentinels) → when installer's `deployClaudeMd` runs, `mergeClaudeMd` finds existing sentinels and skips
+- `profileToOverrides()` converts profile commands to `ProfileOverrides` — empty string means "explicitly disabled" (null in profile → "" in overrides → null after merge)
+- Stack-appropriate `.gitignore` templates for node-typescript, node-javascript, python, go, rust, custom — plus ralph-specific entries (state.json, DONE, ralph.log) appended to all
+- `parseBacklogSeed()` supports two formats: JSON (full Backlog schema or partial item array) and Markdown (`- [ ] [type] title`)
+- Markdown parsing: regex `/^-\s+\[[ x]\]\s+(?:\[(\w+)\]\s+)?(.+)$/` — type is optional, defaults to "feature", case-insensitive
+- Priority auto-assignment: position-based (1, 2, 3, 4, 4, 4, ...) — capped at 4
+- Backlog seeding calls `addItem()` per item — preserves proper ID assignment and smart default criteria
+- `rootDirectory` validation is a warning, not blocking — project is created but may not appear in discovery
+- No export collision issues — `CLAUDE_GREENFIELD_TEMPLATE` and other constants are unique names
+- 49 new tests, total 482 across core package
