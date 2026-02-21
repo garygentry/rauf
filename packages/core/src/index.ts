@@ -12,3 +12,4 @@ export * from "./profile.js";
 export * from "./template.js";
 export * from "./claude-md.js";
 export * from "./backlog.js";
+export * from "./status.js";
