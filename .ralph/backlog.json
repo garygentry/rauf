@@ -101,8 +101,8 @@
         "Unit tests for round-trips and fallbacks",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T20:11:05+00:00",
       "dependsOn": [
         "003"
       ],

@@ -51,3 +51,13 @@
 - `ignoreInTool: true` projects separated into `ignored` array (not filtered out silently)
 - Projects sorted case-insensitively by name via `localeCompare`
 - 14 new tests with temp directory fixtures, total 124 across core package
+
+### 005: Config module — marker file and tool config (completed)
+- `readMarkerFile` and `writeMarkerFile` are thin wrappers around `readJsonFile`/`atomicWrite` + path join
+- `readToolConfig` returns `DEFAULT_TOOL_CONFIG` when `~/.ralph/config.json` is missing (FILE_NOT_FOUND → defaults)
+- `writeToolConfig` calls `ensureDir(~/.ralph/)` before writing — safe for first-run
+- `resolveRootDirectory` implements priority chain: cliRoot → envRoot param → RALPH_ROOT env var → config file → cwd
+- Empty string args treated as falsy (fall through to next source) — intentional for CLI flag parsing
+- Tests for writeToolConfig/readToolConfig round-trip save/restore the real `~/.ralph/config.json` to avoid side effects
+- Constants exported for testability: MARKER_FILENAME, TOOL_CONFIG_DIR, TOOL_CONFIG_PATH, DEFAULT_TOOL_CONFIG, RALPH_ROOT_ENV
+- 29 new tests, total 153 across core package
