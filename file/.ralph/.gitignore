@@ -1,0 +1,9 @@
+# Ralph loop — add these lines to your project's .gitignore
+# (or create .ralph/.gitignore with just the DONE line)
+
+# Completion marker (regenerated each run)
+.ralph/DONE
+
+# Log file — you may want to commit this for audit trail,
+# but it can grow large. Uncomment to ignore it:
+# .ralph/ralph.log

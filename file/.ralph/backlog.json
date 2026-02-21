@@ -1,0 +1,138 @@
+{
+  "project": "your-project-name",
+  "description": "Open backlog for autonomous Ralph loop execution. Edit this file to add/update items. Do not change status fields manually while a loop is running.",
+  "items": [
+    {
+      "id": "001",
+      "type": "bug",
+      "priority": 1,
+      "title": "API returns 500 on missing optional query parameter",
+      "description": "When the /api/search endpoint is called without the optional 'filter' query parameter, it throws an unhandled TypeError instead of returning results with no filter applied. Reproducible with: GET /api/search?q=test (omitting &filter=). Expected: returns results. Actual: 500 Internal Server Error.",
+      "acceptanceCriteria": [
+        "GET /api/search?q=test returns 200 with unfiltered results when 'filter' param is absent",
+        "No unhandled TypeError in server logs on this request",
+        "Regression test added covering the missing-parameter case",
+        "npm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "002",
+      "type": "bug",
+      "priority": 1,
+      "title": "Python data processor crashes on empty input file",
+      "description": "data_processor.py raises IndexError when given an input CSV with no data rows (header only). The error occurs at line ~47 in the row iteration. Empty files are a valid input — they should produce empty output, not a crash.",
+      "acceptanceCriteria": [
+        "data_processor.py handles empty CSV (header-only) without raising an exception",
+        "Output for empty input is an empty result set (not an error)",
+        "pytest test added: test_empty_input_returns_empty_result",
+        "pytest passes"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "003",
+      "type": "refactor",
+      "priority": 2,
+      "title": "Extract inline validation logic into dedicated validator module",
+      "description": "Input validation is currently duplicated across 4–5 route handlers (email format check, required field checks, length limits). Extract into a shared validators.ts (or validators.py) module with reusable, tested functions. Do not change validation behavior — purely structural.",
+      "acceptanceCriteria": [
+        "Shared validator module created with all extracted validation functions",
+        "All route handlers import from the new module — no inline duplicates remain",
+        "Existing behavior unchanged (no validation rules loosened or tightened)",
+        "Unit tests added for each validator function",
+        "All existing tests still pass after refactor",
+        "TypeScript: npm run typecheck passes with no new errors"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "004",
+      "type": "refactor",
+      "priority": 3,
+      "title": "Replace console.log debug statements with structured logger",
+      "description": "The codebase has ~20 ad-hoc console.log() calls used for debugging. Replace with the existing logger utility (src/lib/logger.ts) using appropriate log levels (debug, info, warn, error). Remove any logs that were clearly temporary debug prints. Keep any that represent meaningful application events.",
+      "acceptanceCriteria": [
+        "No bare console.log() calls remain in src/ (console.error in catch blocks is acceptable)",
+        "Replaced logs use logger.debug() or logger.info() with meaningful messages",
+        "Obvious temporary debug logs removed entirely",
+        "Application behavior unchanged",
+        "npm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add pagination to the /api/items list endpoint",
+      "description": "The /api/items endpoint currently returns all records with no limit, which will become a performance problem as data grows. Add cursor-based pagination using 'limit' and 'cursor' query params. Default limit: 50. Max limit: 200. Response should include a 'nextCursor' field (null if no more pages).",
+      "acceptanceCriteria": [
+        "GET /api/items?limit=10 returns exactly 10 items and a nextCursor value",
+        "GET /api/items?limit=10&cursor=<nextCursor> returns the next page",
+        "GET /api/items returns default 50 items when no limit specified",
+        "limit > 200 is rejected with 400 Bad Request",
+        "nextCursor is null when on the last page",
+        "Response schema: { items: [...], nextCursor: string | null, total: number }",
+        "Tests cover: default page, explicit limit, cursor navigation, limit exceeded, last page",
+        "TypeScript types updated for new response shape",
+        "npm test and npm run typecheck pass"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 3,
+      "title": "Add Python CLI flag for dry-run mode",
+      "description": "The main.py script currently writes output files on every run. Add a --dry-run flag that runs all processing but writes nothing to disk, printing a summary of what would have been written instead. Useful for validation without side effects.",
+      "acceptanceCriteria": [
+        "python main.py --dry-run processes input without writing any output files",
+        "Dry-run mode prints a summary: 'Would write: <filename> (<N> records)'  for each file that would have been created",
+        "Normal mode (no flag) behavior unchanged",
+        "--help output documents the --dry-run flag",
+        "pytest tests cover dry-run produces no files and prints expected summary",
+        "pytest passes"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "007",
+      "type": "chore",
+      "priority": 3,
+      "title": "Update npm dependencies to latest minor/patch versions",
+      "description": "Several npm packages are behind on minor and patch versions. Run npm outdated, update packages that have non-breaking minor/patch updates (skip major version bumps — those need separate review). Verify nothing breaks.",
+      "acceptanceCriteria": [
+        "npm outdated shows no available minor/patch updates after update",
+        "No major version bumps applied (those stay for manual review)",
+        "npm test passes after updates",
+        "npm run typecheck passes after updates",
+        "package-lock.json committed alongside package.json changes",
+        "Any deprecation warnings noted in progress.txt Codebase Patterns"
+      ],
+      "status": "pending",
+      "completedAt": null
+    },
+    {
+      "id": "008",
+      "type": "chore",
+      "priority": 4,
+      "title": "Add missing docstrings to public Python functions",
+      "description": "The Python modules are missing docstrings on most public functions, making the codebase harder to navigate. Add Google-style docstrings to all public functions (not private/underscore-prefixed) in the src/ directory. Do not change function signatures or behavior.",
+      "acceptanceCriteria": [
+        "All public functions in src/ have a Google-style docstring with Args and Returns sections",
+        "No function signatures changed",
+        "pytest passes (behavior unchanged)",
+        "If a function's purpose is unclear, add a TODO comment and move on — do not guess"
+      ],
+      "status": "pending",
+      "completedAt": null
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+# Codebase Patterns
+# ============================================================
+# This section is the most important part of this file.
+# Update it when you discover project-wide conventions, gotchas,
+# or patterns that future iterations must know immediately.
+# Keep entries concise — one line per pattern when possible.
+# ============================================================
+
+(No patterns recorded yet — first engineer should populate this
+section after orienting to the codebase.)
+
+Examples of what belongs here:
+- Auth: JWT tokens stored in Authorization header, 24h expiry
+- Errors: All API errors return { error: string, code: string, statusCode: number }
+- Tests: Use vitest not jest; test files in __tests__/ sibling to source
+- Python: Virtual env at .venv/, activate before running pytest
+- Imports: Use path aliases (@/lib/...) not relative ../../ imports
+- DB: Never call db.query() directly — use the repository layer in src/db/
+- Beads IDs: Look like bd-a1b2 (hash-based, not sequential)
+
+
+# Session Log
+# ============================================================
+# Newest entries at TOP. One entry per completed task.
+# Format:
+# [YYYY-MM-DD] <beads-id>: <title>
+# Type: <bug|refactor|feature|chore>
+# Beads ID: <bd-xxxx>
+# Result: done | blocked | decomposed
+# Verification: <what ran and passed>
+# Learnings: <what the next engineer should know>
+# ============================================================

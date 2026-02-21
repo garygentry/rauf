@@ -1,0 +1,4 @@
+# Ralph loop runtime files — do not commit these
+DONE
+# ralph.log — uncomment if you don't want to commit the log:
+# ralph.log
