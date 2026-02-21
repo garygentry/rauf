@@ -9,3 +9,4 @@ export * from "./fs-utils.js";
 export * from "./discovery.js";
 export * from "./config.js";
 export * from "./profile.js";
+export * from "./template.js";
