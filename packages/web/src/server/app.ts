@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { VERSION, readToolConfig, resolveRootDirectory } from "@ralph/core";
+import { VERSION, readToolConfig, resolveRootDirectory, discoverProjects } from "@ralph/core";
+import { createProjectsRouter } from "./routes/projects.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -32,7 +33,12 @@ export function errorResponse(
 // createApp() is exported for testing. The default export `app` is
 // the instance used by the server entry point.
 
-export function createApp(startedAt: number = Date.now()) {
+export interface AppOptions {
+  /** Override ROOT_DIRECTORY (useful for tests) */
+  rootDirectory?: string;
+}
+
+export function createApp(startedAt: number = Date.now(), appOptions: AppOptions = {}) {
   const app = new Hono();
 
   // ── CSRF middleware ───────────────────────────────────────────
@@ -65,19 +71,26 @@ export function createApp(startedAt: number = Date.now()) {
     const uptime = Math.floor((Date.now() - startedAt) / 1000);
 
     const configResult = readToolConfig();
-    const rootDirectory = configResult.ok
-      ? configResult.value.rootDirectory
-      : resolveRootDirectory();
+    const rootDirectory =
+      appOptions.rootDirectory ??
+      (configResult.ok ? configResult.value.rootDirectory : resolveRootDirectory());
+
+    const discoveryResult = discoverProjects(rootDirectory);
+    const projectCount = discoveryResult.ok ? discoveryResult.value.projects.length : 0;
 
     return c.json({
       data: {
         version: VERSION,
         uptime,
         rootDirectory,
-        projectCount: 0, // populated once /api/projects route (021) is added
+        projectCount,
       },
     });
   });
+
+  // ── Projects routes ───────────────────────────────────────────
+
+  app.route("/api/projects", createProjectsRouter(appOptions.rootDirectory));
 
   // ── Global error handler ──────────────────────────────────────
 
