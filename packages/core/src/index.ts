@@ -7,3 +7,4 @@ export * from "./schemas.js";
 export * from "./errors.js";
 export * from "./fs-utils.js";
 export * from "./discovery.js";
+export * from "./config.js";
