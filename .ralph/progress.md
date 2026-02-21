@@ -198,6 +198,18 @@
 - `startedAt` injected into factory so tests can control uptime (e.g., pass `Date.now() - 2000` to test uptime >= 1)
 - 20 new tests in web package, total ~723 across monorepo
 
+### 014: CLI: Server management commands (completed)
+- Server handlers in `server-commands.ts`: handleServerStart, handleServerStop, handleServerRestart, handleServerStatus, handleServerLogs
+- PID file at `~/.ralph/server.pid`, log file at `~/.ralph/server.log` — both in RALPH_CONFIG_DIR
+- `resolveServerEntry()` walks from `packages/cli/src/` up to repo root, returns path to `packages/web/src/server/index.ts`
+- Daemon mode: `child_process.spawn` with `{ detached: true, stdio: ['ignore', logFd, logFd] }` — open log file with `fs.openSync` for fd-based redirection, then `child.unref()` + `fs.closeSync(logFd)` in parent
+- Foreground mode: `child_process.spawnSync("bun", ["run", serverEntry], { stdio: "inherit" })` — blocks until exit
+- Process liveness: `process.kill(pid, 0)` — signal 0 validates existence without killing; throws ESRCH if dead
+- Health endpoint: `fetch(http://127.0.0.1:{port}/api/health)` with AbortController timeout (2s) — returns null on any failure
+- Non-TTY auto-selects daemon mode when neither --foreground nor --daemon is specified
+- Test pattern: backup and restore real `~/.ralph/server.pid` and `~/.ralph/server.log` in beforeEach/afterEach to avoid test pollution
+- 29 new tests, total 252 in CLI package (adding to overall monorepo count)
+
 ### 015: CLI: Install and init commands (completed)
 - Four new command handlers in `install-commands.ts`: handleInstall, handleInit, handleUpdate, handleUninstall
 - Each handler is a thin adapter: parse flags → resolve paths → call core → format output (no business logic in CLI)

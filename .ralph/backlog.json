@@ -325,8 +325,8 @@
         "logs --tail N shows last N lines",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T22:08:44+00:00",
       "dependsOn": [
         "013",
         "020"
