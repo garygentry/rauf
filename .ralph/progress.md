@@ -61,3 +61,19 @@
 - Tests for writeToolConfig/readToolConfig round-trip save/restore the real `~/.ralph/config.json` to avoid side effects
 - Constants exported for testability: MARKER_FILENAME, TOOL_CONFIG_DIR, TOOL_CONFIG_PATH, DEFAULT_TOOL_CONFIG, RALPH_ROOT_ENV
 - 29 new tests, total 153 across core package
+
+### 006: Tech-stack detection and profile management (completed)
+- `detectProfile()` is read-only — scans filesystem for indicator files, returns `ProjectProfile`
+- Language detection uses first-match-wins over ordered indicator file list (package.json → pyproject.toml → go.mod → Cargo.toml)
+- Node.js projects refined to `node-typescript` vs `node-javascript` based on `tsconfig.json` presence
+- Package manager detection checks lock files in priority: pnpm-lock.yaml → bun.lockb → bun.lock → yarn.lock → package-lock.json → npm default
+- Monorepo detected from pnpm-workspace.yaml, lerna.json, or package.json `workspaces` field
+- Command derivation for Node.js reads `package.json` scripts — only suggests commands that actually exist (e.g. won't suggest `pnpm test` if no `test` script)
+- npm uses `npm run <script>` prefix; pnpm/yarn/bun use `<manager> <script>` directly
+- `format:check` script preferred over `format` script for format command
+- `readPackageJsonSafe()` is a best-effort JSON read (no Zod validation) — package.json has a much broader shape than we need
+- `getPreset()` returns deep copies to prevent mutation of the preset registry
+- `mergeProfileOverrides()` treats empty string as "explicitly disabled" → sets command to null
+- Composite `verify` string rebuilt after any override to stay consistent
+- Non-Node.js projects (Python, Go, Rust) have hardcoded sensible default commands
+- 57 new tests, total 210 across core package
