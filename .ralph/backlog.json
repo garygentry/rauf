@@ -250,8 +250,8 @@
         "Unit tests for install/update/uninstall",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T20:41:24+00:00",
       "dependsOn": [
         "006",
         "007",

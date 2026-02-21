@@ -115,3 +115,23 @@
 - Export collision fix: `STATE_FILENAME` was already exported from backlog.ts — removed duplicate export from status.ts to avoid TS2308
 - `RALPH_DIR` constant (".ralph") exported from status.ts alongside `BACKLOG_DIR` from backlog.ts — same value, different name
 - 48 new tests, total 376 across core package
+
+### 011: Core: Installer module for existing projects (completed)
+- `install()` orchestrates: preflight → profile detect → ensureDir → deploy scripts → render RALPH.md → create backlog → deploy progress → merge CLAUDE.md → write .ralph.json
+- Scripts (ralph.sh, ralph-status.sh, ralph-add.sh) deploy to **project root** (not .ralph/), with chmod +x
+- Data files (RALPH.md, backlog.json, progress.md) deploy to `.ralph/` directory
+- CLAUDE.md merge delegated to existing `mergeClaudeMd()` + `extractRalphBlock()` from claude-md.ts
+- `update()` implements three-way hash comparison: stored (from .ralph.json) vs current (disk) vs canonical (source artifact)
+  - `up_to_date`: current == canonical → skip
+  - `safe_update`: current == stored (no local mods) → auto-update
+  - `local_only`: stored == canonical (no new version) → preserve local changes
+  - `conflict`: all three differ → warn, skip
+- `uninstall()` defaults to preserving backlog.json, progress.md, ralph.log; removes scripts, RALPH.md, marker, CLAUDE.md section
+- `preflight()` checks: directory exists (error), git repo (warning), already installed (error), jq in PATH (warning), claude in PATH (warning)
+- `isCommandInPath()` scans PATH directories with `fs.accessSync(X_OK)` — no subprocess needed
+- Export collision trap: `RALPH_DIR` already exported from status.ts — installer uses local `DOT_RALPH` constant and avoids re-exporting
+- Same trap with `MARKER_FILENAME` from config.ts — installer imports from config.ts instead of defining its own
+- Circular import risk: installer.ts must NOT import from index.ts (since index.ts re-exports installer) — defines `TOOL_VERSION` locally
+- Idempotency: install() handles already-installed case gracefully (re-deploys artifacts, skips identical files)
+- backlog.json never overwritten if it exists — validated and skipped
+- 57 new tests, total 433 across core package
