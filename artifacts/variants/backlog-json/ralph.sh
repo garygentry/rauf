@@ -2,7 +2,10 @@
 # =============================================================================
 # ralph.sh — Autonomous Claude Code loop runner
 # Usage: ./ralph.sh [max_iterations] [max_retries]
-# Example: ./ralph.sh 100 3
+# Example: ./ralph.sh 50 3
+#
+# max_iterations: CLI arg > .ralph.json options.maxIterations > 20 (default)
+# max_retries: per-item retry limit before auto-blocking (default: 3)
 #
 # The loop runner manages all backlog status transitions. Claude does NOT
 # modify backlog.json — it focuses on implementation and emits exit signals.
@@ -18,7 +21,14 @@ PROGRESS="$RALPH_DIR/progress.md"
 RALPH_MD="$RALPH_DIR/RALPH.md"
 LOG="$RALPH_DIR/ralph.log"
 STATE="$RALPH_DIR/state.json"
-MAX_ITERATIONS=${1:-100}
+# Max iterations: CLI arg > .ralph.json options > default (20)
+if [[ -n "${1:-}" ]]; then
+  MAX_ITERATIONS="$1"
+elif [[ -f ".ralph.json" ]]; then
+  MAX_ITERATIONS=$(jq -r '.options.maxIterations // 20' ".ralph.json" 2>/dev/null || echo 20)
+else
+  MAX_ITERATIONS=20
+fi
 MAX_RETRIES=${2:-3}
 ITER=0
 START_TIME=$(date +%s)
