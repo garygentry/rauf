@@ -222,3 +222,16 @@
 - Uninstall preserves data files by default (`keepBacklog: true`, `keepProgress: true`, `keepLog: true`)
 - JSON output mode (`--json`): install/init/update output the full `InstallationReport`, uninstall outputs `{success, path, keepData}`
 - 27 new tests covering all commands, all flag combinations, error paths, JSON output, and registry integration; total 600 tests across monorepo
+
+### 023: Web API: Status routes + SSE log streaming (completed)
+- `createStatusRouter()` in `packages/web/src/server/routes/status.ts` — mounted at `/api/projects` alongside `createProjectsRouter()`
+- Route ordering: `/:id/log/stream` registered before `/:id/log` (though Hono handles different segment counts correctly, explicit order clarifies intent)
+- SSE via `streamSSE(c, cb)` from `hono/streaming` — Hono 4.12.1 wraps TransformStream, exposes `stream.onAbort()` for cleanup
+- **Key insight**: `stream.closed` is only `true` when `stream.close()` is explicitly called; `stream.aborted` is `true` when client disconnects (via `responseReadable.cancel` → `this.abort()`)
+- **OOM trap avoided**: Using `while (!stream.closed)` loop caused OOM in tests because `stream.closed` never became true from client cancellation. Fixed by using `await abortPromise` instead — resolves when `stream.onAbort()` fires
+- SSE pattern: send initial events, set up `setInterval` for heartbeat (30s) and status polling (5s), `await abortPromise` to block, cleanup in `forEach` after resolve
+- `watchLog` uses `fs.watch` — throws ENOENT if log file doesn't exist, must wrap in try/catch
+- `LoopStateSchema.lastSignal` is `z.enum(["clean","blocked","needs_human","error"])` — NOT nullable; test fixtures that use `lastSignal: null` fail schema validation silently (fall to Tier 2 log parsing)
+- Progress endpoint reads `.ralph/progress.md` directly (no core function exists), returns `{ data: "" }` on missing file
+- 23 new tests, total 105 in web package (now across backlog, projects, status, app test files)
+- Pre-existing CLI test failure (`handleServerStatus > reports running with JSON output when PID is alive`): expects `uptime: null` but gets real uptime when ralph server is running in test environment — NOT caused by 023
