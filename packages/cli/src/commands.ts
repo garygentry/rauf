@@ -22,6 +22,16 @@ import {
   handleLog,
   handleProgress,
 } from "./status-commands.js";
+import {
+  handleProfileShow,
+  handleProfileDetect,
+  handleProfileSet,
+  handleConfigList,
+  handleConfigGet,
+  handleConfigSet,
+  handleProjectsList,
+  handleProjectsStatus,
+} from "./profile-config-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -148,9 +158,9 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage project tech-stack profile",
     usage: "ralph profile <subcommand> <path>",
     subcommands: [
-      { name: "show", description: "Show current profile" },
-      { name: "detect", description: "Auto-detect tech stack" },
-      { name: "set", description: "Set a profile value" },
+      { name: "show", description: "Show current profile", handler: handleProfileShow },
+      { name: "detect", description: "Auto-detect tech stack", handler: handleProfileDetect },
+      { name: "set", description: "Set a profile value", handler: handleProfileSet },
     ],
   },
   {
@@ -158,9 +168,9 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage ralph tool configuration",
     usage: "ralph config <subcommand>",
     subcommands: [
-      { name: "get", description: "Get a config value" },
-      { name: "set", description: "Set a config value" },
-      { name: "list", description: "List all config values" },
+      { name: "get", description: "Get a config value", handler: handleConfigGet },
+      { name: "set", description: "Set a config value", handler: handleConfigSet },
+      { name: "list", description: "List all config values", handler: handleConfigList },
     ],
   },
   {
@@ -168,8 +178,8 @@ export const COMMANDS: CommandDef[] = [
     description: "List and manage discovered projects",
     usage: "ralph projects <subcommand>",
     subcommands: [
-      { name: "list", description: "List discovered projects" },
-      { name: "status", description: "Show status for all projects" },
+      { name: "list", description: "List discovered projects", handler: handleProjectsList },
+      { name: "status", description: "Show status for all projects", handler: handleProjectsStatus },
     ],
   },
 ];
