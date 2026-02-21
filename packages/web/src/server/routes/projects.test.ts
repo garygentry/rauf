@@ -59,12 +59,13 @@ afterEach(() => {
 // ─── GET /api/projects ────────────────────────────────────────────
 
 describe("GET /api/projects", () => {
-  it("returns empty array when no projects exist", async () => {
+  it("returns empty arrays when no projects exist", async () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects");
     expect(res.status).toBe(200);
-    const body = (await json(res)) as { data: unknown[] };
-    expect(body.data).toEqual([]);
+    const body = (await json(res)) as { data: { projects: unknown[]; ignored: unknown[] } };
+    expect(body.data.projects).toEqual([]);
+    expect(body.data.ignored).toEqual([]);
   });
 
   it("returns project list when ralph is installed", async () => {
@@ -72,12 +73,13 @@ describe("GET /api/projects", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects");
     expect(res.status).toBe(200);
-    const body = (await json(res)) as { data: { id: string }[] };
-    expect(body.data).toHaveLength(1);
-    expect(body.data[0]!.id).toBe("my-project");
+    const body = (await json(res)) as { data: { projects: { id: string }[]; ignored: unknown[] } };
+    expect(body.data.projects).toHaveLength(1);
+    expect(body.data.projects[0]!.id).toBe("my-project");
+    expect(body.data.ignored).toHaveLength(0);
   });
 
-  it("excludes ignored projects from the list", async () => {
+  it("separates ignored projects into the ignored array", async () => {
     // Create a project with ignoreInTool: true
     writeMarker(projectDir);
     const markerPath = path.join(projectDir, ".ralph.json");
@@ -88,8 +90,12 @@ describe("GET /api/projects", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects");
     expect(res.status).toBe(200);
-    const body = (await json(res)) as { data: unknown[] };
-    expect(body.data).toHaveLength(0);
+    const body = (await json(res)) as {
+      data: { projects: { id: string }[]; ignored: { id: string }[] };
+    };
+    expect(body.data.projects).toHaveLength(0);
+    expect(body.data.ignored).toHaveLength(1);
+    expect(body.data.ignored[0]!.id).toBe("my-project");
   });
 
   it("returns multiple projects sorted by name", async () => {
@@ -102,9 +108,9 @@ describe("GET /api/projects", () => {
 
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects");
-    const body = (await json(res)) as { data: { id: string }[] };
-    expect(body.data[0]!.id).toBe("alpha");
-    expect(body.data[1]!.id).toBe("beta");
+    const body = (await json(res)) as { data: { projects: { id: string }[] } };
+    expect(body.data.projects[0]!.id).toBe("alpha");
+    expect(body.data.projects[1]!.id).toBe("beta");
   });
 });
 

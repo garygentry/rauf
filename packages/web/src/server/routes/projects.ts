@@ -106,7 +106,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
         500,
       );
     }
-    return c.json({ data: result.value.projects });
+    return c.json({ data: { projects: result.value.projects, ignored: result.value.ignored } });
   });
 
   // ── GET /api/projects/:id ─────────────────────────────────────
