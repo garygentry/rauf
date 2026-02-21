@@ -1,8 +1,17 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { BacklogItem, DerivedStatus } from "@ralph/core";
-import { ralphFetchJson } from "../../lib/fetch";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { BacklogItem, BacklogItemStatus, BacklogItemType, DerivedStatus } from "@ralph/core";
+import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
+
+// Mirrors VALID_STATUS_TRANSITIONS from @ralph/core/schemas — inlined to avoid
+// bundling Node.js modules into the browser bundle (core imports node:fs etc.)
+const VALID_STATUS_TRANSITIONS: Record<BacklogItemStatus, BacklogItemStatus[]> = {
+  pending: ["in_progress", "blocked"],
+  in_progress: ["done", "blocked", "pending"],
+  blocked: ["pending"],
+  done: ["pending"],
+};
 
 // ─── Config maps ──────────────────────────────────────────────────
 
@@ -255,17 +264,28 @@ function BacklogItemCard({
   item,
   itemsById,
   isCurrentItem,
+  onClick,
 }: {
   item: BacklogItem;
   itemsById: Map<string, BacklogItem>;
   isCurrentItem: boolean;
+  onClick: () => void;
 }) {
   const hasDeps = item.dependsOn && item.dependsOn.length > 0;
   const acCount = item.acceptanceCriteria.length;
 
   return (
     <div
-      className="flex flex-col rounded-lg border p-4 transition-shadow hover:shadow-sm"
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="flex cursor-pointer flex-col rounded-lg border p-4 transition-shadow hover:shadow-sm"
       style={{
         backgroundColor: "var(--color-surface-raised)",
         borderColor: isCurrentItem ? "rgba(22, 163, 74, 0.45)" : "var(--color-border)",
@@ -326,6 +346,607 @@ function BacklogItemCard({
   );
 }
 
+// ─── BacklogPanel ─────────────────────────────────────────────────
+//
+// Slide-in side panel for creating and editing backlog items.
+// - Create mode: opens blank form; server injects smart default criterion if AC is empty.
+// - Edit mode: pre-populates all fields; enforces valid status transitions.
+
+type PanelMode = "create" | "edit";
+
+interface BacklogPanelProps {
+  mode: PanelMode;
+  item?: BacklogItem;
+  projectId: string;
+  allItems: BacklogItem[];
+  onClose: () => void;
+}
+
+function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanelProps) {
+  const queryClient = useQueryClient();
+
+  // ── Form state ─────────────────────────────────────────────────
+  const [title, setTitle] = useState(item?.title ?? "");
+  const [type, setType] = useState<BacklogItemType>(item?.type ?? "feature");
+  const [priority, setPriority] = useState<1 | 2 | 3 | 4>(item?.priority ?? 2);
+  const [description, setDescription] = useState(item?.description ?? "");
+  const [criteria, setCriteria] = useState<string[]>(item?.acceptanceCriteria ?? []);
+  const [newCriterion, setNewCriterion] = useState("");
+  const [dependsOn, setDependsOn] = useState<string[]>(item?.dependsOn ?? []);
+  const [notes, setNotes] = useState(item?.notes ?? "");
+  const [status, setStatus] = useState<BacklogItemStatus>(item?.status ?? "pending");
+  const [blockedReason, setBlockedReason] = useState(item?.blockedReason ?? "");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Auto-reset the delete confirmation after 3 seconds
+  useEffect(() => {
+    if (!deleteConfirm) return;
+    const t = setTimeout(() => setDeleteConfirm(false), 3000);
+    return () => clearTimeout(t);
+  }, [deleteConfirm]);
+
+  // ── Mutations ──────────────────────────────────────────────────
+
+  function invalidateBacklog() {
+    void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "backlog"] });
+  }
+
+  const createMutation = useMutation({
+    mutationFn: async (data: unknown) => {
+      const res = await ralphFetch(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog`,
+        { method: "POST", body: JSON.stringify(data) },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return res.json() as Promise<unknown>;
+    },
+    onSuccess: () => {
+      invalidateBacklog();
+      onClose();
+    },
+    onError: (err) => {
+      setSubmitError(err instanceof Error ? err.message : "Failed to create item");
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: unknown) => {
+      const res = await ralphFetch(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog/${item!.id}`,
+        { method: "PUT", body: JSON.stringify(data) },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return res.json() as Promise<unknown>;
+    },
+    onSuccess: () => {
+      invalidateBacklog();
+      onClose();
+    },
+    onError: (err) => {
+      setSubmitError(err instanceof Error ? err.message : "Failed to save changes");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await ralphFetch(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog/${item!.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return res.json() as Promise<unknown>;
+    },
+    onSuccess: () => {
+      invalidateBacklog();
+      onClose();
+    },
+    onError: (err) => {
+      setSubmitError(err instanceof Error ? err.message : "Failed to delete item");
+    },
+  });
+
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isDeleting = deleteMutation.isPending;
+
+  // ── Form actions ───────────────────────────────────────────────
+
+  function handleSubmit() {
+    setSubmitError(null);
+    if (!title.trim()) {
+      setSubmitError("Title is required");
+      return;
+    }
+    const filteredCriteria = criteria.filter((c) => c.trim());
+    const payload: Record<string, unknown> = {
+      title: title.trim(),
+      type,
+      priority,
+      description: description.trim() || "",
+      acceptanceCriteria: filteredCriteria,
+      dependsOn: dependsOn.length > 0 ? dependsOn : [],
+      notes: notes.trim() || undefined,
+    };
+    if (mode === "edit") {
+      payload.status = status;
+      if (status === "blocked") payload.blockedReason = blockedReason.trim() || undefined;
+    }
+    if (mode === "create") {
+      createMutation.mutate(payload);
+    } else {
+      updateMutation.mutate(payload);
+    }
+  }
+
+  function handleDelete() {
+    if (!deleteConfirm) {
+      setDeleteConfirm(true);
+      return;
+    }
+    deleteMutation.mutate();
+  }
+
+  function addCriterion() {
+    if (newCriterion.trim()) {
+      setCriteria((prev) => [...prev, newCriterion.trim()]);
+      setNewCriterion("");
+    }
+  }
+
+  function removeCriterion(index: number) {
+    setCriteria((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateCriterion(index: number, value: string) {
+    setCriteria((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+  }
+
+  function toggleDep(id: string) {
+    setDependsOn((prev) =>
+      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id],
+    );
+  }
+
+  // Valid status options for edit mode (original item status + valid transitions)
+  const validNextStatuses: BacklogItemStatus[] =
+    mode === "edit" && item
+      ? [item.status, ...(VALID_STATUS_TRANSITIONS[item.status] ?? [])]
+      : [];
+
+  // Items available as dependencies (all except the item being edited)
+  const depCandidates = allItems.filter((i) => i.id !== item?.id);
+
+  const inputStyle: React.CSSProperties = {
+    backgroundColor: "var(--color-surface)",
+    borderColor: "var(--color-border)",
+    color: "var(--color-text)",
+    outline: "none",
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40"
+        style={{ backgroundColor: "rgba(0, 0, 0, 0.3)" }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Panel */}
+      <div
+        className="fixed right-0 top-0 z-50 flex h-full w-full flex-col overflow-hidden shadow-xl"
+        style={{
+          maxWidth: "480px",
+          backgroundColor: "var(--color-surface)",
+          borderLeft: "1px solid var(--color-border)",
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === "create" ? "New backlog item" : `Edit item #${item?.id}`}
+      >
+        {/* ── Panel header ──────────────────────────────────── */}
+        <div
+          className="flex flex-shrink-0 items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--color-border)" }}
+        >
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold" style={{ color: "var(--color-text)" }}>
+              {mode === "create" ? "New Item" : `Edit #${item?.id}`}
+            </h2>
+            {mode === "edit" && item && <StatusBadge status={item.status} />}
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded text-sm transition-colors"
+            style={{ color: "var(--color-text-muted)" }}
+            title="Close panel"
+            aria-label="Close panel"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* ── Scrollable form ───────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          <div className="space-y-4">
+
+            {/* Title */}
+            <div>
+              <label
+                className="mb-1 block text-xs font-medium"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Title <span style={{ color: "#ef4444" }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                style={inputStyle}
+                placeholder="What needs to be done?"
+                autoFocus
+              />
+            </div>
+
+            {/* Type + Priority */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label
+                  className="mb-1 block text-xs font-medium"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Type
+                </label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as BacklogItemType)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  style={inputStyle}
+                >
+                  <option value="feature">Feature</option>
+                  <option value="bug">Bug</option>
+                  <option value="chore">Chore</option>
+                  <option value="refactor">Refactor</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  className="mb-1 block text-xs font-medium"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Priority
+                </label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(Number(e.target.value) as 1 | 2 | 3 | 4)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  style={inputStyle}
+                >
+                  <option value={1}>P1 — Critical</option>
+                  <option value={2}>P2 — High</option>
+                  <option value={3}>P3 — Normal</option>
+                  <option value={4}>P4 — Low</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Status transition (edit mode only) */}
+            {mode === "edit" && (
+              <div>
+                <label
+                  className="mb-1 block text-xs font-medium"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Status
+                </label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value as BacklogItemStatus)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  style={inputStyle}
+                >
+                  {validNextStatuses.map((s) => {
+                    const cfg = STATUS_CONFIG[s];
+                    return (
+                      <option key={s} value={s}>
+                        {cfg?.label ?? s}
+                      </option>
+                    );
+                  })}
+                </select>
+                {status === "blocked" && (
+                  <div className="mt-2">
+                    <label
+                      className="mb-1 block text-xs font-medium"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      Blocked reason
+                    </label>
+                    <input
+                      type="text"
+                      value={blockedReason}
+                      onChange={(e) => setBlockedReason(e.target.value)}
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      style={inputStyle}
+                      placeholder="What is blocking this item?"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Description */}
+            <div>
+              <label
+                className="mb-1 block text-xs font-medium"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                style={{ ...inputStyle, resize: "vertical" }}
+                rows={3}
+                placeholder="Describe the work to be done…"
+              />
+            </div>
+
+            {/* Acceptance Criteria */}
+            <div>
+              <label
+                className="mb-1.5 block text-xs font-medium"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Acceptance Criteria
+              </label>
+
+              {/* Auto-badge placeholder when no criteria added yet */}
+              {criteria.length === 0 && (
+                <div
+                  className="mb-2 flex items-center gap-2 rounded-md px-2.5 py-2"
+                  style={{
+                    backgroundColor: "rgba(107, 114, 128, 0.06)",
+                    border: "1px dashed var(--color-border)",
+                  }}
+                >
+                  <span
+                    className="flex-1 text-xs italic"
+                    style={{ color: "var(--color-text-muted)" }}
+                  >
+                    A smart default criterion will be generated from your project's verify command
+                  </span>
+                  <span
+                    className="flex-shrink-0 rounded px-1.5 py-0.5 text-xs font-medium"
+                    style={{
+                      backgroundColor: "rgba(107, 114, 128, 0.12)",
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    auto
+                  </span>
+                </div>
+              )}
+
+              {/* Dynamic criteria list */}
+              <div className="space-y-1.5">
+                {criteria.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span
+                      className="flex-shrink-0 font-mono text-xs"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      {i + 1}.
+                    </span>
+                    <input
+                      type="text"
+                      value={c}
+                      onChange={(e) => updateCriterion(i, e.target.value)}
+                      className="flex-1 rounded-md border px-3 py-1.5 text-sm"
+                      style={inputStyle}
+                      placeholder={`Criterion ${i + 1}`}
+                    />
+                    <button
+                      onClick={() => removeCriterion(i)}
+                      className="flex-shrink-0 rounded p-1 text-sm transition-colors hover:opacity-70"
+                      style={{ color: "#ef4444" }}
+                      title="Remove criterion"
+                      aria-label="Remove criterion"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add criterion row */}
+              <div className="mt-2 flex gap-2">
+                <input
+                  type="text"
+                  value={newCriterion}
+                  onChange={(e) => setNewCriterion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCriterion();
+                    }
+                  }}
+                  className="flex-1 rounded-md border px-3 py-1.5 text-sm"
+                  style={inputStyle}
+                  placeholder="Add a criterion…"
+                />
+                <button
+                  onClick={addCriterion}
+                  disabled={!newCriterion.trim()}
+                  className="flex-shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-accent)",
+                    backgroundColor: "transparent",
+                  }}
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+
+            {/* Dependency selector */}
+            {depCandidates.length > 0 && (
+              <div>
+                <label
+                  className="mb-1.5 block text-xs font-medium"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Depends On
+                </label>
+                <div
+                  className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto rounded-md border p-2"
+                  style={{ borderColor: "var(--color-border)" }}
+                >
+                  {depCandidates.map((dep) => {
+                    const isSelected = dependsOn.includes(dep.id);
+                    const statusCfg = STATUS_CONFIG[dep.status] ?? STATUS_CONFIG["pending"]!;
+                    return (
+                      <button
+                        key={dep.id}
+                        onClick={() => toggleDep(dep.id)}
+                        className="inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs transition-colors"
+                        style={{
+                          borderColor: isSelected
+                            ? "var(--color-accent)"
+                            : "var(--color-border)",
+                          backgroundColor: isSelected
+                            ? "rgba(99, 102, 241, 0.1)"
+                            : "transparent",
+                          color: isSelected ? "var(--color-accent)" : "var(--color-text-muted)",
+                        }}
+                        title={dep.title}
+                      >
+                        <span className="font-mono">#{dep.id}</span>
+                        <span
+                          className="h-1.5 w-1.5 rounded-full"
+                          style={{ backgroundColor: statusCfg.text }}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+                {dependsOn.length > 0 && (
+                  <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                    {dependsOn.length} dep{dependsOn.length !== 1 ? "s" : ""} selected
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label
+                className="mb-1 block text-xs font-medium"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Notes
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                style={{ ...inputStyle, resize: "vertical" }}
+                rows={2}
+                placeholder="Additional context, links, or implementation notes…"
+              />
+            </div>
+
+            {/* Error display */}
+            {submitError && (
+              <div
+                className="rounded-md px-3 py-2.5 text-sm"
+                style={{
+                  backgroundColor: "rgba(239, 68, 68, 0.08)",
+                  color: "#ef4444",
+                  border: "1px solid rgba(239, 68, 68, 0.2)",
+                }}
+              >
+                {submitError}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Footer ────────────────────────────────────────── */}
+        <div
+          className="flex flex-shrink-0 items-center gap-2 px-5 py-4"
+          style={{ borderTop: "1px solid var(--color-border)" }}
+        >
+          {mode === "edit" && (
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting || isSaving}
+              className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                borderColor: deleteConfirm ? "#ef4444" : "rgba(239, 68, 68, 0.35)",
+                color: "#ef4444",
+                backgroundColor: deleteConfirm ? "rgba(239, 68, 68, 0.08)" : "transparent",
+              }}
+            >
+              {isDeleting ? "Deleting…" : deleteConfirm ? "Confirm delete" : "Delete"}
+            </button>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={onClose}
+              disabled={isSaving || isDeleting}
+              className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-muted)",
+                backgroundColor: "transparent",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isSaving || isDeleting}
+              className="rounded-md px-4 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                backgroundColor: "var(--color-accent)",
+                color: "#ffffff",
+              }}
+            >
+              {isSaving
+                ? "Saving…"
+                : mode === "create"
+                  ? "Create Item"
+                  : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── BacklogView ──────────────────────────────────────────────────
 
 export function BacklogView() {
@@ -336,6 +957,9 @@ export function BacklogView() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [sortBy, setSortBy] = useState("priority");
+
+  // Panel state: null = closed, "create" = new item form, BacklogItem = edit item
+  const [panelState, setPanelState] = useState<null | "create" | BacklogItem>(null);
 
   const projectId = id ?? "";
 
@@ -422,6 +1046,9 @@ export function BacklogView() {
   const hasActiveFilters =
     typeFilter !== "all" || statusFilter !== "all" || priorityFilter !== "all";
 
+  const panelMode: PanelMode = panelState === "create" ? "create" : "edit";
+  const panelItem = panelState !== null && panelState !== "create" ? panelState : undefined;
+
   return (
     <div className="p-6">
       {/* ── Header ─────────────────────────────────────────── */}
@@ -434,18 +1061,30 @@ export function BacklogView() {
             {projectId}
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={isFetching}
-          className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-          style={{
-            borderColor: "var(--color-border)",
-            color: "var(--color-text-muted)",
-            backgroundColor: "transparent",
-          }}
-        >
-          {isFetching ? "↻ Refreshing…" : "↻ Refresh"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isFetching}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            style={{
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-muted)",
+              backgroundColor: "transparent",
+            }}
+          >
+            {isFetching ? "↻ Refreshing…" : "↻ Refresh"}
+          </button>
+          <button
+            onClick={() => setPanelState("create")}
+            className="rounded-md px-3 py-1.5 text-sm font-semibold transition-colors"
+            style={{
+              backgroundColor: "var(--color-accent)",
+              color: "#ffffff",
+            }}
+          >
+            + Add Item
+          </button>
+        </div>
       </div>
 
       {/* ── Active loop warning banner ──────────────────────── */}
@@ -575,13 +1214,24 @@ export function BacklogView() {
                   ? "No items match the active filters"
                   : "No backlog items yet"}
               </p>
-              {hasActiveFilters && (
+              {hasActiveFilters ? (
                 <button
                   onClick={clearFilters}
                   className="mt-2 text-sm underline"
                   style={{ color: "var(--color-accent)" }}
                 >
                   Clear filters
+                </button>
+              ) : (
+                <button
+                  onClick={() => setPanelState("create")}
+                  className="mt-3 rounded-md px-4 py-2 text-sm font-semibold transition-colors"
+                  style={{
+                    backgroundColor: "var(--color-accent)",
+                    color: "#ffffff",
+                  }}
+                >
+                  + Add First Item
                 </button>
               )}
             </div>
@@ -599,12 +1249,24 @@ export function BacklogView() {
                     item={item}
                     itemsById={itemsById}
                     isCurrentItem={item.id === currentItemId}
+                    onClick={() => setPanelState(item)}
                   />
                 ))}
               </div>
             </>
           )}
         </>
+      )}
+
+      {/* ── Side panel ─────────────────────────────────────── */}
+      {panelState !== null && (
+        <BacklogPanel
+          mode={panelMode}
+          item={panelItem}
+          projectId={projectId}
+          allItems={allItems ?? []}
+          onClose={() => setPanelState(null)}
+        />
       )}
     </div>
   );
