@@ -53,19 +53,19 @@ packages/core ──imports──►  (nothing — standalone)
 
 All filesystem operations and business logic. Zero UI or CLI concerns.
 
-| Module | Responsibility |
-|--------|---------------|
-| `discovery.ts` | Scan ROOT_DIRECTORY for .ralph.json files, return project list |
-| `config.ts` | Read/write .ralph.json marker files, read/write ~/.ralph/config.json |
-| `profile.ts` | Tech-stack detection heuristics, profile management |
-| `template.ts` | Render .tmpl files with {{variable}} interpolation, sentinel block handling |
-| `installer.ts` | Orchestrate artifact installation (existing projects) |
-| `greenfield.ts` | Orchestrate greenfield project initialization |
-| `backlog.ts` | CRUD operations on backlog.json, validation, atomic writes |
-| `status.ts` | Derive loop state from state.json (primary) or ralph.log (fallback) |
-| `fs-utils.ts` | Atomic write, JSON read with error handling, path validation, hash computation |
-| `schemas.ts` | Zod schemas + TypeScript types for all data structures |
-| `errors.ts` | Result type, error codes, structured error types |
+| Module          | Responsibility                                                                 |
+| --------------- | ------------------------------------------------------------------------------ |
+| `discovery.ts`  | Scan ROOT_DIRECTORY for .ralph.json files, return project list                 |
+| `config.ts`     | Read/write .ralph.json marker files, read/write ~/.ralph/config.json           |
+| `profile.ts`    | Tech-stack detection heuristics, profile management                            |
+| `template.ts`   | Render .tmpl files with {{variable}} interpolation, sentinel block handling    |
+| `installer.ts`  | Orchestrate artifact installation (existing projects)                          |
+| `greenfield.ts` | Orchestrate greenfield project initialization                                  |
+| `backlog.ts`    | CRUD operations on backlog.json, validation, atomic writes                     |
+| `status.ts`     | Derive loop state from state.json (primary) or ralph.log (fallback)            |
+| `fs-utils.ts`   | Atomic write, JSON read with error handling, path validation, hash computation |
+| `schemas.ts`    | Zod schemas + TypeScript types for all data structures                         |
+| `errors.ts`     | Result type, error codes, structured error types                               |
 
 ### packages/cli
 
@@ -81,23 +81,27 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 Hono HTTP server + React SPA.
 
 **Server (`src/server/`):**
+
 - API route handlers that call core functions
 - CSRF middleware (X-Ralph-Request header check on mutations)
 - SSE endpoint for log streaming
 - Static file serving for built React app
 
 **Client (`src/client/`):**
+
 - React + TanStack Router for routing
 - TanStack Query for server state
 - Tailwind CSS for styling
 - Shared fetch wrapper with automatic X-Ralph-Request header
 
 **Shared (`src/shared/`):**
+
 - API type definitions shared between server and client
 
 ## Data Flow Examples
 
 ### Installation Flow
+
 ```
 User → CLI `ralph install ./project`
        → core/installer.ts
@@ -109,6 +113,7 @@ User → CLI `ralph install ./project`
 ```
 
 ### Status View
+
 ```
 User → Web UI "Status" tab
        → GET /api/projects/:id/status
@@ -120,6 +125,7 @@ User → Web UI "Status" tab
 ```
 
 ### Backlog Add
+
 ```
 User → Web UI "Add Item" form → POST /api/projects/:id/backlog
        → core/backlog.ts
@@ -133,6 +139,7 @@ User → Web UI "Add Item" form → POST /api/projects/:id/backlog
 ## ROOT_DIRECTORY Resolution
 
 Priority order:
+
 1. `--root` CLI flag
 2. `RALPH_ROOT` environment variable
 3. `rootDirectory` in `~/.ralph/config.json`

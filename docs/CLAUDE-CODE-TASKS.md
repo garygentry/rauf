@@ -16,14 +16,14 @@ Claude Code v2.1.16+ (January 2026) introduced a native **Tasks** system that re
 
 These are **complementary, not competing** systems:
 
-| Aspect | ralph backlog.json | Claude Code Tasks |
-|--------|-------------------|-------------------|
-| **Purpose** | Project-level work queue | Session-level execution tracking |
-| **Persistence** | File in project directory, permanent | `~/.claude/tasks/`, session-scoped |
-| **Managed by** | Human + ralph manager tool | Claude Code agent |
-| **Granularity** | Feature/bug/chore items | Sub-steps to implement one item |
-| **Cross-session** | Always (it's a file) | Only if TASK_LIST_ID is set |
-| **Status updates** | ralph.sh loop + manager tool | Claude Code internally |
+| Aspect             | ralph backlog.json                   | Claude Code Tasks                  |
+| ------------------ | ------------------------------------ | ---------------------------------- |
+| **Purpose**        | Project-level work queue             | Session-level execution tracking   |
+| **Persistence**    | File in project directory, permanent | `~/.claude/tasks/`, session-scoped |
+| **Managed by**     | Human + ralph manager tool           | Claude Code agent                  |
+| **Granularity**    | Feature/bug/chore items              | Sub-steps to implement one item    |
+| **Cross-session**  | Always (it's a file)                 | Only if TASK_LIST_ID is set        |
+| **Status updates** | ralph.sh loop + manager tool         | Claude Code internally             |
 
 ### The Relationship
 
@@ -44,6 +44,7 @@ backlog.json item "001: Implement user auth"
 ### Do NOT set CLAUDE_CODE_TASK_LIST_ID in ralph.sh
 
 Each ralph iteration spawns a fresh `claude -p` session. Setting a shared task list ID would cause:
+
 - Stale tasks from previous iterations leaking into new sessions
 - Confusion between items from different backlog entries
 - Potential namespace collisions
@@ -69,6 +70,7 @@ Setting `CLAUDE_CODE_ENABLE_TASKS=false` is unnecessary. Tasks and backlog.json 
 ## For Self-Hosting (ralph building ralph)
 
 When using ralph loops to develop the ralph tool itself, the same principles apply:
+
 - `.ralph/backlog.json` defines what to build
 - Claude Code Tasks are the agent's internal planning tool for each iteration
 - The two systems don't interfere because they use separate storage

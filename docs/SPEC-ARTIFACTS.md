@@ -49,9 +49,11 @@ jq --arg id "$ITEM_ID" --arg reason "$REASON" \
 2. **state.json writes:** Write `.ralph/state.json` on every major state change (see §6.7).
 
 3. **Item selection:** Select the highest-priority pending item using `jq` sort:
+
 ```bash
 jq -r '[.items[] | select(.status == "pending")] | sort_by(.priority) | .[0].id // empty' .ralph/backlog.json
 ```
+
 Also checks for existing `in_progress` items (resume from interrupted loop).
 
 4. **Focused prompt:** Claude receives RALPH.md + the specific item JSON + full backlog as read-only context. The prompt explicitly states: "Do NOT modify .ralph/backlog.json or .ralph/state.json."
@@ -69,6 +71,7 @@ Also checks for existing `in_progress` items (resume from interrupted loop).
 8. **DONE file + ralph.log:** Backward-compatible markers.
 
 ### Behavior Flow
+
 ```
 1. Parse args (max_iterations, default 20)
 2. Preflight: require backlog.json, RALPH.md, claude, jq
@@ -96,6 +99,7 @@ Also checks for existing `in_progress` items (resume from interrupted loop).
 ## ralph-status.sh — Quick Status
 
 Reads state.json (preferred) and backlog.json directly. Outputs:
+
 - Backlog summary (pending/in_progress/blocked/done counts)
 - Loop state from state.json if available (status, iteration, current item, staleness check)
 - Falls back to log mtime heuristics if no state.json
@@ -105,6 +109,7 @@ Reads state.json (preferred) and backlog.json directly. Outputs:
 ## ralph-add.sh — Add Item
 
 Interactive or flag-driven script to add an item to backlog.json:
+
 - Prompts for: type, priority, title, description (or accepts --flags)
 - **Validates** type (must be bug/refactor/feature/chore) and priority (must be 1-4)
 - Auto-assigns ID using **max of all existing IDs** + 1 (handles gaps from deletions)
@@ -117,27 +122,32 @@ The content between sentinels that gets merged into an existing CLAUDE.md:
 
 ```markdown
 <!-- ralph:start -->
+
 ## Autonomous Loop (Ralph)
 
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
+
 1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
 2. Read `.ralph/backlog.json` — find the current `in_progress` item
 3. The item's `acceptanceCriteria` define "done" for this iteration
 
 ### Working
+
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
 6. Run the verification command before considering work complete
 
 ### Completing
+
 7. If all acceptance criteria pass: output `RALPH_DONE` as your final line
 8. If blocked (missing dependency, unclear requirement): output `RALPH_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RALPH_NEEDS_HUMAN:<reason>`
 10. Commit your changes with message: `[ralph] <item-id>: <title>`
 
 ### Rules
+
 - ONE item per iteration — do not work on multiple items
 - Do not modify `.ralph/backlog.json` — the loop runner manages status
 - Do not modify `.ralph/state.json` — the loop runner manages state
@@ -154,21 +164,27 @@ For greenfield projects where no CLAUDE.md exists:
 # {{projectName}}
 
 ## Overview
+
 {{projectDescription}}
 
 ## Tech Stack
+
 {{stackDescription}}
 
 ## Project Structure
+
 <!-- Describe the intended project structure here, or let the agent establish it -->
 
 ## Key Requirements
+
 {{requirements}}
 
 ## Development Conventions
+
 <!-- Add coding style, naming conventions, architectural decisions here -->
 
 ## Verification Commands
+
 - Test: `{{testCommand}}`
 - Typecheck: `{{typecheckCommand}}`
 - Lint: `{{lintCommand}}`
@@ -178,8 +194,11 @@ For greenfield projects where no CLAUDE.md exists:
 ---
 
 <!-- ralph:start -->
+
 ## Autonomous Loop (Ralph)
+
 ...same content as CLAUDE_ADDON.md...
+
 <!-- ralph:end -->
 ```
 
@@ -191,12 +210,14 @@ Contains two sections: managed (tool-updated) and user-customizable.
 # Ralph — Per-Iteration Instructions
 
 <!-- ralph:managed:start -->
+
 ## Verification Commands
 
 Before marking any task as complete, run the full verification pipeline:
-
 ```
+
 {{verifyCommand}}
+
 ```
 
 Individual commands:
@@ -243,8 +264,10 @@ If any command is not configured (empty), skip it.
 # Progress & Learnings
 
 ## Codebase Patterns
+
 <!-- Patterns discovered during development will be logged here -->
 
 ## Session Log
+
 <!-- Each iteration appends its learnings here -->
 ```

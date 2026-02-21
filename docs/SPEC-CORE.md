@@ -7,27 +7,33 @@ This package contains all filesystem operations and business logic. It has ZERO 
 ## Module: fs-utils.ts
 
 ### atomicWrite(filePath, content)
+
 1. Copy existing file to `filePath.bak` (if it exists — only for backlog.json)
 2. Write content to `filePath.tmp`
 3. Rename `filePath.tmp` → `filePath`
 4. Return Result
 
 ### readJsonFile<T>(filePath, schema: ZodSchema<T>)
+
 1. Read file with `fs.readFileSync(filePath, 'utf-8')`
 2. `JSON.parse()` in try/catch
 3. Validate against Zod schema
 4. Return `Result<T>` — parse errors include line/position info where possible
 
 ### computeHash(filePath) → string
+
 SHA-256 hex digest of file contents.
 
 ### validatePath(targetPath, allowedRoots: string[])
+
 Resolve to absolute path, verify `resolvedPath.startsWith(allowedRoot)` for at least one root. Reject `..` traversal that escapes roots.
 
 ### fileExists(filePath) → boolean
+
 Non-throwing existence check.
 
 ### ensureDir(dirPath)
+
 `mkdir -p` equivalent.
 
 ## Module: schemas.ts
@@ -39,9 +45,7 @@ Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStat
 ## Module: errors.ts
 
 ```typescript
-export type Result<T, E = RalphError> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
+export type Result<T, E = RalphError> = { ok: true; value: T } | { ok: false; error: E };
 
 export function ok<T>(value: T): Result<T, never>;
 export function err<E>(error: E): Result<never, E>;
@@ -54,14 +58,14 @@ export interface RalphError {
 
 // Error codes
 export const ErrorCodes = {
-  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
-  INVALID_JSON: 'INVALID_JSON',
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  PATH_VIOLATION: 'PATH_VIOLATION',
-  ALREADY_INSTALLED: 'ALREADY_INSTALLED',
-  NOT_INSTALLED: 'NOT_INSTALLED',
-  CONFLICT: 'CONFLICT',
-  TRANSITION_INVALID: 'TRANSITION_INVALID',
+  FILE_NOT_FOUND: "FILE_NOT_FOUND",
+  INVALID_JSON: "INVALID_JSON",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  PATH_VIOLATION: "PATH_VIOLATION",
+  ALREADY_INSTALLED: "ALREADY_INSTALLED",
+  NOT_INSTALLED: "NOT_INSTALLED",
+  CONFLICT: "CONFLICT",
+  TRANSITION_INVALID: "TRANSITION_INVALID",
 } as const;
 ```
 
@@ -82,21 +86,27 @@ Performance: reads ONLY .ralph.json during scan. Backlog, state, log reads are l
 ## Module: config.ts
 
 ### readMarkerFile(projectPath) → Result<MarkerFile>
+
 Read and validate `<projectPath>/.ralph.json`.
 
 ### writeMarkerFile(projectPath, marker: MarkerFile) → Result<void>
+
 Atomic write of `.ralph.json`.
 
 ### readToolConfig() → Result<ToolConfig>
+
 Read `~/.ralph/config.json`. Return defaults if file doesn't exist:
+
 ```typescript
 { rootDirectory: process.cwd(), port: 5173, theme: "system" }
 ```
 
 ### writeToolConfig(config: ToolConfig) → Result<void>
+
 Write to `~/.ralph/config.json`. Create `~/.ralph/` if needed.
 
 ### resolveRootDirectory(cliRoot?, envRoot?) → string
+
 Resolution order: cliRoot → RALPH_ROOT env → config file → cwd.
 
 ## Module: profile.ts
@@ -118,20 +128,25 @@ Scan project directory for indicator files. Detection order per category:
 **Composite verify:** Join all non-null commands with " && ".
 
 ### getPreset(presetName) → ProjectProfile
+
 Return a preset profile for greenfield projects. Presets: `node-typescript`, `node-javascript`, `python`, `go`, `rust`, `custom`.
 
 ### mergeProfileOverrides(detected, overrides) → ProjectProfile
+
 Apply user-provided command overrides on top of detected profile. Empty string means explicitly disabled (null).
 
 ## Module: template.ts
 
 ### renderTemplate(templateContent, variables: Record<string, string>) → string
+
 Replace all `{{variableName}}` occurrences with values. Unknown variables are left as-is with a warning. Null/undefined values are replaced with empty string.
 
 ### renderTemplateFile(templatePath, outputPath, variables) → Result<void>
+
 Read template file, render, atomic write to output.
 
 ### updateSentinelBlock(fileContent, sentinelStart, sentinelEnd, newBlockContent) → string
+
 Find content between `sentinelStart` and `sentinelEnd` markers. Replace it. Preserve everything outside the sentinels. If sentinels not found, append the block.
 
 Sentinels for RALPH.md: `<!-- ralph:managed:start -->` / `<!-- ralph:managed:end -->`
@@ -140,12 +155,15 @@ Sentinels for CLAUDE.md: `<!-- ralph:start -->` / `<!-- ralph:end -->`
 ## Module: backlog.ts
 
 ### readBacklog(projectPath) → Result<Backlog>
+
 Read and validate `.ralph/backlog.json`.
 
 ### writeBacklog(projectPath, backlog: Backlog) → Result<void>
+
 Atomic write with .bak backup.
 
 ### addItem(projectPath, input: CreateItemInput) → Result<BacklogItem>
+
 1. Read current backlog
 2. Compute next ID: `max(existing IDs as numbers) + 1`, zero-pad to 3 digits
 3. Validate input fields (type, priority range, non-empty title)
@@ -157,6 +175,7 @@ Atomic write with .bak backup.
 9. Return the new item
 
 ### updateItem(projectPath, itemId, updates: UpdateItemInput) → Result<BacklogItem>
+
 1. Read backlog, find item by ID
 2. Validate status transition if status is being changed
 3. If status → "blocked" and no blockedReason, warn
@@ -167,6 +186,7 @@ Atomic write with .bak backup.
 8. Return updated item
 
 ### deleteItem(projectPath, itemId) → Result<void>
+
 1. Read backlog, find item by ID
 2. Block deletion of `in_progress` items if loop possibly active (check state.json)
 3. Warn if other items have dependsOn referencing this ID
@@ -174,9 +194,11 @@ Atomic write with .bak backup.
 5. Write backlog
 
 ### validateStatusTransition(current, target) → boolean
+
 Check against the allowed transitions map.
 
 ### restoreFromBackup(projectPath) → Result<void>
+
 Copy `.ralph/backlog.json.bak` → `.ralph/backlog.json` if backup exists.
 
 ## Module: status.ts
@@ -184,12 +206,14 @@ Copy `.ralph/backlog.json.bak` → `.ralph/backlog.json` if backup exists.
 ### deriveStatus(projectPath) → Result<DerivedStatus>
 
 **Tier 1 — state.json:**
+
 1. Read `.ralph/state.json`
 2. If valid, map status field to LoopStateEnum
 3. Staleness check: if `updatedAt` > 5 min old AND status is "running", downgrade to PAUSED
 4. Set stateSource = "state.json"
 
 **Tier 2 — Log parsing fallback:**
+
 1. If state.json missing/invalid, check ralph.log
 2. Read last 1000 lines for recent status patterns
 3. Read first 100 lines for start marker
@@ -201,9 +225,11 @@ Copy `.ralph/backlog.json.bak` → `.ralph/backlog.json` if backup exists.
 **Always:** Read backlog.json for summary counts regardless of state source.
 
 ### readLogTail(projectPath, lines: number) → Result<string[]>
+
 Read last N lines of ralph.log. Cap at 10000 for display.
 
 ### watchLog(projectPath, callback) → cleanup function
+
 Watch ralph.log for changes using fs.watch. Call callback with new lines. Return cleanup function to stop watching.
 
 ## Module: installer.ts
@@ -245,6 +271,7 @@ Full installation flow for existing projects:
 ### update(projectPath) → Result<InstallationReport>
 
 Re-sync artifacts using three-way hash comparison:
+
 - For each artifact, compare: current file hash vs stored hash vs canonical hash
 - Auto-update unmodified files; prompt-worthy for customized files
 - Re-render RALPH.md managed sections
@@ -254,6 +281,7 @@ Re-sync artifacts using three-way hash comparison:
 - Update artifactHashes for updated files
 
 ### uninstall(projectPath, options) → Result<void>
+
 Remove ralph artifacts. Preserve backlog/progress/log per user choice.
 
 ## Module: greenfield.ts
@@ -270,19 +298,20 @@ Remove ralph artifacts. Preserve backlog/progress/log per user choice.
 8. Return report
 
 ### parseBacklogSeed(seedPath) → Result<BacklogItem[]>
+
 - If .json: parse as Backlog schema or array of partial items
 - If .md: parse `- [ ] [type] title` format, assign sequential priorities
 - Fill defaults: priority from position, status="pending", auto-generated IDs
 
 ## File locations summary
 
-| Module writes to | Files |
-|-----------------|-------|
-| config.ts | `.ralph.json`, `~/.ralph/config.json` |
-| backlog.ts | `.ralph/backlog.json`, `.ralph/backlog.json.bak` |
-| installer.ts | All `.ralph/` files, scripts, CLAUDE.md, `.ralph.json` |
-| greenfield.ts | All of installer + directory creation + git init |
-| status.ts | (read-only) |
-| discovery.ts | (read-only) |
-| profile.ts | (read-only, result stored by installer) |
-| template.ts | (pure functions, no direct file I/O unless renderTemplateFile) |
+| Module writes to | Files                                                          |
+| ---------------- | -------------------------------------------------------------- |
+| config.ts        | `.ralph.json`, `~/.ralph/config.json`                          |
+| backlog.ts       | `.ralph/backlog.json`, `.ralph/backlog.json.bak`               |
+| installer.ts     | All `.ralph/` files, scripts, CLAUDE.md, `.ralph.json`         |
+| greenfield.ts    | All of installer + directory creation + git init               |
+| status.ts        | (read-only)                                                    |
+| discovery.ts     | (read-only)                                                    |
+| profile.ts       | (read-only, result stored by installer)                        |
+| template.ts      | (pure functions, no direct file I/O unless renderTemplateFile) |

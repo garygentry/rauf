@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+*.tsbuildinfo
 .ralph/ralph.log
 .ralph/state.json
 .ralph/DONE

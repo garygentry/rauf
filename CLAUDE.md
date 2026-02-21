@@ -81,11 +81,12 @@ This project uses `.ralph/backlog.json` as the persistent task queue for the ral
 
 ## Self-Hosting Note
 
-This repository IS a ralph-managed project. The `.ralph/` directory at the repo root and `ralph.sh` etc. are this project's own ralph installation. The `artifacts/backlog-json/` directory contains the *templates* used when installing ralph into OTHER projects. Do not confuse them.
+This repository IS a ralph-managed project. The `.ralph/` directory at the repo root and `ralph.sh` etc. are this project's own ralph installation. The `artifacts/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
 
 ---
 
 <!-- ralph:start -->
+
 ## Autonomous Loop (Ralph)
 
 When running as a ralph loop iteration (`claude -p`), follow these rules:
