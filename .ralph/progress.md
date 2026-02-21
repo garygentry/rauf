@@ -100,3 +100,18 @@
 - `restoreFromBackup` does a simple `fs.copyFileSync(.bak → current)` — no validation of .bak content (trusts atomic write integrity)
 - Cross-module dependency: backlog.ts imports `readMarkerFile` from config.ts for smart defaults — acceptable within `@ralph/core`
 - 66 new tests, total 328 across core package
+
+### 010: Core: Status derivation (state.json + log parsing fallback) (completed)
+- `deriveStatus(projectPath)` implements two-tier status derivation: Tier 1 (state.json) → Tier 2 (log parsing fallback)
+- Tier 1: reads state.json via `readJsonFile` + `LoopStateSchema`, maps `LoopState.status` → `LoopStateEnum` (e.g. "starting"/"running" → "RUNNING")
+- Staleness detection: if status is "running"/"starting" and `updatedAt` > 5 min old → downgrades to "PAUSED"
+- Tier 2 fallback: checks log mtime (<60s → RUNNING), DONE file (→ COMPLETE/PAUSED_HUMAN/LIMIT_REACHED/ERROR), stale log (→ PAUSED)
+- DONE file content parsed heuristically: "human"/"needs_human" → PAUSED_HUMAN, "limit" → LIMIT_REACHED, "error" → ERROR, else → COMPLETE
+- Log parsing extracts iteration/maxIterations from `--- Iteration N / M ---` patterns, startedAt from timestamps, lastSignal from signal patterns
+- `readLogTail(projectPath, lines?)` returns last N lines, capped at 10,000, handles missing files gracefully (returns `[]`)
+- `watchLog(projectPath, callback)` uses `fs.watch` with incremental reads (tracks lastSize, reads only new bytes) — returns cleanup function
+- BacklogSummary always populated via `computeBacklogSummary()` — reads backlog.json, returns zeros on failure
+- NOT_INSTALLED state returned when `.ralph/` directory doesn't exist
+- Export collision fix: `STATE_FILENAME` was already exported from backlog.ts — removed duplicate export from status.ts to avoid TS2308
+- `RALPH_DIR` constant (".ralph") exported from status.ts alongside `BACKLOG_DIR` from backlog.ts — same value, different name
+- 48 new tests, total 376 across core package

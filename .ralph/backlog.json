@@ -222,8 +222,8 @@
         "Unit tests for each scenario",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T20:31:47+00:00",
       "dependsOn": [
         "003",
         "009"
