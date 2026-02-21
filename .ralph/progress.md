@@ -87,3 +87,16 @@
 - Idempotency verified: create→skip, append→skip, replace→skip all tested
 - Sentinel constants exported: `CLAUDE_MD_SENTINEL_START = "<!-- ralph:start -->"`, `CLAUDE_MD_SENTINEL_END = "<!-- ralph:end -->"`
 - 20 new tests, total 262 across core package
+
+### 009: Core: Backlog CRUD with validation and smart defaults (completed)
+- `readBacklog`/`writeBacklog` are thin wrappers around `readJsonFile`/`atomicWrite` — `.bak` backup is automatic since `atomicWrite` detects `backlog.json` by basename
+- `addItem` computes next ID as `max(existing IDs as numbers) + 1`, zero-padded to 3 digits — gaps from deletions are intentional (never renumber)
+- Smart default criterion: reads `.ralph.json` marker file to get `profile.verify` command, falls back to generic "All verification checks pass" if no marker
+- `CreateItemInput` and `UpdateItemInput` interfaces defined locally in backlog.ts — these are input DTOs, not Zod schemas (validation is structural)
+- `validateStatusTransition` allows same-status (no-op) as valid — simplifies callers that unconditionally pass status
+- `updateItem` auto-sets `completedAt` to ISO 8601 when status transitions to `"done"` — uses `new Date().toISOString()`
+- `deleteItem` checks `state.json` for active loop (status `"running"` or `"starting"`) — only blocks `in_progress` items; other statuses always deletable
+- If `state.json` is missing or invalid, loop is assumed inactive — deletion proceeds (safe default)
+- `restoreFromBackup` does a simple `fs.copyFileSync(.bak → current)` — no validation of .bak content (trusts atomic write integrity)
+- Cross-module dependency: backlog.ts imports `readMarkerFile` from config.ts for smart defaults — acceptable within `@ralph/core`
+- 66 new tests, total 328 across core package
