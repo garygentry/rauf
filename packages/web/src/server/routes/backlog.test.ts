@@ -633,3 +633,112 @@ describe("POST /api/projects/:id/backlog/restore", () => {
     expect(restored.items[1]!.id).toBe("002");
   });
 });
+
+// ─── Edge cases: corrupt files ────────────────────────────────────
+
+describe("Edge cases: corrupt backlog.json", () => {
+  function writeCorruptBacklog(dir: string): void {
+    const ralphDir = path.join(dir, ".ralph");
+    fs.mkdirSync(ralphDir, { recursive: true });
+    fs.writeFileSync(path.join(ralphDir, "backlog.json"), "{ invalid json }");
+  }
+
+  function writeInvalidSchemaBacklog(dir: string): void {
+    const ralphDir = path.join(dir, ".ralph");
+    fs.mkdirSync(ralphDir, { recursive: true });
+    // Valid JSON but wrong schema (items is a string, not an array)
+    fs.writeFileSync(
+      path.join(ralphDir, "backlog.json"),
+      JSON.stringify({ items: "not-an-array" }),
+    );
+  }
+
+  it("GET /backlog returns 500 with INVALID_JSON code for corrupt file", async () => {
+    writeMarker(projectDir);
+    writeCorruptBacklog(projectDir);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog");
+    expect(res.status).toBe(500);
+    const body = (await json(res)) as { error: { code: string; message: string } };
+    expect(body.error).toBeDefined();
+    expect(body.error.code).toBe("INVALID_JSON");
+  });
+
+  it("GET /backlog/:itemId returns 500 with error for corrupt file", async () => {
+    writeMarker(projectDir);
+    writeCorruptBacklog(projectDir);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog/001");
+    expect(res.status).toBe(500);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_JSON");
+  });
+
+  it("GET /backlog returns 500 with VALIDATION_ERROR for invalid-schema file", async () => {
+    writeMarker(projectDir);
+    writeInvalidSchemaBacklog(projectDir);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog");
+    expect(res.status).toBe(500);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("POST /backlog returns error code for corrupt file", async () => {
+    writeMarker(projectDir);
+    writeCorruptBacklog(projectDir);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog", {
+      method: "POST",
+      headers: csrfHeaders,
+      body: JSON.stringify({ type: "feature", priority: 2, title: "Test" }),
+    });
+    // readBacklog fails inside addItem → returns error (400 or 500)
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error).toBeDefined();
+    expect(body.error.code).toBeDefined();
+  });
+});
+
+// ─── Zod validation error details ────────────────────────────────
+
+describe("POST /api/projects/:id/backlog — Zod validation details", () => {
+  it("returns error details with field-level info when multiple fields invalid", async () => {
+    writeMarker(projectDir);
+    writeBacklog(projectDir);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog", {
+      method: "POST",
+      headers: csrfHeaders,
+      body: JSON.stringify({ type: "unknown-type", priority: 99, title: "" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as {
+      error: { code: string; details: { fieldErrors: Record<string, string[]> } };
+    };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details).toBeDefined();
+    expect(body.error.details.fieldErrors).toBeDefined();
+    // type and priority should both have errors
+    expect(body.error.details.fieldErrors.type).toBeDefined();
+    expect(body.error.details.fieldErrors.priority).toBeDefined();
+  });
+
+  it("PUT /backlog/:itemId returns field-level error details for invalid type", async () => {
+    writeMarker(projectDir);
+    writeBacklog(projectDir, [makeItem()]);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog/001", {
+      method: "PUT",
+      headers: csrfHeaders,
+      body: JSON.stringify({ type: "not-valid", priority: "high" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as {
+      error: { code: string; details: { fieldErrors: Record<string, string[]> } };
+    };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details.fieldErrors.type).toBeDefined();
+  });
+});

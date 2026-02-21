@@ -248,6 +248,22 @@ describe("POST /api/projects/init", () => {
     const body = (await json(res)) as { error: { code: string } };
     expect(body.error.code).toBe("INVALID_BODY");
   });
+
+  it("returns VALIDATION_ERROR with field details when targetPath is empty string", async () => {
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/init", {
+      method: "POST",
+      headers: csrfHeaders,
+      body: JSON.stringify({ targetPath: "" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as {
+      error: { code: string; details: { fieldErrors: Record<string, string[]> } };
+    };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.details).toBeDefined();
+    expect(body.error.details.fieldErrors.targetPath).toBeDefined();
+  });
 });
 
 // ─── POST /api/projects/:id/update ───────────────────────────────

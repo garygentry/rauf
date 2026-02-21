@@ -15,6 +15,7 @@
   "dependencies": {
     "@ralph/core": "workspace:*",
     "@tanstack/react-query": "^5.65.0",
+    "zod": "^3.24.0",
     "@tanstack/react-router": "^1.100.0",
     "hono": "^4.7.0",
     "react": "^19.0.0",

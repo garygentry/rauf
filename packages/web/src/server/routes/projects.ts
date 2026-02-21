@@ -9,6 +9,7 @@
 import * as path from "node:path";
 
 import { Hono } from "hono";
+import { z } from "zod";
 
 import {
   discoverProjects,
@@ -26,6 +27,9 @@ import {
   deleteItem,
   restoreFromBackup,
   ErrorCodes,
+  BacklogItemTypeSchema,
+  BacklogItemStatusSchema,
+  BacklogItemPrioritySchema,
   type InstallOptions,
   type UpdateOptions,
   type UninstallOptions,
@@ -33,11 +37,45 @@ import {
   type ProfileOverrides,
   type CreateItemInput,
   type UpdateItemInput,
-  type BacklogItemType,
-  type BacklogItemStatus,
 } from "@ralph/core";
 
 import { errorResponse } from "../app.js";
+
+// ─── Request body schemas ────────────────────────────────────────
+
+const CreateItemBodySchema = z.object({
+  type: BacklogItemTypeSchema,
+  priority: BacklogItemPrioritySchema,
+  title: z.string().min(1, "title must be a non-empty string"),
+  description: z.string().optional(),
+  acceptanceCriteria: z.array(z.string()).optional(),
+  dependsOn: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+  estimatedIterations: z.number().int().positive().optional(),
+});
+
+const UpdateItemBodySchema = z
+  .object({
+    type: BacklogItemTypeSchema,
+    priority: BacklogItemPrioritySchema,
+    title: z.string(),
+    status: BacklogItemStatusSchema,
+    description: z.string(),
+    acceptanceCriteria: z.array(z.string()),
+    blockedReason: z.string(),
+    dependsOn: z.array(z.string()),
+    notes: z.string(),
+    estimatedIterations: z.number().int().positive(),
+  })
+  .partial();
+
+const InitBodySchema = z.object({
+  targetPath: z.string().min(1, "targetPath is required"),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  preset: z.string().optional(),
+  requirements: z.string().optional(),
+});
 
 // ─── Artifacts resolution ────────────────────────────────────────
 //
@@ -139,23 +177,27 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   // so it is matched first.
 
   router.post("/init", async (c) => {
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
+    const raw = await c.req.json().catch(() => null);
+    if (raw === null || typeof raw !== "object") {
       return c.json(errorResponse("INVALID_BODY", "Request body is required"), 400);
     }
 
-    const { targetPath, name, description, preset, requirements } = body;
-
-    if (!targetPath || typeof targetPath !== "string") {
-      return c.json(errorResponse("VALIDATION_ERROR", "targetPath is required"), 400);
+    const parseResult = InitBodySchema.safeParse(raw);
+    if (!parseResult.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parseResult.error.flatten()),
+        400,
+      );
     }
+
+    const { targetPath, name, description, preset, requirements } = parseResult.data;
 
     const opts: InitOptions = {
       artifactsDir: resolveArtifactsDir(),
-      projectName: typeof name === "string" ? name : undefined,
-      projectDescription: typeof description === "string" ? description : undefined,
-      preset: typeof preset === "string" ? preset : undefined,
-      requirements: typeof requirements === "string" ? requirements : undefined,
+      projectName: name,
+      projectDescription: description,
+      preset,
+      requirements,
       rootDirectory: getRootDirectory(),
     };
 
@@ -367,43 +409,20 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body !== "object") {
+    const raw = await c.req.json().catch(() => null);
+    if (raw === null || typeof raw !== "object") {
       return c.json(errorResponse("INVALID_BODY", "Request body is required"), 400);
     }
 
-    const { type, priority, title } = body;
-
-    const validTypes = ["bug", "refactor", "feature", "chore"];
-    if (typeof type !== "string" || !validTypes.includes(type)) {
+    const parseResult = CreateItemBodySchema.safeParse(raw);
+    if (!parseResult.success) {
       return c.json(
-        errorResponse("VALIDATION_ERROR", "type must be one of: bug, refactor, feature, chore"),
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parseResult.error.flatten()),
         400,
       );
     }
-    const validPriorities = [1, 2, 3, 4];
-    if (typeof priority !== "number" || !validPriorities.includes(priority)) {
-      return c.json(errorResponse("VALIDATION_ERROR", "priority must be 1, 2, 3, or 4"), 400);
-    }
-    if (typeof title !== "string" || !title.trim()) {
-      return c.json(errorResponse("VALIDATION_ERROR", "title must be a non-empty string"), 400);
-    }
 
-    const input: CreateItemInput = {
-      type: type as BacklogItemType,
-      priority: priority as 1 | 2 | 3 | 4,
-      title,
-      description: typeof body.description === "string" ? body.description : undefined,
-      acceptanceCriteria: Array.isArray(body.acceptanceCriteria)
-        ? (body.acceptanceCriteria as unknown[]).filter((s): s is string => typeof s === "string")
-        : undefined,
-      dependsOn: Array.isArray(body.dependsOn)
-        ? (body.dependsOn as unknown[]).filter((s): s is string => typeof s === "string")
-        : undefined,
-      notes: typeof body.notes === "string" ? body.notes : undefined,
-      estimatedIterations:
-        typeof body.estimatedIterations === "number" ? body.estimatedIterations : undefined,
-    };
+    const input: CreateItemInput = parseResult.data;
 
     const result = addItem(projectPath, input);
     if (!result.ok) {
@@ -461,80 +480,20 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (body === null) {
+    const raw = await c.req.json().catch(() => null);
+    if (raw === null) {
       return c.json(errorResponse("INVALID_BODY", "Request body is required"), 400);
     }
 
-    const updates: UpdateItemInput = {};
-    const validTypes = ["bug", "refactor", "feature", "chore"];
-    const validStatuses = ["pending", "in_progress", "done", "blocked"];
-    const validPriorities = [1, 2, 3, 4];
+    const parseResult = UpdateItemBodySchema.safeParse(raw);
+    if (!parseResult.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parseResult.error.flatten()),
+        400,
+      );
+    }
 
-    if (body.type !== undefined) {
-      if (typeof body.type !== "string" || !validTypes.includes(body.type)) {
-        return c.json(
-          errorResponse("VALIDATION_ERROR", "type must be one of: bug, refactor, feature, chore"),
-          400,
-        );
-      }
-      updates.type = body.type as BacklogItemType;
-    }
-    if (body.priority !== undefined) {
-      if (typeof body.priority !== "number" || !validPriorities.includes(body.priority)) {
-        return c.json(errorResponse("VALIDATION_ERROR", "priority must be 1, 2, 3, or 4"), 400);
-      }
-      updates.priority = body.priority as 1 | 2 | 3 | 4;
-    }
-    if (body.title !== undefined) {
-      if (typeof body.title !== "string") {
-        return c.json(errorResponse("VALIDATION_ERROR", "title must be a string"), 400);
-      }
-      updates.title = body.title;
-    }
-    if (body.status !== undefined) {
-      if (typeof body.status !== "string" || !validStatuses.includes(body.status)) {
-        return c.json(
-          errorResponse(
-            "VALIDATION_ERROR",
-            "status must be one of: pending, in_progress, done, blocked",
-          ),
-          400,
-        );
-      }
-      updates.status = body.status as BacklogItemStatus;
-    }
-    if (body.description !== undefined) updates.description = String(body.description);
-    if (body.blockedReason !== undefined) updates.blockedReason = String(body.blockedReason);
-    if (body.acceptanceCriteria !== undefined) {
-      if (!Array.isArray(body.acceptanceCriteria)) {
-        return c.json(
-          errorResponse("VALIDATION_ERROR", "acceptanceCriteria must be an array"),
-          400,
-        );
-      }
-      updates.acceptanceCriteria = (body.acceptanceCriteria as unknown[]).filter(
-        (s): s is string => typeof s === "string",
-      );
-    }
-    if (body.dependsOn !== undefined) {
-      if (!Array.isArray(body.dependsOn)) {
-        return c.json(errorResponse("VALIDATION_ERROR", "dependsOn must be an array"), 400);
-      }
-      updates.dependsOn = (body.dependsOn as unknown[]).filter(
-        (s): s is string => typeof s === "string",
-      );
-    }
-    if (body.notes !== undefined) updates.notes = String(body.notes);
-    if (body.estimatedIterations !== undefined) {
-      if (typeof body.estimatedIterations !== "number") {
-        return c.json(
-          errorResponse("VALIDATION_ERROR", "estimatedIterations must be a number"),
-          400,
-        );
-      }
-      updates.estimatedIterations = body.estimatedIterations;
-    }
+    const updates: UpdateItemInput = parseResult.data;
 
     const result = updateItem(projectPath, itemId, updates);
     if (!result.ok) {
