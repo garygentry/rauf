@@ -8,6 +8,7 @@ import { VERSION } from "@ralph/core";
 import type { GlobalFlags } from "./parser.js";
 import { c, info, print, outputJson, renderTable } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
+import { handleInstall, handleInit, handleUpdate, handleUninstall } from "./install-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -77,21 +78,25 @@ export const COMMANDS: CommandDef[] = [
     name: "install",
     description: "Install ralph into an existing project",
     usage: "ralph install <path> [options]",
+    handler: handleInstall,
   },
   {
     name: "init",
     description: "Initialize a new project with ralph",
     usage: "ralph init <path> [options]",
+    handler: handleInit,
   },
   {
     name: "update",
     description: "Update ralph artifacts in a project",
     usage: "ralph update <path> [--yes]",
+    handler: handleUpdate,
   },
   {
     name: "uninstall",
     description: "Remove ralph from a project",
     usage: "ralph uninstall <path> [--yes] [--keep-data]",
+    handler: handleUninstall,
   },
   {
     name: "backlog",
