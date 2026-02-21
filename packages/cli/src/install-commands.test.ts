@@ -72,6 +72,7 @@ function makeCtx(overrides?: Partial<CommandContext>): CommandContext {
       quiet: false,
       root: null,
     },
+    rawArgv: [],
     ...overrides,
   };
 }

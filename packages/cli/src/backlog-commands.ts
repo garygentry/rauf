@@ -1,0 +1,468 @@
+// ─── Backlog Management Command Handlers ─────────────────────────
+//
+// CLI adapters for core backlog CRUD functions.
+// Each handler: parses flags → resolves paths → calls core → formats output.
+
+import * as path from "node:path";
+
+import {
+  readBacklog,
+  addItem,
+  updateItem,
+  deleteItem,
+  restoreFromBackup,
+  ErrorCodes,
+  type BacklogItem,
+  type BacklogItemType,
+  type BacklogItemStatus,
+  type CreateItemInput,
+  type UpdateItemInput,
+} from "@ralph/core";
+
+import type { CommandContext } from "./commands.js";
+import { ExitCode } from "./commands.js";
+import {
+  extractBoolFlag,
+  extractStringFlag,
+  extractNumberFlag,
+  extractRepeatableFlag,
+} from "./parser.js";
+import {
+  c,
+  info,
+  print,
+  error,
+  warn,
+  success,
+  outputJson,
+  renderTable,
+  symbols,
+} from "./formatter.js";
+import type { TableColumn } from "./formatter.js";
+
+// ─── Constants ────────────────────────────────────────────────────
+
+const VALID_TYPES = new Set<string>(["bug", "refactor", "feature", "chore"]);
+const VALID_STATUSES = new Set<string>(["pending", "in_progress", "done", "blocked"]);
+
+// ─── handleBacklogList ───────────────────────────────────────────
+
+export async function handleBacklogList(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog list <path> [--status <s>] [--type <t>] [--json]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const statusFilter = extractStringFlag(ctx.flags, "status");
+  const typeFilter = extractStringFlag(ctx.flags, "type");
+
+  // Validate filter values
+  if (statusFilter && !VALID_STATUSES.has(statusFilter)) {
+    error(`Invalid status filter: "${statusFilter}"`);
+    info(`Valid statuses: ${[...VALID_STATUSES].join(", ")}`);
+    return ExitCode.INVALID_ARGS;
+  }
+  if (typeFilter && !VALID_TYPES.has(typeFilter)) {
+    error(`Invalid type filter: "${typeFilter}"`);
+    info(`Valid types: ${[...VALID_TYPES].join(", ")}`);
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const result = readBacklog(resolved);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx);
+  }
+
+  let items = result.value.items;
+
+  // Apply filters
+  if (statusFilter) {
+    items = items.filter((i) => i.status === statusFilter);
+  }
+  if (typeFilter) {
+    items = items.filter((i) => i.type === typeFilter);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(items);
+    return ExitCode.SUCCESS;
+  }
+
+  if (items.length === 0) {
+    info("No backlog items found.");
+    return ExitCode.SUCCESS;
+  }
+
+  // Render table
+  const columns: TableColumn[] = [
+    { header: "ID", key: "id" },
+    { header: "Type", key: "type" },
+    { header: "Pri", key: "priority", align: "right" },
+    { header: "Status", key: "status" },
+    { header: "Title", key: "title", width: 50 },
+  ];
+
+  const rows = items.map((item) => ({
+    id: item.id,
+    type: item.type,
+    priority: String(item.priority),
+    status: colorStatus(item.status),
+    title: item.title,
+  }));
+
+  print(renderTable(columns, rows));
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogAdd ────────────────────────────────────────────
+
+export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog add <path> --title \"...\" --type <t> --priority N [options]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const title = extractStringFlag(ctx.flags, "title");
+  const type = extractStringFlag(ctx.flags, "type");
+  const priorityNum = extractNumberFlag(ctx.flags, "priority");
+  const dependsOnRaw = extractStringFlag(ctx.flags, "depends-on");
+  const notes = extractStringFlag(ctx.flags, "notes");
+  const description = extractStringFlag(ctx.flags, "description");
+  const estimatedIterations = extractNumberFlag(ctx.flags, "estimated-iterations");
+
+  // Extract repeatable --ac flags from raw argv
+  const acValues = extractRepeatableFlag(ctx.rawArgv, "ac");
+  // Also remove 'ac' from the flags map so it doesn't show as unknown
+  ctx.flags.delete("ac");
+
+  // Validate required fields
+  if (!title) {
+    error("Missing required flag: --title");
+    return ExitCode.INVALID_ARGS;
+  }
+  if (!type) {
+    error("Missing required flag: --type");
+    return ExitCode.INVALID_ARGS;
+  }
+  if (!VALID_TYPES.has(type)) {
+    error(`Invalid type: "${type}"`);
+    info(`Valid types: ${[...VALID_TYPES].join(", ")}`);
+    return ExitCode.INVALID_ARGS;
+  }
+
+  // Priority defaults to 2 if not specified
+  const priority = priorityNum ?? 2;
+  if (priority < 1 || priority > 4 || !Number.isInteger(priority)) {
+    error("Priority must be an integer from 1 to 4");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  // Parse dependsOn comma-separated list
+  const dependsOn = dependsOnRaw
+    ? dependsOnRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : undefined;
+
+  // Build input
+  const input: CreateItemInput = {
+    type: type as BacklogItemType,
+    priority: priority as 1 | 2 | 3 | 4,
+    title,
+    description: description ?? undefined,
+    acceptanceCriteria: acValues.length > 0 ? acValues : undefined,
+    dependsOn,
+    notes: notes ?? undefined,
+    estimatedIterations: estimatedIterations ?? undefined,
+  };
+
+  // Warn if no --ac provided (smart default will be used)
+  if (acValues.length === 0) {
+    warn("No --ac flags provided. A smart default acceptance criterion will be added.");
+  }
+
+  const result = addItem(resolved, input);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx);
+  }
+
+  const newItem = result.value;
+
+  if (ctx.globalFlags.json) {
+    outputJson(newItem);
+    return ExitCode.SUCCESS;
+  }
+
+  success(`Created item ${c.bold(newItem.id)}: ${newItem.title}`);
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogEdit ───────────────────────────────────────────
+
+export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  const itemId = ctx.args[1];
+
+  if (!targetPath || !itemId) {
+    error("Missing required arguments: <path> <id>");
+    info("Usage: ralph backlog edit <path> <id> [field options]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const title = extractStringFlag(ctx.flags, "title");
+  const type = extractStringFlag(ctx.flags, "type");
+  const priorityNum = extractNumberFlag(ctx.flags, "priority");
+  const status = extractStringFlag(ctx.flags, "status");
+  const description = extractStringFlag(ctx.flags, "description");
+  const dependsOnRaw = extractStringFlag(ctx.flags, "depends-on");
+  const notes = extractStringFlag(ctx.flags, "notes");
+  const blockedReason = extractStringFlag(ctx.flags, "blocked-reason");
+  const estimatedIterations = extractNumberFlag(ctx.flags, "estimated-iterations");
+
+  // Extract repeatable --ac flags (replaces entire array)
+  const acValues = extractRepeatableFlag(ctx.rawArgv, "ac");
+  ctx.flags.delete("ac");
+
+  // Validate type if provided
+  if (type && !VALID_TYPES.has(type)) {
+    error(`Invalid type: "${type}"`);
+    info(`Valid types: ${[...VALID_TYPES].join(", ")}`);
+    return ExitCode.INVALID_ARGS;
+  }
+
+  // Validate status if provided
+  if (status && !VALID_STATUSES.has(status)) {
+    error(`Invalid status: "${status}"`);
+    info(`Valid statuses: ${[...VALID_STATUSES].join(", ")}`);
+    return ExitCode.INVALID_ARGS;
+  }
+
+  // Validate priority if provided
+  if (priorityNum !== null && (priorityNum < 1 || priorityNum > 4 || !Number.isInteger(priorityNum))) {
+    error("Priority must be an integer from 1 to 4");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  // Parse dependsOn
+  const dependsOn = dependsOnRaw
+    ? dependsOnRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : undefined;
+
+  // Build updates (only include fields that were specified)
+  const updates: UpdateItemInput = {};
+  if (title !== null) updates.title = title;
+  if (type !== null) updates.type = type as BacklogItemType;
+  if (priorityNum !== null) updates.priority = priorityNum as 1 | 2 | 3 | 4;
+  if (status !== null) updates.status = status as BacklogItemStatus;
+  if (description !== null) updates.description = description;
+  if (acValues.length > 0) updates.acceptanceCriteria = acValues;
+  if (dependsOn !== undefined) updates.dependsOn = dependsOn;
+  if (notes !== null) updates.notes = notes;
+  if (blockedReason !== null) updates.blockedReason = blockedReason;
+  if (estimatedIterations !== null) updates.estimatedIterations = estimatedIterations;
+
+  const result = updateItem(resolved, itemId, updates);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value);
+    return ExitCode.SUCCESS;
+  }
+
+  success(`Updated item ${c.bold(itemId)}`);
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogDelete ─────────────────────────────────────────
+
+export async function handleBacklogDelete(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  const itemId = ctx.args[1];
+
+  if (!targetPath || !itemId) {
+    error("Missing required arguments: <path> <id>");
+    info("Usage: ralph backlog delete <path> <id> [--yes]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const yes = extractBoolFlag(ctx.flags, "yes");
+
+  // Confirmation check — in non-interactive CLI mode, require --yes
+  if (!yes) {
+    warn(`Deleting item ${itemId}. Pass --yes to confirm.`);
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const result = deleteItem(resolved, itemId);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson({ deleted: itemId });
+    return ExitCode.SUCCESS;
+  }
+
+  success(`Deleted item ${c.bold(itemId)}`);
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogShow ───────────────────────────────────────────
+
+export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  const itemId = ctx.args[1];
+
+  if (!targetPath || !itemId) {
+    error("Missing required arguments: <path> <id>");
+    info("Usage: ralph backlog show <path> <id> [--json]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+
+  const result = readBacklog(resolved);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx);
+  }
+
+  const item = result.value.items.find((i) => i.id === itemId);
+  if (!item) {
+    error(`Item not found: ${itemId}`);
+    return ExitCode.NOT_FOUND;
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(item);
+    return ExitCode.SUCCESS;
+  }
+
+  printItemDetail(item);
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogRestore ────────────────────────────────────────
+
+export async function handleBacklogRestore(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog restore <path> [--yes]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const yes = extractBoolFlag(ctx.flags, "yes");
+
+  if (!yes) {
+    warn("Restoring backlog from backup. Pass --yes to confirm.");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const result = restoreFromBackup(resolved);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson({ restored: true, path: resolved });
+    return ExitCode.SUCCESS;
+  }
+
+  success("Backlog restored from backup.");
+  return ExitCode.SUCCESS;
+}
+
+// ─── Shared helpers ──────────────────────────────────────────────
+
+/** Map core error codes to CLI exit codes and print */
+function handleCoreError(
+  err: { code: string; message: string; details?: unknown },
+  ctx: CommandContext,
+): number {
+  if (ctx.globalFlags.json) {
+    outputJson({ error: err });
+  } else {
+    error(err.message);
+  }
+
+  switch (err.code) {
+    case ErrorCodes.FILE_NOT_FOUND:
+      return ExitCode.NOT_FOUND;
+    case ErrorCodes.NOT_INSTALLED:
+      return ExitCode.NOT_FOUND;
+    case ErrorCodes.VALIDATION_ERROR:
+      return ExitCode.VALIDATION;
+    case ErrorCodes.CONFLICT:
+      return ExitCode.CONFLICT;
+    case ErrorCodes.TRANSITION_INVALID:
+      return ExitCode.VALIDATION;
+    default:
+      return ExitCode.ERROR;
+  }
+}
+
+/** Colorize a status string for table display */
+function colorStatus(status: string): string {
+  switch (status) {
+    case "pending":
+      return c.dim(status);
+    case "in_progress":
+      return c.yellow(status);
+    case "done":
+      return c.green(status);
+    case "blocked":
+      return c.red(status);
+    default:
+      return status;
+  }
+}
+
+/** Print detailed view of a single backlog item */
+function printItemDetail(item: BacklogItem): void {
+  print(`${c.bold("ID:")}       ${item.id}`);
+  print(`${c.bold("Title:")}    ${item.title}`);
+  print(`${c.bold("Type:")}     ${item.type}`);
+  print(`${c.bold("Priority:")} ${item.priority}`);
+  print(`${c.bold("Status:")}   ${colorStatus(item.status)}`);
+
+  if (item.description) {
+    print(`${c.bold("Description:")}`);
+    print(`  ${item.description}`);
+  }
+
+  if (item.acceptanceCriteria && item.acceptanceCriteria.length > 0) {
+    print(`${c.bold("Acceptance Criteria:")}`);
+    for (const ac of item.acceptanceCriteria) {
+      print(`  ${symbols.bullet} ${ac}`);
+    }
+  }
+
+  if (item.dependsOn && item.dependsOn.length > 0) {
+    print(`${c.bold("Depends On:")} ${item.dependsOn.join(", ")}`);
+  }
+
+  if (item.notes) {
+    print(`${c.bold("Notes:")}    ${item.notes}`);
+  }
+
+  if (item.completedAt) {
+    print(`${c.bold("Completed:")} ${item.completedAt}`);
+  }
+
+  if (item.blockedReason) {
+    print(`${c.bold("Blocked:")}  ${item.blockedReason}`);
+  }
+
+  if (item.estimatedIterations) {
+    print(`${c.bold("Est. Iterations:")} ${item.estimatedIterations}`);
+  }
+}

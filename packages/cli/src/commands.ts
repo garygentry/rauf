@@ -9,6 +9,14 @@ import type { GlobalFlags } from "./parser.js";
 import { c, info, print, outputJson, renderTable } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
 import { handleInstall, handleInit, handleUpdate, handleUninstall } from "./install-commands.js";
+import {
+  handleBacklogList,
+  handleBacklogAdd,
+  handleBacklogEdit,
+  handleBacklogDelete,
+  handleBacklogShow,
+  handleBacklogRestore,
+} from "./backlog-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -16,6 +24,7 @@ export interface CommandContext {
   args: string[];
   flags: Map<string, string | true>;
   globalFlags: GlobalFlags;
+  rawArgv: string[];
 }
 
 export interface SubcommandDef {
@@ -103,12 +112,12 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage project backlog items",
     usage: "ralph backlog <subcommand> <path>",
     subcommands: [
-      { name: "list", description: "List backlog items" },
-      { name: "add", description: "Add a new backlog item" },
-      { name: "edit", description: "Edit an existing item" },
-      { name: "delete", description: "Delete a backlog item" },
-      { name: "show", description: "Show item details" },
-      { name: "restore", description: "Restore from backup" },
+      { name: "list", description: "List backlog items", handler: handleBacklogList },
+      { name: "add", description: "Add a new backlog item", handler: handleBacklogAdd },
+      { name: "edit", description: "Edit an existing item", handler: handleBacklogEdit },
+      { name: "delete", description: "Delete a backlog item", handler: handleBacklogDelete },
+      { name: "show", description: "Show item details", handler: handleBacklogShow },
+      { name: "restore", description: "Restore from backup", handler: handleBacklogRestore },
     ],
   },
   {

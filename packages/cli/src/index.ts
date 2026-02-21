@@ -37,6 +37,7 @@ async function main(): Promise<number> {
         args: [],
         flags: new Map(),
         globalFlags: preparse.globalFlags,
+        rawArgv: argv,
       });
     }
     return ExitCode.SUCCESS;
@@ -69,6 +70,7 @@ async function main(): Promise<number> {
     args: parsed.args,
     flags: parsed.flags,
     globalFlags: parsed.globalFlags,
+    rawArgv: argv,
   };
 
   // If command has subcommands, route to subcommand handler
