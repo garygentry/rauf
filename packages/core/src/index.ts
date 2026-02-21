@@ -14,3 +14,4 @@ export * from "./claude-md.js";
 export * from "./backlog.js";
 export * from "./status.js";
 export * from "./installer.js";
+export * from "./greenfield.js";
