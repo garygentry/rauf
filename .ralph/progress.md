@@ -235,3 +235,17 @@
 - Progress endpoint reads `.ralph/progress.md` directly (no core function exists), returns `{ data: "" }` on missing file
 - 23 new tests, total 105 in web package (now across backlog, projects, status, app test files)
 - Pre-existing CLI test failure (`handleServerStatus > reports running with JSON output when PID is alive`): expects `uptime: null` but gets real uptime when ralph server is running in test environment — NOT caused by 023
+
+### 026: Web Frontend: React + TanStack Router + Query setup, app shell (completed)
+- Tailwind CSS v4 requires `@tailwindcss/vite` Vite plugin (NOT `postcss.config.js`) — install as devDep, import in vite.config.ts
+- Tailwind v4 CSS: `@import "tailwindcss"` (not `@tailwind base/components/utilities`) + `@theme {}` block for custom variables
+- TanStack Router v1: code-based routing — `createRootRoute`, `createRoute`, `createRouter` — no Vite plugin needed
+- Router `redirect()` must be thrown inside `beforeLoad` (not returned): `throw redirect({ to: "/projects" })`
+- `useParams({ strict: false })` on leaf routes — without strict mode, params from parent routes are accessible
+- ThemeProvider stores preference in localStorage; `data-theme` attribute on `<html>` element drives dark mode CSS vars
+- Light/dark theme via CSS custom properties scoped to `[data-theme="dark"]` on `<html>` element
+- `QueryClient` with `staleTime: 30_000` matches SPEC-WEB "auto-refresh every 30s" requirement
+- Shared `ralphFetch` wrapper sets `X-Ralph-Request: true` header — required by CSRF middleware on all mutations
+- Vite dev server proxies `/api` → `127.0.0.1:5173` — allows frontend dev on 5174 to hit the Hono server on 5173
+- Build outputs: `build/index.html` + `build/assets/*.{css,js}` — these are the static assets served by Hono's `serveStatic`
+- Provider stack in main.tsx: ThemeProvider → QueryClientProvider → RouterProvider (order: theme outermost)

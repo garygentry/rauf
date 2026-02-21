@@ -1,8 +1,4 @@
+// App is kept for tsc compilation; the live app is bootstrapped via main.tsx.
 export function App() {
-  return (
-    <div>
-      <h1>Ralph Manager</h1>
-      <p>Coming soon.</p>
-    </div>
-  );
+  return null;
 }
