@@ -18,6 +18,7 @@ interface BacklogItem {
   dependsOn?: string[]; // Item IDs this depends on
   notes?: string; // Free-text context, links, hints
   estimatedIterations?: number; // Expected iterations to complete
+  model?: string; // Per-item model override (e.g., "claude-opus-4-6"). Overrides CLI arg and project default.
 }
 ```
 
@@ -88,6 +89,7 @@ interface MarkerOptions {
   ignoreInTool: boolean; // Default: false
   gitignoreScripts: boolean; // Default: false
   maxIterations: number; // Default: 20
+  model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI arg $3 and per-item BacklogItem.model.
 }
 ```
 

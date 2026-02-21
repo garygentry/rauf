@@ -32,4 +32,46 @@ describe("repo integrity", () => {
     const target = readlinkSync(rootScript);
     expect(target).toBe("artifacts/variants/backlog-json/ralph.sh");
   });
+
+  it("ralph-add.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-add.sh", () => {
+    const rootScript = resolve(REPO_ROOT, "ralph-add.sh");
+    const canonicalScript = resolve(
+      REPO_ROOT,
+      "artifacts/variants/backlog-json/ralph-add.sh",
+    );
+
+    expect(existsSync(canonicalScript), "canonical ralph-add.sh must exist").toBe(true);
+    const canonicalStat = lstatSync(canonicalScript);
+    expect(
+      canonicalStat.isFile(),
+      "canonical ralph-add.sh must be a regular file",
+    ).toBe(true);
+
+    const rootStat = lstatSync(rootScript);
+    expect(rootStat.isSymbolicLink(), "root ralph-add.sh must be a symlink").toBe(true);
+
+    const target = readlinkSync(rootScript);
+    expect(target).toBe("artifacts/variants/backlog-json/ralph-add.sh");
+  });
+
+  it("ralph-status.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-status.sh", () => {
+    const rootScript = resolve(REPO_ROOT, "ralph-status.sh");
+    const canonicalScript = resolve(
+      REPO_ROOT,
+      "artifacts/variants/backlog-json/ralph-status.sh",
+    );
+
+    expect(existsSync(canonicalScript), "canonical ralph-status.sh must exist").toBe(true);
+    const canonicalStat = lstatSync(canonicalScript);
+    expect(
+      canonicalStat.isFile(),
+      "canonical ralph-status.sh must be a regular file",
+    ).toBe(true);
+
+    const rootStat = lstatSync(rootScript);
+    expect(rootStat.isSymbolicLink(), "root ralph-status.sh must be a symlink").toBe(true);
+
+    const target = readlinkSync(rootScript);
+    expect(target).toBe("artifacts/variants/backlog-json/ralph-status.sh");
+  });
 });

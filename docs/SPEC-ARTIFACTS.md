@@ -11,6 +11,7 @@ artifacts/variants/backlog-json/
 ├── ralph.sh                     # Main loop runner
 ├── ralph-status.sh              # Quick status snapshot
 ├── ralph-add.sh                 # Add items to backlog
+├── ralph-stop.sh                # Request graceful loop cancellation (creates .ralph/CANCEL)
 ├── CLAUDE_ADDON.md              # Block to merge into existing CLAUDE.md
 ├── CLAUDE_GREENFIELD.md.tmpl    # Full CLAUDE.md template for new projects
 └── .ralph/
@@ -70,30 +71,81 @@ Also checks for existing `in_progress` items (resume from interrupted loop).
 
 8. **DONE file + ralph.log:** Backward-compatible markers.
 
+### Model Resolution
+
+ralph.sh resolves which Claude model to use at each iteration using a 4-tier priority cascade:
+
+```
+Resolution priority (highest to lowest):
+  1. BacklogItem.model  — per-task override (read from the selected backlog item's .model field)
+  2. CLI arg $3         — per-run override (e.g., ./ralph.sh 20 3 claude-opus-4-6)
+  3. MarkerOptions.model — project-level default (from .ralph.json options.model)
+  4. Claude default     — no --model flag passed; Claude CLI uses its configured default
+
+Implementation:
+  CLI_MODEL="${3:-}"
+  PROJECT_MODEL=$(jq -r '.options.model // empty' .ralph.json 2>/dev/null || echo "")
+  ITEM_MODEL=$(echo "$ITEM_JSON" | jq -r '.model // empty')
+  RESOLVED_MODEL="${ITEM_MODEL:-${CLI_MODEL:-$PROJECT_MODEL}}"
+
+Invocation:
+  if [ -n "$RESOLVED_MODEL" ]; then
+    MODEL_FLAG="--model $RESOLVED_MODEL"
+  fi
+  claude -p --dangerously-skip-permissions --output-format text $MODEL_FLAG
+```
+
+Model IDs follow Anthropic conventions: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`.
+
+### Graceful Cancel
+
+ralph.sh supports graceful cancellation via a `.ralph/CANCEL` signal file:
+
+```
+Cancel mechanism:
+  - Create .ralph/CANCEL to request stop (ralph-stop.sh does this automatically)
+  - Loop checks for .ralph/CANCEL at the START of each iteration (before item selection)
+  - On detection:
+      1. Remove .ralph/CANCEL
+      2. Write state.json: status=paused, lastSignal=clean
+      3. Write DONE file with content "cancel"
+      4. Exit 0
+  - Item currently in progress is NOT reset — cancel only fires at iteration boundary,
+    after the previous item was already resolved
+
+ralph-stop.sh behaviour:
+  - Creates .ralph/CANCEL
+  - Outputs: "Cancel requested. Loop will stop after current iteration."
+  - Root symlink: ralph-stop.sh -> artifacts/variants/backlog-json/ralph-stop.sh
+```
+
 ### Behavior Flow
 
 ```
-1. Parse args (max_iterations, default 20)
+1. Parse args (max_iterations default 20, retries default 3, model default empty)
 2. Preflight: require backlog.json, RALPH.md, claude, jq
-3. Write state.json: starting
-4. Set cleanup trap for unexpected exits
-5. Loop:
-   a. Check for existing in_progress items (resume case)
-   b. If none, select first pending item by priority
-   c. If no items available → COMPLETE
-   d. Mark item in_progress (targeted jq write)
-   e. Write state.json: running, iteration N, currentItem
-   f. Build prompt: RALPH.md + focused item + backlog context
-   g. Spawn claude -p, capture output
-   h. Parse exit signal:
+3. Resolve project-level model from .ralph.json options.model
+4. Write state.json: starting
+5. Set cleanup trap for unexpected exits
+6. Loop:
+   a. Check for .ralph/CANCEL → if found: remove, write state paused, write DONE "cancel", exit 0
+   b. Check for existing in_progress items (resume case)
+   c. If none, select first pending item by priority
+   d. If no items available → COMPLETE
+   e. Resolve item-level model (item.model > CLI arg > project model)
+   f. Mark item in_progress (targeted jq write)
+   g. Write state.json: running, iteration N, currentItem
+   h. Build prompt: RALPH.md + focused item + backlog context
+   i. Spawn claude -p [--model <model>], capture output
+   j. Parse exit signal:
       - RALPH_DONE → mark done, git commit, add to completedItems
       - RALPH_BLOCKED → mark blocked with reason, add to blockedItems
       - RALPH_NEEDS_HUMAN → write state paused_human, exit 2
       - No signal → reset to pending, log warning
-   i. Clear current item, print status
-   j. Sleep 3s between iterations
-6. If max iterations reached → write state limit_reached
-7. Write DONE file, disarm cleanup trap
+   k. Clear current item, print status
+   l. Sleep 3s between iterations
+7. If max iterations reached → write state limit_reached
+8. Write DONE file, disarm cleanup trap
 ```
 
 ## ralph-status.sh — Quick Status
@@ -115,6 +167,16 @@ Interactive or flag-driven script to add an item to backlog.json:
 - Auto-assigns ID using **max of all existing IDs** + 1 (handles gaps from deletions)
 - Uses **atomic write** (jq → .tmp → mv) — never echo > overwrite
 - Reports the new item and suggests adding acceptance criteria
+
+## ralph-stop.sh — Graceful Cancel
+
+Creates `.ralph/CANCEL` to signal the running loop to stop at the next iteration boundary:
+
+- Requires `.ralph/` directory to exist (ralph must be installed)
+- Creates `.ralph/CANCEL` (empty file or with timestamp content)
+- Outputs: `"Cancel requested. Loop will stop after current iteration."`
+- The loop detects this file at the top of each iteration and exits cleanly with `status=paused`
+- Root symlink: `ralph-stop.sh -> artifacts/variants/backlog-json/ralph-stop.sh`
 
 ## CLAUDE_ADDON.md — Merge Block
 

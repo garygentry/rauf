@@ -955,6 +955,50 @@
       "dependsOn": [
         "039"
       ]
+    },
+    {
+      "id": "043",
+      "type": "feature",
+      "priority": 2,
+      "title": "Model selection: 3-tier model override for ralph sessions",
+      "description": "Allow users to specify which Claude model ralph.sh uses, with three levels of priority: per-task (BacklogItem.model), per-run (CLI arg $3), and project-default (MarkerOptions.model in .ralph.json). When a model is specified, pass --model <model> to the claude -p invocation.",
+      "acceptanceCriteria": [
+        "Add model?: string to BacklogItemSchema (Zod optional field)",
+        "Add model?: string to MarkerOptionsSchema (Zod optional field)",
+        "ralph.sh reads model from CLI arg $3 (./ralph.sh [iterations] [retries] [model])",
+        "ralph.sh reads project-level default from .ralph.json options.model (jq .options.model // empty)",
+        "ralph.sh reads per-item override from backlog item .model field",
+        "Resolution order: item.model > CLI arg > options.model > no flag (Claude default)",
+        "When resolved model is non-empty, passes --model <model> to claude -p",
+        "Existing .ralph.json files without model field continue to work (optional field, no migration)",
+        "Unit tests: schemas accept/reject model field correctly",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002", "035"],
+      "notes": "Reference docs/SCHEMAS.md and docs/SPEC-ARTIFACTS.md for model field definitions. The --model flag for claude CLI accepts model IDs like claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001."
+    },
+    {
+      "id": "044",
+      "type": "feature",
+      "priority": 2,
+      "title": "Graceful cancel: ralph-stop.sh and CANCEL signal file mechanism",
+      "description": "Implement graceful loop cancellation via a .ralph/CANCEL signal file. The loop checks for this file at each iteration boundary (after the current Claude session completes). On detection, the loop exits cleanly with state paused. A ralph-stop.sh script creates the CANCEL file. Add root symlink and repo-integrity test.",
+      "acceptanceCriteria": [
+        "Create artifacts/variants/backlog-json/ralph-stop.sh that writes .ralph/CANCEL",
+        "ralph.sh checks for .ralph/CANCEL at top of each while-loop iteration (before item selection)",
+        "On CANCEL detection: remove .ralph/CANCEL, write state.json status=paused lastSignal=clean, write DONE file with content 'cancel', exit 0",
+        "Current in-progress item is NOT reset — cancel only fires at iteration boundary, item was already resolved",
+        "ralph-stop.sh symlinked at repo root: ralph-stop.sh -> artifacts/variants/backlog-json/ralph-stop.sh",
+        "repo-integrity.test.ts verifies ralph-stop.sh symlink",
+        "ralph-stop.sh outputs helpful message: 'Cancel requested. Loop will stop after current iteration.'",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["035"],
+      "notes": "Reference docs/SPEC-ARTIFACTS.md for the CANCEL signal file protocol. LoopStateStatus already includes 'paused' — no schema change needed."
     }
   ]
 }
