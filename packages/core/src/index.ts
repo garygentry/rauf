@@ -6,3 +6,4 @@ export const VERSION = "0.1.0";
 export * from "./schemas.js";
 export * from "./errors.js";
 export * from "./fs-utils.js";
+export * from "./discovery.js";
