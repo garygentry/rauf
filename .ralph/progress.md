@@ -77,3 +77,13 @@
 - Composite `verify` string rebuilt after any override to stay consistent
 - Non-Node.js projects (Python, Go, Rust) have hardcoded sensible default commands
 - 57 new tests, total 210 across core package
+
+### 008: Core: CLAUDE.md smart merge logic (completed)
+- `mergeClaudeMd(projectPath, ralphBlockContent)` handles four scenarios: create, append (merged), skip, replace (updated)
+- Returns `ClaudeMdMergeResult { action, filePath }` — action aligns with `InstallAction` types for installer integration
+- Reuses `updateSentinelBlock` from template.ts for append and replace — no duplication of sentinel logic
+- Skip detection normalizes whitespace (trim) before comparing inner content — prevents false updates from formatting differences
+- `extractRalphBlock(addonContent)` parses CLAUDE_ADDON.md template, stripping sentinel markers to get inner content
+- Idempotency verified: create→skip, append→skip, replace→skip all tested
+- Sentinel constants exported: `CLAUDE_MD_SENTINEL_START = "<!-- ralph:start -->"`, `CLAUDE_MD_SENTINEL_END = "<!-- ralph:end -->"`
+- 20 new tests, total 262 across core package
