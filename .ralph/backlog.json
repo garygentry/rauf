@@ -16,8 +16,8 @@
         "Each package can import from @ralph/core",
         "ESLint config exists and pnpm -r lint runs"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T19:14:23+00:00",
       "notes": "Read docs/ARCHITECTURE.md for package structure. Core has zero deps on cli/web. Vitest config per package or root."
     },
     {
@@ -36,7 +36,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Reference docs/SCHEMAS.md for exact field definitions."
     },
     {
@@ -57,7 +59,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002"],
+      "dependsOn": [
+        "002"
+      ],
       "notes": "Reference docs/SPEC-CORE.md fs-utils section. Use node: prefix imports."
     },
     {
@@ -77,7 +81,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Reference docs/SPEC-CORE.md discovery.ts."
     },
     {
@@ -97,7 +103,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Reference docs/SPEC-CORE.md config.ts."
     },
     {
@@ -119,7 +127,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Reference docs/SPEC-CORE.md profile.ts and PRD §7."
     },
     {
@@ -140,7 +150,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Reference docs/SPEC-CORE.md template.ts."
     },
     {
@@ -160,7 +172,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["007"],
+      "dependsOn": [
+        "007"
+      ],
       "notes": "Reference docs/SPEC-CORE.md and PRD §9.3."
     },
     {
@@ -184,7 +198,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "005"],
+      "dependsOn": [
+        "003",
+        "005"
+      ],
       "notes": "Reference docs/SPEC-CORE.md backlog.ts and PRD §11."
     },
     {
@@ -207,7 +224,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "009"],
+      "dependsOn": [
+        "003",
+        "009"
+      ],
       "notes": "Reference docs/SPEC-CORE.md status.ts and PRD §12, §16."
     },
     {
@@ -232,7 +252,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["006", "007", "008", "009"],
+      "dependsOn": [
+        "006",
+        "007",
+        "008",
+        "009"
+      ],
       "estimatedIterations": 2,
       "notes": "Reference docs/SPEC-CORE.md installer.ts and PRD §9. Large module."
     },
@@ -257,7 +282,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011"],
+      "dependsOn": [
+        "011"
+      ],
       "notes": "Reference docs/SPEC-CORE.md greenfield.ts and PRD §10."
     },
     {
@@ -278,7 +305,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Reference docs/SPEC-CLI.md."
     },
     {
@@ -298,7 +327,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["013", "020"],
+      "dependsOn": [
+        "013",
+        "020"
+      ],
       "notes": "Depends on web server (020) being minimally functional."
     },
     {
@@ -320,7 +352,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["013", "011", "012"],
+      "dependsOn": [
+        "013",
+        "011",
+        "012"
+      ],
       "notes": "Reference docs/SPEC-CLI.md."
     },
     {
@@ -342,7 +378,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["013", "009"],
+      "dependsOn": [
+        "013",
+        "009"
+      ],
       "notes": "Reference docs/SPEC-CLI.md backlog commands."
     },
     {
@@ -362,7 +401,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["013", "010"],
+      "dependsOn": [
+        "013",
+        "010"
+      ],
       "notes": "Reference docs/SPEC-CLI.md."
     },
     {
@@ -381,7 +423,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["013", "005", "006"],
+      "dependsOn": [
+        "013",
+        "005",
+        "006"
+      ],
       "notes": "Reference docs/SPEC-CLI.md."
     },
     {
@@ -399,7 +445,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["015", "016", "017", "018"]
+      "dependsOn": [
+        "015",
+        "016",
+        "017",
+        "018"
+      ]
     },
     {
       "id": "020",
@@ -418,7 +469,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Reference docs/SPEC-WEB.md server section."
     },
     {
@@ -437,7 +490,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["020", "004", "011", "012"]
+      "dependsOn": [
+        "020",
+        "004",
+        "011",
+        "012"
+      ]
     },
     {
       "id": "022",
@@ -456,7 +514,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["020", "009"]
+      "dependsOn": [
+        "020",
+        "009"
+      ]
     },
     {
       "id": "023",
@@ -475,7 +536,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["020", "010"]
+      "dependsOn": [
+        "020",
+        "010"
+      ]
     },
     {
       "id": "024",
@@ -490,7 +554,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["020", "005", "006"]
+      "dependsOn": [
+        "020",
+        "005",
+        "006"
+      ]
     },
     {
       "id": "025",
@@ -506,7 +574,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["021", "022", "023", "024"]
+      "dependsOn": [
+        "021",
+        "022",
+        "023",
+        "024"
+      ]
     },
     {
       "id": "026",
@@ -527,7 +600,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["020"],
+      "dependsOn": [
+        "020"
+      ],
       "notes": "Reference docs/SPEC-WEB.md frontend section."
     },
     {
@@ -547,7 +622,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["026"]
+      "dependsOn": [
+        "026"
+      ]
     },
     {
       "id": "028",
@@ -567,7 +644,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["026"]
+      "dependsOn": [
+        "026"
+      ]
     },
     {
       "id": "029",
@@ -588,7 +667,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["028"]
+      "dependsOn": [
+        "028"
+      ]
     },
     {
       "id": "030",
@@ -608,7 +689,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["026"]
+      "dependsOn": [
+        "026"
+      ]
     },
     {
       "id": "031",
@@ -628,7 +711,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["030"]
+      "dependsOn": [
+        "030"
+      ]
     },
     {
       "id": "032",
@@ -648,7 +733,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["026"]
+      "dependsOn": [
+        "026"
+      ]
     },
     {
       "id": "033",
@@ -666,7 +753,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["026"]
+      "dependsOn": [
+        "026"
+      ]
     },
     {
       "id": "034",
@@ -685,7 +774,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["026"]
+      "dependsOn": [
+        "026"
+      ]
     },
     {
       "id": "035",
@@ -708,7 +799,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002"],
+      "dependsOn": [
+        "002"
+      ],
       "estimatedIterations": 2,
       "notes": "Reference docs/SPEC-ARTIFACTS.md and PRD §6.6, §6.7. This is the most critical artifact."
     },
@@ -729,7 +822,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["035"]
+      "dependsOn": [
+        "035"
+      ]
     },
     {
       "id": "037",
@@ -747,7 +842,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["007"]
+      "dependsOn": [
+        "007"
+      ]
     },
     {
       "id": "038",
@@ -764,7 +861,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011", "035", "036", "037"],
+      "dependsOn": [
+        "011",
+        "035",
+        "036",
+        "037"
+      ],
       "notes": "Can be a build script that generates a TypeScript module with template strings."
     },
     {
@@ -784,7 +886,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011", "015"]
+      "dependsOn": [
+        "011",
+        "015"
+      ]
     },
     {
       "id": "040",
@@ -803,7 +908,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["019", "025", "034", "038"]
+      "dependsOn": [
+        "019",
+        "025",
+        "034",
+        "038"
+      ]
     },
     {
       "id": "041",
@@ -822,7 +932,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["025", "019"]
+      "dependsOn": [
+        "025",
+        "019"
+      ]
     },
     {
       "id": "042",
@@ -839,7 +952,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["039"]
+      "dependsOn": [
+        "039"
+      ]
     }
   ]
 }
