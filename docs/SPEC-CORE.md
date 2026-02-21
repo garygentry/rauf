@@ -1,0 +1,288 @@
+# Core Package Specification
+
+Reference: `packages/core/src/`
+
+This package contains all filesystem operations and business logic. It has ZERO dependencies on packages/cli or packages/web.
+
+## Module: fs-utils.ts
+
+### atomicWrite(filePath, content)
+1. Copy existing file to `filePath.bak` (if it exists — only for backlog.json)
+2. Write content to `filePath.tmp`
+3. Rename `filePath.tmp` → `filePath`
+4. Return Result
+
+### readJsonFile<T>(filePath, schema: ZodSchema<T>)
+1. Read file with `fs.readFileSync(filePath, 'utf-8')`
+2. `JSON.parse()` in try/catch
+3. Validate against Zod schema
+4. Return `Result<T>` — parse errors include line/position info where possible
+
+### computeHash(filePath) → string
+SHA-256 hex digest of file contents.
+
+### validatePath(targetPath, allowedRoots: string[])
+Resolve to absolute path, verify `resolvedPath.startsWith(allowedRoot)` for at least one root. Reject `..` traversal that escapes roots.
+
+### fileExists(filePath) → boolean
+Non-throwing existence check.
+
+### ensureDir(dirPath)
+`mkdir -p` equivalent.
+
+## Module: schemas.ts
+
+All Zod schemas corresponding to types in docs/SCHEMAS.md. Export both schemas and inferred TypeScript types.
+
+Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`.
+
+## Module: errors.ts
+
+```typescript
+export type Result<T, E = RalphError> =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
+export function ok<T>(value: T): Result<T, never>;
+export function err<E>(error: E): Result<never, E>;
+
+export interface RalphError {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
+
+// Error codes
+export const ErrorCodes = {
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  INVALID_JSON: 'INVALID_JSON',
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  PATH_VIOLATION: 'PATH_VIOLATION',
+  ALREADY_INSTALLED: 'ALREADY_INSTALLED',
+  NOT_INSTALLED: 'NOT_INSTALLED',
+  CONFLICT: 'CONFLICT',
+  TRANSITION_INVALID: 'TRANSITION_INVALID',
+} as const;
+```
+
+## Module: discovery.ts
+
+### discoverProjects(rootDir: string) → Result<DiscoveredProject[]>
+
+1. List immediate child directories of rootDir (depth=1)
+2. For each child, check if `.ralph.json` exists
+3. If rootDir itself has `.ralph.json`, include it
+4. Parse each `.ralph.json`, validate with MarkerFileSchema
+5. Filter: exclude any path containing `/artifacts/` segment (prevents false positives)
+6. Filter: exclude projects with `options.ignoreInTool === true` from active list (but return them separately)
+7. Return sorted by project name
+
+Performance: reads ONLY .ralph.json during scan. Backlog, state, log reads are lazy.
+
+## Module: config.ts
+
+### readMarkerFile(projectPath) → Result<MarkerFile>
+Read and validate `<projectPath>/.ralph.json`.
+
+### writeMarkerFile(projectPath, marker: MarkerFile) → Result<void>
+Atomic write of `.ralph.json`.
+
+### readToolConfig() → Result<ToolConfig>
+Read `~/.ralph/config.json`. Return defaults if file doesn't exist:
+```typescript
+{ rootDirectory: process.cwd(), port: 5173, theme: "system" }
+```
+
+### writeToolConfig(config: ToolConfig) → Result<void>
+Write to `~/.ralph/config.json`. Create `~/.ralph/` if needed.
+
+### resolveRootDirectory(cliRoot?, envRoot?) → string
+Resolution order: cliRoot → RALPH_ROOT env → config file → cwd.
+
+## Module: profile.ts
+
+### detectProfile(projectPath) → ProjectProfile
+
+Scan project directory for indicator files. Detection order per category:
+
+**Language/Runtime:** Check for package.json, pyproject.toml, go.mod, Cargo.toml, etc. First match wins.
+
+**Package Manager (Node.js):** pnpm-lock.yaml → bun.lockb → yarn.lock → package-lock.json → npm default.
+
+**TypeScript:** If package.json exists AND tsconfig.json exists → TypeScript project.
+
+**Monorepo:** pnpm-workspace.yaml OR lerna.json OR workspaces field in package.json.
+
+**Commands:** Derive from detected stack. For Node.js, read package.json scripts to confirm commands exist before suggesting them.
+
+**Composite verify:** Join all non-null commands with " && ".
+
+### getPreset(presetName) → ProjectProfile
+Return a preset profile for greenfield projects. Presets: `node-typescript`, `node-javascript`, `python`, `go`, `rust`, `custom`.
+
+### mergeProfileOverrides(detected, overrides) → ProjectProfile
+Apply user-provided command overrides on top of detected profile. Empty string means explicitly disabled (null).
+
+## Module: template.ts
+
+### renderTemplate(templateContent, variables: Record<string, string>) → string
+Replace all `{{variableName}}` occurrences with values. Unknown variables are left as-is with a warning. Null/undefined values are replaced with empty string.
+
+### renderTemplateFile(templatePath, outputPath, variables) → Result<void>
+Read template file, render, atomic write to output.
+
+### updateSentinelBlock(fileContent, sentinelStart, sentinelEnd, newBlockContent) → string
+Find content between `sentinelStart` and `sentinelEnd` markers. Replace it. Preserve everything outside the sentinels. If sentinels not found, append the block.
+
+Sentinels for RALPH.md: `<!-- ralph:managed:start -->` / `<!-- ralph:managed:end -->`
+Sentinels for CLAUDE.md: `<!-- ralph:start -->` / `<!-- ralph:end -->`
+
+## Module: backlog.ts
+
+### readBacklog(projectPath) → Result<Backlog>
+Read and validate `.ralph/backlog.json`.
+
+### writeBacklog(projectPath, backlog: Backlog) → Result<void>
+Atomic write with .bak backup.
+
+### addItem(projectPath, input: CreateItemInput) → Result<BacklogItem>
+1. Read current backlog
+2. Compute next ID: `max(existing IDs as numbers) + 1`, zero-pad to 3 digits
+3. Validate input fields (type, priority range, non-empty title)
+4. If `dependsOn` provided, verify all referenced IDs exist
+5. If no `acceptanceCriteria` provided, inject smart default from profile
+6. Construct full BacklogItem with defaults (status="pending", completedAt=null)
+7. Append to items array
+8. Write backlog
+9. Return the new item
+
+### updateItem(projectPath, itemId, updates: UpdateItemInput) → Result<BacklogItem>
+1. Read backlog, find item by ID
+2. Validate status transition if status is being changed
+3. If status → "blocked" and no blockedReason, warn
+4. If status → "done", set completedAt to ISO now
+5. If dependsOn changed, validate referenced IDs exist
+6. Merge updates onto item
+7. Write backlog
+8. Return updated item
+
+### deleteItem(projectPath, itemId) → Result<void>
+1. Read backlog, find item by ID
+2. Block deletion of `in_progress` items if loop possibly active (check state.json)
+3. Warn if other items have dependsOn referencing this ID
+4. Remove from items array
+5. Write backlog
+
+### validateStatusTransition(current, target) → boolean
+Check against the allowed transitions map.
+
+### restoreFromBackup(projectPath) → Result<void>
+Copy `.ralph/backlog.json.bak` → `.ralph/backlog.json` if backup exists.
+
+## Module: status.ts
+
+### deriveStatus(projectPath) → Result<DerivedStatus>
+
+**Tier 1 — state.json:**
+1. Read `.ralph/state.json`
+2. If valid, map status field to LoopStateEnum
+3. Staleness check: if `updatedAt` > 5 min old AND status is "running", downgrade to PAUSED
+4. Set stateSource = "state.json"
+
+**Tier 2 — Log parsing fallback:**
+1. If state.json missing/invalid, check ralph.log
+2. Read last 1000 lines for recent status patterns
+3. Read first 100 lines for start marker
+4. Check file mtime for activity detection
+5. Check DONE file existence and content
+6. Apply state machine: IDLE / RUNNING / PAUSED / COMPLETE / PAUSED_HUMAN / LIMIT_REACHED
+7. Set stateSource = "log-parsing"
+
+**Always:** Read backlog.json for summary counts regardless of state source.
+
+### readLogTail(projectPath, lines: number) → Result<string[]>
+Read last N lines of ralph.log. Cap at 10000 for display.
+
+### watchLog(projectPath, callback) → cleanup function
+Watch ralph.log for changes using fs.watch. Call callback with new lines. Return cleanup function to stop watching.
+
+## Module: installer.ts
+
+### install(projectPath, options: InstallOptions) → Result<InstallationReport>
+
+Full installation flow for existing projects:
+
+1. **Preflight checks** (§9.2 of PRD)
+   - Directory exists?
+   - Git repo? (warn if not)
+   - .ralph.json already present? (offer repair, not reinstall)
+   - jq in PATH? (warn)
+   - claude in PATH? (warn)
+
+2. **Profile detection** (§9.4)
+   - Run detectProfile()
+   - Apply user overrides from options
+   - Store in marker file
+
+3. **Create .ralph/ directory**
+
+4. **Deploy artifacts** (§6.2)
+   - Scripts: copy if not exists, compare hash if exists
+   - RALPH.md: render from template with profile vars, respect sentinels
+   - backlog.json: copy empty template if not exists, validate if exists
+   - progress.md: copy template if not exists
+
+5. **CLAUDE.md smart merge** (§9.3)
+   - Search for `<!-- ralph:start -->` / `<!-- ralph:end -->`
+   - If not found: append block
+   - If found and current: skip
+   - If found but different: replace bounded block only
+
+6. **Write .ralph.json** with profile, hashes, options
+
+7. **Return InstallationReport**
+
+### update(projectPath) → Result<InstallationReport>
+
+Re-sync artifacts using three-way hash comparison:
+- For each artifact, compare: current file hash vs stored hash vs canonical hash
+- Auto-update unmodified files; prompt-worthy for customized files
+- Re-render RALPH.md managed sections
+- Update CLAUDE.md ralph section
+- Re-run profile detection, show changes (don't auto-apply)
+- Never touch backlog.json or progress.md
+- Update artifactHashes for updated files
+
+### uninstall(projectPath, options) → Result<void>
+Remove ralph artifacts. Preserve backlog/progress/log per user choice.
+
+## Module: greenfield.ts
+
+### initProject(targetPath, options: InitOptions) → Result<InstallationReport>
+
+1. Create directory if needed (mkdir -p)
+2. Validate path is under ROOT_DIRECTORY or get explicit confirmation
+3. `git init` + `.gitignore` + empty initial commit
+4. Configure profile from preset or user input
+5. Scaffold CLAUDE.md from CLAUDE_GREENFIELD.md.tmpl
+6. Install standard ralph artifacts (calls installer.install internally)
+7. Seed backlog if seed source provided (JSON file, markdown checklist, or inline items)
+8. Return report
+
+### parseBacklogSeed(seedPath) → Result<BacklogItem[]>
+- If .json: parse as Backlog schema or array of partial items
+- If .md: parse `- [ ] [type] title` format, assign sequential priorities
+- Fill defaults: priority from position, status="pending", auto-generated IDs
+
+## File locations summary
+
+| Module writes to | Files |
+|-----------------|-------|
+| config.ts | `.ralph.json`, `~/.ralph/config.json` |
+| backlog.ts | `.ralph/backlog.json`, `.ralph/backlog.json.bak` |
+| installer.ts | All `.ralph/` files, scripts, CLAUDE.md, `.ralph.json` |
+| greenfield.ts | All of installer + directory creation + git init |
+| status.ts | (read-only) |
+| discovery.ts | (read-only) |
+| profile.ts | (read-only, result stored by installer) |
+| template.ts | (pure functions, no direct file I/O unless renderTemplateFile) |

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.ralph/ralph.log
+.ralph/state.json
+.ralph/DONE
+.ralph/backlog.json.bak
+*.tmp
+.DS_Store
+~/.ralph/

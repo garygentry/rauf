@@ -1,0 +1,24 @@
+{
+  "name": "ralph",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Management tool for ralph autonomous coding loops",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "dev": "pnpm --filter @ralph/web dev",
+    "clean": "pnpm -r clean"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

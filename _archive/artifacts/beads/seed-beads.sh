@@ -166,7 +166,7 @@ Acceptance Criteria:
 - npm test passes after updates
 - npm run typecheck passes after updates
 - package-lock.json committed alongside package.json changes
-- Any deprecation warnings noted in progress.txt" \
+- Any deprecation warnings noted in progress.md" \
   -t task -p 3 --json)
 
 CHORE1_ID=$(echo "$CHORE1" | jq -r '.id')

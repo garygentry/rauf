@@ -114,7 +114,7 @@
         "npm test passes after updates",
         "npm run typecheck passes after updates",
         "package-lock.json committed alongside package.json changes",
-        "Any deprecation warnings noted in progress.txt Codebase Patterns"
+        "Any deprecation warnings noted in progress.md Codebase Patterns"
       ],
       "status": "pending",
       "completedAt": null

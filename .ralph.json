@@ -1,0 +1,26 @@
+{
+  "ralph": true,
+  "version": "1",
+  "variant": "backlog-json",
+  "installedAt": "2026-02-21T00:00:00Z",
+  "installedBy": "manual/bootstrap",
+  "profile": {
+    "stack": "node-typescript",
+    "packageManager": "pnpm",
+    "monorepo": true,
+    "commands": {
+      "test": "pnpm test",
+      "typecheck": "pnpm -r typecheck",
+      "lint": "pnpm -r lint",
+      "build": "pnpm build",
+      "format": "pnpm run format:check"
+    },
+    "verify": "pnpm test && pnpm -r typecheck"
+  },
+  "artifactHashes": {},
+  "options": {
+    "ignoreInTool": false,
+    "gitignoreScripts": false,
+    "maxIterations": 20
+  }
+}

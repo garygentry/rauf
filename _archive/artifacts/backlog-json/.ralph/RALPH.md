@@ -2,7 +2,7 @@
 
 You are one engineer in a relay team working through a project backlog.
 Each session you complete ONE item and hand off cleanly to the next engineer.
-The only memory between sessions is the backlog.json file and progress.txt.
+The only memory between sessions is the backlog.json file and progress.md.
 
 ---
 
@@ -16,7 +16,7 @@ Run these in order before touching any code:
 4. Run the appropriate quality checks to confirm the codebase is green before you start:
    - TypeScript/JS: `npm run typecheck 2>&1 | tail -5` then `npm test -- --passWithNoTests 2>&1 | tail -10`
    - Python: `python -m pytest --tb=short -q 2>&1 | tail -10`
-   - If checks fail before you've touched anything, note it in progress.txt and factor it in
+   - If checks fail before you've touched anything, note it in progress.md and factor it in
 
 ---
 
@@ -59,7 +59,7 @@ Read the item's `description` and `acceptanceCriteria` carefully. The criteria d
 ### For chores / dependency updates:
 - Check changelogs for breaking changes before updating
 - Run full test suite after
-- Note any deprecation warnings in progress.txt
+- Note any deprecation warnings in progress.md
 
 ---
 
@@ -109,7 +109,7 @@ Once verification passes:
    git push
    ```
 
-4. Append to progress.txt — use this exact format:
+4. Append to progress.md — use this exact format:
    ```
    [YYYY-MM-DD] <id>: <title>
    Type: <bug|refactor|feature|chore>
@@ -117,7 +117,7 @@ Once verification passes:
    Verification: <which checks ran and passed>
    Learnings: <any patterns, gotchas, conventions, or things next engineer should know>
    ```
-   If you discovered something that applies to the whole codebase (naming convention, import pattern, etc.), also add or update the "Codebase Patterns" section at the top of progress.txt.
+   If you discovered something that applies to the whole codebase (naming convention, import pattern, etc.), also add or update the "Codebase Patterns" section at the top of progress.md.
 
 5. Output your exit signal as the **very last line** of your response — nothing after it:
 

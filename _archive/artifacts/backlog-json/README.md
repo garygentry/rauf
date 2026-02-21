@@ -16,7 +16,7 @@ CLAUDE_ADDON.md       ← Content to append to your CLAUDE.md
 .ralph/
   RALPH.md            ← Agent instructions (injected every iteration)
   backlog.json        ← Your work queue (edit this)
-  progress.txt        ← Cumulative learnings log (Claude writes to this)
+  progress.md        ← Cumulative learnings log (Claude writes to this)
 ```
 
 ---
@@ -49,7 +49,7 @@ your-project/
 └── .ralph/
     ├── RALPH.md
     ├── backlog.json
-    └── progress.txt
+    └── progress.md
 ```
 
 ### 2. Make scripts executable
@@ -241,7 +241,7 @@ When all items are `done` or `blocked` (none `pending` or `in_progress`):
 git log --oneline -20
 
 # Full progress log with learnings
-cat .ralph/progress.txt
+cat .ralph/progress.md
 
 # Any blocked items needing attention
 jq '.items[] | select(.status == "blocked")' .ralph/backlog.json
@@ -262,7 +262,7 @@ Claude session (roughly: one isolated change with tests). If you find Claude
 is consistently timing out or producing poor work on an item, break it into
 smaller pieces.
 
-**Progress.txt compounds.** The Codebase Patterns section is the most
+**progress.md compounds.** The Codebase Patterns section is the most
 valuable part of the system over time. Claude writes to it after each task.
 Review it periodically — it becomes a living guide to your codebase.
 

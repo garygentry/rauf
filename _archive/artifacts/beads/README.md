@@ -42,7 +42,7 @@ seed-beads.sh         ← Load example backlog into Beads (run once)
 CLAUDE_ADDON.md       ← Content to append to your existing CLAUDE.md
 .ralph/
   RALPH.md            ← Agent instructions (injected into every iteration)
-  progress.txt        ← Cumulative learnings log (Claude writes to this)
+  progress.md        ← Cumulative learnings log (Claude writes to this)
 ```
 
 **Not included but created during setup:**
@@ -70,7 +70,7 @@ ralph.sh starts loop
 │  2. bd ready --json → is there work?          │
 │  3. If none → notify + exit                   │
 │  4. bd prime → generate context digest        │
-│  5. Inject RALPH.md + bd prime + progress.txt │
+│  5. Inject RALPH.md + bd prime + progress.md │
 │  6. claude -p (fresh session, no history)     │
 │                                                │
 │  Claude:                                       │
@@ -860,7 +860,7 @@ rings, and `.ralph/DONE` is written.
 git log --oneline -20
 
 # Read accumulated learnings
-cat .ralph/progress.txt
+cat .ralph/progress.md
 
 # Check if anything got blocked
 bd list --status open --json | jq '.[] | "\(.id): \(.title)"'

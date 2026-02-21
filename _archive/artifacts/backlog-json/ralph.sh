@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# ralph.sh — Autonomous Claude Code loop using Beads (bd) for task tracking
+# ralph.sh — Autonomous Claude Code loop for an in-progress project
 # Usage: ./ralph.sh [max_iterations]
 # Example: ./ralph.sh 20
-#
-# Prerequisites:
-#   - bd (beads) installed and initialized: bd init --quiet
-#   - claude CLI installed and authenticated
-#   - jq installed: sudo apt install jq
 # =============================================================================
 set -euo pipefail
 
@@ -15,8 +10,9 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 RALPH_DIR=".ralph"
+BACKLOG="$RALPH_DIR/backlog.json"
+PROGRESS="$RALPH_DIR/progress.md"
 RALPH_MD="$RALPH_DIR/RALPH.md"
-PROGRESS="$RALPH_DIR/progress.txt"
 LOG="$RALPH_DIR/ralph.log"
 MAX_ITERATIONS=${1:-20}
 ITER=0
@@ -33,17 +29,21 @@ log() {
 
 notify_done() {
   local summary="$1"
+  # Linux: try notify-send (desktop), fall back to terminal bell + echo
   if command -v notify-send &>/dev/null; then
     notify-send "Ralph Loop Complete" "$summary" --urgency=normal 2>/dev/null || true
   fi
+  # Also write a done marker file so you can poll externally if needed
   echo "$summary" > "$RALPH_DIR/DONE"
   log "NOTIFICATION: $summary"
+  # Terminal bell
   printf '\a'
 }
 
-require_cmd() {
-  if ! command -v "$1" &>/dev/null; then
-    echo "ERROR: '$1' not found. $2"
+require_file() {
+  if [[ ! -f "$1" ]]; then
+    echo "ERROR: Required file not found: $1"
+    echo "Run from your project root and ensure .ralph/ is set up."
     exit 1
   fi
 }
@@ -51,51 +51,60 @@ require_cmd() {
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
-require_cmd "bd"     "Install beads: curl -fsSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash"
-require_cmd "claude" "Install Claude Code: curl -fsSL https://claude.ai/install.sh | bash"
-require_cmd "jq"     "Install jq: sudo apt install jq"
+require_file "$BACKLOG"
+require_file "$RALPH_MD"
 
-if [[ ! -f "$RALPH_MD" ]]; then
-  echo "ERROR: $RALPH_MD not found. Run from project root with .ralph/ set up."
+if ! command -v claude &>/dev/null; then
+  echo "ERROR: 'claude' CLI not found. Install Claude Code first."
   exit 1
 fi
 
-if [[ ! -d ".beads" ]]; then
-  echo "ERROR: .beads/ not found. Run: bd init --quiet"
+if ! command -v jq &>/dev/null; then
+  echo "ERROR: 'jq' not found. Install with: sudo apt install jq"
   exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# Count helpers using bd CLI
+# Count helpers (read directly from backlog.json)
 # ---------------------------------------------------------------------------
-count_open() {
-  # bd list --status open --json emits a JSON array; count elements
-  bd list --status open --json 2>/dev/null | jq 'length' 2>/dev/null || echo "0"
+count_pending() {
+  jq '[.items[] | select(.status == "pending")] | length' "$BACKLOG"
 }
 
 count_in_progress() {
-  bd list --status in_progress --json 2>/dev/null | jq 'length' 2>/dev/null || echo "0"
+  jq '[.items[] | select(.status == "in_progress")] | length' "$BACKLOG"
 }
 
-count_ready() {
-  bd ready --json 2>/dev/null | jq 'length' 2>/dev/null || echo "0"
+count_blocked() {
+  jq '[.items[] | select(.status == "blocked")] | length' "$BACKLOG"
+}
+
+count_done() {
+  jq '[.items[] | select(.status == "done")] | length' "$BACKLOG"
+}
+
+count_total() {
+  jq '.items | length' "$BACKLOG"
 }
 
 # ---------------------------------------------------------------------------
-# Print status using bd
+# Print status table
 # ---------------------------------------------------------------------------
 print_status() {
-  log "Beads status:"
-  bd list --status open --json 2>/dev/null \
-    | jq -r '.[] | "  [\(.priority)] \(.id): [\(.issue_type)] \(.title) [\(.status)]"' 2>/dev/null \
-    | while read -r line; do log "$line"; done || true
+  local pending in_prog blocked done total
+  pending=$(count_pending)
+  in_prog=$(count_in_progress)
+  blocked=$(count_blocked)
+  done=$(count_done)
+  total=$(count_total)
+  log "Status → pending:$pending  in_progress:$in_prog  blocked:$blocked  done:$done  total:$total"
 }
 
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 log "============================================"
-log "Ralph-Beads Loop starting | max=$MAX_ITERATIONS iterations"
+log "Ralph Loop starting | max=$MAX_ITERATIONS iterations"
 print_status
 
 while [ $ITER -lt $MAX_ITERATIONS ]; do
@@ -103,46 +112,40 @@ while [ $ITER -lt $MAX_ITERATIONS ]; do
   log ""
   log "--- Iteration $ITER / $MAX_ITERATIONS ---"
 
-  # Pull latest state before each iteration
+  # Pull latest before each iteration (safe even with no remote)
   git pull --rebase --quiet 2>/dev/null || true
 
-  # Check work availability via bd ready (topologically sorted, unblocked only)
-  READY=$(count_ready)
+  # Check work availability
+  PENDING=$(count_pending)
   IN_PROG=$(count_in_progress)
 
-  if [ "$READY" = "0" ] && [ "$IN_PROG" = "0" ]; then
-    # Double-check: are there open issues at all (may all be blocked)?
-    OPEN=$(count_open)
+  if [ "$PENDING" = "0" ] && [ "$IN_PROG" = "0" ]; then
+    DONE=$(count_done)
+    BLOCKED=$(count_blocked)
+    TOTAL=$(count_total)
     ELAPSED=$(( $(date +%s) - START_TIME ))
     ELAPSED_MIN=$(( ELAPSED / 60 ))
 
-    if [ "$OPEN" = "0" ]; then
-      SUMMARY="All work complete. Iterations used: $ITER | Time: ${ELAPSED_MIN}m"
-    else
-      SUMMARY="No ready work — $OPEN open issues are all blocked or deferred. Iterations used: $ITER | Time: ${ELAPSED_MIN}m"
-    fi
-
+    SUMMARY="All work complete. Done: $DONE / $TOTAL | Blocked: $BLOCKED | Iterations used: $ITER | Time: ${ELAPSED_MIN}m"
     log "============================================"
     log "COMPLETE: $SUMMARY"
-    bd list --json 2>/dev/null | jq -r '.[] | "\(.id): \(.status) - \(.title)"' 2>/dev/null \
-      | while read -r line; do log "  $line"; done || true
+    print_status
     notify_done "$SUMMARY"
     exit 0
   fi
 
-  log "Work available — ready:$READY  in_progress:$IN_PROG"
+  log "Work available — pending:$PENDING  in_progress:$IN_PROG"
 
-  # Build the prompt: inject RALPH.md + live bd state + progress log
-  # bd prime generates the canonical context digest (~1-2k tokens)
-  BD_CONTEXT=$(bd prime 2>/dev/null || echo "(bd prime unavailable — run 'bd ready --json' manually)")
+  # Build the prompt: RALPH.md content + current backlog state injected inline
+  BACKLOG_SNAPSHOT=$(cat "$BACKLOG")
   PROGRESS_SNAPSHOT=$(cat "$PROGRESS" 2>/dev/null || echo "(no progress log yet)")
 
   PROMPT="$(cat "$RALPH_MD")
 
 ---
-## Live Beads Context (from bd prime)
-\`\`\`
-$BD_CONTEXT
+## Current Backlog State (live)
+\`\`\`json
+$BACKLOG_SNAPSHOT
 \`\`\`
 
 ## Progress Log (accumulated learnings)
@@ -151,24 +154,24 @@ $PROGRESS_SNAPSHOT
 \`\`\`
 "
 
-  # Run Claude — fresh session, headless, full permissions
+  # Run Claude — headless, fresh session, full permissions
   OUTPUT=$(echo "$PROMPT" | claude -p \
     --dangerously-skip-permissions \
     --output-format text \
     2>&1)
 
-  # Log condensed output
+  # Log a condensed version (first 80 chars of each line)
   echo "$OUTPUT" | head -60 >> "$LOG"
 
   # -------------------------------------------------------------------------
-  # Parse exit signal
+  # Parse exit signal from Claude's output
   # -------------------------------------------------------------------------
   if echo "$OUTPUT" | grep -q "RALPH_DONE"; then
     log "✓ Clean completion signal received"
 
   elif echo "$OUTPUT" | grep -q "RALPH_BLOCKED"; then
     BLOCKED_ID=$(echo "$OUTPUT" | grep -oP 'RALPH_BLOCKED:\K[^\s]+' || echo "unknown")
-    log "⚠ Task blocked: $BLOCKED_ID — beads already updated, continuing"
+    log "⚠ Task blocked: $BLOCKED_ID — continuing to next item"
 
   elif echo "$OUTPUT" | grep -q "RALPH_NEEDS_HUMAN"; then
     MSG=$(echo "$OUTPUT" | grep -oP 'RALPH_NEEDS_HUMAN:\K.*' | head -1 || echo "Human input required")
@@ -176,12 +179,9 @@ $PROGRESS_SNAPSHOT
     notify_done "PAUSED — Human needed: $MSG"
     exit 2
 
-  elif echo "$OUTPUT" | grep -q "RALPH_DECOMPOSED"; then
-    log "↪ Task decomposed into subtasks — next iteration picks them up"
-
   else
-    log "⚠ No exit signal detected — Claude may have stopped unexpectedly"
-    log "  Continuing; review $LOG for details"
+    log "⚠ No exit signal found — Claude may have stopped unexpectedly"
+    log "  Continuing anyway; check $LOG for details"
   fi
 
   # Brief pause between iterations
@@ -190,13 +190,14 @@ $PROGRESS_SNAPSHOT
 done
 
 # ---------------------------------------------------------------------------
-# Max iterations reached
+# Max iterations reached without completing
 # ---------------------------------------------------------------------------
-OPEN=$(count_open)
-ELAPSED=$(( $(date +%s) - START_TIME ))
-ELAPSED_MIN=$(( ELAPSED / 60 ))
-SUMMARY="Max iterations ($MAX_ITERATIONS) reached. Open issues: $OPEN | Time: ${ELAPSED_MIN}m | Check bd list."
+DONE=$(count_done)
+BLOCKED=$(count_blocked)
+TOTAL=$(count_total)
+SUMMARY="Max iterations ($MAX_ITERATIONS) reached. Done: $DONE / $TOTAL | Blocked: $BLOCKED | Check backlog."
 log "============================================"
 log "LIMIT REACHED: $SUMMARY"
+print_status
 notify_done "Ralph hit iteration limit — $SUMMARY"
 exit 1

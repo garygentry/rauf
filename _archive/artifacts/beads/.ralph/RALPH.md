@@ -36,7 +36,7 @@ npm test -- --passWithNoTests 2>&1 | tail -10
 python -m pytest --tb=short -q 2>&1 | tail -10
 ```
 
-If checks fail before you've changed anything, note it in progress.txt and
+If checks fail before you've changed anything, note it in progress.md and
 factor it into your work — do not ignore pre-existing failures.
 
 ---
@@ -108,7 +108,7 @@ bd show <id> --json
 ### For chores (deps, docs, tooling):
 - Check changelogs for breaking changes before updating
 - Run full test suite after
-- Note deprecation warnings in progress.txt
+- Note deprecation warnings in progress.md
 
 ### If you discover related work during implementation:
 
@@ -181,7 +181,7 @@ bd sync
 This exports the JSONL, commits it to git, and pushes. Run it even if you
 already pushed — it ensures the Beads state is fully synced.
 
-### 4. Append to progress.txt
+### 4. Append to progress.md
 
 ```
 [YYYY-MM-DD] <id>: <title>
@@ -194,7 +194,7 @@ Learnings: <patterns, gotchas, conventions next engineer should know>
 
 If you learned something that applies to the whole codebase (naming convention,
 import style, error handling pattern, etc.), also update the "Codebase Patterns"
-section at the top of progress.txt.
+section at the top of progress.md.
 
 ---
 
