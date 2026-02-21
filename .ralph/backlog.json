@@ -79,8 +79,8 @@
         "Unit tests with temp directory fixtures",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T20:08:15+00:00",
       "dependsOn": [
         "003"
       ],

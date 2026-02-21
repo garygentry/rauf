@@ -42,3 +42,12 @@
 - `computeHash` reads file as Buffer (not utf-8 string) to handle binary files correctly
 - When re-exporting with `export * from` in index.ts, name collisions across modules cause TS2308 — must ensure no duplicate exports
 - 50 new tests (13 errors + 37 fs-utils), total 110 across core package
+
+### 004: Project discovery module (completed)
+- `discoverProjects()` returns `DiscoveryResult { projects, ignored, warnings }` — richer than just `DiscoveredProject[]`
+- Scans rootDir itself + immediate children (depth=1 only) for `.ralph.json`
+- Uses `readJsonFile` with `MarkerFileSchema` for validation — reuses existing fs-utils
+- `/artifacts/` exclusion uses `path.sep` for platform-independent matching
+- `ignoreInTool: true` projects separated into `ignored` array (not filtered out silently)
+- Projects sorted case-insensitively by name via `localeCompare`
+- 14 new tests with temp directory fixtures, total 124 across core package
