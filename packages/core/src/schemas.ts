@@ -266,8 +266,3 @@ export type InstallAction = z.infer<typeof InstallActionSchema>;
 export type InstallationReport = z.infer<typeof InstallationReportSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type RalphError = z.infer<typeof RalphErrorSchema>;
-
-// Result type is structural, not Zod-parsed at runtime
-export type Result<T, E = RalphError> =
-  | { ok: true; value: T }
-  | { ok: false; error: E };
