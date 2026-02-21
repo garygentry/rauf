@@ -512,8 +512,8 @@
         "POST restore from backup",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T22:21:06+00:00",
       "dependsOn": [
         "020",
         "009"
