@@ -213,6 +213,25 @@ describe("BacklogItemSchema", () => {
         .completedAt,
     ).toBeNull();
   });
+
+  it("accepts model field as optional string", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      model: "claude-opus-4-6",
+    });
+    expect(result.model).toBe("claude-opus-4-6");
+  });
+
+  it("accepts item without model field (backward compat)", () => {
+    const result = BacklogItemSchema.parse(validBacklogItem);
+    expect(result.model).toBeUndefined();
+  });
+
+  it("rejects model as non-string", () => {
+    expect(() =>
+      BacklogItemSchema.parse({ ...validBacklogItem, model: 42 }),
+    ).toThrow();
+  });
 });
 
 // ─── Backlog ───────────────────────────────────────────────────────
@@ -288,6 +307,25 @@ describe("MarkerOptionsSchema", () => {
     ).toThrow();
     expect(() =>
       MarkerOptionsSchema.parse({ ...validMarkerOptions, maxIterations: -1 }),
+    ).toThrow();
+  });
+
+  it("accepts model field as optional string", () => {
+    const result = MarkerOptionsSchema.parse({
+      ...validMarkerOptions,
+      model: "claude-sonnet-4-6",
+    });
+    expect(result.model).toBe("claude-sonnet-4-6");
+  });
+
+  it("accepts options without model field (backward compat)", () => {
+    const result = MarkerOptionsSchema.parse(validMarkerOptions);
+    expect(result.model).toBeUndefined();
+  });
+
+  it("rejects model as non-string", () => {
+    expect(() =>
+      MarkerOptionsSchema.parse({ ...validMarkerOptions, model: true }),
     ).toThrow();
   });
 });

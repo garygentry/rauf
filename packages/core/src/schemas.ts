@@ -42,6 +42,7 @@ export const BacklogItemSchema = z.object({
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
+  model: z.string().optional(),
 });
 
 // ─── Backlog ───────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ export const MarkerOptionsSchema = z.object({
   ignoreInTool: z.boolean(),
   gitignoreScripts: z.boolean(),
   maxIterations: z.number().int().positive(),
+  model: z.string().optional(),
 });
 
 // ─── MarkerFile (.ralph.json) ──────────────────────────────────────

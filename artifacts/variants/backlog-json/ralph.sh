@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
 # ralph.sh — Autonomous Claude Code loop runner
-# Usage: ./ralph.sh [max_iterations] [max_retries]
-# Example: ./ralph.sh 50 3
+# Usage: ./ralph.sh [max_iterations] [max_retries] [model]
+# Example: ./ralph.sh 50 3 claude-opus-4-6
 #
 # max_iterations: CLI arg > .ralph.json options.maxIterations > 20 (default)
 # max_retries: per-item retry limit before auto-blocking (default: 3)
+# model: CLI arg $3 > .ralph.json options.model > item.model > no --model flag
 #
 # The loop runner manages all backlog status transitions. Claude does NOT
 # modify backlog.json — it focuses on implementation and emits exit signals.
@@ -30,6 +31,13 @@ else
   MAX_ITERATIONS=20
 fi
 MAX_RETRIES=${2:-3}
+# Model: CLI arg $3 (highest priority among static sources; per-item overrides at runtime)
+CLI_MODEL="${3:-}"
+# Project-level default model from .ralph.json options.model
+PROJECT_MODEL=""
+if [[ -f ".ralph.json" ]]; then
+  PROJECT_MODEL=$(jq -r '.options.model // empty' ".ralph.json" 2>/dev/null || true)
+fi
 ITER=0
 START_TIME=$(date +%s)
 START_ISO=$(date -Iseconds)
@@ -155,6 +163,11 @@ get_item_json() {
 get_item_title() {
   local item_id="$1"
   jq -r --arg id "$item_id" '.items[] | select(.id == $id) | .title' "$BACKLOG"
+}
+
+get_item_model() {
+  local item_id="$1"
+  jq -r --arg id "$item_id" '.items[] | select(.id == $id) | .model // empty' "$BACKLOG" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -302,12 +315,25 @@ $PROGRESS_SNAPSHOT
 "
 
   # -----------------------------------------------------------------------
+  # Resolve model: item.model > CLI arg > project default > no flag
+  # -----------------------------------------------------------------------
+  ITEM_MODEL=$(get_item_model "$CURRENT_ITEM_ID")
+  RESOLVED_MODEL="${ITEM_MODEL:-${CLI_MODEL:-${PROJECT_MODEL:-}}}"
+  MODEL_FLAG=""
+  if [[ -n "$RESOLVED_MODEL" ]]; then
+    MODEL_FLAG="--model $RESOLVED_MODEL"
+    log "Using model: $RESOLVED_MODEL (source: ${ITEM_MODEL:+item}${ITEM_MODEL:-${CLI_MODEL:+cli-arg}${CLI_MODEL:-${PROJECT_MODEL:+project-default}}})"
+  fi
+
+  # -----------------------------------------------------------------------
   # Run Claude — headless, fresh session, full permissions
   # -----------------------------------------------------------------------
   log "Spawning Claude session for item $CURRENT_ITEM_ID..."
+  # shellcheck disable=SC2086
   OUTPUT=$(echo "$PROMPT" | claude -p \
     --dangerously-skip-permissions \
     --output-format text \
+    $MODEL_FLAG \
     2>&1) || true  # Don't exit on non-zero — we need to parse the signal
 
   # Log condensed output (first 80 lines)
