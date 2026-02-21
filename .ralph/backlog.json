@@ -376,8 +376,8 @@
         "restore recovers from .bak",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-21T21:50:00+00:00",
       "dependsOn": [
         "013",
         "009"
@@ -976,7 +976,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "035"],
+      "dependsOn": [
+        "002",
+        "035"
+      ],
       "notes": "Reference docs/SCHEMAS.md and docs/SPEC-ARTIFACTS.md for model field definitions. The --model flag for claude CLI accepts model IDs like claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001."
     },
     {
@@ -997,7 +1000,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["035"],
+      "dependsOn": [
+        "035"
+      ],
       "notes": "Reference docs/SPEC-ARTIFACTS.md for the CANCEL signal file protocol. LoopStateStatus already includes 'paused' — no schema change needed."
     }
   ]
