@@ -388,6 +388,43 @@ describe("LoopStateSchema", () => {
   it("rejects negative iteration", () => {
     expect(() => LoopStateSchema.parse({ ...validLoopState, iteration: -1 })).toThrow();
   });
+
+  it("accepts sleeping_limit status", () => {
+    const result = LoopStateSchema.safeParse({
+      ...validLoopState,
+      status: "sleeping_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: "2026-02-22T10:00:00Z",
+      error: "5-hour usage limit hit",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts weekly_limit status", () => {
+    const result = LoopStateSchema.safeParse({
+      ...validLoopState,
+      status: "weekly_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: "2026-02-27T05:00:00Z",
+      error: "Weekly usage limit exhausted",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("allows sleepUntil to be null", () => {
+    const result = LoopStateSchema.safeParse({
+      ...validLoopState,
+      sleepUntil: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("allows sleepUntil to be absent", () => {
+    const result = LoopStateSchema.safeParse(validLoopState);
+    expect(result.success).toBe(true);
+  });
 });
 
 // ─── ToolConfig ────────────────────────────────────────────────────

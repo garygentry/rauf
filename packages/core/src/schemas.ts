@@ -91,6 +91,8 @@ export const LoopStateStatusSchema = z.enum([
   "paused_human",
   "limit_reached",
   "error",
+  "sleeping_limit",
+  "weekly_limit",
 ]);
 
 export const LoopStateSignalSchema = z.enum(["clean", "blocked", "needs_human", "error"]);
@@ -106,6 +108,7 @@ export const LoopStateSchema = z.object({
   completedItems: z.array(z.string()),
   blockedItems: z.array(z.string()),
   error: z.string().nullable(),
+  sleepUntil: z.string().nullable().optional(),
 });
 
 // ─── ToolConfig (~/.ralph/config.json) ─────────────────────────────
@@ -129,6 +132,8 @@ export const LoopStateEnumSchema = z.enum([
   "LIMIT_REACHED",
   "ERROR",
   "NOT_INSTALLED",
+  "SLEEPING_LIMIT",
+  "WEEKLY_LIMIT",
 ]);
 
 export const BacklogSummarySchema = z.object({
@@ -149,6 +154,7 @@ export const DerivedStatusSchema = z.object({
   startedAt: z.string().nullable(),
   elapsed: z.number().nullable(),
   backlogSummary: BacklogSummarySchema,
+  sleepUntil: z.string().nullable().optional(),
 });
 
 // ─── DiscoveredProject ─────────────────────────────────────────────
