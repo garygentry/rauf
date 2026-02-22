@@ -32,6 +32,10 @@ ralph backlog edit <path> <id> [field options]
 ralph backlog delete <path> <id> [--yes]
 ralph backlog show <path> <id> [--json]
 ralph backlog restore <path> [--yes]
+ralph backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]
+ralph backlog archive list <path>
+ralph backlog archive view <path> <month>
+ralph backlog archive purge <path> [--month YYYY-MM] [--yes]
 
 ralph status <path>
 ralph log <path> [--tail N] [--follow]
@@ -117,6 +121,33 @@ ralph help [command]
 - `--ac` flags **replace** entire criteria array (not append)
 - Only provided fields are updated
 - Status transitions validated
+
+### ralph backlog sweep <path>
+
+- Moves all done backlog items into `.ralph/archive/YYYY-MM.json` files grouped by `completedAt` month
+- `--min-age-days N`: only sweep items completed more than N days ago (0 = all done items)
+- `--dry-run`: preview what would be swept without writing any files
+- `--yes`: required for confirmation (without it, prints usage and exits non-zero)
+- `--json`: output `{ archivedCount, archivedMonths }` as JSON
+- Items with `completedAt: null` fall back to the current calendar month
+
+### ralph backlog archive list <path>
+
+- List all archive months with item counts: `Month | Items` table
+- `--json`: output `[{ month, count }]` array
+
+### ralph backlog archive view <path> <month>
+
+- Read items from `.ralph/archive/<month>.json` and display as a table
+- `<month>` must be in `YYYY-MM` format
+- `--json`: output the full `ArchiveMonth` object
+
+### ralph backlog archive purge <path>
+
+- Delete archive files. Requires `--yes` for confirmation.
+- `--month YYYY-MM`: delete only the specified month's file
+- Without `--month`: delete all archive files and remove the `.ralph/archive/` directory
+- Non-existent months are silently treated as no-op (idempotent)
 
 ### ralph backlog list <path>
 

@@ -12,6 +12,7 @@ export * from "./profile.js";
 export * from "./template.js";
 export * from "./claude-md.js";
 export * from "./backlog.js";
+export * from "./archive.js";
 export * from "./status.js";
 export * from "./installer.js";
 export * from "./greenfield.js";

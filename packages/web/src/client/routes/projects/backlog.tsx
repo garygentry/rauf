@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams } from "@tanstack/react-router";
+import { useParams, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { BacklogItem, BacklogItemStatus, BacklogItemType, DerivedStatus } from "@ralph/core";
+import type { BacklogItem, BacklogItemStatus, BacklogItemType, DerivedStatus, SweepResult } from "@ralph/core";
 import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
 
 // Mirrors VALID_STATUS_TRANSITIONS from @ralph/core/schemas — inlined to avoid
@@ -1031,6 +1031,39 @@ export function BacklogView() {
     void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
   }
 
+  const [sweepToast, setSweepToast] = useState<string | null>(null);
+
+  const sweepMutation = useMutation({
+    mutationFn: async () => {
+      const res = await ralphFetch(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog/sweep`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      const body = (await res.json()) as { data: SweepResult };
+      return body.data;
+    },
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "backlog"] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "archive"] });
+      const msg =
+        data.archivedCount === 0
+          ? "No done items to archive"
+          : `Archived ${data.archivedCount} item${data.archivedCount === 1 ? "" : "s"} → ${data.archivedMonths.join(", ")}`;
+      setSweepToast(msg);
+      setTimeout(() => setSweepToast(null), 4000);
+    },
+    onError: (err) => {
+      setSweepToast(`Sweep failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setTimeout(() => setSweepToast(null), 5000);
+    },
+  });
+
   function clearFilters() {
     setTypeFilter("all");
     setStatusFilter("all");
@@ -1069,6 +1102,32 @@ export function BacklogView() {
             {isFetching ? "↻ Refreshing…" : "↻ Refresh"}
           </button>
           <button
+            onClick={() => sweepMutation.mutate()}
+            disabled={sweepMutation.isPending}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            style={{
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-muted)",
+              backgroundColor: "transparent",
+            }}
+            title="Archive all done items into .ralph/archive/"
+          >
+            {sweepMutation.isPending ? "Sweeping…" : "↓ Sweep"}
+          </button>
+          <Link
+            to="/projects/$id/archive"
+            params={{ id: projectId }}
+            className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+            style={{
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-muted)",
+              backgroundColor: "transparent",
+              textDecoration: "none",
+            }}
+          >
+            Archive →
+          </Link>
+          <button
             onClick={() => setPanelState("create")}
             className="rounded-md px-3 py-1.5 text-sm font-semibold transition-colors"
             style={{
@@ -1080,6 +1139,26 @@ export function BacklogView() {
           </button>
         </div>
       </div>
+
+      {/* ── Sweep toast ─────────────────────────────────────── */}
+      {sweepToast && (
+        <div
+          className="mb-4 flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm"
+          style={{
+            borderColor: "rgba(37, 99, 235, 0.3)",
+            backgroundColor: "rgba(37, 99, 235, 0.06)",
+            color: "#2563eb",
+          }}
+        >
+          <span>{sweepToast}</span>
+          <button
+            onClick={() => setSweepToast(null)}
+            className="ml-auto text-xs opacity-70 hover:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* ── Active loop warning banner ──────────────────────── */}
       {status && <LoopWarningBanner status={status} />}

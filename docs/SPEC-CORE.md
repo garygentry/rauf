@@ -303,12 +303,48 @@ Remove ralph artifacts. Preserve backlog/progress/log per user choice.
 - If .md: parse `- [ ] [type] title` format, assign sequential priorities
 - Fill defaults: priority from position, status="pending", auto-generated IDs
 
+## Module: archive.ts
+
+Moves done backlog items into monthly archive files under `.ralph/archive/YYYY-MM.json`.
+
+**Archive file format:** `{ month: "YYYY-MM", items: BacklogItem[] }`. Appends to existing file if present.
+
+**Write order:** Archive files written first, then `backlog.json` updated — safer failure mode (items temporarily in both) vs. data loss.
+
+### sweepBacklog(projectPath, options?: { minAgeDays?: number }) → Result\<SweepResult\>
+
+1. Read backlog via `readBacklog()`. Return error on failure.
+2. Compute cutoff: if `minAgeDays > 0`, cutoff = `Date.now() - minAgeDays * 86_400_000`. Items completed after cutoff are kept. If `minAgeDays` is 0 or omitted, all done items are swept.
+3. Separate `toArchive` (status === "done" and passes age check) from `toKeep`.
+4. If `toArchive` is empty, return `{ archivedCount: 0, archivedMonths: [] }` early.
+5. Group `toArchive` by month: `completedAt.slice(0, 7)` or `new Date().toISOString().slice(0, 7)` fallback for null.
+6. `ensureDir(archiveDir)` — create `.ralph/archive/` if absent.
+7. For each month group: read existing archive file (if present, validate), merge items, `atomicWrite` the file.
+8. `writeBacklog(projectPath, { ...backlog, items: toKeep })`.
+9. Return `ok({ archivedCount, archivedMonths: sorted keys })`.
+
+### listArchiveMonths(projectPath) → Result\<string[]\>
+
+- If archive dir absent: return `ok([])`.
+- Read dir, filter for `/^\d{4}-\d{2}\.json$/`, strip `.json`, sort ascending.
+
+### readArchiveMonth(projectPath, month) → Result\<ArchiveMonth\>
+
+- Validates month format (`/^\d{4}-\d{2}$/`) — returns `VALIDATION_ERROR` if invalid.
+- Reads and validates file against `ArchiveMonthSchema`.
+
+### purgeArchive(projectPath, month?) → Result\<{ purgedCount: number, purgedMonths: string[] }\>
+
+- If `month` provided: validate, delete that file. Non-existent month returns `ok({ purgedCount: 0 })`.
+- If no `month`: list all months, delete each, attempt `rmdir` on archive dir.
+
 ## File locations summary
 
 | Module writes to | Files                                                          |
 | ---------------- | -------------------------------------------------------------- |
 | config.ts        | `.ralph.json`, `~/.ralph/config.json`                          |
 | backlog.ts       | `.ralph/backlog.json`, `.ralph/backlog.json.bak`               |
+| archive.ts       | `.ralph/archive/YYYY-MM.json`                                  |
 | installer.ts     | All `.ralph/` files, scripts, CLAUDE.md, `.ralph.json`         |
 | greenfield.ts    | All of installer + directory creation + git init               |
 | status.ts        | (read-only)                                                    |

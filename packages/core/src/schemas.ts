@@ -66,6 +66,8 @@ export const MarkerOptionsSchema = z.object({
   gitignoreScripts: z.boolean(),
   maxIterations: z.number().int().positive(),
   model: z.string().optional(),
+  autoSweep: z.boolean().optional(),
+  sweepMinAgeDays: z.number().int().nonnegative().optional(),
 });
 
 // ─── MarkerFile (.ralph.json) ──────────────────────────────────────
@@ -228,6 +230,18 @@ export const VALID_STATUS_TRANSITIONS: Record<BacklogItemStatus, BacklogItemStat
   done: ["pending"],
 };
 
+// ─── Archive ───────────────────────────────────────────────────────
+
+export const ArchiveMonthSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  items: z.array(BacklogItemSchema),
+});
+
+export const SweepResultSchema = z.object({
+  archivedCount: z.number().int().nonnegative(),
+  archivedMonths: z.array(z.string()),
+});
+
 // ─── Inferred Types ────────────────────────────────────────────────
 
 export type BacklogItemType = z.infer<typeof BacklogItemTypeSchema>;
@@ -251,3 +265,5 @@ export type InstallAction = z.infer<typeof InstallActionSchema>;
 export type InstallationReport = z.infer<typeof InstallationReportSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type RalphError = z.infer<typeof RalphErrorSchema>;
+export type ArchiveMonth = z.infer<typeof ArchiveMonthSchema>;
+export type SweepResult = z.infer<typeof SweepResultSchema>;

@@ -2,6 +2,28 @@
 
 All data structures used across the ralph system. These map directly to Zod schemas in `packages/core/src/schemas.ts`.
 
+## ArchiveMonth
+
+Stored in `.ralph/archive/YYYY-MM.json`. Each file holds all done items swept for a given calendar month.
+
+```typescript
+interface ArchiveMonth {
+  month: string; // YYYY-MM format
+  items: BacklogItem[];
+}
+```
+
+## SweepResult
+
+Returned by `sweepBacklog()` and `POST /api/projects/:id/backlog/sweep`.
+
+```typescript
+interface SweepResult {
+  archivedCount: number; // Items moved to archive
+  archivedMonths: string[]; // YYYY-MM strings of files written (sorted)
+}
+```
+
 ## BacklogItem
 
 ```typescript
@@ -90,6 +112,8 @@ interface MarkerOptions {
   gitignoreScripts: boolean; // Default: false
   maxIterations: number; // Default: 20
   model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI arg $3 and per-item BacklogItem.model.
+  autoSweep?: boolean; // If true, ralph.sh automatically sweeps done items on loop startup. Default: false.
+  sweepMinAgeDays?: number; // Only sweep done items older than N days. 0 = sweep all done items. Default: 0.
 }
 ```
 

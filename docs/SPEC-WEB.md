@@ -54,6 +54,12 @@ PUT    /api/projects/:id/backlog/:itemId      → { data: BacklogItem }
        Body: UpdateItemInput
 DELETE /api/projects/:id/backlog/:itemId      → { data: void }
 POST   /api/projects/:id/backlog/restore      → { data: void }
+POST   /api/projects/:id/backlog/sweep        → { data: SweepResult }
+       Body: { minAgeDays?: number }
+       Note: registered BEFORE /:itemId routes to prevent "sweep" matching as an itemId
+GET    /api/projects/:id/archive              → { data: { months: { month: string, count: number }[] } }
+GET    /api/projects/:id/archive/:month       → { data: ArchiveMonth }
+DELETE /api/projects/:id/archive/:month       → { data: { purgedCount: number, purgedMonths: string[] } }
 ```
 
 ### Status

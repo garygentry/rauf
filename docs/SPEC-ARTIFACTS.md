@@ -98,6 +98,24 @@ Invocation:
 
 Model IDs follow Anthropic conventions: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`.
 
+### Auto-Sweep
+
+ralph.sh checks `.ralph.json` for `options.autoSweep` on startup (before the main loop). If `true`, it runs `ralph backlog sweep . --yes` (optionally with `--min-age-days` from `options.sweepMinAgeDays`) before the first iteration. This keeps the active backlog clean automatically.
+
+```
+Auto-sweep behavior:
+  - Triggered by: options.autoSweep = true in .ralph.json
+  - Optional age filter: options.sweepMinAgeDays (integer, default 0 = sweep all done)
+  - Requires 'ralph' in PATH — skips with a warning log line if not found
+  - Failure is NON-FATAL — loop continues regardless of sweep exit code
+  - Output is appended to .ralph/ralph.log
+  - .ralph/archive/ files are NOT auto-gitignored — users may add to .gitignore if preferred
+```
+
+MarkerOptions fields:
+- `autoSweep?: boolean` — default `false`
+- `sweepMinAgeDays?: number` — default `0` (sweep all done items)
+
 ### Graceful Cancel
 
 ralph.sh supports graceful cancellation via a `.ralph/CANCEL` signal file:

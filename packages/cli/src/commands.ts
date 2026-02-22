@@ -16,6 +16,8 @@ import {
   handleBacklogDelete,
   handleBacklogShow,
   handleBacklogRestore,
+  handleBacklogSweep,
+  handleBacklogArchiveDispatch,
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import {
@@ -136,6 +138,16 @@ export const COMMANDS: CommandDef[] = [
       { name: "delete", description: "Delete a backlog item", handler: handleBacklogDelete },
       { name: "show", description: "Show item details", handler: handleBacklogShow },
       { name: "restore", description: "Restore from backup", handler: handleBacklogRestore },
+      {
+        name: "sweep",
+        description: "Archive done items into .ralph/archive/",
+        handler: handleBacklogSweep,
+      },
+      {
+        name: "archive",
+        description: "Manage archive files (list, view, purge)",
+        handler: handleBacklogArchiveDispatch,
+      },
     ],
   },
   {

@@ -26,6 +26,10 @@ import {
   updateItem,
   deleteItem,
   restoreFromBackup,
+  sweepBacklog,
+  listArchiveMonths,
+  readArchiveMonth,
+  purgeArchive,
   ErrorCodes,
   BacklogItemTypeSchema,
   BacklogItemStatusSchema,
@@ -42,6 +46,10 @@ import {
 import { errorResponse } from "../app.js";
 
 // ─── Request body schemas ────────────────────────────────────────
+
+const SweepBodySchema = z.object({
+  minAgeDays: z.number().int().nonnegative().optional(),
+});
 
 const CreateItemBodySchema = z.object({
   type: BacklogItemTypeSchema,
@@ -392,6 +400,130 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
 
     return c.json({ data: null });
+  });
+
+  // ── POST /:id/backlog/sweep ───────────────────────────────────
+  //
+  // Sweep done items into .ralph/archive/. Registered before /:id/backlog/:itemId
+  // so "sweep" is never mismatched as an itemId.
+
+  router.post("/:id/backlog/sweep", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parseResult = SweepBodySchema.safeParse(raw);
+    if (!parseResult.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parseResult.error.flatten()),
+        400,
+      );
+    }
+
+    const result = sweepBacklog(projectPath, { minAgeDays: parseResult.data.minAgeDays });
+    if (!result.ok) {
+      const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        status,
+      );
+    }
+
+    return c.json({ data: result.value });
+  });
+
+  // ── GET /:id/archive ──────────────────────────────────────────
+  //
+  // List archive months with item counts.
+
+  router.get("/:id/archive", (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const monthsResult = listArchiveMonths(projectPath);
+    if (!monthsResult.ok) {
+      return c.json(
+        errorResponse(monthsResult.error.code, monthsResult.error.message),
+        500,
+      );
+    }
+
+    const months = monthsResult.value.map((month) => {
+      const archiveResult = readArchiveMonth(projectPath, month);
+      return { month, count: archiveResult.ok ? archiveResult.value.items.length : 0 };
+    });
+
+    return c.json({ data: { months } });
+  });
+
+  // ── GET /:id/archive/:month ───────────────────────────────────
+  //
+  // Read one archive month file.
+
+  router.get("/:id/archive/:month", (c) => {
+    const id = c.req.param("id");
+    const month = c.req.param("month");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const result = readArchiveMonth(projectPath, month);
+    if (!result.ok) {
+      const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        status,
+      );
+    }
+
+    return c.json({ data: result.value });
+  });
+
+  // ── DELETE /:id/archive/:month ────────────────────────────────
+  //
+  // Purge a specific archive month.
+
+  router.delete("/:id/archive/:month", (c) => {
+    const id = c.req.param("id");
+    const month = c.req.param("month");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const result = purgeArchive(projectPath, month);
+    if (!result.ok) {
+      const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        status,
+      );
+    }
+
+    return c.json({ data: result.value });
   });
 
   // ── POST /:id/backlog ─────────────────────────────────────────

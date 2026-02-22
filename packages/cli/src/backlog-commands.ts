@@ -11,6 +11,10 @@ import {
   updateItem,
   deleteItem,
   restoreFromBackup,
+  sweepBacklog,
+  listArchiveMonths,
+  readArchiveMonth,
+  purgeArchive,
   ErrorCodes,
   type BacklogItem,
   type BacklogItemType,
@@ -390,6 +394,252 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
 
   success("Backlog restored from backup.");
   return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogSweep ──────────────────────────────────────────
+//
+// ralph backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]
+
+export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const yes = extractBoolFlag(ctx.flags, "yes");
+  const dryRun = extractBoolFlag(ctx.flags, "dry-run");
+  const minAgeDays = extractNumberFlag(ctx.flags, "min-age-days");
+
+  if (dryRun) {
+    // Preview mode — read backlog and show what would be swept
+    const backlogResult = readBacklog(resolved);
+    if (!backlogResult.ok) {
+      return handleCoreError(backlogResult.error, ctx, resolved);
+    }
+
+    const minAge = minAgeDays ?? 0;
+    const cutoff = minAge > 0 ? Date.now() - minAge * 86_400_000 : null;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+
+    const toArchive = backlogResult.value.items.filter((item) => {
+      if (item.status !== "done") return false;
+      if (cutoff === null) return true;
+      if (!item.completedAt) return true;
+      return new Date(item.completedAt).getTime() <= cutoff;
+    });
+
+    if (toArchive.length === 0) {
+      info("No done items would be swept.");
+      return ExitCode.SUCCESS;
+    }
+
+    const columns: TableColumn[] = [
+      { header: "ID", key: "id" },
+      { header: "Title", key: "title", width: 40 },
+      { header: "CompletedAt", key: "completedAt" },
+      { header: "Target Month", key: "month" },
+    ];
+
+    const rows = toArchive.map((item) => ({
+      id: item.id,
+      title: item.title,
+      completedAt: item.completedAt ? item.completedAt.slice(0, 10) : "(null)",
+      month: item.completedAt ? item.completedAt.slice(0, 7) : currentMonth,
+    }));
+
+    print(renderTable(columns, rows));
+    info(`${toArchive.length} item${toArchive.length === 1 ? "" : "s"} would be archived (dry run — no writes).`);
+    return ExitCode.SUCCESS;
+  }
+
+  if (!yes) {
+    error("Sweeping requires confirmation.");
+    info("Pass --yes to confirm. Use --dry-run to preview without writing.");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const result = sweepBacklog(resolved, { minAgeDays: minAgeDays ?? undefined });
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx, resolved);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value);
+    return ExitCode.SUCCESS;
+  }
+
+  if (result.value.archivedCount === 0) {
+    info("No done items to archive.");
+  } else {
+    success(
+      `Archived ${result.value.archivedCount} item${result.value.archivedCount === 1 ? "" : "s"} → ${result.value.archivedMonths.join(", ")}`,
+    );
+  }
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogArchiveList ─────────────────────────────────────
+//
+// ralph backlog archive list <path>
+
+export async function handleBacklogArchiveList(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[1]; // args[0] is "list"
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog archive list <path>");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const monthsResult = listArchiveMonths(resolved);
+  if (!monthsResult.ok) {
+    return handleCoreError(monthsResult.error, ctx, resolved);
+  }
+
+  const months = monthsResult.value;
+
+  if (months.length === 0) {
+    info("No archive files found.");
+    return ExitCode.SUCCESS;
+  }
+
+  // Read each archive for item counts
+  const rows: { month: string; count: string }[] = [];
+  for (const month of months) {
+    const archiveResult = readArchiveMonth(resolved, month);
+    const count = archiveResult.ok ? String(archiveResult.value.items.length) : "?";
+    rows.push({ month, count });
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(rows.map((r) => ({ month: r.month, count: Number(r.count) })));
+    return ExitCode.SUCCESS;
+  }
+
+  const columns: TableColumn[] = [
+    { header: "Month", key: "month" },
+    { header: "Items", key: "count", align: "right" },
+  ];
+  print(renderTable(columns, rows));
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogArchiveView ─────────────────────────────────────
+//
+// ralph backlog archive view <path> <month>
+
+export async function handleBacklogArchiveView(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[1]; // args[0] is "view"
+  const month = ctx.args[2];
+
+  if (!targetPath || !month) {
+    error("Missing required arguments: <path> <month>");
+    info("Usage: ralph backlog archive view <path> <month>");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const result = readArchiveMonth(resolved, month);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx, resolved);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value);
+    return ExitCode.SUCCESS;
+  }
+
+  const { items } = result.value;
+  if (items.length === 0) {
+    info(`No items in archive for ${month}.`);
+    return ExitCode.SUCCESS;
+  }
+
+  const columns: TableColumn[] = [
+    { header: "ID", key: "id" },
+    { header: "Type", key: "type" },
+    { header: "Pri", key: "priority", align: "right" },
+    { header: "Title", key: "title", width: 50 },
+    { header: "Completed", key: "completedAt" },
+  ];
+
+  const rows = items.map((item) => ({
+    id: item.id,
+    type: item.type,
+    priority: String(item.priority),
+    title: item.title,
+    completedAt: item.completedAt ? item.completedAt.slice(0, 10) : "(null)",
+  }));
+
+  print(renderTable(columns, rows));
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogArchivePurge ────────────────────────────────────
+//
+// ralph backlog archive purge <path> [--month YYYY-MM] [--yes]
+
+export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[1]; // args[0] is "purge"
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog archive purge <path> [--month YYYY-MM] [--yes]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const yes = extractBoolFlag(ctx.flags, "yes");
+  const month = extractStringFlag(ctx.flags, "month");
+
+  if (!yes) {
+    error("Purging archive requires confirmation.");
+    info("Pass --yes to confirm.");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const result = purgeArchive(resolved, month ?? undefined);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx, resolved);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value);
+    return ExitCode.SUCCESS;
+  }
+
+  if (result.value.purgedCount === 0) {
+    info("No archive files found to purge.");
+  } else {
+    success(
+      `Purged ${result.value.purgedCount} archive file${result.value.purgedCount === 1 ? "" : "s"}: ${result.value.purgedMonths.join(", ")}`,
+    );
+  }
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogArchiveDispatch ─────────────────────────────────
+//
+// Dispatches "ralph backlog archive <subcommand> ..." to the relevant handler.
+
+export async function handleBacklogArchiveDispatch(ctx: CommandContext): Promise<number> {
+  const subcommand = ctx.args[0];
+
+  switch (subcommand) {
+    case "list":
+      return handleBacklogArchiveList(ctx);
+    case "view":
+      return handleBacklogArchiveView(ctx);
+    case "purge":
+      return handleBacklogArchivePurge(ctx);
+    default:
+      error(`Unknown archive subcommand: "${subcommand ?? ""}"`);
+      info("Valid subcommands: list, view, purge");
+      info("Usage: ralph backlog archive <list|view|purge> <path> [options]");
+      return ExitCode.INVALID_ARGS;
+  }
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────

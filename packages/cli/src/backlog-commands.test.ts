@@ -1058,7 +1058,7 @@ describe("backlog command registry handlers", () => {
 
     const subcommands = backlog!.subcommands!;
     const withHandlers = subcommands.filter((sc) => sc.handler !== undefined);
-    expect(withHandlers).toHaveLength(6);
+    expect(withHandlers).toHaveLength(8);
 
     const names = withHandlers.map((sc) => sc.name);
     expect(names).toContain("list");
@@ -1067,5 +1067,7 @@ describe("backlog command registry handlers", () => {
     expect(names).toContain("delete");
     expect(names).toContain("show");
     expect(names).toContain("restore");
+    expect(names).toContain("sweep");
+    expect(names).toContain("archive");
   });
 });

@@ -8,6 +8,7 @@ import {
 import { Layout } from "./components/Layout";
 import { ProjectsDashboard } from "./routes/projects/index";
 import { BacklogView } from "./routes/projects/backlog";
+import { ArchiveView } from "./routes/projects/archive";
 import { StatusView } from "./routes/projects/status";
 import { ProjectSettings } from "./routes/projects/settings";
 import { InstallWizard } from "./routes/install";
@@ -52,6 +53,12 @@ const backlogRoute = createRoute({
   component: BacklogView,
 });
 
+const archiveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects/$id/archive",
+  component: ArchiveView,
+});
+
 const statusRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$id/status",
@@ -87,6 +94,7 @@ const routeTree = rootRoute.addChildren([
   projectsRoute,
   projectRoute,
   backlogRoute,
+  archiveRoute,
   statusRoute,
   projectSettingsRoute,
   installRoute,

@@ -299,6 +299,27 @@ if ! command -v jq &>/dev/null; then
   exit 1
 fi
 
+# ── Auto-sweep ────────────────────────────────────────────────────
+if [[ -f ".ralph.json" ]]; then
+  AUTO_SWEEP=$(jq -r '.options.autoSweep // false' ".ralph.json" 2>/dev/null || echo "false")
+  if [[ "$AUTO_SWEEP" == "true" ]]; then
+    SWEEP_MIN_AGE=$(jq -r '.options.sweepMinAgeDays // 0' ".ralph.json" 2>/dev/null || echo "0")
+    log "Auto-sweep: archiving done items (minAgeDays=$SWEEP_MIN_AGE)..."
+    if command -v ralph &>/dev/null; then
+      SWEEP_FLAGS="--yes"
+      [[ "$SWEEP_MIN_AGE" -gt 0 ]] && SWEEP_FLAGS="$SWEEP_FLAGS --min-age-days $SWEEP_MIN_AGE"
+      # shellcheck disable=SC2086
+      if ralph backlog sweep . $SWEEP_FLAGS >> "$LOG" 2>&1; then
+        log "Auto-sweep complete."
+      else
+        log "⚠ Auto-sweep failed (exit $?) — continuing."
+      fi
+    else
+      log "⚠ Auto-sweep: 'ralph' not in PATH — skipping."
+    fi
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
