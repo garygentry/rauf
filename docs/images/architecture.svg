@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 480" width="720" height="480">
+
+    <style>
+      /* Dark mode (default — matches Starlight's default) */
+      :root {
+        --bg: hsl(224, 10%, 10%);
+        --container-fill: hsl(224, 14%, 14%);
+        --container-stroke: hsl(224, 10%, 25%);
+        --primary-fill: hsl(217, 50%, 18%);
+        --primary-stroke: #3b82f6;
+        --secondary-fill: hsl(224, 14%, 16%);
+        --secondary-stroke: hsl(224, 6%, 40%);
+        --nested-fill: hsl(217, 50%, 14%);
+        --nested-stroke: hsl(217, 40%, 30%);
+        --text: hsl(224, 6%, 82%);
+        --text-muted: hsl(224, 6%, 56%);
+        --arrow: hsl(224, 6%, 50%);
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --container-fill: hsl(224, 20%, 97%);
+          --container-stroke: hsl(224, 6%, 82%);
+          --primary-fill: #dbeafe;
+          --primary-stroke: #2563eb;
+          --secondary-fill: hsl(224, 20%, 96%);
+          --secondary-stroke: hsl(224, 7%, 60%);
+          --nested-fill: hsl(217, 60%, 94%);
+          --nested-stroke: hsl(217, 40%, 70%);
+          --text: hsl(224, 10%, 20%);
+          --text-muted: hsl(224, 7%, 40%);
+          --arrow: hsl(224, 7%, 45%);
+        }
+      }
+
+      .box-container { fill: var(--container-fill); stroke: var(--container-stroke); }
+      .box-primary { fill: var(--primary-fill); stroke: var(--primary-stroke); }
+      .box-secondary { fill: var(--secondary-fill); stroke: var(--secondary-stroke); }
+      .box-nested { fill: var(--nested-fill); stroke: var(--nested-stroke); }
+      .label { fill: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      .sublabel { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      .arrow-line { stroke: var(--arrow); fill: none; stroke-width: 1.5; }
+      .arrow-line-dashed { stroke: var(--arrow); fill: none; stroke-width: 1.5; stroke-dasharray: 6,4; }
+      .arrow-head { fill: var(--arrow); }
+      .arrow-label { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 11px; }
+    </style>
+  <rect width="720" height="480" fill="var(--bg)" rx="4" />
+  <rect class="box-container" x="16" y="16" width="688" height="448" rx="12" stroke-width="1" stroke-dasharray="4,3" />
+  <text class="sublabel" x="36" y="36" font-size="11" font-weight="500">Developer Machine</text>
+  <rect class="box-primary" x="40" y="60" width="150" height="64" rx="8" stroke-width="1" />
+  <text class="label" x="115" y="88" font-size="14" font-weight="600" text-anchor="middle">ralph CLI</text>
+  <text class="sublabel" x="115" y="104" font-size="11" text-anchor="middle">(global binary)</text>
+  <rect class="box-primary" x="370" y="60" width="296" height="108" rx="8" stroke-width="1" />
+  <text class="label" x="518" y="82" font-size="14" font-weight="600" text-anchor="middle">ralph web server</text>
+  <text class="sublabel" x="518" y="96" font-size="11" text-anchor="middle">Hono + Bun @ 127.0.0.1:5173</text>
+  <rect class="box-nested" x="384" y="108" width="268" height="48" rx="8" stroke-width="1" />
+  <text class="label" x="518" y="128" font-size="14" font-weight="600" text-anchor="middle">React SPA</text>
+  <text class="sublabel" x="518" y="144" font-size="11" text-anchor="middle">TanStack Router + Query</text>
+  <rect class="box-primary" x="40" y="210" width="560" height="64" rx="8" stroke-width="1" />
+  <text class="label" x="320" y="238" font-size="14" font-weight="600" text-anchor="middle">packages/core</text>
+  <text class="sublabel" x="320" y="254" font-size="11" text-anchor="middle">discovery · installer · backlog · status · config · profile · template</text>
+  <rect class="box-secondary" x="40" y="310" width="560" height="64" rx="8" stroke-width="1" />
+  <text class="label" x="320" y="338" font-size="14" font-weight="600" text-anchor="middle">ROOT_DIRECTORY filesystem</text>
+  <text class="sublabel" x="320" y="354" font-size="11" text-anchor="middle">~/workspace/ — project-a/.ralph.json, .ralph/ …  project-b/.ralph.json, .ralph/ …</text>
+  <rect class="box-secondary" x="40" y="404" width="296" height="48" rx="8" stroke-width="1" />
+  <text class="label" x="188" y="424" font-size="14" font-weight="600" text-anchor="middle">~/.ralph/</text>
+  <text class="sublabel" x="188" y="440" font-size="11" text-anchor="middle">Tool config, server PID, logs</text>
+  <polygon class="arrow-head" points="190,92 196,89 196,95" />
+  <polygon class="arrow-head" points="370,92 364,89 364,95" />
+  <line class="arrow-line-dashed" x1="196" y1="92" x2="364" y2="92" />
+  <text class="arrow-label" x="280" y="82" text-anchor="middle">HTTP</text>
+  <polygon class="arrow-head" points="115,210 112,204 118,204" />
+  <line class="arrow-line" x1="115" y1="124" x2="115" y2="204" />
+  <text class="arrow-label" x="123" y="167" text-anchor="start">direct calls (headless)</text>
+  <polygon class="arrow-head" points="518,210 515,204 521,204" />
+  <line class="arrow-line" x1="518" y1="168" x2="518" y2="204" />
+  <polygon class="arrow-head" points="320,310 317,304 323,304" />
+  <line class="arrow-line" x1="320" y1="274" x2="320" y2="304" />
+</svg>

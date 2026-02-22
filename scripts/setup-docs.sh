@@ -28,6 +28,12 @@ ln -sf "$REL/docs/SPEC-ARTIFACTS.md" "$DOCS_CONTENT/spec-artifacts.md"
 # Symlink contributing guide from repo root
 ln -sf "$REL/CONTRIBUTING.md"        "$DOCS_CONTENT/contributing.md"
 
+# Symlink diagram images so Starlight can serve them
+# Relative path from packages/docs/public/images/ to repo root is ../../../../
+mkdir -p "$REPO_ROOT/packages/docs/public/images"
+ln -sf "../../../../docs/images/architecture.svg" \
+  "$REPO_ROOT/packages/docs/public/images/architecture.svg"
+
 # Clear Astro's content cache to ensure clean builds after symlink changes
 rm -rf "$REPO_ROOT/packages/docs/.astro" "$REPO_ROOT/packages/docs/node_modules/.astro"
 

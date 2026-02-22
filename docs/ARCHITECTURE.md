@@ -5,40 +5,7 @@ description: High-level system diagram, data flow, and architectural principles 
 
 ## System Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Developer Machine                           │
-│                                                                  │
-│  ┌──────────┐       HTTP        ┌─────────────────────────────┐ │
-│  │ ralph CLI │◄────────────────►│ ralph web server             │ │
-│  │ (global)  │                  │ Hono + Bun @ 127.0.0.1:5173 │ │
-│  └─────┬─────┘                  │                              │ │
-│        │                        │ ┌──────────────────────────┐ │ │
-│        │                        │ │ React + TanStack Router  │ │ │
-│        │ direct calls           │ │ (SPA, served statically) │ │ │
-│        │ when headless          │ └──────────────────────────┘ │ │
-│        │                        └──────────┬──────────────────┘ │
-│        │                                   │                     │
-│        ▼                                   ▼                     │
-│  ┌─────────────────────────────────────────────┐                │
-│  │              packages/core                    │                │
-│  │  discovery · installer · backlog · status     │                │
-│  │  config · profile · template                  │                │
-│  └──────────────────┬──────────────────────────┘                │
-│                     │                                            │
-│                     ▼                                            │
-│  ┌─────────────────────────────────────────────┐                │
-│  │         ROOT_DIRECTORY filesystem             │                │
-│  │  ~/workspace/                                 │                │
-│  │  ├── project-a/.ralph.json, .ralph/, ...      │                │
-│  │  └── project-b/.ralph.json, .ralph/, ...      │                │
-│  └─────────────────────────────────────────────┘                │
-│                                                                  │
-│  ┌───────────────┐                                              │
-│  │ ~/.ralph/      │  Tool config, server PID, logs              │
-│  └───────────────┘                                              │
-└─────────────────────────────────────────────────────────────────┘
-```
+![System Architecture](images/architecture.svg)
 
 ## Package Dependency Graph
 
