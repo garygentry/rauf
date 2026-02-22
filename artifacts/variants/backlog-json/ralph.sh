@@ -343,14 +343,21 @@ $PROGRESS_SNAPSHOT
   # -----------------------------------------------------------------------
   log "Spawning Claude session for item $CURRENT_ITEM_ID..."
   # shellcheck disable=SC2086
+  CLAUDE_STDERR_FILE=$(mktemp)
   OUTPUT=$(echo "$PROMPT" | claude -p \
     --dangerously-skip-permissions \
     --output-format text \
     $MODEL_FLAG \
-    2>&1) || true  # Don't exit on non-zero — we need to parse the signal
+    2>"$CLAUDE_STDERR_FILE")
+  CLAUDE_EXIT=$?
+  CLAUDE_STDERR=$(cat "$CLAUDE_STDERR_FILE")
+  rm -f "$CLAUDE_STDERR_FILE"
 
   # Log condensed output (first 80 lines)
   echo "$OUTPUT" | head -80 >> "$LOG"
+  if [[ -n "$CLAUDE_STDERR" ]]; then
+    echo "[claude stderr] $(echo "$CLAUDE_STDERR" | head -5)" >> "$LOG"
+  fi
 
   # -----------------------------------------------------------------------
   # Parse exit signal
