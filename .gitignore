@@ -11,3 +11,9 @@ build/
 ralph-bin
 ~/.ralph/
 .worktrees/
+.playwright-mcp/
+
+# Astro/Starlight generated (recreated by scripts/setup-docs.sh and astro dev/build)
+packages/docs/.astro/
+packages/docs/src/content/docs/
+packages/docs/public/images/
