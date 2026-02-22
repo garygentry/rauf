@@ -329,3 +329,15 @@
 - Compiled binary: 72 modules, ~99MB, bundles CLI + Hono server + React SPA + embedded artifacts
 - `ralph-bin` to `.gitignore` — binary is a build artifact, not tracked
 - Pre-existing format issues in 8 files fixed (docs/SCHEMAS.md, docs/SPEC-ARTIFACTS.md, cli/backlog-commands, cli/commands.test, core/archive, core/status, web/archive.tsx, web/backlog.tsx)
+
+### 041: Integration test suite (completed)
+- Two integration test files: `packages/core/src/integration.test.ts` (22 tests) and `packages/web/src/server/integration.test.ts` (20 tests)
+- Core integration tests cover 5 cross-module workflows: install into fresh dir, greenfield init, backlog CRUD cycle, status derivation with mock state.json, full install→backlog→status workflow
+- Web integration tests cover API round-trips: health, projects discovery, backlog CRUD, status, profile, error handling
+- Key gotcha: `DerivedStatus` uses `loopState` (not `state`) — the field name matches `LoopStateEnumSchema`
+- Key gotcha: `LoopStateStatus` enum uses `"complete"` (not `"completed"`) — invalid values cause silent Zod validation failure, falling through to Tier 2 log parsing which returns IDLE
+- Key gotcha: `stateSource` values are `"state.json"`, `"log-parsing"`, `"none"` — the log fallback uses `"log-parsing"` (hyphenated)
+- Key gotcha: `InitOptions` uses `seedFile` (not `seed`) for the seed file path
+- Test pattern: integration tests use real `ARTIFACTS_DIR` pointing to `artifacts/variants/backlog-json/` — tests exercise the real artifact deployment
+- API tests use `createApp(Date.now(), { rootDirectory: tmpDir })` to inject a controlled root directory
+- Total test count: 974 tests across the monorepo (554 core + 263 cli + 157 web)
