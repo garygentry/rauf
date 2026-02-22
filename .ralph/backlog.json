@@ -906,8 +906,8 @@
         "ralph server start works from compiled binary",
         "ralph install works from compiled binary"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-22T05:41:50+00:00",
       "dependsOn": [
         "019",
         "025",
