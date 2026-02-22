@@ -9,11 +9,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { readBacklog, writeBacklog } from "./backlog.js";
-import {
-  ArchiveMonthSchema,
-  type ArchiveMonth,
-  type SweepResult,
-} from "./schemas.js";
+import { ArchiveMonthSchema, type ArchiveMonth, type SweepResult } from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 

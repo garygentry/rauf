@@ -8,5 +8,6 @@ build/
 .ralph/backlog.json.bak
 *.tmp
 .DS_Store
+ralph-bin
 ~/.ralph/
 .worktrees/

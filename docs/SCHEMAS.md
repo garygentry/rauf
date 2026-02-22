@@ -129,8 +129,8 @@ interface LoopState {
     | "paused_human"
     | "limit_reached"
     | "error"
-    | "sleeping_limit"  // Sleeping until 5-hour Claude usage window resets
-    | "weekly_limit";   // 7-day weekly Claude usage cap exhausted
+    | "sleeping_limit" // Sleeping until 5-hour Claude usage window resets
+    | "weekly_limit"; // 7-day weekly Claude usage cap exhausted
   iteration: number;
   maxIterations: number;
   currentItem: string | null; // Backlog item ID
@@ -144,17 +144,17 @@ interface LoopState {
 }
 ```
 
-| Status value | Meaning |
-|---|---|
-| `starting` | Loop initializing |
-| `running` | Actively processing an item |
-| `paused` | Gracefully stopped (CANCEL signal) |
-| `complete` | All items resolved |
-| `paused_human` | Waiting for human input (`RALPH_NEEDS_HUMAN`) |
-| `limit_reached` | Max iterations config exceeded |
-| `error` | Unexpected termination |
+| Status value     | Meaning                                          |
+| ---------------- | ------------------------------------------------ |
+| `starting`       | Loop initializing                                |
+| `running`        | Actively processing an item                      |
+| `paused`         | Gracefully stopped (CANCEL signal)               |
+| `complete`       | All items resolved                               |
+| `paused_human`   | Waiting for human input (`RALPH_NEEDS_HUMAN`)    |
+| `limit_reached`  | Max iterations config exceeded                   |
+| `error`          | Unexpected termination                           |
 | `sleeping_limit` | Sleeping until 5-hour Claude usage window resets |
-| `weekly_limit` | 7-day weekly Claude usage cap exhausted |
+| `weekly_limit`   | 7-day weekly Claude usage cap exhausted          |
 
 File: `.ralph/state.json` (written by ralph.sh, read-only for manager tool)
 

@@ -451,7 +451,9 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
     }));
 
     print(renderTable(columns, rows));
-    info(`${toArchive.length} item${toArchive.length === 1 ? "" : "s"} would be archived (dry run — no writes).`);
+    info(
+      `${toArchive.length} item${toArchive.length === 1 ? "" : "s"} would be archived (dry run — no writes).`,
+    );
     return ExitCode.SUCCESS;
   }
 

@@ -309,3 +309,23 @@
 - Core build pipeline: `generate-embedded-artifacts.ts` → `prettier --write` → `tsc` — ensures generated file always passes formatting
 - All 932 existing tests pass without modification — existing tests that used `ARTIFACTS_DIR` continue to work because `artifactsDir` is still accepted as an optional override
 - Pre-existing format warnings in 8 unrelated files persist — not addressed by this task
+
+### 040: Binary compilation via bun build --compile (completed)
+- `scripts/binary-entry.ts` is the dedicated entry point for `bun build --compile` — separate from CLI's `index.ts` to avoid `rootDir` conflicts in TypeScript
+- CLI refactored: `main()` logic extracted to `packages/cli/src/main.ts` (exports `runCli()` with no side effects), `index.ts` is a thin dev-mode entry point
+- `binary-entry.ts` uses static imports for both `runCli` (CLI) and `startServer` (web server) — dynamic imports are NOT bundled by `bun build --compile`
+- `--internal-server` flag: when the compiled binary detects this in `process.argv`, it starts the Hono web server directly instead of running CLI commands
+- `scripts/generate-embedded-assets.ts` mirrors the artifact embedding pattern: reads `packages/web/build/` (Vite output) → generates `packages/web/src/server/embedded-assets.ts`
+- Generated file needs `/* eslint-disable */` header because minified JS contains irregular whitespace characters that trigger `no-irregular-whitespace`
+- `packages/web/src/server/start.ts` exports `startServer()` — creates Hono app, registers embedded asset serving middleware for GET /*, calls `Bun.serve()`
+- Embedded asset middleware: strips leading `/`, looks up in `EMBEDDED_ASSETS` map, serves with correct Content-Type and Cache-Control (`immutable` for hashed assets, `no-cache` for index.html)
+- SPA fallback: any GET request that doesn't match an API route or embedded asset returns `index.html` — enables TanStack Router client-side routing
+- `packages/web/src/server/index.ts` simplified to just `import { startServer } from "./start.js"; startServer();`
+- `server-commands.ts` updated: `isCompiledBinary()` checks if `resolveServerEntry()` path exists on disk — returns `true` when running from compiled binary
+- `getServerSpawnArgs()`: compiled mode uses `process.execPath` + `["--internal-server", "--port", ...]`; dev mode uses `bun run` + source path
+- `startForeground()` and `startDaemon()` signatures simplified — no longer take `serverEntry` parameter, use `getServerSpawnArgs()` internally
+- Web package build: `vite build && generate-embedded-assets.ts && prettier --write && tsc` — assets generated after Vite build, before TypeScript compilation
+- Root `pnpm compile` script: `pnpm build && bun build --compile scripts/binary-entry.ts --outfile ralph-bin`
+- Compiled binary: 72 modules, ~99MB, bundles CLI + Hono server + React SPA + embedded artifacts
+- `ralph-bin` to `.gitignore` — binary is a build artifact, not tracked
+- Pre-existing format issues in 8 files fixed (docs/SCHEMAS.md, docs/SPEC-ARTIFACTS.md, cli/backlog-commands, cli/commands.test, core/archive, core/status, web/archive.tsx, web/backlog.tsx)

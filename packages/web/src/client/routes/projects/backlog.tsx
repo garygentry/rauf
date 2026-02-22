@@ -1,7 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { BacklogItem, BacklogItemStatus, BacklogItemType, DerivedStatus, SweepResult } from "@ralph/core";
+import type {
+  BacklogItem,
+  BacklogItemStatus,
+  BacklogItemType,
+  DerivedStatus,
+  SweepResult,
+} from "@ralph/core";
 import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
 
 // Mirrors VALID_STATUS_TRANSITIONS from @ralph/core/schemas — inlined to avoid
@@ -1035,10 +1041,10 @@ export function BacklogView() {
 
   const sweepMutation = useMutation({
     mutationFn: async () => {
-      const res = await ralphFetch(
-        `/api/projects/${encodeURIComponent(projectId)}/backlog/sweep`,
-        { method: "POST", body: JSON.stringify({}) },
-      );
+      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/backlog/sweep`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const msg =

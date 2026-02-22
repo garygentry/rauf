@@ -15,13 +15,7 @@ interface ArchiveListEntry {
 //
 // A single archive month row with expand/purge capabilities.
 
-function MonthRow({
-  entry,
-  projectId,
-}: {
-  entry: ArchiveListEntry;
-  projectId: string;
-}) {
+function MonthRow({ entry, projectId }: { entry: ArchiveListEntry; projectId: string }) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -81,10 +75,7 @@ function MonthRow({
           className="flex flex-1 items-center gap-3 text-left"
           aria-expanded={expanded}
         >
-          <span
-            className="font-mono text-sm font-medium"
-            style={{ color: "var(--color-text)" }}
-          >
+          <span className="font-mono text-sm font-medium" style={{ color: "var(--color-text)" }}>
             {entry.month}
           </span>
           <span
@@ -123,10 +114,7 @@ function MonthRow({
 
       {/* Expanded items list */}
       {expanded && (
-        <div
-          className="border-t px-4 pb-4 pt-3"
-          style={{ borderColor: "var(--color-border)" }}
-        >
+        <div className="border-t px-4 pb-4 pt-3" style={{ borderColor: "var(--color-border)" }}>
           {isLoadingItems ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
@@ -162,7 +150,10 @@ function MonthRow({
                       >
                         #{item.id}
                       </td>
-                      <td className="py-1.5 pr-4 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                      <td
+                        className="py-1.5 pr-4 text-xs"
+                        style={{ color: "var(--color-text-muted)" }}
+                      >
                         {item.type}
                       </td>
                       <td
@@ -292,9 +283,8 @@ export function ArchiveView() {
         >
           <p className="text-base">No archive files yet</p>
           <p className="mt-1 text-sm" style={{ opacity: 0.7 }}>
-            Use{" "}
-            <span className="font-mono rounded bg-current/10 px-1">↓ Sweep</span>{" "}
-            on the backlog to archive done items.
+            Use <span className="font-mono rounded bg-current/10 px-1">↓ Sweep</span> on the backlog
+            to archive done items.
           </p>
           <Link
             to="/projects/$id/backlog"

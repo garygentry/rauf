@@ -113,6 +113,7 @@ Auto-sweep behavior:
 ```
 
 MarkerOptions fields:
+
 - `autoSweep?: boolean` — default `false`
 - `sweepMinAgeDays?: number` — default `0` (sweep all done items)
 
@@ -171,12 +172,12 @@ ralph-stop.sh behaviour:
 
 ### Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Graceful completion, all items done, or CANCEL signal received |
-| 1 | Max iterations reached (`limit_reached` state) |
-| 2 | `RALPH_NEEDS_HUMAN` — loop paused for human input |
-| 3 | Weekly Claude usage limit exhausted (`weekly_limit` state) |
+| Code | Meaning                                                        |
+| ---- | -------------------------------------------------------------- |
+| 0    | Graceful completion, all items done, or CANCEL signal received |
+| 1    | Max iterations reached (`limit_reached` state)                 |
+| 2    | `RALPH_NEEDS_HUMAN` — loop paused for human input              |
+| 3    | Weekly Claude usage limit exhausted (`weekly_limit` state)     |
 
 ### Usage Limit Handling
 

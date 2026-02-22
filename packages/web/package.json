@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && tsc",
+    "build": "vite build && bun run ../../scripts/generate-embedded-assets.ts && prettier --write src/server/embedded-assets.ts && tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

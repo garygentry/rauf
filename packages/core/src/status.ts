@@ -96,10 +96,7 @@ function deriveFromStateJson(projectPath: string): Result<DerivedStatus | null> 
 
   // Staleness check: running >5min old → PAUSED
   // sleeping_limit and weekly_limit are intentionally long-lived — never downgrade them
-  if (
-    (state.status === "running" || state.status === "starting") &&
-    state.updatedAt
-  ) {
+  if ((state.status === "running" || state.status === "starting") && state.updatedAt) {
     const updatedAt = new Date(state.updatedAt).getTime();
     const now = Date.now();
     if (now - updatedAt > STALENESS_THRESHOLD_MS) {

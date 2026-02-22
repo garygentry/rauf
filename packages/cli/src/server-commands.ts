@@ -36,6 +36,9 @@ const HEALTH_PING_TIMEOUT_MS = 2000;
 /**
  * Resolve the web server entry point relative to this file.
  * walks: packages/cli/src/ → packages/ → repo root → packages/web/src/server/index.ts
+ *
+ * In a compiled binary, this path won't exist on disk — use isCompiledBinary()
+ * to determine which spawn strategy to use.
  */
 export function resolveServerEntry(): string {
   const thisFile = new URL(import.meta.url).pathname;
@@ -44,6 +47,34 @@ export function resolveServerEntry(): string {
   const packages = path.dirname(cliPkg); // packages
   const repoRoot = path.dirname(packages); // repo root
   return path.join(repoRoot, "packages", "web", "src", "server", "index.ts");
+}
+
+/**
+ * Detect whether we're running inside a compiled Bun binary.
+ * In compiled mode, the monorepo source tree doesn't exist at the
+ * path computed by resolveServerEntry(). The server is bundled into
+ * the binary itself and started via --internal-server flag.
+ */
+export function isCompiledBinary(): boolean {
+  try {
+    return !fs.existsSync(resolveServerEntry());
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Get the command and args to spawn the server process.
+ * - Dev mode: bun run packages/web/src/server/index.ts
+ * - Compiled binary: re-invoke ourselves with --internal-server
+ */
+function getServerSpawnArgs(port: number | undefined): { cmd: string; args: string[] } {
+  if (isCompiledBinary()) {
+    const args = ["--internal-server"];
+    if (port !== undefined) args.push("--port", String(port));
+    return { cmd: process.execPath, args };
+  }
+  return { cmd: "bun", args: ["run", resolveServerEntry()] };
 }
 
 // ─── PID file helpers ─────────────────────────────────────────────
@@ -168,30 +199,33 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
     removePidFile();
   }
 
-  // Verify server entry point exists
-  const serverEntry = resolveServerEntry();
-  if (!fs.existsSync(serverEntry)) {
-    error(`Server entry point not found: ${serverEntry}`);
-    info("Ensure the web package source is present or the binary is built.");
-    return ExitCode.ERROR;
+  // In dev mode, verify the server entry point exists
+  if (!isCompiledBinary()) {
+    const serverEntry = resolveServerEntry();
+    if (!fs.existsSync(serverEntry)) {
+      error(`Server entry point not found: ${serverEntry}`);
+      info("Ensure the web package source is present or the binary is built.");
+      return ExitCode.ERROR;
+    }
   }
 
   // Choose mode: daemon beats foreground; non-TTY defaults to daemon
   const useDaemon = daemon || (!foreground && !process.stdout.isTTY);
   if (useDaemon) {
-    return startDaemon(serverEntry, port, ctx);
+    return startDaemon(port, ctx);
   }
-  return startForeground(serverEntry, port, ctx);
+  return startForeground(port, ctx);
 }
 
-/** Start in foreground: spawn bun with inherited stdio, block until exit. */
-function startForeground(serverEntry: string, port: number, ctx: CommandContext): number {
+/** Start in foreground: spawn with inherited stdio, block until exit. */
+function startForeground(port: number, ctx: CommandContext): number {
   if (!ctx.globalFlags.quiet) {
     print(`Starting Ralph server at ${c.cyan(`http://127.0.0.1:${port}`)}`);
     print(c.dim("Press Ctrl+C to stop."));
   }
 
-  const result = child_process.spawnSync("bun", ["run", serverEntry], {
+  const { cmd, args } = getServerSpawnArgs(port);
+  const result = child_process.spawnSync(cmd, args, {
     stdio: "inherit",
     env: { ...process.env },
   });
@@ -205,7 +239,7 @@ function startForeground(serverEntry: string, port: number, ctx: CommandContext)
 }
 
 /** Start as daemon: spawn detached, redirect output to log file, write PID. */
-function startDaemon(serverEntry: string, port: number, ctx: CommandContext): number {
+function startDaemon(port: number, ctx: CommandContext): number {
   // Ensure ~/.ralph/ directory exists
   try {
     fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
@@ -224,7 +258,8 @@ function startDaemon(serverEntry: string, port: number, ctx: CommandContext): nu
   }
 
   // Spawn detached child — stdio uses the log fd
-  const child = child_process.spawn("bun", ["run", serverEntry], {
+  const { cmd, args } = getServerSpawnArgs(port);
+  const child = child_process.spawn(cmd, args, {
     detached: true,
     stdio: ["ignore", logFd, logFd],
     env: { ...process.env },

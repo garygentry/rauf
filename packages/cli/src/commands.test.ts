@@ -88,7 +88,16 @@ describe("COMMANDS registry", () => {
     const backlog = findCommand("backlog");
     expect(backlog?.subcommands).toBeDefined();
     const subNames = backlog!.subcommands!.map((s) => s.name);
-    expect(subNames).toEqual(["list", "add", "edit", "delete", "show", "restore", "sweep", "archive"]);
+    expect(subNames).toEqual([
+      "list",
+      "add",
+      "edit",
+      "delete",
+      "show",
+      "restore",
+      "sweep",
+      "archive",
+    ]);
   });
 
   it("server has expected subcommands", () => {
