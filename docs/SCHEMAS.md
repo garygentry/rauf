@@ -104,7 +104,9 @@ interface LoopState {
     | "complete"
     | "paused_human"
     | "limit_reached"
-    | "error";
+    | "error"
+    | "sleeping_limit"  // Sleeping until 5-hour Claude usage window resets
+    | "weekly_limit";   // 7-day weekly Claude usage cap exhausted
   iteration: number;
   maxIterations: number;
   currentItem: string | null; // Backlog item ID
@@ -114,8 +116,21 @@ interface LoopState {
   completedItems: string[]; // Item IDs
   blockedItems: string[]; // Item IDs
   error: string | null;
+  sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit
 }
 ```
+
+| Status value | Meaning |
+|---|---|
+| `starting` | Loop initializing |
+| `running` | Actively processing an item |
+| `paused` | Gracefully stopped (CANCEL signal) |
+| `complete` | All items resolved |
+| `paused_human` | Waiting for human input (`RALPH_NEEDS_HUMAN`) |
+| `limit_reached` | Max iterations config exceeded |
+| `error` | Unexpected termination |
+| `sleeping_limit` | Sleeping until 5-hour Claude usage window resets |
+| `weekly_limit` | 7-day weekly Claude usage cap exhausted |
 
 File: `.ralph/state.json` (written by ralph.sh, read-only for manager tool)
 
@@ -133,7 +148,7 @@ interface ToolConfig {
 
 ```typescript
 interface DerivedStatus {
-  loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | LIMIT_REACHED | ERROR | NOT_INSTALLED
+  loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | LIMIT_REACHED | ERROR | NOT_INSTALLED | SLEEPING_LIMIT | WEEKLY_LIMIT
   stateSource: "state.json" | "log-parsing" | "none";
   iteration: number | null;
   maxIterations: number | null;
@@ -142,6 +157,7 @@ interface DerivedStatus {
   startedAt: string | null;
   elapsed: number | null; // Seconds
   backlogSummary: BacklogSummary;
+  sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT
 }
 
 interface BacklogSummary {

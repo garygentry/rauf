@@ -64,6 +64,7 @@ Also checks for existing `in_progress` items (resume from interrupted loop).
    - `RALPH_BLOCKED:reason` → mark item blocked, continue to next
    - `RALPH_NEEDS_HUMAN:reason` → pause loop, leave item in_progress
    - No signal → reset item to pending, log warning, continue
+   - Claude exits non-zero with usage limit message in stderr → see Usage Limit Handling below
 
 6. **Cleanup trap:** On unexpected exit (SIGTERM, error), resets any `in_progress` item back to `pending` so it's not left stranded.
 
@@ -137,15 +138,54 @@ ralph-stop.sh behaviour:
    g. Write state.json: running, iteration N, currentItem
    h. Build prompt: RALPH.md + focused item + backlog context
    i. Spawn claude -p [--model <model>], capture output
-   j. Parse exit signal:
+   j. Check for Claude usage limit (before signal parsing):
+      - If Claude exits non-zero AND stderr contains "usage limit"/"rate limit" → see Usage Limit Handling
+   k. Parse exit signal:
       - RALPH_DONE → mark done, git commit, add to completedItems
       - RALPH_BLOCKED → mark blocked with reason, add to blockedItems
       - RALPH_NEEDS_HUMAN → write state paused_human, exit 2
       - No signal → reset to pending, log warning
-   k. Clear current item, print status
-   l. Sleep 3s between iterations
+   l. Clear current item, print status
+   m. Sleep 3s between iterations
 7. If max iterations reached → write state limit_reached
-8. Write DONE file, disarm cleanup trap
+8. Write DONE file, disarm cleanup trap, exit 1
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Graceful completion, all items done, or CANCEL signal received |
+| 1 | Max iterations reached (`limit_reached` state) |
+| 2 | `RALPH_NEEDS_HUMAN` — loop paused for human input |
+| 3 | Weekly Claude usage limit exhausted (`weekly_limit` state) |
+
+### Usage Limit Handling
+
+When `claude -p` exits non-zero with a usage limit message in stderr (matching "usage limit", "rate limit", "Claude AI Usage Limit", or "too many requests"), the loop:
+
+```
+1. Reads OAuth credentials from ~/.config/claude-code/credentials.json
+2. Queries GET https://api.anthropic.com/api/oauth/usage to determine limit type
+3. Resets current item back to "pending" so it is retried after recovery
+
+5-hour window exhausted (seven_day.utilization < 100%):
+  - Writes state.json: status=sleeping_limit, sleepUntil=<reset timestamp>
+  - Sleeps until reset time (checking for CANCEL signal every 5 minutes)
+  - On wake: writes state.json: status=running, continues loop with next iteration
+
+7-day weekly cap exhausted (seven_day.utilization >= 100%):
+  - Writes state.json: status=weekly_limit, sleepUntil=<weekly reset timestamp>
+  - Writes DONE file: "weekly_limit:<reset timestamp>"
+  - Exits with code 3
+
+API unreachable:
+  - Falls back to 30-minute sleep, then resumes (assumes 5-hour limit)
+
+CANCEL during sleep:
+  - sleep_with_cancel() polls for .ralph/CANCEL every 5 minutes
+  - On detection: removes CANCEL, writes state paused, exits 0
+  - ralph-stop.sh continues to work during usage limit sleep
 ```
 
 ## ralph-status.sh — Quick Status
