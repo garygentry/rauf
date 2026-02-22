@@ -79,12 +79,35 @@ const UpdateItemBodySchema = z
   })
   .partial();
 
+const ProfileOverridesSchema = z
+  .object({
+    test: z.string(),
+    typecheck: z.string(),
+    lint: z.string(),
+    build: z.string(),
+    format: z.string(),
+  })
+  .partial();
+
+const SeedItemSchema = z.object({
+  type: BacklogItemTypeSchema,
+  priority: BacklogItemPrioritySchema,
+  title: z.string().min(1),
+  description: z.string().optional(),
+  acceptanceCriteria: z.array(z.string()).optional(),
+  dependsOn: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+  estimatedIterations: z.number().int().positive().optional(),
+});
+
 const InitBodySchema = z.object({
   targetPath: z.string().min(1, "targetPath is required"),
   name: z.string().optional(),
   description: z.string().optional(),
   preset: z.string().optional(),
   requirements: z.string().optional(),
+  profileOverrides: ProfileOverridesSchema.optional(),
+  seedItems: z.array(SeedItemSchema).optional(),
 });
 
 // ─── Artifacts resolution ────────────────────────────────────────
@@ -200,7 +223,8 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       );
     }
 
-    const { targetPath, name, description, preset, requirements } = parseResult.data;
+    const { targetPath, name, description, preset, requirements, profileOverrides, seedItems } =
+      parseResult.data;
 
     const opts: InitOptions = {
       artifactsDir: resolveArtifactsDir(),
@@ -208,6 +232,8 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       projectDescription: description,
       preset,
       requirements,
+      profileOverrides,
+      seedItems: seedItems as CreateItemInput[] | undefined,
       rootDirectory: getRootDirectory(),
     };
 

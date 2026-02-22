@@ -270,3 +270,17 @@
 - Step 6 quick links derive `projectId` from the install report's `projectPath` last segment — matches how `resolveProjectPath()` on the server maps `:id` to paths
 - `@ts-expect-error` needed for `--tw-divide-color` CSS custom property in style objects — Tailwind v4's divide utility uses this internal var
 - Pre-existing format issues in 8 other files unrelated to this task — only formatted the 2 files this task modified
+
+### 033: Web Frontend: Greenfield initialization wizard (completed)
+- 5-step wizard: Project Info → Tech Stack → Initial Backlog → Review → Result
+- Follows same patterns as InstallWizard (032): single `WizardState` object, `onChange(patch)` for updates, `StepIndicator`/`WizardNav` subcomponents
+- Key difference from install wizard: no preflight step needed (creating a new directory), preset-driven instead of auto-detected profile
+- Server API extended: `InitBodySchema` now accepts `profileOverrides` (Zod partial object) and `seedItems` (array of item objects) — passed through to `initProject()`
+- Zod type cast needed: `seedItems as CreateItemInput[] | undefined` because Zod infers `z.infer` types that don't exactly match the interface's literal union `1|2|3|4` for priority
+- `PRESET_COMMANDS` duplicated from core's `PRESETS` as a client-side lookup — avoids a server round-trip to fetch preset defaults
+- Backlog step supports two modes: "empty" (skip) and "inline" (add items in-place) — each item has type, priority, title, description
+- Items with empty titles are filtered out before sending to the API (`buildSeedItems()`)
+- File preview in Step 4 lists greenfield-specific files (includes `.gitignore`, excludes `.ralph/backlog.json.bak`)
+- Step 5 includes "Next Steps" section with actionable numbered instructions (add items, review CLAUDE.md, start loop)
+- Quick links derive `projectId` from `report.projectPath` last segment — same pattern as install wizard
+- `queryClient.invalidateQueries({ queryKey: ["projects"] })` called on success to refresh the dashboard
