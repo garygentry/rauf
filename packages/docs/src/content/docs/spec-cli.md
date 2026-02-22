@@ -1,1 +1,1 @@
-/home/gary/workspace/ralph/.worktrees/docs-site/docs/SPEC-CLI.md
+../../../../../docs/SPEC-CLI.md

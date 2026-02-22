@@ -1,1 +1,1 @@
-/home/gary/workspace/ralph/.worktrees/docs-site/docs/SPEC-WEB.md
+../../../../../docs/SPEC-WEB.md

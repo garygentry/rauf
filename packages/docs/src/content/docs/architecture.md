@@ -1,1 +1,1 @@
-/home/gary/workspace/ralph/.worktrees/docs-site/docs/ARCHITECTURE.md
+../../../../../docs/ARCHITECTURE.md

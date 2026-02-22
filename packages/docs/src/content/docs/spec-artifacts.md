@@ -1,1 +1,1 @@
-/home/gary/workspace/ralph/.worktrees/docs-site/docs/SPEC-ARTIFACTS.md
+../../../../../docs/SPEC-ARTIFACTS.md

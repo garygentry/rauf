@@ -1,1 +1,1 @@
-/home/gary/workspace/ralph/.worktrees/docs-site/docs/SCHEMAS.md
+../../../../../docs/SCHEMAS.md

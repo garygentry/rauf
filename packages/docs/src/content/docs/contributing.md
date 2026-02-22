@@ -1,1 +1,1 @@
-/home/gary/workspace/ralph/.worktrees/docs-site/CONTRIBUTING.md
+../../../../../CONTRIBUTING.md
