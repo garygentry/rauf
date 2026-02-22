@@ -859,8 +859,8 @@
         "Works after bun build --compile (no file path dependency)",
         "pnpm test && pnpm -r typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-22T05:25:04+00:00",
       "dependsOn": [
         "011",
         "035",

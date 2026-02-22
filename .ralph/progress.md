@@ -296,3 +296,16 @@
 - Re-detect stack button chains two mutations: `detectMutation` → `profileMutation.mutate(detected)` — detect result auto-applied without manual save
 - Artifact hash status displays truncated SHA-256 hashes (12 chars + ellipsis) with full hash in tooltip
 - Pre-existing format warnings in 8 files (docs/, cli, core, web) — only formatted files this task modified
+
+### 038: Artifact embedding for binary compilation (completed)
+- `scripts/generate-embedded-artifacts.ts` reads all files from `artifacts/variants/backlog-json/` and generates `packages/core/src/embedded-artifacts.ts`
+- Generated module exports `EMBEDDED_ARTIFACTS: ReadonlyMap<string, string>` and `getEmbeddedArtifact(relativePath)` accessor
+- Template literal escaping: backticks, backslashes, and `${` sequences must be escaped in the generated string constants
+- `artifactsDir` made optional in `InstallOptions`, `UpdateOptions`, and `InitOptions` — when omitted, reads from embedded source
+- `readArtifact(relativePath, artifactsDir?)` helper unifies filesystem reads (dev mode) and embedded reads (compiled binary mode)
+- `deployScript()` changed from file copy (`fs.copyFileSync`) to content write (`fs.writeFileSync`) — content comes from readArtifact, not a file path
+- `threeWayCompareContent()` added alongside `threeWayCompare()` — hashes canonical content string instead of reading a file path; shared logic extracted to `compareHashes()`
+- `resolveArtifactsDir()` removed from both CLI (`packages/cli/src/install-commands.ts`) and web server (`packages/web/src/server/routes/projects.ts`)
+- Core build pipeline: `generate-embedded-artifacts.ts` → `prettier --write` → `tsc` — ensures generated file always passes formatting
+- All 932 existing tests pass without modification — existing tests that used `ARTIFACTS_DIR` continue to work because `artifactsDir` is still accepted as an optional override
+- Pre-existing format warnings in 8 unrelated files persist — not addressed by this task
