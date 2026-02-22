@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as crypto from "node:crypto";
 import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
@@ -20,6 +21,7 @@ import {
   CLAUDE_MD_SENTINEL_START,
   CLAUDE_MD_SENTINEL_END,
 } from "./claude-md.js";
+import { getEmbeddedArtifact } from "./embedded-artifacts.js";
 
 // Avoid circular import by not importing VERSION from index.ts
 // This will be set to match the version in index.ts
@@ -44,11 +46,43 @@ const DIR_FILES = {
 /** Template used for CLAUDE.md merge — not deployed directly */
 const CLAUDE_ADDON_FILE = "CLAUDE_ADDON.md";
 
+// ─── Artifact reading ─────────────────────────────────────────────
+
+/**
+ * Read an artifact's content. If artifactsDir is provided, reads from
+ * the filesystem (development mode). Otherwise reads from embedded
+ * artifacts (compiled binary mode).
+ */
+function readArtifact(relativePath: string, artifactsDir?: string): Result<string> {
+  if (artifactsDir) {
+    const fullPath = path.join(artifactsDir, relativePath);
+    try {
+      return ok(fs.readFileSync(fullPath, "utf-8"));
+    } catch (e) {
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message: `Artifact not found: ${fullPath}`,
+        details: { path: fullPath, cause: e instanceof Error ? e.message : String(e) },
+      });
+    }
+  }
+
+  try {
+    return ok(getEmbeddedArtifact(relativePath));
+  } catch (e) {
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Embedded artifact not found: ${relativePath}`,
+      details: { path: relativePath, cause: e instanceof Error ? e.message : String(e) },
+    });
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────
 
 export interface InstallOptions {
-  /** Path to canonical artifacts (e.g. artifacts/variants/backlog-json/) */
-  artifactsDir: string;
+  /** Path to canonical artifacts on disk (optional — defaults to embedded artifacts) */
+  artifactsDir?: string;
   /** Profile command overrides */
   profileOverrides?: ProfileOverrides;
   /** Marker file options overrides */
@@ -60,8 +94,8 @@ export interface InstallOptions {
 }
 
 export interface UpdateOptions {
-  /** Path to canonical artifacts */
-  artifactsDir: string;
+  /** Path to canonical artifacts on disk (optional — defaults to embedded artifacts) */
+  artifactsDir?: string;
 }
 
 export interface UninstallOptions {
@@ -160,7 +194,7 @@ export function preflight(projectPath: string): PreflightResult {
 
 export function install(projectPath: string, options: InstallOptions): Result<InstallationReport> {
   const resolved = path.resolve(projectPath);
-  const artifactsDir = path.resolve(options.artifactsDir);
+  const artifactsDir = options.artifactsDir ? path.resolve(options.artifactsDir) : undefined;
   const actions: InstallAction[] = [];
   const warnings: string[] = [];
 
@@ -211,10 +245,9 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   const artifactHashes: Record<string, string> = {};
 
   for (const script of SCRIPT_ARTIFACTS) {
-    const srcPath = path.join(artifactsDir, script);
     const destPath = path.join(resolved, script);
 
-    const deployResult = deployScript(srcPath, destPath);
+    const deployResult = deployScript(script, destPath, artifactsDir);
     if (!deployResult.ok) return deployResult;
 
     actions.push(deployResult.value);
@@ -228,7 +261,7 @@ export function install(projectPath: string, options: InstallOptions): Result<In
 
   // 5. Render RALPH.md from template
   const templateVars = buildTemplateVars(profile);
-  const ralphMdResult = deployRalphMd(artifactsDir, ralphDir, templateVars);
+  const ralphMdResult = deployRalphMd(ralphDir, templateVars, artifactsDir);
   if (!ralphMdResult.ok) return ralphMdResult;
   actions.push(ralphMdResult.value);
 
@@ -241,21 +274,21 @@ export function install(projectPath: string, options: InstallOptions): Result<In
 
   // 6. Create backlog.json if missing, validate if exists
   const backlogResult = deployBacklog(
-    artifactsDir,
     ralphDir,
     options.projectName,
     options.projectDescription,
+    artifactsDir,
   );
   if (!backlogResult.ok) return backlogResult;
   actions.push(backlogResult.value);
 
   // 7. Copy progress.md if missing
-  const progressResult = deployProgress(artifactsDir, ralphDir);
+  const progressResult = deployProgress(ralphDir, artifactsDir);
   if (!progressResult.ok) return progressResult;
   actions.push(progressResult.value);
 
   // 8. CLAUDE.md smart merge
-  const claudeMdResult = deployClaudeMd(artifactsDir, resolved);
+  const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
@@ -305,9 +338,12 @@ export function install(projectPath: string, options: InstallOptions): Result<In
 // Auto-updates unmodified files, reports conflicts for customized files.
 // Never touches backlog.json or progress.md.
 
-export function update(projectPath: string, options: UpdateOptions): Result<InstallationReport> {
+export function update(
+  projectPath: string,
+  options: UpdateOptions = {},
+): Result<InstallationReport> {
   const resolved = path.resolve(projectPath);
-  const artifactsDir = path.resolve(options.artifactsDir);
+  const artifactsDir = options.artifactsDir ? path.resolve(options.artifactsDir) : undefined;
   const actions: InstallAction[] = [];
   const warnings: string[] = [];
 
@@ -327,10 +363,12 @@ export function update(projectPath: string, options: UpdateOptions): Result<Inst
 
   // Update script artifacts via three-way comparison
   for (const script of SCRIPT_ARTIFACTS) {
-    const srcPath = path.join(artifactsDir, script);
     const destPath = path.join(resolved, script);
 
-    const compResult = threeWayCompare(storedHashes[script], destPath, srcPath);
+    const contentResult = readArtifact(script, artifactsDir);
+    if (!contentResult.ok) return contentResult as Result<InstallationReport>;
+
+    const compResult = threeWayCompareContent(storedHashes[script], destPath, contentResult.value);
     if (!compResult.ok) return compResult;
 
     const comparison = compResult.value;
@@ -345,8 +383,8 @@ export function update(projectPath: string, options: UpdateOptions): Result<Inst
         break;
 
       case "safe_update": {
-        const copyResult = copyFileWithMode(srcPath, destPath, 0o755);
-        if (!copyResult.ok) return copyResult;
+        const writeResult = writeFileWithMode(destPath, contentResult.value, 0o755);
+        if (!writeResult.ok) return writeResult;
 
         const hashResult = computeHash(destPath);
         if (hashResult.ok) newHashes[script] = hashResult.value;
@@ -381,7 +419,7 @@ export function update(projectPath: string, options: UpdateOptions): Result<Inst
   // Re-render RALPH.md managed sections
   const profile = marker.profile;
   const templateVars = buildTemplateVars(profile);
-  const ralphMdResult = deployRalphMd(artifactsDir, path.join(resolved, DOT_RALPH), templateVars);
+  const ralphMdResult = deployRalphMd(path.join(resolved, DOT_RALPH), templateVars, artifactsDir);
   if (!ralphMdResult.ok) return ralphMdResult;
   actions.push(ralphMdResult.value);
 
@@ -391,7 +429,7 @@ export function update(projectPath: string, options: UpdateOptions): Result<Inst
   if (ralphMdHash.ok) newHashes["RALPH.md"] = ralphMdHash.value;
 
   // Update CLAUDE.md ralph section
-  const claudeMdResult = deployClaudeMd(artifactsDir, resolved);
+  const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
@@ -514,34 +552,35 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
   };
 }
 
-/** Deploy a script artifact: copy if not exists, compare hash if exists */
-function deployScript(srcPath: string, destPath: string): Result<InstallAction> {
-  const scriptName = path.basename(srcPath);
+/** Deploy a script artifact: write content from embedded/filesystem source */
+function deployScript(
+  scriptName: string,
+  destPath: string,
+  artifactsDir?: string,
+): Result<InstallAction> {
+  const contentResult = readArtifact(scriptName, artifactsDir);
+  if (!contentResult.ok) return contentResult;
 
-  if (!fileExists(srcPath)) {
-    return err({
-      code: ErrorCodes.FILE_NOT_FOUND,
-      message: `Artifact not found: ${srcPath}`,
-      details: { path: srcPath },
-    });
-  }
+  const content = contentResult.value;
 
   if (fileExists(destPath)) {
-    // Compare hashes — skip if identical
-    const srcHash = computeHash(srcPath);
-    const destHash = computeHash(destPath);
-
-    if (srcHash.ok && destHash.ok && srcHash.value === destHash.value) {
-      return ok({
-        file: scriptName,
-        action: "skipped" as const,
-        detail: "Script already exists with same content",
-      });
+    // Compare content — skip if identical
+    try {
+      const existing = fs.readFileSync(destPath, "utf-8");
+      if (existing === content) {
+        return ok({
+          file: scriptName,
+          action: "skipped" as const,
+          detail: "Script already exists with same content",
+        });
+      }
+    } catch {
+      // Can't read existing — proceed with write
     }
 
     // Different content — update
-    const copyResult = copyFileWithMode(srcPath, destPath, 0o755);
-    if (!copyResult.ok) return copyResult;
+    const writeResult = writeFileWithMode(destPath, content, 0o755);
+    if (!writeResult.ok) return writeResult;
 
     return ok({
       file: scriptName,
@@ -550,9 +589,9 @@ function deployScript(srcPath: string, destPath: string): Result<InstallAction> 
     });
   }
 
-  // Copy new script
-  const copyResult = copyFileWithMode(srcPath, destPath, 0o755);
-  if (!copyResult.ok) return copyResult;
+  // Write new script
+  const writeResult = writeFileWithMode(destPath, content, 0o755);
+  if (!writeResult.ok) return writeResult;
 
   return ok({
     file: scriptName,
@@ -561,50 +600,33 @@ function deployScript(srcPath: string, destPath: string): Result<InstallAction> 
   });
 }
 
-/** Copy a file and set permissions */
-function copyFileWithMode(srcPath: string, destPath: string, mode: number): Result<void> {
+/** Write content to a file and set permissions */
+function writeFileWithMode(destPath: string, content: string, mode: number): Result<void> {
   try {
-    fs.copyFileSync(srcPath, destPath);
+    fs.writeFileSync(destPath, content, "utf-8");
     fs.chmodSync(destPath, mode);
     return ok(undefined);
   } catch (e) {
     return err({
       code: ErrorCodes.FILE_NOT_FOUND,
-      message: `Failed to copy ${srcPath} → ${destPath}: ${e instanceof Error ? e.message : String(e)}`,
-      details: { src: srcPath, dest: destPath },
+      message: `Failed to write ${destPath}: ${e instanceof Error ? e.message : String(e)}`,
+      details: { dest: destPath },
     });
   }
 }
 
 /** Render RALPH.md from template with profile variables */
 function deployRalphMd(
-  artifactsDir: string,
   ralphDir: string,
   templateVars: Record<string, string | null | undefined>,
+  artifactsDir?: string,
 ): Result<InstallAction> {
-  const templatePath = path.join(artifactsDir, DIR_FILES.ralphMdTemplate);
   const outputPath = path.join(ralphDir, DIR_FILES.ralphMd);
 
-  if (!fileExists(templatePath)) {
-    return err({
-      code: ErrorCodes.FILE_NOT_FOUND,
-      message: `RALPH.md template not found: ${templatePath}`,
-      details: { path: templatePath },
-    });
-  }
+  const contentResult = readArtifact(DIR_FILES.ralphMdTemplate, artifactsDir);
+  if (!contentResult.ok) return contentResult;
 
-  let templateContent: string;
-  try {
-    templateContent = fs.readFileSync(templatePath, "utf-8");
-  } catch (e) {
-    return err({
-      code: ErrorCodes.FILE_NOT_FOUND,
-      message: `Failed to read template: ${templatePath}`,
-      details: { path: templatePath, cause: e instanceof Error ? e.message : String(e) },
-    });
-  }
-
-  const rendered = renderTemplate(templateContent, templateVars);
+  const rendered = renderTemplate(contentResult.value, templateVars);
   const existed = fileExists(outputPath);
 
   // Check if content is the same (for idempotency)
@@ -637,10 +659,10 @@ function deployRalphMd(
 
 /** Create empty backlog.json if missing, validate if exists */
 function deployBacklog(
-  artifactsDir: string,
   ralphDir: string,
   projectName?: string,
   projectDescription?: string,
+  artifactsDir?: string,
 ): Result<InstallAction> {
   const backlogPath = path.join(ralphDir, "backlog.json");
 
@@ -663,12 +685,11 @@ function deployBacklog(
   }
 
   // Read the template backlog and populate project name/description
-  const templatePath = path.join(artifactsDir, DIR_FILES.backlog);
-
+  const contentResult = readArtifact(DIR_FILES.backlog, artifactsDir);
   let templateContent: string;
-  try {
-    templateContent = fs.readFileSync(templatePath, "utf-8");
-  } catch {
+  if (contentResult.ok) {
+    templateContent = contentResult.value;
+  } else {
     // Fallback: create minimal empty backlog
     templateContent = JSON.stringify({ project: "", description: "", items: [] }, null, 2);
   }
@@ -699,8 +720,8 @@ function deployBacklog(
   });
 }
 
-/** Copy progress.md template if missing */
-function deployProgress(artifactsDir: string, ralphDir: string): Result<InstallAction> {
+/** Write progress.md template if missing */
+function deployProgress(ralphDir: string, artifactsDir?: string): Result<InstallAction> {
   const destPath = path.join(ralphDir, "progress.md");
 
   if (fileExists(destPath)) {
@@ -711,24 +732,17 @@ function deployProgress(artifactsDir: string, ralphDir: string): Result<InstallA
     });
   }
 
-  const srcPath = path.join(artifactsDir, DIR_FILES.progress);
-
-  if (fileExists(srcPath)) {
-    try {
-      fs.copyFileSync(srcPath, destPath);
-    } catch (e) {
-      return err({
-        code: ErrorCodes.FILE_NOT_FOUND,
-        message: `Failed to copy progress.md: ${e instanceof Error ? e.message : String(e)}`,
-        details: { src: srcPath, dest: destPath },
-      });
-    }
+  const contentResult = readArtifact(DIR_FILES.progress, artifactsDir);
+  let content: string;
+  if (contentResult.ok) {
+    content = contentResult.value;
   } else {
     // Fallback: create minimal progress.md
-    const content = "# Progress & Learnings\n\n## Session Log\n";
-    const writeResult = atomicWrite(destPath, content);
-    if (!writeResult.ok) return writeResult;
+    content = "# Progress & Learnings\n\n## Session Log\n";
   }
+
+  const writeResult = atomicWrite(destPath, content);
+  if (!writeResult.ok) return writeResult;
 
   return ok({
     file: ".ralph/progress.md",
@@ -738,21 +752,11 @@ function deployProgress(artifactsDir: string, ralphDir: string): Result<InstallA
 }
 
 /** Merge ralph section into CLAUDE.md using the CLAUDE_ADDON.md template */
-function deployClaudeMd(artifactsDir: string, projectPath: string): Result<InstallAction> {
-  const addonPath = path.join(artifactsDir, CLAUDE_ADDON_FILE);
+function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<InstallAction> {
+  const contentResult = readArtifact(CLAUDE_ADDON_FILE, artifactsDir);
+  if (!contentResult.ok) return contentResult;
 
-  let addonContent: string;
-  try {
-    addonContent = fs.readFileSync(addonPath, "utf-8");
-  } catch (e) {
-    return err({
-      code: ErrorCodes.FILE_NOT_FOUND,
-      message: `CLAUDE_ADDON.md not found: ${addonPath}`,
-      details: { path: addonPath, cause: e instanceof Error ? e.message : String(e) },
-    });
-  }
-
-  const ralphBlock = extractRalphBlock(addonContent);
+  const ralphBlock = extractRalphBlock(contentResult.value);
   const mergeResult = mergeClaudeMd(projectPath, ralphBlock);
   if (!mergeResult.ok) return mergeResult;
 
@@ -802,33 +806,62 @@ function threeWayCompare(
   if (!canonicalHashResult.ok) return canonicalHashResult as Result<HashComparison>;
   const canonicalHash = canonicalHashResult.value;
 
+  return ok(compareHashes(storedHash, currentHash, canonicalHash));
+}
+
+/** Three-way comparison using canonical content string instead of file path */
+function threeWayCompareContent(
+  storedHash: string | undefined,
+  currentPath: string,
+  canonicalContent: string,
+): Result<HashComparison> {
+  // Get current file hash
+  const currentHashResult = fileExists(currentPath)
+    ? computeHash(currentPath)
+    : ok(null as string | null);
+
+  if (!currentHashResult.ok) return currentHashResult as Result<HashComparison>;
+  const currentHash = currentHashResult.value;
+
+  // Hash the canonical content
+  const canonicalHash = crypto.createHash("sha256").update(canonicalContent).digest("hex");
+
+  return ok(compareHashes(storedHash, currentHash, canonicalHash));
+}
+
+/** Shared hash comparison logic */
+function compareHashes(
+  storedHash: string | undefined,
+  currentHash: string | null,
+  canonicalHash: string,
+): HashComparison {
   // File doesn't exist locally but canonical exists → safe to create
   if (currentHash === null) {
-    return ok("safe_update" as const);
+    return "safe_update";
   }
 
   // Current matches canonical → already up to date
   if (currentHash === canonicalHash) {
-    return ok("up_to_date" as const);
+    return "up_to_date";
   }
 
   // No stored hash (first-time tracking) → treat as safe update
   if (!storedHash) {
-    return ok("safe_update" as const);
+    return "safe_update";
   }
 
   // Current matches stored, different from canonical → safe to update (no local mods)
   if (currentHash === storedHash) {
-    return ok("safe_update" as const);
+    return "safe_update";
   }
 
   // Stored matches canonical, current differs → local-only modifications
   if (storedHash === canonicalHash) {
-    return ok("local_only" as const);
+    return "local_only";
   }
 
   // All three differ → conflict
-  return ok("conflict" as const);
+  return "conflict";
 }
 
 /** Check if a command exists in PATH (no subprocess needed) */
@@ -908,4 +941,4 @@ export { DOT_RALPH, SCRIPT_ARTIFACTS, DIR_FILES, CLAUDE_ADDON_FILE };
 
 // ─── Exported helpers (for testing) ──────────────────────────────
 
-export { buildTemplateVars, isCommandInPath, threeWayCompare };
+export { buildTemplateVars, isCommandInPath, threeWayCompare, readArtifact };

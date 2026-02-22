@@ -2,6 +2,10 @@
 //
 // CLI adapters for core installer and greenfield modules.
 // Each handler: parses flags → resolves paths → calls core → formats output.
+//
+// Artifacts are embedded at build time in @ralph/core — no filesystem
+// path resolution needed. The install/init/update functions default to
+// reading from embedded artifacts when artifactsDir is omitted.
 
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -22,24 +26,6 @@ import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractStringFlag } from "./parser.js";
 import { c, info, error, warn, success, outputJson, symbols } from "./formatter.js";
 
-// ─── Constants ────────────────────────────────────────────────────
-
-/**
- * Resolve the canonical artifacts directory.
- *
- * In development, artifacts live at `<repo>/artifacts/variants/backlog-json/`.
- * The CLI binary is at `<repo>/packages/cli/src/` — walk up to repo root.
- * In a compiled binary, artifacts will be embedded (item 038), but for now
- * we resolve relative to the CLI source directory.
- */
-function resolveArtifactsDir(): string {
-  // __dirname equivalent: directory of this file
-  const cliSrcDir = path.dirname(new URL(import.meta.url).pathname);
-  // Walk up: packages/cli/src → packages/cli → packages → repo root
-  const repoRoot = path.resolve(cliSrcDir, "..", "..", "..");
-  return path.join(repoRoot, "artifacts", "variants", "backlog-json");
-}
-
 // ─── handleInstall ───────────────────────────────────────────────
 
 export async function handleInstall(ctx: CommandContext): Promise<number> {
@@ -56,9 +42,6 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
 
   // Extract profile override flags
   const overrides = extractProfileOverrides(ctx);
-
-  // Resolve artifacts directory
-  const artifactsDir = resolveArtifactsDir();
 
   // Run preflight first for display (unless --yes)
   if (!yes) {
@@ -80,9 +63,8 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
     info("");
   }
 
-  // Run installation
+  // Run installation (artifacts are embedded in @ralph/core)
   const result = install(resolved, {
-    artifactsDir,
     profileOverrides: overrides,
     options: {
       gitignoreScripts,
@@ -123,9 +105,6 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   // Extract profile override flags
   const overrides = extractProfileOverrides(ctx);
 
-  // Resolve artifacts directory
-  const artifactsDir = resolveArtifactsDir();
-
   // Validate stack preset if provided
   const validPresets = new Set([
     "node-typescript",
@@ -150,7 +129,6 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   }
 
   const result = initProject(resolved, {
-    artifactsDir,
     projectName: name ?? undefined,
     projectDescription: description ?? undefined,
     preset: stack ?? undefined,
@@ -187,10 +165,7 @@ export async function handleUpdate(ctx: CommandContext): Promise<number> {
   const resolved = path.resolve(targetPath);
   extractBoolFlag(ctx.flags, "yes"); // consume --yes flag (not yet used for confirmation)
 
-  // Resolve artifacts directory
-  const artifactsDir = resolveArtifactsDir();
-
-  const result = update(resolved, { artifactsDir });
+  const result = update(resolved);
 
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);

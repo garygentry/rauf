@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { ensureDir, atomicWrite, validatePath } from "./fs-utils.js";
 import { renderTemplate } from "./template.js";
-import { install, type InstallOptions } from "./installer.js";
+import { install, type InstallOptions, readArtifact } from "./installer.js";
 import { getPreset, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
 import { writeMarkerFile, readMarkerFile } from "./config.js";
 import { addItem, type CreateItemInput } from "./backlog.js";
@@ -62,8 +62,8 @@ const RALPH_GITIGNORE = [
 // ─── Types ────────────────────────────────────────────────────────
 
 export interface InitOptions {
-  /** Path to canonical artifacts (e.g. artifacts/variants/backlog-json/) */
-  artifactsDir: string;
+  /** Path to canonical artifacts on disk (optional — defaults to embedded artifacts) */
+  artifactsDir?: string;
   /** Project name (defaults to directory basename) */
   projectName?: string;
   /** Project description for CLAUDE.md */
@@ -92,7 +92,7 @@ export interface InitOptions {
 
 export function initProject(targetPath: string, options: InitOptions): Result<InstallationReport> {
   const resolved = path.resolve(targetPath);
-  const artifactsDir = path.resolve(options.artifactsDir);
+  const artifactsDir = options.artifactsDir ? path.resolve(options.artifactsDir) : undefined;
   const projectName = options.projectName || path.basename(resolved);
   const warnings: string[] = [];
   const preInstallActions: InstallAction[] = [];
@@ -126,12 +126,12 @@ export function initProject(targetPath: string, options: InitOptions): Result<In
 
   // 5. Scaffold CLAUDE.md from CLAUDE_GREENFIELD.md.tmpl
   const claudeMdResult = scaffoldClaudeMd(
-    artifactsDir,
     resolved,
     profile,
     projectName,
     options.projectDescription ?? "",
     options.requirements ?? "",
+    artifactsDir,
   );
   if (!claudeMdResult.ok) return claudeMdResult;
   preInstallActions.push(claudeMdResult.value);
@@ -307,28 +307,16 @@ function generateGitignore(preset: string): string {
 // ─── Internal: Scaffold CLAUDE.md from greenfield template ────────
 
 function scaffoldClaudeMd(
-  artifactsDir: string,
   projectPath: string,
   profile: ProjectProfile,
   projectName: string,
   projectDescription: string,
   requirements: string,
+  artifactsDir?: string,
 ): Result<InstallAction> {
-  const templatePath = path.join(artifactsDir, CLAUDE_GREENFIELD_TEMPLATE);
-
-  let templateContent: string;
-  try {
-    templateContent = fs.readFileSync(templatePath, "utf-8");
-  } catch (e) {
-    return err({
-      code: ErrorCodes.FILE_NOT_FOUND,
-      message: `Greenfield CLAUDE.md template not found: ${templatePath}`,
-      details: {
-        path: templatePath,
-        cause: e instanceof Error ? e.message : String(e),
-      },
-    });
-  }
+  const contentResult = readArtifact(CLAUDE_GREENFIELD_TEMPLATE, artifactsDir);
+  if (!contentResult.ok) return contentResult;
+  const templateContent = contentResult.value;
 
   const variables: Record<string, string | null | undefined> = {
     projectName,

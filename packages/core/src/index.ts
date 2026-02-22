@@ -16,3 +16,4 @@ export * from "./archive.js";
 export * from "./status.js";
 export * from "./installer.js";
 export * from "./greenfield.js";
+export * from "./embedded-artifacts.js";

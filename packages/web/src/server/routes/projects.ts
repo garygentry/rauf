@@ -5,6 +5,9 @@
 // :id = directory name (URL-encoded), resolved to ROOT_DIRECTORY/<id>.
 // All mutations require X-Ralph-Request: true (enforced by app-level CSRF
 // middleware — not repeated here).
+//
+// Artifacts are embedded in @ralph/core at build time — no filesystem
+// path resolution needed for install/init/update.
 
 import * as path from "node:path";
 
@@ -37,7 +40,6 @@ import {
   BacklogItemStatusSchema,
   BacklogItemPrioritySchema,
   type InstallOptions,
-  type UpdateOptions,
   type UninstallOptions,
   type InitOptions,
   type ProfileOverrides,
@@ -112,16 +114,6 @@ const InitBodySchema = z.object({
 
 // ─── Artifacts resolution ────────────────────────────────────────
 //
-// In development, artifacts live at <repo>/artifacts/variants/backlog-json/.
-// This file is at packages/web/src/server/routes/ — walk up 5 levels.
-
-function resolveArtifactsDir(): string {
-  const routesSrcDir = path.dirname(new URL(import.meta.url).pathname);
-  // routes → server → src → web → packages → repo root
-  const repoRoot = path.resolve(routesSrcDir, "..", "..", "..", "..", "..");
-  return path.join(repoRoot, "artifacts", "variants", "backlog-json");
-}
-
 // ─── createProjectsRouter ────────────────────────────────────────
 //
 // Returns a Hono router for /api/projects routes.
@@ -227,7 +219,6 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       parseResult.data;
 
     const opts: InitOptions = {
-      artifactsDir: resolveArtifactsDir(),
       projectName: name,
       projectDescription: description,
       preset,
@@ -300,7 +291,6 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
     const opts: InstallOptions = {
-      artifactsDir: resolveArtifactsDir(),
       profileOverrides:
         typeof body.profileOverrides === "object" && body.profileOverrides !== null
           ? (body.profileOverrides as ProfileOverrides)
@@ -333,11 +323,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const opts: UpdateOptions = {
-      artifactsDir: resolveArtifactsDir(),
-    };
-
-    const result = update(projectPath, opts);
+    const result = update(projectPath);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.NOT_INSTALLED ? 404 : 400;
       return c.json(
