@@ -9,3 +9,4 @@ build/
 *.tmp
 .DS_Store
 ~/.ralph/
+.worktrees/
