@@ -234,7 +234,7 @@ describe("handleStatus", () => {
     configureOutput({ noColor: true, quiet: true, json: false });
 
     expect(output.toLowerCase()).toMatch(/sleeping/i);
-    expect(output.toLowerCase()).toMatch(/usage limit|limit/i);
+    expect(output).toMatch(/will resume at/i);
   });
 
   it("shows weekly limit information in text output", async () => {
@@ -264,7 +264,7 @@ describe("handleStatus", () => {
     configureOutput({ noColor: true, quiet: true, json: false });
 
     expect(output.toLowerCase()).toMatch(/weekly/i);
-    expect(output).toMatch(/2026-02-27/);
+    expect(output).toMatch(/restart ralph\.sh/i);
   });
 
   it("returns 0 when loop is PAUSED", async () => {

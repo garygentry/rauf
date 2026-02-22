@@ -240,6 +240,35 @@ check_usage_api() {
     --max-time 10 2>/dev/null
 }
 
+# Format an ISO timestamp as "8:00 PM (in 4h 32m)" or "Feb 27 at 5:00 AM (in 3d)"
+format_reset_time() {
+  local iso="$1"
+  [[ -z "$iso" ]] && echo "unknown" && return
+
+  local epoch
+  epoch=$(date -d "$iso" +%s 2>/dev/null || true)
+  [[ -z "$epoch" ]] && echo "$iso" && return
+
+  local diff=$(( epoch - $(date +%s) ))
+  local time_str
+  time_str=$(date -d "$iso" '+%I:%M %p' 2>/dev/null || echo "$iso")
+
+  if [[ $diff -le 0 ]]; then
+    echo "$time_str (now)"
+  elif [[ $diff -lt 3600 ]]; then
+    echo "$time_str (in $(( diff / 60 ))m)"
+  elif [[ $diff -lt 86400 ]]; then
+    local hrs=$(( diff / 3600 ))
+    local mins=$(( (diff % 3600) / 60 ))
+    echo "$time_str (in ${hrs}h ${mins}m)"
+  else
+    local days=$(( diff / 86400 ))
+    local date_str
+    date_str=$(date -d "$iso" '+%b %-d at %I:%M %p' 2>/dev/null || echo "$iso")
+    echo "$date_str (in ${days}d)"
+  fi
+}
+
 # Sleep in CHECK_INTERVAL chunks, polling for CANCEL signal each tick.
 # Touches state.json updatedAt on each tick to prevent staleness detection.
 # Usage: sleep_with_cancel TOTAL_SECONDS
@@ -318,6 +347,53 @@ if [[ -f ".ralph.json" ]]; then
       log "⚠ Auto-sweep: 'ralph' not in PATH — skipping."
     fi
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# Pre-flight usage limit check — detect active limits before first iteration
+# ---------------------------------------------------------------------------
+log "Checking Claude usage limits..."
+PREFLIGHT_TOKEN=$(get_oauth_token)
+PREFLIGHT_USAGE=$(check_usage_api "$PREFLIGHT_TOKEN")
+
+if [[ -n "$PREFLIGHT_USAGE" ]]; then
+  PF_SEVEN_PCT=$(echo "$PREFLIGHT_USAGE" | jq -r '.seven_day.utilization // 0' | cut -d. -f1)
+  PF_FIVE_PCT=$(echo "$PREFLIGHT_USAGE"  | jq -r '.five_hour.utilization // 0'  | cut -d. -f1)
+  PF_FIVE_RESET=$(echo "$PREFLIGHT_USAGE"  | jq -r '.five_hour.resets_at // ""')
+  PF_SEVEN_RESET=$(echo "$PREFLIGHT_USAGE" | jq -r '.seven_day.resets_at // ""')
+
+  # Always display usage stats as informational output
+  log "  Usage: 5-hr ${PF_FIVE_PCT}% | 7-day ${PF_SEVEN_PCT}%"
+
+  if [[ "$PF_SEVEN_PCT" -ge 100 ]]; then
+    log "⛔ Weekly usage limit exhausted (${PF_SEVEN_PCT}%) — cannot start"
+    log "   Weekly window resets at: $(format_reset_time "$PF_SEVEN_RESET")"
+    log "   Restart ralph.sh after that time."
+    write_state_limit "weekly_limit" "$PF_SEVEN_RESET" \
+      "Weekly Claude usage limit exhausted. Resets at: $PF_SEVEN_RESET"
+    echo "weekly_limit:$PF_SEVEN_RESET" > "$RALPH_DIR/DONE"
+    trap - EXIT
+    exit 3
+
+  elif [[ "$PF_FIVE_PCT" -ge 100 ]]; then
+    SLEEP_SECS=1800  # 30-min fallback
+    if [[ -n "$PF_FIVE_RESET" ]]; then
+      RESET_EPOCH=$(date -d "$PF_FIVE_RESET" +%s 2>/dev/null || true)
+      if [[ -n "$RESET_EPOCH" ]]; then
+        COMPUTED=$((RESET_EPOCH - $(date +%s) + 60))
+        [[ $COMPUTED -gt 0 ]] && SLEEP_SECS=$COMPUTED
+      fi
+    fi
+    log "⏸ Claude 5-hour usage window is active (${PF_FIVE_PCT}%)"
+    log "  The loop will begin at $(format_reset_time "$PF_FIVE_RESET")"
+    log "  Sleeping ${SLEEP_SECS}s. Run ralph-stop.sh to cancel."
+    write_state_limit "sleeping_limit" "$PF_FIVE_RESET" \
+      "5-hour usage limit active at startup. Loop will begin at ${PF_FIVE_RESET:-unknown}"
+    sleep_with_cancel "$SLEEP_SECS"
+    log "  Woke up — starting loop"
+  fi
+else
+  log "  Usage API unreachable — proceeding (reactive detection active)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -496,11 +572,11 @@ $PROGRESS_SNAPSHOT
 
     if [[ "$SEVEN_PCT" -ge 100 ]]; then
       # Weekly cap exhausted — cannot self-recover, must stop
-      log "⛔ Weekly usage limit exhausted (${SEVEN_PCT}%) — stopping loop"
-      log "   Resets at: $SEVEN_RESET"
+      log "⛔ Weekly Claude usage limit exhausted (${SEVEN_PCT}%)"
+      log "  The loop cannot resume until $(format_reset_time "$SEVEN_RESET")"
+      log "  Restart ralph.sh after that time."
       write_state_limit "weekly_limit" "$SEVEN_RESET" "Weekly Claude usage limit exhausted. Resets at: $SEVEN_RESET"
       echo "weekly_limit:$SEVEN_RESET" > "$RALPH_DIR/DONE"
-      log "Run ./ralph.sh to restart after the weekly reset."
       trap - EXIT
       exit 3
     else
@@ -515,7 +591,9 @@ $PROGRESS_SNAPSHOT
         fi
       fi
 
-      log "⏸ 5-hour usage limit hit (${FIVE_PCT}%) — sleeping ${SLEEP_SECS}s until reset"
+      log "⏸ Claude 5-hour usage limit hit (${FIVE_PCT}%)"
+      log "  The loop will resume at $(format_reset_time "$FIVE_RESET")"
+      log "  Sleeping ${SLEEP_SECS}s. Run ralph-stop.sh to cancel."
       write_state_limit "sleeping_limit" "$FIVE_RESET" "5-hour usage limit hit. Sleeping until ${FIVE_RESET:-unknown}"
       sleep_with_cancel "$SLEEP_SECS"
       log "  Woke up — resuming loop"

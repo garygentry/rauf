@@ -241,17 +241,34 @@ function printStatusSummary(status: DerivedStatus): void {
   print(`${c.bold("Loop State:")} ${colorLoopState(status.loopState)} ${sourceLabel}`);
 
   if (status.loopState === "SLEEPING_LIMIT") {
-    const until = status.sleepUntil
-      ? `resets at ${new Date(status.sleepUntil).toLocaleTimeString()} (${status.sleepUntil})`
-      : "waiting for reset";
-    print(`${c.bold("Usage Limit:")} 5-hour window exhausted — ${until}`);
+    if (status.sleepUntil) {
+      const resetDate = new Date(status.sleepUntil);
+      const timeStr = resetDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      const countdown = formatCountdown(status.sleepUntil);
+      print(`${c.bold("Usage Limit:")} Claude's 5-hour window is active.`);
+      print(`             The loop will resume at ${c.cyan(timeStr)} (${countdown}).`);
+      print(`             Run ${c.dim("ralph-stop.sh")} to cancel the wait.`);
+    } else {
+      print(`${c.bold("Usage Limit:")} Claude's 5-hour window is active. Waiting for reset.`);
+    }
   }
 
   if (status.loopState === "WEEKLY_LIMIT") {
-    const until = status.sleepUntil
-      ? `resets at ${status.sleepUntil}`
-      : "check https://claude.ai for reset time";
-    print(`${c.bold("Usage Limit:")} Weekly cap exhausted — ${until}`);
+    if (status.sleepUntil) {
+      const resetDate = new Date(status.sleepUntil);
+      const dateStr = resetDate.toLocaleDateString([], {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      });
+      const timeStr = resetDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      print(`${c.bold("Usage Limit:")} Weekly Claude cap reached.`);
+      print(`             Restart ralph.sh after ${c.cyan(`${dateStr} at ${timeStr}`)}.`);
+    } else {
+      print(
+        `${c.bold("Usage Limit:")} Weekly Claude cap reached. Check https://claude.ai for reset time.`,
+      );
+    }
   }
 
   if (status.iteration !== null && status.maxIterations !== null) {
@@ -278,6 +295,20 @@ function printStatusSummary(status: DerivedStatus): void {
   print(`  Blocked:     ${s.blocked}`);
   print(`  Done:        ${s.done}`);
   print(`  Total:       ${s.total}`);
+}
+
+/** Format a countdown to an ISO timestamp as "in 4h 32m", "in 3d", etc. */
+function formatCountdown(isoTimestamp: string): string {
+  const resetMs = new Date(isoTimestamp).getTime();
+  const diffMs = resetMs - Date.now();
+  if (diffMs <= 0) return "any moment now";
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 60) return `in ${diffMins}m`;
+  const hrs = Math.floor(diffMins / 60);
+  const mins = diffMins % 60;
+  if (hrs < 24) return `in ${hrs}h ${mins}m`;
+  const days = Math.floor(hrs / 24);
+  return `in ${days}d ${hrs % 24}h`;
 }
 
 /** Format elapsed seconds as a human-readable string */
