@@ -284,3 +284,15 @@
 - Step 5 includes "Next Steps" section with actionable numbered instructions (add items, review CLAUDE.md, start loop)
 - Quick links derive `projectId` from `report.projectPath` last segment — same pattern as install wizard
 - `queryClient.invalidateQueries({ queryKey: ["projects"] })` called on success to refresh the dashboard
+
+### 034: Web Frontend: Settings page and project settings panel (completed)
+- Global settings page reads/writes `~/.ralph/config.json` via `GET/PUT /api/config` — rootDirectory, theme, port
+- Changing rootDirectory invalidates `["projects"]` query key to trigger re-discovery on the dashboard
+- Theme toggle syncs both the client-side ThemeProvider (immediate visual change) AND persists to config.json
+- Project settings page reads full `MarkerFile` from `GET /api/projects/:id` — provides profile, options, and artifactHashes in one fetch
+- New API route `PUT /:id/options` added to profile-config router — updates `MarkerOptions` portion of `.ralph.json` separately from profile
+- Toggle options (ignoreInTool, gitignoreScripts, autoSweep) auto-save on click via immediate `optionsMutation.mutate()`; numeric/text fields (maxIterations, model) use explicit Save button
+- Profile commands section shows a computed verify string preview — `buildVerifyString()` joins non-empty commands with `&&`
+- Re-detect stack button chains two mutations: `detectMutation` → `profileMutation.mutate(detected)` — detect result auto-applied without manual save
+- Artifact hash status displays truncated SHA-256 hashes (12 chars + ellipsis) with full hash in tooltip
+- Pre-existing format warnings in 8 files (docs/, cli, core, web) — only formatted files this task modified
