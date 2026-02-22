@@ -214,6 +214,10 @@ function colorLoopState(state: LoopStateEnum): string {
       return c.yellow(state);
     case "NOT_INSTALLED":
       return c.dim(state);
+    case "SLEEPING_LIMIT":
+      return c.blue(state);
+    case "WEEKLY_LIMIT":
+      return c.red(state);
     default:
       return c.dim(state);
   }
@@ -235,6 +239,20 @@ function formatStateSource(source: DerivedStatus["stateSource"]): string {
 function printStatusSummary(status: DerivedStatus): void {
   const sourceLabel = c.dim(`(${formatStateSource(status.stateSource)})`);
   print(`${c.bold("Loop State:")} ${colorLoopState(status.loopState)} ${sourceLabel}`);
+
+  if (status.loopState === "SLEEPING_LIMIT") {
+    const until = status.sleepUntil
+      ? `resets at ${new Date(status.sleepUntil).toLocaleTimeString()} (${status.sleepUntil})`
+      : "waiting for reset";
+    print(`${c.bold("Usage Limit:")} 5-hour window exhausted — ${until}`);
+  }
+
+  if (status.loopState === "WEEKLY_LIMIT") {
+    const until = status.sleepUntil
+      ? `resets at ${status.sleepUntil}`
+      : "check https://claude.ai for reset time";
+    print(`${c.bold("Usage Limit:")} Weekly cap exhausted — ${until}`);
+  }
 
   if (status.iteration !== null && status.maxIterations !== null) {
     print(`${c.bold("Iteration:")}  ${status.iteration} / ${status.maxIterations}`);

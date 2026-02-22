@@ -142,6 +142,131 @@ describe("handleStatus", () => {
     expect(code).toBe(3);
   });
 
+  it("returns 0 and SLEEPING_LIMIT loopState for sleeping_limit status", async () => {
+    const projectDir = path.join(tmpDir, "sleeping-limit-project");
+    const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
+    createStateJson(ralphDir, {
+      status: "sleeping_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      error: "5-hour usage limit hit",
+    });
+
+    let output = "";
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+
+    const ctx = makeCtx([projectDir], {}, { json: true, quiet: false });
+    configureOutput({ noColor: true, quiet: false, json: true });
+    const code = await handleStatus(ctx);
+
+    process.stdout.write = origWrite;
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    expect(code).toBe(0);
+    const parsed = JSON.parse(output);
+    expect(parsed).toHaveProperty("loopState", "SLEEPING_LIMIT");
+    expect(parsed).toHaveProperty("sleepUntil");
+  });
+
+  it("returns 0 and WEEKLY_LIMIT loopState for weekly_limit status", async () => {
+    const projectDir = path.join(tmpDir, "weekly-limit-project");
+    const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
+    createStateJson(ralphDir, {
+      status: "weekly_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: "2026-02-27T05:00:00Z",
+      error: "Weekly usage limit exhausted",
+    });
+
+    let output = "";
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+
+    const ctx = makeCtx([projectDir], {}, { json: true, quiet: false });
+    configureOutput({ noColor: true, quiet: false, json: true });
+    const code = await handleStatus(ctx);
+
+    process.stdout.write = origWrite;
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    expect(code).toBe(0);
+    const parsed = JSON.parse(output);
+    expect(parsed).toHaveProperty("loopState", "WEEKLY_LIMIT");
+    expect(parsed.sleepUntil).toBe("2026-02-27T05:00:00Z");
+  });
+
+  it("shows sleeping limit information in text output", async () => {
+    const projectDir = path.join(tmpDir, "sleeping-text-project");
+    const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
+    const sleepUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    createStateJson(ralphDir, {
+      status: "sleeping_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil,
+      error: "5-hour usage limit hit",
+    });
+
+    let output = "";
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+
+    const ctx = makeCtx([projectDir], {}, { json: false, quiet: false });
+    configureOutput({ noColor: true, quiet: false, json: false });
+    await handleStatus(ctx);
+
+    process.stdout.write = origWrite;
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    expect(output.toLowerCase()).toMatch(/sleeping/i);
+    expect(output.toLowerCase()).toMatch(/usage limit|limit/i);
+  });
+
+  it("shows weekly limit information in text output", async () => {
+    const projectDir = path.join(tmpDir, "weekly-text-project");
+    const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
+    createStateJson(ralphDir, {
+      status: "weekly_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: "2026-02-27T05:00:00Z",
+      error: "Weekly usage limit exhausted",
+    });
+
+    let output = "";
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+
+    const ctx = makeCtx([projectDir], {}, { json: false, quiet: false });
+    configureOutput({ noColor: true, quiet: false, json: false });
+    await handleStatus(ctx);
+
+    process.stdout.write = origWrite;
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    expect(output.toLowerCase()).toMatch(/weekly/i);
+    expect(output).toMatch(/2026-02-27/);
+  });
+
   it("returns 0 when loop is PAUSED", async () => {
     const projectDir = path.join(tmpDir, "paused-project");
     const ralphDir = createRalphProject(projectDir);
