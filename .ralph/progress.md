@@ -258,3 +258,15 @@
 - Discovery correctly filters `artifacts/` paths via `candidatePath.endsWith(sep + "artifacts")` check
 - `.ralph.json` artifactHashes were empty on bootstrap; running `install` populates them from deployed files
 - Pre-existing test failure: `handleServerStatus` expected `uptime: null` but gets real uptime when ralph server happens to be running — fixed by accepting `null | number`
+
+### 032: Web Frontend: Installation wizard (existing project) (completed)
+- 6-step wizard: Select Target → Preflight → Tech Stack → Configure → Review → Result
+- Added `POST /api/projects/preflight` endpoint — runs core's `preflight()` + `detectProfile()` in one call, returns checks + resolvedPath + detectedProfile
+- Preflight endpoint registered before `/:id` routes (same pattern as `/init`) so "preflight" isn't mismatched as a project ID
+- `useState(() => { mutation.mutate() })` pattern triggers preflight auto-run when Step 2 mounts — the initializer runs once on first render
+- Profile overrides tracked separately from detected profile — `effectiveCommand(key)` merges on display; only changed fields sent to install API
+- Step 5 file preview is a static list of known artifacts (not computed from server) — simpler and avoids a preview API round-trip
+- RALPH.md verification section shows the composite `verify` command built from effective commands
+- Step 6 quick links derive `projectId` from the install report's `projectPath` last segment — matches how `resolveProjectPath()` on the server maps `:id` to paths
+- `@ts-expect-error` needed for `--tw-divide-color` CSS custom property in style objects — Tailwind v4's divide utility uses this internal var
+- Pre-existing format issues in 8 other files unrelated to this task — only formatted the 2 files this task modified
