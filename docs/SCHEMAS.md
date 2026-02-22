@@ -1,4 +1,7 @@
-# Schemas Reference
+---
+title: Schemas Reference
+description: All data structures used across the ralph system, mapping directly to Zod schemas.
+---
 
 All data structures used across the ralph system. These map directly to Zod schemas in `packages/core/src/schemas.ts`.
 

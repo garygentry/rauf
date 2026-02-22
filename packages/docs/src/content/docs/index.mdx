@@ -1,0 +1,58 @@
+---
+title: What is Ralph?
+description: A CLI + web tool for installing, managing, and monitoring autonomous coding loops.
+template: splash
+hero:
+  tagline: Install, manage, and monitor autonomous coding loops across local software projects. Ralph provides backlog management, status dashboards, and installation wizards — all powered by Claude Code.
+  actions:
+    - text: Quick Start
+      link: /contributing/
+      icon: right-arrow
+    - text: Architecture
+      link: /architecture/
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Key Features
+
+<CardGrid stagger>
+  <Card title="Project Installation" icon="setting">
+    Auto-detect tech stack (Node.js, Python, Go, Rust) and deploy loop scripts
+    and configuration with a single command.
+  </Card>
+  <Card title="Backlog Management" icon="list-format">
+    Add, edit, delete, and list work items with priorities, acceptance criteria,
+    and dependencies — via CLI or web UI.
+  </Card>
+  <Card title="Status Monitoring" icon="approve-check-circle">
+    Real-time loop state derived from `state.json` with log-parsing fallback.
+    Track iterations, outcomes, and progress.
+  </Card>
+  <Card title="Web Dashboard" icon="laptop">
+    React SPA with project cards, backlog management, live log streaming (SSE),
+    and installation wizards.
+  </Card>
+</CardGrid>
+
+## How It Works
+
+1. You define work items in a **backlog** (JSON-based task queue)
+2. Ralph's loop runner (`ralph.sh`) picks the next item, spawns a Claude Code session, and monitors the result
+3. Each iteration reads acceptance criteria, implements changes, runs verification, and commits
+4. The loop continues until the backlog is empty or a limit is reached
+
+## Quick Install
+
+```bash
+# Clone and build
+git clone https://github.com/your-org/ralph.git
+cd ralph && pnpm install && pnpm build
+
+# Install into a project
+ralph install ~/workspace/my-project --yes
+
+# Start the loop
+cd ~/workspace/my-project && ./ralph.sh
+```

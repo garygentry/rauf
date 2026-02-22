@@ -1,4 +1,7 @@
-# Core Package Specification
+---
+title: Core Package
+description: Specification for the shared business logic package — filesystem operations, backlog management, and project discovery.
+---
 
 Reference: `packages/core/src/`
 

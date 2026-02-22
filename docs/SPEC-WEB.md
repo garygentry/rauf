@@ -1,4 +1,7 @@
-# Web Package Specification
+---
+title: Web API Reference
+description: Hono server API routes, React frontend architecture, and real-time features.
+---
 
 Reference: `packages/web/`
 

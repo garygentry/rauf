@@ -11,6 +11,8 @@
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "dev": "pnpm --filter @ralph/web dev",
+    "dev:docs": "pnpm --filter @ralph/docs dev",
+    "build:docs": "pnpm --filter @ralph/docs build",
     "compile": "pnpm build && bun build --compile scripts/binary-entry.ts --outfile ralph-bin",
     "clean": "pnpm -r clean"
   },

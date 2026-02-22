@@ -1,4 +1,7 @@
-# Contributing to Ralph
+---
+title: Contributing
+description: Development setup, coding conventions, and contribution workflow for ralph.
+---
 
 ## Development Setup
 

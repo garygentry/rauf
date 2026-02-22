@@ -1,4 +1,7 @@
-# CLI Specification
+---
+title: CLI Reference
+description: Command-line interface specification — commands, flags, exit codes, and output formats.
+---
 
 Reference: `packages/cli/`
 

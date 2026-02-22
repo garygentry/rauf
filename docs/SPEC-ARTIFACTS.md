@@ -1,4 +1,7 @@
-# Artifact Templates Specification
+---
+title: Artifact Templates
+description: Canonical template files installed into target projects — loop scripts, RALPH.md, backlog schema.
+---
 
 Reference: `artifacts/variants/backlog-json/`
 
