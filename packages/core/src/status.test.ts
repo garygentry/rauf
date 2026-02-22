@@ -732,3 +732,95 @@ describe("deriveStatus — edge cases", () => {
     expect(result.value.elapsed).toBeNull();
   });
 });
+
+// ─── deriveStatus: Usage Limit States ───────────────────────────
+
+describe("deriveStatus — usage limit states", () => {
+  it("maps sleeping_limit state to SLEEPING_LIMIT", () => {
+    const state = makeLoopState({
+      status: "sleeping_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      error: "5-hour usage limit hit",
+    });
+    writeStateJson(state);
+
+    const result = deriveStatus(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("SLEEPING_LIMIT");
+    expect(result.value.stateSource).toBe("state.json");
+    expect(result.value.sleepUntil).toBeDefined();
+    expect(typeof result.value.sleepUntil).toBe("string");
+  });
+
+  it("does not downgrade sleeping_limit to PAUSED even when updatedAt is stale", () => {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const state = makeLoopState({
+      status: "sleeping_limit",
+      updatedAt: tenMinutesAgo,
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      error: "5-hour usage limit hit",
+    });
+    writeStateJson(state);
+
+    const result = deriveStatus(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("SLEEPING_LIMIT");
+  });
+
+  it("maps weekly_limit state to WEEKLY_LIMIT", () => {
+    const state = makeLoopState({
+      status: "weekly_limit",
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: "2026-02-27T05:00:00Z",
+      error: "Weekly usage limit exhausted",
+    });
+    writeStateJson(state);
+
+    const result = deriveStatus(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("WEEKLY_LIMIT");
+    expect(result.value.sleepUntil).toBe("2026-02-27T05:00:00Z");
+  });
+
+  it("does not downgrade weekly_limit to PAUSED when updatedAt is stale", () => {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const state = makeLoopState({
+      status: "weekly_limit",
+      updatedAt: tenMinutesAgo,
+      currentItem: null,
+      lastSignal: "error",
+      sleepUntil: "2026-02-27T05:00:00Z",
+      error: "Weekly usage limit exhausted",
+    });
+    writeStateJson(state);
+
+    const result = deriveStatus(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("WEEKLY_LIMIT");
+  });
+
+  it("returns null sleepUntil when not set in state", () => {
+    const state = makeLoopState({
+      status: "sleeping_limit",
+      currentItem: null,
+      lastSignal: "error",
+      error: "5-hour usage limit hit",
+    });
+    writeStateJson(state);
+
+    const result = deriveStatus(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("SLEEPING_LIMIT");
+    expect(result.value.sleepUntil ?? null).toBeNull();
+  });
+});

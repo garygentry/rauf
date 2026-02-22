@@ -76,6 +76,8 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     paused_human: "PAUSED_HUMAN",
     limit_reached: "LIMIT_REACHED",
     error: "ERROR",
+    sleeping_limit: "SLEEPING_LIMIT",
+    weekly_limit: "WEEKLY_LIMIT",
   };
   return mapping[status];
 }
@@ -93,7 +95,11 @@ function deriveFromStateJson(projectPath: string): Result<DerivedStatus | null> 
   let loopState = mapLoopStateStatus(state.status);
 
   // Staleness check: running >5min old → PAUSED
-  if ((state.status === "running" || state.status === "starting") && state.updatedAt) {
+  // sleeping_limit and weekly_limit are intentionally long-lived — never downgrade them
+  if (
+    (state.status === "running" || state.status === "starting") &&
+    state.updatedAt
+  ) {
     const updatedAt = new Date(state.updatedAt).getTime();
     const now = Date.now();
     if (now - updatedAt > STALENESS_THRESHOLD_MS) {
@@ -113,6 +119,7 @@ function deriveFromStateJson(projectPath: string): Result<DerivedStatus | null> 
     startedAt: state.startedAt,
     elapsed,
     backlogSummary: computeBacklogSummary(projectPath),
+    sleepUntil: state.sleepUntil ?? null,
   });
 }
 
