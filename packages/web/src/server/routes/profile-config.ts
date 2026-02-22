@@ -4,6 +4,7 @@
 //   GET  /:id/profile         → { data: ProjectProfile }
 //   PUT  /:id/profile         → { data: ProjectProfile }
 //   POST /:id/profile/detect  → { data: ProjectProfile }
+//   PUT  /:id/options         → { data: MarkerOptions }
 //
 // Config routes (mounted at /api/config):
 //   GET  /                    → { data: ToolConfig }
@@ -25,6 +26,7 @@ import {
   resolveRootDirectory,
   validatePath,
   ProjectProfileSchema,
+  MarkerOptionsSchema,
   ToolConfigSchema,
   ErrorCodes,
 } from "@ralph/core";
@@ -152,6 +154,51 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
     }
 
     const updatedMarker = { ...markerResult.value, profile: parseResult.data };
+    const writeResult = writeMarkerFile(projectPath, updatedMarker);
+    if (!writeResult.ok) {
+      return c.json(errorResponse(writeResult.error.code, writeResult.error.message), 500);
+    }
+
+    return c.json({ data: parseResult.data });
+  });
+
+  // ── PUT /:id/options ────────────────────────────────────────────
+  //
+  // Replace the MarkerOptions in .ralph.json with the body.
+  // Body must conform to MarkerOptionsSchema.
+  // Returns the saved options on success.
+
+  router.put("/:id/options", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const markerResult = readMarkerFile(projectPath);
+    if (!markerResult.ok) {
+      const status = markerResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
+      return c.json(errorResponse(markerResult.error.code, markerResult.error.message), status);
+    }
+
+    const body = (await c.req.json().catch(() => null)) as unknown;
+    if (body === null || typeof body !== "object") {
+      return c.json(errorResponse("INVALID_BODY", "Request body is required"), 400);
+    }
+
+    const parseResult = MarkerOptionsSchema.safeParse(body);
+    if (!parseResult.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid options data", parseResult.error.flatten()),
+        400,
+      );
+    }
+
+    const updatedMarker = { ...markerResult.value, options: parseResult.data };
     const writeResult = writeMarkerFile(projectPath, updatedMarker);
     if (!writeResult.ok) {
       return c.json(errorResponse(writeResult.error.code, writeResult.error.message), 500);
