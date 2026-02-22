@@ -1,219 +1,174 @@
 # Ralph
 
-A CLI + web tool for installing, managing, and monitoring autonomous coding loops across local software projects. Ralph provides backlog management, status dashboards, and installation wizards — all powered by [Claude Code](https://claude.ai/claude-code).
+**Autonomous coding loops, managed.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-0.1.0-green)
+
+Ralph installs, manages, and monitors AI coding loops across your local projects. Define a backlog, start the loop, and let [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ship work items autonomously — with full visibility through a CLI and web dashboard.
+
+<p align="center">
+  <img src="screenshots/dashboard.png" alt="Ralph Manager — Projects Dashboard" width="720" />
+</p>
+
+> **Self-hosted from day one.** Ralph built itself: 44 backlog items, each implemented, verified, and committed by its own loop. The screenshots below are ralph managing ralph.
+
+---
 
 ## How It Works
 
-Ralph automates the iteration cycle of an AI coding agent:
+<p align="center">
+  <img src="docs/images/ralph-loop.png" alt="Ralph loop diagram" width="720" />
+</p>
 
-1. You define work items in a **backlog** (JSON-based task queue)
-2. Ralph's loop runner (`ralph.sh`) picks the next item, spawns a Claude Code session, and monitors the result
-3. Each iteration reads acceptance criteria, implements changes, runs verification, and commits
-4. The loop continues until the backlog is empty or a limit is reached
+1. **Backlog** — You define work items with titles, priorities, and acceptance criteria
+2. **Pick** — The loop runner (`ralph.sh`) selects the next pending item by priority
+3. **Claude Code** — A fresh Claude Code session reads the item, implements changes, and runs verification
+4. **Verify & Commit** — If all criteria pass, changes are committed and the loop advances
 
-Ralph Manager (this tool) handles installing this loop infrastructure into your projects and provides CLI + web UI for managing backlogs and monitoring loop status.
+Each iteration produces one of three exit signals:
+
+| Signal | Meaning | What happens |
+|--------|---------|-------------|
+| `RALPH_DONE` | All acceptance criteria passed | Item marked done, loop continues |
+| `RALPH_BLOCKED` | Missing dependency or unclear spec | Item paused, loop retries or skips |
+| `RALPH_NEEDS_HUMAN` | Requires a decision or API key | Loop pauses for human input |
+
+---
 
 ## Features
 
-- **Project Installation** — Auto-detect tech stack (Node.js/TypeScript, Python, Go, Rust) and deploy loop scripts + configuration
-- **Greenfield Init** — Scaffold a new project with git, CLAUDE.md, backlog, and loop infrastructure in one command
-- **Backlog CRUD** — Add, edit, delete, and list work items with priorities, acceptance criteria, and dependencies
-- **Status Monitoring** — Real-time loop state derived from `state.json` with log-parsing fallback
-- **Web Dashboard** — React SPA with project cards, backlog management, live log streaming (SSE), and installation wizards
-- **CLI** — Full-featured command-line interface for headless operation
-- **Single Binary** — Compiles to a self-contained binary via `bun build --compile` (CLI + web server + React frontend + embedded templates)
+- **Auto-detect & install** — Detects Node.js, Python, Go, Rust stacks and deploys loop scripts in one command
+- **Greenfield init** — Scaffold a new project with git, CLAUDE.md, backlog, and loop infrastructure
+- **Structured backlog** — JSON-based task queue with priorities, types, acceptance criteria, and dependencies
+- **Real-time status** — Loop state derived directly from `state.json` with log-parsing fallback
+- **Web dashboard** — React SPA with project cards, backlog management, live log streaming via SSE
+- **Full CLI** — Every dashboard action available headless for scripting and CI
+- **Single binary** — Compiles to one executable via `bun build --compile` (CLI + server + frontend + templates)
+- **Self-contained projects** — Installed projects work standalone, no ralph manager required
 
-## Installation
-
-### Prerequisites
-
-- [Bun](https://bun.sh/) (v1.0+)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (`claude`)
-- [jq](https://jqlang.github.io/jq/) (used by loop scripts)
-- Git
-
-### From Source
-
-```bash
-git clone https://github.com/your-org/ralph.git
-cd ralph
-pnpm install
-pnpm build
-```
-
-### Compiled Binary
-
-```bash
-pnpm compile    # produces ./ralph-bin
-```
-
-The compiled binary bundles the CLI, web server, React frontend, and all artifact templates into a single executable.
+---
 
 ## Quick Start
 
-### 1. Install Ralph into an Existing Project
+**Prerequisites:** [Bun](https://bun.sh/) 1.0+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI, [jq](https://jqlang.github.io/jq/), Git
 
 ```bash
+# Clone and build
+git clone https://github.com/your-org/ralph.git
+cd ralph && pnpm install && pnpm build
+
+# Install ralph into an existing project
 ralph install ~/workspace/my-project --yes
-```
 
-This auto-detects your tech stack, deploys loop scripts (`ralph.sh`, `ralph-status.sh`, `ralph-add.sh`), creates `.ralph/` directory with `RALPH.md` and `backlog.json`, and merges a ralph section into your `CLAUDE.md`.
-
-### 2. Create a New Project from Scratch
-
-```bash
-ralph init ~/workspace/new-project \
-  --name "my-app" \
-  --stack node-typescript \
-  --description "A new TypeScript project"
-```
-
-This creates the directory, runs `git init`, scaffolds `CLAUDE.md`, installs loop artifacts, and optionally seeds the backlog.
-
-### 3. Add Backlog Items
-
-```bash
+# Add a work item
 ralph backlog add ~/workspace/my-project \
   --title "Add user authentication" \
-  --type feature \
-  --priority 1 \
-  --ac "Login endpoint returns JWT token" \
-  --ac "Logout invalidates session" \
+  --type feature --priority 1 \
+  --ac "Login endpoint returns JWT" \
   --ac "pnpm test passes"
+
+# Start the loop
+cd ~/workspace/my-project && ./ralph.sh
 ```
 
-Each `--ac` flag adds one acceptance criterion. If omitted, a smart default is generated from your project's verification command.
+---
 
-### 4. Run the Loop
+## Web Dashboard
 
 ```bash
-cd ~/workspace/my-project
-./ralph.sh              # default: 20 iterations, 3 retries
-./ralph.sh 50           # custom iteration limit
-./ralph.sh 50 5 claude-sonnet-4-6  # iterations, retries, model
+ralph server start     # http://localhost:5173
 ```
 
-The loop picks the next pending item by priority, marks it `in_progress`, spawns a Claude Code session, and updates status based on the exit signal (`RALPH_DONE`, `RALPH_BLOCKED`, `RALPH_NEEDS_HUMAN`).
+**Backlog management** — Add, edit, prioritize, and sweep items. Filter by status, type, or priority.
 
-### 5. Monitor Status
+<p align="center">
+  <img src="screenshots/backlog.png" alt="Backlog view" width="720" />
+</p>
+
+**Status monitoring** — Live loop state, iteration counts, recent completions, and log streaming.
+
+<p align="center">
+  <img src="screenshots/status.png" alt="Status view" width="720" />
+</p>
+
+---
+
+## CLI
+
+### Project Setup
 
 ```bash
-ralph status ~/workspace/my-project    # loop state + backlog summary
-ralph log ~/workspace/my-project       # last 20 log lines
-ralph log ~/workspace/my-project --follow  # live tail
-ralph backlog list ~/workspace/my-project  # backlog table
+ralph install <path> [--yes]              # Install into existing project
+ralph init <path> --name --stack --seed   # Scaffold new project
+ralph update <path> [--yes]               # Update ralph artifacts
+ralph uninstall <path> [--yes]            # Remove ralph from project
 ```
 
-### 6. Use the Web Dashboard
+### Backlog
 
 ```bash
-ralph server start          # starts on http://localhost:5173
-ralph server start --daemon # background mode
+ralph backlog list <path>                 # List items (--status, --type filters)
+ralph backlog add <path> --title --ac     # Add item with acceptance criteria
+ralph backlog edit <path> <id>            # Edit item fields
+ralph backlog delete <path> <id>          # Delete item
+ralph backlog show <path> <id>            # Show item details
+ralph backlog sweep <path> --yes          # Archive completed items
 ```
 
-Open `http://localhost:5173` for a full dashboard with project cards, backlog management, live log streaming, and installation wizards.
+### Monitoring
 
-## CLI Command Reference
-
+```bash
+ralph status <path>                       # Loop state + backlog summary
+ralph log <path> [--follow]               # View or tail loop log
+ralph progress <path>                     # View accumulated learnings
 ```
-ralph <command> [subcommand] [options]
+
+### Server
+
+```bash
+ralph server start [--daemon] [--port N]  # Start web dashboard
+ralph server stop                         # Stop server
+ralph server status                       # Show server status
 ```
 
-### Global Flags
+**Global flags:** `--json` `--no-color` `--quiet` `--root <path>`
 
-| Flag            | Description                   |
-| --------------- | ----------------------------- |
-| `--json`        | Machine-readable JSON output  |
-| `--no-color`    | Suppress ANSI color codes     |
-| `--quiet`, `-q` | Suppress informational output |
-| `--root <path>` | Override root directory       |
-
-### Commands
-
-#### Project Setup
-
-| Command                                         | Description                              |
-| ----------------------------------------------- | ---------------------------------------- |
-| `ralph install <path> [--yes]`                  | Install ralph into an existing project   |
-| `ralph init <path> [--name] [--stack] [--seed]` | Initialize a new project with ralph      |
-| `ralph update <path> [--yes]`                   | Update ralph artifacts (three-way merge) |
-| `ralph uninstall <path> [--yes]`                | Remove ralph from a project              |
-
-`ralph install` flags: `--test-cmd`, `--typecheck-cmd`, `--lint-cmd`, `--build-cmd`, `--format-cmd` to override auto-detected commands. `--gitignore-scripts` to add `.sh` files to `.gitignore`.
-
-`ralph init` flags: `--stack <preset>` (node-typescript, python, go, rust, custom), `--seed <file>` to seed backlog from JSON or markdown, `--description` for project description.
-
-#### Backlog Management
-
-| Command                                     | Description                                          |
-| ------------------------------------------- | ---------------------------------------------------- |
-| `ralph backlog list <path>`                 | List items (filters: `--status`, `--type`)           |
-| `ralph backlog add <path>`                  | Add item (`--title`, `--type`, `--priority`, `--ac`) |
-| `ralph backlog edit <path> <id>`            | Edit item fields                                     |
-| `ralph backlog delete <path> <id>`          | Delete item (with confirmation)                      |
-| `ralph backlog show <path> <id>`            | Show item details                                    |
-| `ralph backlog restore <path>`              | Restore backlog from `.bak` backup                   |
-| `ralph backlog sweep <path> --yes`          | Archive done items to `.ralph/archive/`              |
-| `ralph backlog archive list <path>`         | List archive months                                  |
-| `ralph backlog archive view <path> <month>` | View archived items                                  |
-| `ralph backlog archive purge <path> --yes`  | Delete archive files                                 |
-
-#### Monitoring
-
-| Command                                  | Description                                  |
-| ---------------------------------------- | -------------------------------------------- |
-| `ralph status <path>`                    | Loop state, iteration count, backlog summary |
-| `ralph log <path> [--tail N] [--follow]` | View or tail loop log                        |
-| `ralph progress <path>`                  | View accumulated progress notes              |
-
-#### Server
-
-| Command                                    | Description        |
-| ------------------------------------------ | ------------------ |
-| `ralph server start [--daemon] [--port N]` | Start web server   |
-| `ralph server stop`                        | Stop web server    |
-| `ralph server restart`                     | Restart web server |
-| `ralph server status`                      | Show server status |
-| `ralph server logs [--tail N]`             | View server logs   |
-
-#### Configuration
-
-| Command                                  | Description                  |
-| ---------------------------------------- | ---------------------------- |
-| `ralph config list`                      | List all config values       |
-| `ralph config get <key>`                 | Get a config value           |
-| `ralph config set <key> <value>`         | Set a config value           |
-| `ralph profile show <path>`              | Show project profile         |
-| `ralph profile detect <path>`            | Re-detect tech stack         |
-| `ralph profile set <path> <key> <value>` | Set a profile value          |
-| `ralph projects list`                    | List discovered projects     |
-| `ralph projects status`                  | Show status for all projects |
-
-### Exit Codes
-
-| Code | Meaning                 |
-| ---- | ----------------------- |
-| 0    | Success                 |
-| 1    | General error           |
-| 2    | Invalid arguments       |
-| 3    | Project not found       |
-| 4    | Validation error        |
-| 5    | Conflict (loop running) |
+---
 
 ## Project Structure
 
 ```
 ralph/
-├── packages/
-│   ├── core/    — Shared business logic (zero deps on cli/web)
-│   ├── cli/     — CLI tool
-│   └── web/     — Hono API server + React frontend
-├── artifacts/   — Canonical template files installed into projects
-│   └── variants/backlog-json/
-├── docs/        — Specifications
-└── scripts/     — Build scripts (binary compilation, asset embedding)
+├── packages/core/     Shared business logic (zero deps on cli/web)
+├── packages/cli/      CLI tool
+├── packages/web/      Hono API + React frontend
+├── artifacts/         Template files installed into target projects
+└── docs/              Architecture and specification documents
+```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System design, data flow, component boundaries |
+| [Schemas](docs/SCHEMAS.md) | All TypeScript types and JSON schemas |
+| [Core Spec](docs/SPEC-CORE.md) | Core package logic and algorithms |
+| [CLI Spec](docs/SPEC-CLI.md) | CLI commands, flags, and behavior |
+| [Web Spec](docs/SPEC-WEB.md) | API endpoints and frontend architecture |
+| [Artifacts Spec](docs/SPEC-ARTIFACTS.md) | Template files and installation process |
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. The essentials:
+
+```bash
+pnpm install        # Install dependencies
+pnpm test           # Run tests (vitest)
+pnpm typecheck      # TypeScript strict mode
+pnpm lint           # ESLint
 ```
 
 ## License
 
-MIT
+[MIT](LICENSE)
