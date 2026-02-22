@@ -17,6 +17,8 @@ import {
   update,
   uninstall,
   initProject,
+  preflight,
+  detectProfile,
   readMarkerFile,
   readToolConfig,
   resolveRootDirectory,
@@ -219,6 +221,40 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
 
     return c.json({ data: result.value }, 201);
+  });
+
+  // ── POST /api/projects/preflight ─────────────────────────────
+  //
+  // Run preflight checks on a target directory. Used by the install
+  // wizard before committing to install. Accepts an absolute path
+  // or a path relative to ROOT_DIRECTORY.
+
+  router.post("/preflight", async (c) => {
+    const raw = await c.req.json().catch(() => null);
+    if (raw === null || typeof raw !== "object") {
+      return c.json(errorResponse("INVALID_BODY", "Request body is required"), 400);
+    }
+
+    const parseResult = z.object({ targetPath: z.string().min(1) }).safeParse(raw);
+    if (!parseResult.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "targetPath is required", parseResult.error.flatten()),
+        400,
+      );
+    }
+
+    const { targetPath } = parseResult.data;
+
+    // Resolve: absolute paths pass through, relative resolved against ROOT_DIRECTORY
+    const rootDir = getRootDirectory();
+    const resolved = path.isAbsolute(targetPath)
+      ? path.resolve(targetPath)
+      : path.resolve(rootDir, targetPath);
+
+    const result = preflight(resolved);
+    const profile = detectProfile(resolved);
+
+    return c.json({ data: { ...result, resolvedPath: resolved, detectedProfile: profile } });
   });
 
   // ── POST /api/projects/:id/install ────────────────────────────
@@ -456,10 +492,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
 
     const monthsResult = listArchiveMonths(projectPath);
     if (!monthsResult.ok) {
-      return c.json(
-        errorResponse(monthsResult.error.code, monthsResult.error.message),
-        500,
-      );
+      return c.json(errorResponse(monthsResult.error.code, monthsResult.error.message), 500);
     }
 
     const months = monthsResult.value.map((month) => {
