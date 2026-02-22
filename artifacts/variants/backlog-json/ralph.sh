@@ -108,6 +108,35 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# write_state_limit — write sleeping_limit or weekly_limit state
+# ---------------------------------------------------------------------------
+write_state_limit() {
+  local loop_status="$1"   # "sleeping_limit" | "weekly_limit"
+  local sleep_until="$2"   # ISO timestamp or ""
+  local error_msg="$3"
+
+  local sleep_field="null"
+  [[ -n "$sleep_until" ]] && sleep_field="\"$sleep_until\""
+
+  cat > "$STATE.tmp" <<EOF
+{
+  "status": "$loop_status",
+  "iteration": $ITER,
+  "maxIterations": $MAX_ITERATIONS,
+  "currentItem": null,
+  "lastSignal": "error",
+  "startedAt": "$START_ISO",
+  "updatedAt": "$(date -Iseconds)",
+  "sleepUntil": $sleep_field,
+  "completedItems": $COMPLETED_IDS,
+  "blockedItems": $BLOCKED_IDS,
+  "error": "$error_msg"
+}
+EOF
+  mv "$STATE.tmp" "$STATE"
+}
+
+# ---------------------------------------------------------------------------
 # Targeted backlog writes — modify single items by ID, not full file
 # ---------------------------------------------------------------------------
 mark_in_progress() {
@@ -187,6 +216,59 @@ print_status() {
   done=$(count_done)
   total=$(count_total)
   log "Status → pending:$pending  in_progress:$in_prog  blocked:$blocked  done:$done  total:$total"
+}
+
+# ---------------------------------------------------------------------------
+# Usage limit helpers
+# ---------------------------------------------------------------------------
+
+# Read OAuth access token from Claude Code credentials file
+get_oauth_token() {
+  local creds_file="$HOME/.config/claude-code/credentials.json"
+  if [[ -f "$creds_file" ]]; then
+    jq -r '.claudeAiOauth.accessToken // empty' "$creds_file" 2>/dev/null
+  fi
+}
+
+# Query Anthropic usage API; outputs JSON or nothing on failure
+check_usage_api() {
+  local token="$1"
+  [[ -z "$token" ]] && return
+  curl -sf "https://api.anthropic.com/api/oauth/usage" \
+    -H "Authorization: Bearer $token" \
+    -H "anthropic-beta: oauth-2025-04-20" \
+    --max-time 10 2>/dev/null
+}
+
+# Sleep in CHECK_INTERVAL chunks, polling for CANCEL signal each tick.
+# Touches state.json updatedAt on each tick to prevent staleness detection.
+# Usage: sleep_with_cancel TOTAL_SECONDS
+sleep_with_cancel() {
+  local total="$1"
+  local check_interval=300  # 5 minutes
+  local elapsed=0
+
+  while [[ $elapsed -lt $total ]]; do
+    if [[ -f "$RALPH_DIR/CANCEL" ]]; then
+      log "CANCEL signal received during usage limit sleep — stopping"
+      rm -f "$RALPH_DIR/CANCEL"
+      write_state "paused" "null" "clean"
+      echo "cancel" > "$RALPH_DIR/DONE"
+      trap - EXIT
+      exit 0
+    fi
+
+    local remaining=$((total - elapsed))
+    local this_sleep=$((remaining < check_interval ? remaining : check_interval))
+    sleep "$this_sleep"
+    elapsed=$((elapsed + this_sleep))
+
+    # Touch updatedAt so the web/CLI staleness heuristic does not downgrade state
+    local current
+    current=$(cat "$STATE" 2>/dev/null || echo "{}")
+    echo "$current" | jq --arg ts "$(date -Iseconds)" '.updatedAt = $ts' \
+      > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -344,12 +426,14 @@ $PROGRESS_SNAPSHOT
   log "Spawning Claude session for item $CURRENT_ITEM_ID..."
   # shellcheck disable=SC2086
   CLAUDE_STDERR_FILE=$(mktemp)
+  set +e  # Allow claude to exit non-zero without aborting the script
   OUTPUT=$(echo "$PROMPT" | claude -p \
     --dangerously-skip-permissions \
     --output-format text \
     $MODEL_FLAG \
     2>"$CLAUDE_STDERR_FILE")
   CLAUDE_EXIT=$?
+  set -e
   CLAUDE_STDERR=$(cat "$CLAUDE_STDERR_FILE")
   rm -f "$CLAUDE_STDERR_FILE"
 
@@ -358,6 +442,69 @@ $PROGRESS_SNAPSHOT
   if [[ -n "$CLAUDE_STDERR" ]]; then
     echo "[claude stderr] $(echo "$CLAUDE_STDERR" | head -5)" >> "$LOG"
   fi
+
+  # -----------------------------------------------------------------------
+  # Usage limit detection — check before normal signal parsing
+  # -----------------------------------------------------------------------
+  if [[ $CLAUDE_EXIT -ne 0 ]] && echo "$CLAUDE_STDERR" | grep -qi "usage limit\|rate limit\|Claude AI Usage Limit\|too many requests"; then
+    log "⚠ Claude exited $CLAUDE_EXIT — usage limit detected"
+
+    OAUTH_TOKEN=$(get_oauth_token)
+    USAGE_JSON=$(check_usage_api "$OAUTH_TOKEN")
+
+    SEVEN_PCT=0
+    FIVE_PCT=100   # default: assume 5hr limit if API unreachable
+    FIVE_RESET=""
+    SEVEN_RESET=""
+
+    if [[ -n "$USAGE_JSON" ]]; then
+      SEVEN_PCT=$(echo "$USAGE_JSON" | jq -r '.seven_day.utilization // 0' | cut -d. -f1)
+      FIVE_PCT=$(echo "$USAGE_JSON" | jq -r '.five_hour.utilization // 0' | cut -d. -f1)
+      FIVE_RESET=$(echo "$USAGE_JSON" | jq -r '.five_hour.resets_at // ""')
+      SEVEN_RESET=$(echo "$USAGE_JSON" | jq -r '.seven_day.resets_at // ""')
+      log "  Usage — 5hr: ${FIVE_PCT}% (resets ${FIVE_RESET}), 7day: ${SEVEN_PCT}% (resets ${SEVEN_RESET})"
+    else
+      log "  Could not reach usage API — will use conservative 30-min sleep"
+    fi
+
+    # Reset item to pending so it is picked up after sleep/restart
+    if [[ -n "$CURRENT_ITEM_ID" ]]; then
+      reset_to_pending "$CURRENT_ITEM_ID"
+      CURRENT_ITEM_ID=""
+    fi
+
+    if [[ "$SEVEN_PCT" -ge 100 ]]; then
+      # Weekly cap exhausted — cannot self-recover, must stop
+      log "⛔ Weekly usage limit exhausted (${SEVEN_PCT}%) — stopping loop"
+      log "   Resets at: $SEVEN_RESET"
+      write_state_limit "weekly_limit" "$SEVEN_RESET" "Weekly Claude usage limit exhausted. Resets at: $SEVEN_RESET"
+      echo "weekly_limit:$SEVEN_RESET" > "$RALPH_DIR/DONE"
+      log "Run ./ralph.sh to restart after the weekly reset."
+      trap - EXIT
+      exit 3
+    else
+      # 5-hour window exhausted — sleep until reset, then resume
+      SLEEP_SECS=1800  # 30-min fallback if reset time is unavailable
+      if [[ -n "$FIVE_RESET" ]]; then
+        RESET_EPOCH=$(date -d "$FIVE_RESET" +%s 2>/dev/null || true)
+        NOW_EPOCH=$(date +%s)
+        if [[ -n "$RESET_EPOCH" ]]; then
+          COMPUTED=$((RESET_EPOCH - NOW_EPOCH + 60))  # +60s buffer
+          [[ $COMPUTED -gt 0 ]] && SLEEP_SECS=$COMPUTED
+        fi
+      fi
+
+      log "⏸ 5-hour usage limit hit (${FIVE_PCT}%) — sleeping ${SLEEP_SECS}s until reset"
+      write_state_limit "sleeping_limit" "$FIVE_RESET" "5-hour usage limit hit. Sleeping until ${FIVE_RESET:-unknown}"
+      sleep_with_cancel "$SLEEP_SECS"
+      log "  Woke up — resuming loop"
+      write_state "running" "null" "clean"
+      continue
+    fi
+  fi
+  # -----------------------------------------------------------------------
+  # End usage limit detection
+  # -----------------------------------------------------------------------
 
   # -----------------------------------------------------------------------
   # Parse exit signal
