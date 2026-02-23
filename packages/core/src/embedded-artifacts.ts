@@ -61,9 +61,135 @@ If any command is not configured (empty), skip it.
   [
     ".ralph/backlog.json",
     `{
+  "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "project": "",
   "description": "",
   "items": []
+}
+`,
+  ],
+  [
+    ".ralph/backlog.schema.json",
+    `{
+  "type": "object",
+  "properties": {
+    "project": {
+      "type": "string",
+      "description": "Project name (human-readable)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the project and its goals"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^\\\\d{3,}$",
+            "description": "Zero-padded sequential ID (e.g. '001', '042'). Never reused."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "refactor",
+              "feature",
+              "chore"
+            ],
+            "description": "Work category"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+            "description": "1 = highest priority, 4 = lowest"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Short imperative title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Full description of the work to be done"
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Checklist items — each must pass before marking done"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "done",
+              "blocked"
+            ],
+            "description": "Current lifecycle state"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp set when status becomes 'done'"
+          },
+          "blockedReason": {
+            "type": "string",
+            "description": "Explanation when status is 'blocked'"
+          },
+          "dependsOn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of items that must be 'done' before this can start"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Free-text context, links, or hints for the agent"
+          },
+          "estimatedIterations": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Expected number of loop iterations to complete"
+          },
+          "model": {
+            "type": "string",
+            "description": "Per-item Claude model override (e.g. 'claude-opus-4-6')"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "priority",
+          "title",
+          "description",
+          "acceptanceCriteria",
+          "status",
+          "completedAt"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Ordered list of backlog items"
+    }
+  },
+  "required": [
+    "project",
+    "description",
+    "items"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
+  "title": "Ralph Backlog",
+  "description": "Task backlog for a ralph autonomous coding loop project"
 }
 `,
   ],

@@ -41,6 +41,7 @@ const DIR_FILES = {
   ralphMdTemplate: ".ralph/RALPH.md.tmpl",
   backlog: ".ralph/backlog.json",
   progress: ".ralph/progress.md",
+  backlogSchema: ".ralph/backlog.schema.json",
 } as const;
 
 /** Template used for CLAUDE.md merge — not deployed directly */
@@ -287,12 +288,27 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   if (!progressResult.ok) return progressResult;
   actions.push(progressResult.value);
 
-  // 8. CLAUDE.md smart merge
+  // 8. Deploy backlog.schema.json (tool-managed, always overwrite)
+  const schemaContentResult = readArtifact(DIR_FILES.backlogSchema, artifactsDir);
+  if (schemaContentResult.ok) {
+    fs.writeFileSync(
+      path.join(resolved, ".ralph", "backlog.schema.json"),
+      schemaContentResult.value,
+      "utf-8",
+    );
+    actions.push({
+      file: ".ralph/backlog.schema.json",
+      action: "created",
+      detail: "JSON Schema for editor validation",
+    });
+  }
+
+  // 9. CLAUDE.md smart merge
   const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
-  // 9. Write .ralph.json marker file
+  // 10. Write .ralph.json marker file
   // On re-install, preserve existing options unless explicitly overridden
   const markerOptions: MarkerOptions = {
     ignoreInTool: options.options?.ignoreInTool ?? existingOptions?.ignoreInTool ?? false,
@@ -445,6 +461,21 @@ export function update(
     detail: "Progress preserved during update",
   });
 
+  // Always update backlog.schema.json (tool-managed, safe to overwrite)
+  const schemaContentResult = readArtifact(DIR_FILES.backlogSchema, artifactsDir);
+  if (schemaContentResult.ok) {
+    fs.writeFileSync(
+      path.join(resolved, ".ralph", "backlog.schema.json"),
+      schemaContentResult.value,
+      "utf-8",
+    );
+    actions.push({
+      file: ".ralph/backlog.schema.json",
+      action: "updated",
+      detail: "JSON Schema updated to latest version",
+    });
+  }
+
   // Update marker file with new hashes
   const updatedMarker: MarkerFile = {
     ...marker,
@@ -502,6 +533,9 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
 
   // Remove RALPH.md (always)
   safeUnlink(path.join(resolved, DOT_RALPH, "RALPH.md"));
+
+  // Remove backlog.schema.json (tool-managed)
+  safeUnlink(path.join(resolved, DOT_RALPH, "backlog.schema.json"));
 
   // Remove state.json and DONE file (always — these are loop state)
   safeUnlink(path.join(resolved, DOT_RALPH, "state.json"));
