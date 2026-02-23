@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ProjectProfile, MarkerOptions, DiscoveredProject, MarkerFile } from "@ralph/core";
+import type { ProjectProfile, MarkerOptions, DiscoveredProject, MarkerFile, InstallationReport, ArtifactStalenessReport, ArtifactFileStatus } from "@ralph/core";
 import { ralphFetchJson } from "../../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -117,6 +117,31 @@ export function ProjectSettings() {
       // Apply detected profile
       profileMutation.mutate(detected);
     },
+  });
+
+  // ── Update artifacts mutation ──
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      ralphFetchJson<InstallationReport>(
+        `/api/projects/${encodeURIComponent(projectId)}/update`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "artifact-status"] });
+    },
+  });
+
+  // ── Artifact staleness query ──
+
+  const stalenessQuery = useQuery({
+    queryKey: ["projects", projectId, "artifact-status"],
+    queryFn: () =>
+      ralphFetchJson<ArtifactStalenessReport>(
+        `/api/projects/${encodeURIComponent(projectId)}/artifact-status`,
+      ),
+    enabled: !!projectId,
   });
 
   // ── Handlers ──
@@ -276,6 +301,17 @@ export function ProjectSettings() {
           )}
         </SettingsSection>
 
+        {/* ── Artifact Status ─────────────────────────────────── */}
+        <ArtifactStatusSection
+          artifactHashes={artifactHashes}
+          staleness={stalenessQuery.data}
+          stalenessLoading={stalenessQuery.isLoading}
+          updatePending={updateMutation.isPending}
+          updateError={updateMutation.isError ? (updateMutation.error instanceof Error ? updateMutation.error : new Error(String(updateMutation.error))) : null}
+          updateData={updateMutation.data}
+          onUpdate={() => updateMutation.mutate()}
+        />
+
         {/* ── Profile Commands ────────────────────────────────── */}
         <SettingsSection
           title="Verification Commands"
@@ -431,45 +467,6 @@ export function ProjectSettings() {
           </div>
         </SettingsSection>
 
-        {/* ── Artifact Hashes ─────────────────────────────────── */}
-        <SettingsSection
-          title="Artifact Status"
-          description="SHA-256 hashes of installed artifacts. Used for update detection."
-        >
-          {Object.keys(artifactHashes).length === 0 ? (
-            <p className="text-xs italic" style={{ color: "var(--color-text-muted)" }}>
-              No artifact hashes recorded
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {Object.entries(artifactHashes).map(([file, hash]) => (
-                <div
-                  key={file}
-                  className="flex items-center justify-between rounded-md border px-3 py-2"
-                  style={{
-                    borderColor: "var(--color-border)",
-                    backgroundColor: "var(--color-surface)",
-                  }}
-                >
-                  <span
-                    className="font-mono text-xs font-medium"
-                    style={{ color: "var(--color-text)" }}
-                  >
-                    {file}
-                  </span>
-                  <span
-                    className="ml-4 truncate font-mono text-xs"
-                    style={{ color: "var(--color-text-muted)", maxWidth: "200px" }}
-                    title={hash}
-                  >
-                    {hash.substring(0, 12)}…
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </SettingsSection>
-
         {/* ── Metadata ────────────────────────────────────────── */}
         <SettingsSection
           title="Installation Info"
@@ -492,10 +489,12 @@ export function ProjectSettings() {
 function SettingsSection({
   title,
   description,
+  badge,
   children,
 }: {
   title: string;
   description: string;
+  badge?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -506,9 +505,12 @@ function SettingsSection({
         borderColor: "var(--color-border)",
       }}
     >
-      <h2 className="mb-1 text-sm font-semibold" style={{ color: "var(--color-text)" }}>
-        {title}
-      </h2>
+      <div className="mb-1 flex items-center gap-2">
+        <h2 className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>
+          {title}
+        </h2>
+        {badge}
+      </div>
       <p className="mb-3 text-xs" style={{ color: "var(--color-text-muted)" }}>
         {description}
       </p>
@@ -573,8 +575,294 @@ function MetaRow({ label, value }: { label: string; value: string }) {
 
 // ─── Utility ─────────────────────────────────────────────────────
 
+function actionBadgeStyle(action: string): React.CSSProperties {
+  switch (action) {
+    case "updated":
+      return { backgroundColor: "rgba(22, 163, 74, 0.12)", color: "#16a34a" };
+    case "created":
+    case "merged":
+    case "rendered":
+      return { backgroundColor: "rgba(37, 99, 235, 0.1)", color: "#2563eb" };
+    case "skipped":
+    default:
+      return { backgroundColor: "var(--color-surface-raised)", color: "var(--color-text-muted)" };
+  }
+}
+
 function buildVerifyString(cmds: Record<CommandKey, string>): string {
   return COMMAND_KEYS.map((k) => cmds[k])
     .filter(Boolean)
     .join(" && ");
+}
+
+// ─── ArtifactStatusSection ───────────────────────────────────────
+
+function ArtifactStatusSection({
+  artifactHashes,
+  staleness,
+  stalenessLoading,
+  updatePending,
+  updateError,
+  updateData,
+  onUpdate,
+}: {
+  artifactHashes: Record<string, string>;
+  staleness: ArtifactStalenessReport | undefined;
+  stalenessLoading: boolean;
+  updatePending: boolean;
+  updateError: Error | null;
+  updateData: InstallationReport | undefined;
+  onUpdate: () => void;
+}) {
+  // Determine summary badge
+  let summaryBadge: React.ReactNode;
+  if (stalenessLoading || (!staleness && !updateError)) {
+    summaryBadge = (
+      <span
+        className="rounded px-2 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: "var(--color-surface)", color: "var(--color-text-muted)" }}
+      >
+        Checking…
+      </span>
+    );
+  } else if (staleness && staleness.conflicts > 0) {
+    summaryBadge = (
+      <span
+        className="rounded px-2 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: "rgba(217, 119, 6, 0.12)", color: "#d97706" }}
+      >
+        {staleness.conflicts} conflict{staleness.conflicts !== 1 ? "s" : ""}
+      </span>
+    );
+  } else if (staleness && staleness.updatesAvailable > 0) {
+    summaryBadge = (
+      <span
+        className="rounded px-2 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: "rgba(234, 88, 12, 0.1)", color: "#ea580c" }}
+      >
+        {staleness.updatesAvailable} update{staleness.updatesAvailable !== 1 ? "s" : ""} available
+      </span>
+    );
+  } else if (staleness) {
+    summaryBadge = (
+      <span
+        className="rounded px-2 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: "rgba(22, 163, 74, 0.1)", color: "#16a34a" }}
+      >
+        All artifacts up to date
+      </span>
+    );
+  }
+
+  // Determine button label + style
+  let buttonLabel: string;
+  let buttonStyle: React.CSSProperties;
+  let buttonDisabled: boolean;
+
+  if (updatePending) {
+    buttonLabel = "Updating…";
+    buttonStyle = { borderColor: "var(--color-border)", color: "var(--color-text-muted)", backgroundColor: "var(--color-surface)" };
+    buttonDisabled = true;
+  } else if (!staleness) {
+    buttonLabel = "Update Artifacts";
+    buttonStyle = { borderColor: "var(--color-border)", color: "var(--color-text)", backgroundColor: "var(--color-surface)" };
+    buttonDisabled = false;
+  } else if (staleness.updatesAvailable === 0 && staleness.conflicts === 0) {
+    buttonLabel = "Update Artifacts";
+    buttonStyle = { borderColor: "var(--color-border)", color: "var(--color-text)", backgroundColor: "var(--color-surface)" };
+    buttonDisabled = false;
+  } else if (staleness.updatesAvailable > 0) {
+    buttonLabel = `Update ${staleness.updatesAvailable} File${staleness.updatesAvailable !== 1 ? "s" : ""}`;
+    buttonStyle = { borderColor: "transparent", color: "#fff", backgroundColor: "var(--color-accent)" };
+    buttonDisabled = false;
+  } else {
+    // Only conflicts
+    buttonLabel = "Update (review conflicts)";
+    buttonStyle = { borderColor: "rgba(217, 119, 6, 0.4)", color: "#d97706", backgroundColor: "rgba(217, 119, 6, 0.08)" };
+    buttonDisabled = false;
+  }
+
+  return (
+    <SettingsSection
+      title="Artifact Status"
+      description="Script artifacts installed in this project. Use the button below to pull in the latest versions."
+      badge={summaryBadge}
+    >
+      {Object.keys(artifactHashes).length === 0 ? (
+        <p className="text-xs italic" style={{ color: "var(--color-text-muted)" }}>
+          No artifact hashes recorded
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {Object.entries(artifactHashes).map(([file, hash]) => {
+            const fileStatus = staleness?.files[file];
+            return (
+              <div
+                key={file}
+                className="flex items-center justify-between rounded-md border px-3 py-2"
+                style={{
+                  borderColor: "var(--color-border)",
+                  backgroundColor: "var(--color-surface)",
+                }}
+              >
+                <span
+                  className="font-mono text-xs font-medium"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  {file}
+                </span>
+                <div className="ml-4 flex items-center gap-2 flex-shrink-0">
+                  {fileStatus ? (
+                    <ArtifactStatusBadge status={fileStatus} />
+                  ) : staleness ? (
+                    <span
+                      className="rounded px-1.5 py-0.5 text-xs font-medium"
+                      style={{ backgroundColor: "var(--color-surface-raised)", color: "var(--color-text-muted)" }}
+                    >
+                      rendered
+                    </span>
+                  ) : null}
+                  <span
+                    className="truncate font-mono text-xs"
+                    style={{ color: "var(--color-text-muted)", maxWidth: "120px" }}
+                    title={hash}
+                  >
+                    {hash.substring(0, 12)}…
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Update button */}
+      <div className="mt-4">
+        <button
+          onClick={onUpdate}
+          disabled={buttonDisabled}
+          className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+          style={buttonStyle}
+        >
+          {buttonLabel}
+        </button>
+        {updateError && (
+          <p className="mt-2 text-xs" style={{ color: "#dc2626" }}>
+            Update failed: {updateError.message}
+          </p>
+        )}
+      </div>
+
+      {/* Update result table */}
+      {updateData && (
+        <div className="mt-4 space-y-2">
+          <p className="text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>
+            Last update result:
+          </p>
+          <div className="space-y-1.5">
+            {updateData.actions.map((action, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between rounded-md border px-3 py-2"
+                style={{
+                  borderColor: "var(--color-border)",
+                  backgroundColor: "var(--color-surface)",
+                }}
+              >
+                <span
+                  className="font-mono text-xs font-medium"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  {action.file}
+                </span>
+                <div className="ml-4 flex items-center gap-2 flex-shrink-0">
+                  <span
+                    className="rounded px-1.5 py-0.5 text-xs font-medium"
+                    style={actionBadgeStyle(action.action)}
+                  >
+                    {action.action}
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                    {action.detail}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Warnings */}
+          {updateData.warnings.length > 0 && (
+            <div
+              className="mt-3 rounded-md border px-3 py-2.5"
+              style={{
+                borderColor: "rgba(217, 119, 6, 0.3)",
+                backgroundColor: "rgba(217, 119, 6, 0.07)",
+              }}
+            >
+              <p className="mb-1 text-xs font-semibold" style={{ color: "#d97706" }}>
+                Conflicts detected
+              </p>
+              <ul className="space-y-0.5">
+                {updateData.warnings.map((w, i) => (
+                  <li key={i} className="text-xs" style={{ color: "#d97706" }}>
+                    {w}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </SettingsSection>
+  );
+}
+
+function ArtifactStatusBadge({ status }: { status: ArtifactFileStatus }) {
+  switch (status) {
+    case "up_to_date":
+      return (
+        <span
+          className="rounded px-1.5 py-0.5 text-xs font-medium"
+          style={{ backgroundColor: "rgba(22, 163, 74, 0.1)", color: "#16a34a" }}
+        >
+          current
+        </span>
+      );
+    case "safe_update":
+      return (
+        <span
+          className="rounded px-1.5 py-0.5 text-xs font-medium"
+          style={{ backgroundColor: "rgba(234, 88, 12, 0.1)", color: "#ea580c" }}
+        >
+          update available
+        </span>
+      );
+    case "local_only":
+      return (
+        <span
+          className="rounded px-1.5 py-0.5 text-xs font-medium"
+          style={{ backgroundColor: "var(--color-surface-raised)", color: "var(--color-text-muted)" }}
+        >
+          locally modified
+        </span>
+      );
+    case "conflict":
+      return (
+        <span
+          className="rounded px-1.5 py-0.5 text-xs font-medium"
+          style={{ backgroundColor: "rgba(217, 119, 6, 0.12)", color: "#d97706" }}
+        >
+          conflict
+        </span>
+      );
+    case "missing":
+      return (
+        <span
+          className="rounded px-1.5 py-0.5 text-xs font-medium"
+          style={{ backgroundColor: "rgba(220, 38, 38, 0.1)", color: "#dc2626" }}
+        >
+          missing
+        </span>
+      );
+  }
 }

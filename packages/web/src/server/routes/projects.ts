@@ -18,6 +18,7 @@ import {
   discoverProjects,
   install,
   update,
+  checkArtifactStaleness,
   uninstall,
   initProject,
   preflight,
@@ -306,6 +307,28 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       );
     }
 
+    return c.json({ data: result.value });
+  });
+
+  // ── GET /api/projects/:id/artifact-status ─────────────────────
+
+  router.get("/:id/artifact-status", (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const result = checkArtifactStaleness(projectPath);
+    if (!result.ok) {
+      const status = result.error.code === ErrorCodes.NOT_INSTALLED ? 404 : 400;
+      return c.json(errorResponse(result.error.code, result.error.message), status);
+    }
     return c.json({ data: result.value });
   });
 

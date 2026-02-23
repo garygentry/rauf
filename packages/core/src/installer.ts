@@ -503,6 +503,70 @@ export function update(
   });
 }
 
+// ─── checkArtifactStaleness ───────────────────────────────────────
+//
+// Read-only pre-flight: mirrors update()'s comparison step without
+// writing anything. Only covers SCRIPT_ARTIFACTS (RALPH.md is always
+// re-rendered by update() and is excluded).
+
+export type ArtifactFileStatus =
+  | "up_to_date"
+  | "safe_update"
+  | "local_only"
+  | "conflict"
+  | "missing";
+
+export type ArtifactStalenessReport = {
+  files: Record<string, ArtifactFileStatus>;
+  updatesAvailable: number;
+  conflicts: number;
+};
+
+export function checkArtifactStaleness(
+  projectPath: string,
+  options: UpdateOptions = {},
+): Result<ArtifactStalenessReport> {
+  const resolved = path.resolve(projectPath);
+  const artifactsDir = options.artifactsDir ? path.resolve(options.artifactsDir) : undefined;
+
+  const markerResult = readMarkerFile(resolved);
+  if (!markerResult.ok) {
+    return err({
+      code: ErrorCodes.NOT_INSTALLED,
+      message: `Ralph is not installed in ${resolved}`,
+      details: { path: resolved },
+    });
+  }
+
+  const storedHashes = markerResult.value.artifactHashes;
+  const files: Record<string, ArtifactFileStatus> = {};
+  let updatesAvailable = 0;
+  let conflicts = 0;
+
+  for (const script of SCRIPT_ARTIFACTS) {
+    const destPath = path.join(resolved, script);
+
+    if (!fileExists(destPath)) {
+      files[script] = "missing";
+      continue;
+    }
+
+    const contentResult = readArtifact(script, artifactsDir);
+    if (!contentResult.ok) return contentResult as Result<ArtifactStalenessReport>;
+
+    const compResult = threeWayCompareContent(storedHashes[script], destPath, contentResult.value);
+    if (!compResult.ok) return compResult as Result<ArtifactStalenessReport>;
+
+    const status = compResult.value as ArtifactFileStatus;
+    files[script] = status;
+
+    if (status === "safe_update") updatesAvailable++;
+    if (status === "conflict") conflicts++;
+  }
+
+  return ok({ files, updatesAvailable, conflicts });
+}
+
 // ─── uninstall ────────────────────────────────────────────────────
 //
 // Remove ralph artifacts. Preserves backlog/progress/log by default.
