@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "bun run src/dev.ts",
+    "dev:vite": "vite",
+    "dev:server": "bun run src/server/index.ts",
     "build": "vite build && bun run ../../scripts/generate-embedded-assets.ts && prettier --write src/server/embedded-assets.ts && tsc",
     "test": "vitest run",
     "test:watch": "vitest",
