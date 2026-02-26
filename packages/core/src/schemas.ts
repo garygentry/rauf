@@ -78,6 +78,7 @@ export const MarkerOptionsSchema = z.object({
   model: z.string().optional(),
   autoSweep: z.boolean().optional(),
   sweepMinAgeDays: z.number().int().nonnegative().optional(),
+  sessionTimeout: z.number().int().positive().optional(),
 });
 
 // ─── MarkerFile (.ralph.json) ──────────────────────────────────────

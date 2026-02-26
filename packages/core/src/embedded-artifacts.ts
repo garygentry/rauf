@@ -6,9 +6,7 @@
  * Keys are relative paths within artifacts/variants/backlog-json/.
  */
 export const EMBEDDED_ARTIFACTS: ReadonlyMap<string, string> = new Map([
-  [
-    ".ralph/RALPH.md.tmpl",
-    `# Ralph — Per-Iteration Instructions
+  [".ralph/RALPH.md.tmpl", `# Ralph — Per-Iteration Instructions
 
 <!-- ralph:managed:start -->
 
@@ -44,6 +42,19 @@ If any command is not configured (empty), skip it.
    - \`RALPH_BLOCKED:<reason>\` — cannot proceed, explain why
    - \`RALPH_NEEDS_HUMAN:<reason>\` — need human decision or input
 
+## Agent Delegation
+
+Some backlog items include an \`agentDelegation\` field with guidance for parallel execution.
+When present:
+- Use the **Task** tool to spawn sub-agents for each subtask listed
+- Follow the \`strategy\` and \`recommendedConcurrency\` hints
+- Give each sub-agent clear, self-contained instructions including relevant file paths
+- Wait for **all** sub-agents to complete before running final verification
+- You (the main agent) own the exit signal — sub-agents do not emit RALPH_DONE/RALPH_BLOCKED
+- If any sub-agent fails, assess whether the overall task can still be completed
+
+Items may also include a \`specReferences\` field listing paths to specification documents. Read these before starting work.
+
 ## Important Rules
 
 - Work on ONE item only — the current \`in_progress\` item
@@ -56,21 +67,15 @@ If any command is not configured (empty), skip it.
 
 ## Project-Specific Instructions
 <!-- Add custom instructions below this line — they survive ralph update -->
-`,
-  ],
-  [
-    ".ralph/backlog.json",
-    `{
+`],
+  [".ralph/backlog.json", `{
   "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "project": "",
   "description": "",
   "items": []
 }
-`,
-  ],
-  [
-    ".ralph/backlog.schema.json",
-    `{
+`],
+  [".ralph/backlog.schema.json", `{
   "type": "object",
   "properties": {
     "project": {
@@ -191,22 +196,16 @@ If any command is not configured (empty), skip it.
   "title": "Ralph Backlog",
   "description": "Task backlog for a ralph autonomous coding loop project"
 }
-`,
-  ],
-  [
-    ".ralph/progress.md",
-    `# Progress & Learnings
+`],
+  [".ralph/progress.md", `# Progress & Learnings
 
 ## Codebase Patterns
 <!-- Patterns discovered during development will be logged here -->
 
 ## Session Log
 <!-- Each iteration appends its learnings here -->
-`,
-  ],
-  [
-    "CLAUDE_ADDON.md",
-    `<!-- ralph:start -->
+`],
+  ["CLAUDE_ADDON.md", `<!-- ralph:start -->
 
 ## Autonomous Loop (Ralph)
 
@@ -235,11 +234,8 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`.ralph/progress.md\` for accumulated project learnings
 - Append new learnings to \`.ralph/progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`,
-  ],
-  [
-    "CLAUDE_GREENFIELD.md.tmpl",
-    `# {{projectName}}
+`],
+  ["CLAUDE_GREENFIELD.md.tmpl", `# {{projectName}}
 
 ## Overview
 {{projectDescription}}
@@ -294,11 +290,8 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`.ralph/progress.md\` for accumulated project learnings
 - Append new learnings to \`.ralph/progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`,
-  ],
-  [
-    "ralph-add.sh",
-    `#!/usr/bin/env bash
+`],
+  ["ralph-add.sh", `#!/usr/bin/env bash
 # =============================================================================
 # ralph-add.sh — Add a new item to the backlog
 # Usage: ./ralph-add.sh
@@ -308,15 +301,55 @@ When running as a ralph loop iteration, follow these operational rules:
 RALPH_DIR=".ralph"
 BACKLOG="$RALPH_DIR/backlog.json"
 
+# ---------------------------------------------------------------------------
+# Ensure a required command is available, offering to install if missing.
+# Usage: ensure_command <cmd> [friendly_name]
+# ---------------------------------------------------------------------------
+ensure_command() {
+  local cmd="$1" name="\${2:-$1}"
+  command -v "$cmd" &>/dev/null && return 0
+
+  echo "Required tool '$name' not found."
+
+  local install_cmd=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command -v brew &>/dev/null; then
+      install_cmd="brew install $cmd"
+    fi
+  elif [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    case "\${ID:-}" in
+      ubuntu|debian|pop|linuxmint) install_cmd="sudo apt-get install -y $cmd" ;;
+      fedora)                      install_cmd="sudo dnf install -y $cmd" ;;
+      rhel|centos|rocky|alma)      install_cmd="sudo yum install -y $cmd" ;;
+      arch|manjaro)                install_cmd="sudo pacman -S --noconfirm $cmd" ;;
+      alpine)                      install_cmd="sudo apk add $cmd" ;;
+    esac
+  fi
+
+  if [[ -n "$install_cmd" ]]; then
+    read -rp "Install with '$install_cmd'? [y/N] " answer
+    if [[ "\${answer,,}" == "y" ]]; then
+      eval "$install_cmd"
+      if command -v "$cmd" &>/dev/null; then
+        echo "'$name' installed successfully."
+        return 0
+      fi
+      echo "ERROR: Installation appeared to succeed but '$name' still not found."
+    fi
+  fi
+
+  echo "ERROR: '$name' is required. Install manually: https://jqlang.github.io/jq/download/"
+  exit 1
+}
+
 if [[ ! -f "$BACKLOG" ]]; then
   echo "ERROR: .ralph/backlog.json not found. Run from project root."
   exit 1
 fi
 
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: jq not found. Install with: sudo apt install jq"
-  exit 1
-fi
+ensure_command jq
 
 # ---------------------------------------------------------------------------
 # Parse flags
@@ -437,11 +470,8 @@ echo ""
 if [[ -x "./ralph-status.sh" ]]; then
   ./ralph-status.sh 2>/dev/null || true
 fi
-`,
-  ],
-  [
-    "ralph-status.sh",
-    `#!/usr/bin/env bash
+`],
+  ["ralph-status.sh", `#!/usr/bin/env bash
 # =============================================================================
 # ralph-status.sh — Print a quick summary of backlog and loop state
 # Usage: ./ralph-status.sh
@@ -452,15 +482,55 @@ BACKLOG="$RALPH_DIR/backlog.json"
 STATE="$RALPH_DIR/state.json"
 LOG="$RALPH_DIR/ralph.log"
 
+# ---------------------------------------------------------------------------
+# Ensure a required command is available, offering to install if missing.
+# Usage: ensure_command <cmd> [friendly_name]
+# ---------------------------------------------------------------------------
+ensure_command() {
+  local cmd="$1" name="\${2:-$1}"
+  command -v "$cmd" &>/dev/null && return 0
+
+  echo "Required tool '$name' not found."
+
+  local install_cmd=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command -v brew &>/dev/null; then
+      install_cmd="brew install $cmd"
+    fi
+  elif [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    case "\${ID:-}" in
+      ubuntu|debian|pop|linuxmint) install_cmd="sudo apt-get install -y $cmd" ;;
+      fedora)                      install_cmd="sudo dnf install -y $cmd" ;;
+      rhel|centos|rocky|alma)      install_cmd="sudo yum install -y $cmd" ;;
+      arch|manjaro)                install_cmd="sudo pacman -S --noconfirm $cmd" ;;
+      alpine)                      install_cmd="sudo apk add $cmd" ;;
+    esac
+  fi
+
+  if [[ -n "$install_cmd" ]]; then
+    read -rp "Install with '$install_cmd'? [y/N] " answer
+    if [[ "\${answer,,}" == "y" ]]; then
+      eval "$install_cmd"
+      if command -v "$cmd" &>/dev/null; then
+        echo "'$name' installed successfully."
+        return 0
+      fi
+      echo "ERROR: Installation appeared to succeed but '$name' still not found."
+    fi
+  fi
+
+  echo "ERROR: '$name' is required. Install manually: https://jqlang.github.io/jq/download/"
+  exit 1
+}
+
 if [[ ! -f "$BACKLOG" ]]; then
   echo "ERROR: .ralph/backlog.json not found. Run from project root."
   exit 1
 fi
 
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: jq not found. Install with: sudo apt install jq"
-  exit 1
-fi
+ensure_command jq
 
 echo ""
 echo "=== Ralph Backlog Status ==="
@@ -592,11 +662,8 @@ if [[ -f "$LOG" ]]; then
   tail -5 "$LOG"
   echo ""
 fi
-`,
-  ],
-  [
-    "ralph-stop.sh",
-    `#!/usr/bin/env bash
+`],
+  ["ralph-stop.sh", `#!/usr/bin/env bash
 # =============================================================================
 # ralph-stop.sh — Request graceful loop cancellation
 # Usage: ./ralph-stop.sh
@@ -616,11 +683,8 @@ fi
 
 touch "$CANCEL_FILE"
 echo "Cancel requested. Loop will stop after current iteration."
-`,
-  ],
-  [
-    "ralph.sh",
-    `#!/usr/bin/env bash
+`],
+  ["ralph.sh", `#!/usr/bin/env bash
 # =============================================================================
 # ralph.sh — Autonomous Claude Code loop runner
 # Usage: ./ralph.sh [max_iterations] [max_retries] [model]
@@ -634,6 +698,60 @@ echo "Cancel requested. Loop will stop after current iteration."
 # modify backlog.json — it focuses on implementation and emits exit signals.
 # =============================================================================
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Ensure a required command is available, offering to install if missing.
+# Usage: ensure_command <cmd> [friendly_name]
+# ---------------------------------------------------------------------------
+ensure_command() {
+  local cmd="$1" name="\${2:-$1}"
+  command -v "$cmd" &>/dev/null && return 0
+
+  echo "Required tool '$name' not found."
+
+  local install_cmd=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command -v brew &>/dev/null; then
+      install_cmd="brew install $cmd"
+    fi
+  elif [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    case "\${ID:-}" in
+      ubuntu|debian|pop|linuxmint) install_cmd="sudo apt-get install -y $cmd" ;;
+      fedora)                      install_cmd="sudo dnf install -y $cmd" ;;
+      rhel|centos|rocky|alma)      install_cmd="sudo yum install -y $cmd" ;;
+      arch|manjaro)                install_cmd="sudo pacman -S --noconfirm $cmd" ;;
+      alpine)                      install_cmd="sudo apk add $cmd" ;;
+    esac
+  fi
+
+  if [[ -n "$install_cmd" ]]; then
+    read -rp "Install with '$install_cmd'? [y/N] " answer
+    if [[ "\${answer,,}" == "y" ]]; then
+      eval "$install_cmd"
+      if command -v "$cmd" &>/dev/null; then
+        echo "'$name' installed successfully."
+        return 0
+      fi
+      echo "ERROR: Installation appeared to succeed but '$name' still not found."
+    fi
+  fi
+
+  echo "ERROR: '$name' is required. Install manually: https://jqlang.github.io/jq/download/"
+  exit 1
+}
+
+ensure_command jq
+
+# Resolve timeout command (GNU coreutils)
+if command -v timeout &>/dev/null; then
+  TIMEOUT_CMD="timeout"
+elif command -v gtimeout &>/dev/null; then
+  TIMEOUT_CMD="gtimeout"
+else
+  TIMEOUT_CMD=""
+fi
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -653,6 +771,12 @@ else
   MAX_ITERATIONS=20
 fi
 MAX_RETRIES=\${2:-3}
+# Session timeout (minutes): .ralph.json options > default (60)
+if [[ -f ".ralph.json" ]]; then
+  SESSION_TIMEOUT=$(jq -r '.options.sessionTimeout // 60' ".ralph.json" 2>/dev/null || echo 60)
+else
+  SESSION_TIMEOUT=60
+fi
 # Model: CLI arg $3 (highest priority among static sources; per-item overrides at runtime)
 CLI_MODEL="\${3:-}"
 # Project-level default model from .ralph.json options.model
@@ -945,11 +1069,6 @@ if ! command -v claude &>/dev/null; then
   exit 1
 fi
 
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: 'jq' not found. Install with: sudo apt install jq"
-  exit 1
-fi
-
 # ── Auto-sweep ────────────────────────────────────────────────────
 if [[ -f ".ralph.json" ]]; then
   AUTO_SWEEP=$(jq -r '.options.autoSweep // false' ".ralph.json" 2>/dev/null || echo "false")
@@ -1022,7 +1141,11 @@ fi
 # Main loop
 # ---------------------------------------------------------------------------
 log "============================================"
-log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item"
+if [[ -n "$TIMEOUT_CMD" ]]; then
+  log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item | session_timeout=\${SESSION_TIMEOUT}m"
+else
+  log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item | session_timeout=none (timeout cmd not found)"
+fi
 print_status
 write_state "starting"
 
@@ -1113,6 +1236,11 @@ $(echo "$ITEM_JSON" | jq -r 'if .dependsOn then "This item depends on: " + (.dep
 ### Notes
 $(echo "$ITEM_JSON" | jq -r '.notes // "No additional notes"' 2>/dev/null)
 
+### Spec References
+$(echo "$ITEM_JSON" | jq -r 'if .specReferences and (.specReferences | length > 0) then "Read these specs before starting:\\n" + (.specReferences | map("- " + .) | join("\\n")) else "No spec references" end' 2>/dev/null)
+
+$(echo "$ITEM_JSON" | jq -r 'if .agentDelegation then "### Agent Delegation\\nThis task has delegation guidance. Use the Task tool to parallelize work:\\n\\n" + (if .agentDelegation.strategy then "**Strategy:** " + .agentDelegation.strategy + "\\n" else "" end) + (if .agentDelegation.recommendedConcurrency then "**Recommended concurrency:** " + (.agentDelegation.recommendedConcurrency | tostring) + " parallel agents\\n" else "" end) + (if .agentDelegation.subtasks and (.agentDelegation.subtasks | length > 0) then "\\n**Subtasks to delegate:**\\n" + ([.agentDelegation.subtasks | to_entries[] | (.key + 1 | tostring) + ". " + .value] | join("\\n")) + "\\n" else "" end) + "\\n**Instructions:**\\n- Use Task tool to create sub-agents for each subtask\\n- Give each sub-agent clear, self-contained instructions\\n- Wait for all sub-agents before running final verification\\n- You own the RALPH_DONE/RALPH_BLOCKED signal — sub-agents do not emit these" else "" end' 2>/dev/null)
+
 ---
 ## Full Backlog Context (read-only — do NOT modify this file)
 \\\`\\\`\\\`json
@@ -1146,12 +1274,22 @@ $PROGRESS_SNAPSHOT
   # shellcheck disable=SC2086
   CLAUDE_STDERR_FILE=$(mktemp)
   set +e  # Allow claude to exit non-zero without aborting the script
-  OUTPUT=$(echo "$PROMPT" | claude -p \\
-    --dangerously-skip-permissions \\
-    --output-format text \\
-    $MODEL_FLAG \\
-    2>"$CLAUDE_STDERR_FILE")
-  CLAUDE_EXIT=$?
+  if [[ -n "$TIMEOUT_CMD" && "$SESSION_TIMEOUT" -gt 0 ]]; then
+    # shellcheck disable=SC2086
+    OUTPUT=$(echo "$PROMPT" | $TIMEOUT_CMD --signal=TERM --kill-after=30 "\${SESSION_TIMEOUT}m" claude -p \\
+      --dangerously-skip-permissions \\
+      --output-format text \\
+      $MODEL_FLAG \\
+      2>"$CLAUDE_STDERR_FILE")
+    CLAUDE_EXIT=$?
+  else
+    OUTPUT=$(echo "$PROMPT" | claude -p \\
+      --dangerously-skip-permissions \\
+      --output-format text \\
+      $MODEL_FLAG \\
+      2>"$CLAUDE_STDERR_FILE")
+    CLAUDE_EXIT=$?
+  fi
   set -e
   CLAUDE_STDERR=$(cat "$CLAUDE_STDERR_FILE")
   rm -f "$CLAUDE_STDERR_FILE"
@@ -1160,6 +1298,29 @@ $PROGRESS_SNAPSHOT
   echo "$OUTPUT" | head -80 >> "$LOG"
   if [[ -n "$CLAUDE_STDERR" ]]; then
     echo "[claude stderr] $(echo "$CLAUDE_STDERR" | head -5)" >> "$LOG"
+  fi
+
+  # -----------------------------------------------------------------------
+  # Timeout detection — treat as retriable failure
+  # -----------------------------------------------------------------------
+  if [[ $CLAUDE_EXIT -eq 124 ]]; then
+    log "⏱ Claude session timed out after \${SESSION_TIMEOUT}m for item $CURRENT_ITEM_ID"
+    RETRY_COUNTS["$CURRENT_ITEM_ID"]=$(( \${RETRY_COUNTS["$CURRENT_ITEM_ID"]:-0} + 1 ))
+    RETRIES=\${RETRY_COUNTS["$CURRENT_ITEM_ID"]}
+    if [[ $RETRIES -ge $MAX_RETRIES ]]; then
+      log "✗ Item $CURRENT_ITEM_ID exceeded retry limit — marking as blocked"
+      mark_blocked "$CURRENT_ITEM_ID" "Timed out after \${SESSION_TIMEOUT}m ($RETRIES attempts)"
+      BLOCKED_IDS=$(echo "$BLOCKED_IDS" | jq --arg id "$CURRENT_ITEM_ID" '. + [$id]')
+      write_state "running" "null" "error" "Item $CURRENT_ITEM_ID timed out and auto-blocked"
+    else
+      log "  Resetting to pending — will retry (attempt $RETRIES/$MAX_RETRIES)"
+      reset_to_pending "$CURRENT_ITEM_ID"
+      write_state "running" "null" "error" "Session timed out (attempt $RETRIES/$MAX_RETRIES)"
+    fi
+    CURRENT_ITEM_ID=""
+    print_status
+    sleep 3
+    continue
   fi
 
   # -----------------------------------------------------------------------
@@ -1305,8 +1466,7 @@ write_state "limit_reached" "null" "clean"
 notify_done "Ralph hit iteration limit — $SUMMARY"
 trap - EXIT
 exit 1
-`,
-  ],
+`],
 ]);
 
 /**

@@ -14,6 +14,60 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# Ensure a required command is available, offering to install if missing.
+# Usage: ensure_command <cmd> [friendly_name]
+# ---------------------------------------------------------------------------
+ensure_command() {
+  local cmd="$1" name="${2:-$1}"
+  command -v "$cmd" &>/dev/null && return 0
+
+  echo "Required tool '$name' not found."
+
+  local install_cmd=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command -v brew &>/dev/null; then
+      install_cmd="brew install $cmd"
+    fi
+  elif [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    case "${ID:-}" in
+      ubuntu|debian|pop|linuxmint) install_cmd="sudo apt-get install -y $cmd" ;;
+      fedora)                      install_cmd="sudo dnf install -y $cmd" ;;
+      rhel|centos|rocky|alma)      install_cmd="sudo yum install -y $cmd" ;;
+      arch|manjaro)                install_cmd="sudo pacman -S --noconfirm $cmd" ;;
+      alpine)                      install_cmd="sudo apk add $cmd" ;;
+    esac
+  fi
+
+  if [[ -n "$install_cmd" ]]; then
+    read -rp "Install with '$install_cmd'? [y/N] " answer
+    if [[ "${answer,,}" == "y" ]]; then
+      eval "$install_cmd"
+      if command -v "$cmd" &>/dev/null; then
+        echo "'$name' installed successfully."
+        return 0
+      fi
+      echo "ERROR: Installation appeared to succeed but '$name' still not found."
+    fi
+  fi
+
+  echo "ERROR: '$name' is required. Install manually: https://jqlang.github.io/jq/download/"
+  exit 1
+}
+
+ensure_command jq
+
+# Resolve timeout command (GNU coreutils)
+if command -v timeout &>/dev/null; then
+  TIMEOUT_CMD="timeout"
+elif command -v gtimeout &>/dev/null; then
+  TIMEOUT_CMD="gtimeout"
+else
+  TIMEOUT_CMD=""
+fi
+
+# ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 RALPH_DIR=".ralph"
@@ -31,6 +85,12 @@ else
   MAX_ITERATIONS=20
 fi
 MAX_RETRIES=${2:-3}
+# Session timeout (minutes): .ralph.json options > default (60)
+if [[ -f ".ralph.json" ]]; then
+  SESSION_TIMEOUT=$(jq -r '.options.sessionTimeout // 60' ".ralph.json" 2>/dev/null || echo 60)
+else
+  SESSION_TIMEOUT=60
+fi
 # Model: CLI arg $3 (highest priority among static sources; per-item overrides at runtime)
 CLI_MODEL="${3:-}"
 # Project-level default model from .ralph.json options.model
@@ -323,11 +383,6 @@ if ! command -v claude &>/dev/null; then
   exit 1
 fi
 
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: 'jq' not found. Install with: sudo apt install jq"
-  exit 1
-fi
-
 # ── Auto-sweep ────────────────────────────────────────────────────
 if [[ -f ".ralph.json" ]]; then
   AUTO_SWEEP=$(jq -r '.options.autoSweep // false' ".ralph.json" 2>/dev/null || echo "false")
@@ -400,7 +455,11 @@ fi
 # Main loop
 # ---------------------------------------------------------------------------
 log "============================================"
-log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item"
+if [[ -n "$TIMEOUT_CMD" ]]; then
+  log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item | session_timeout=${SESSION_TIMEOUT}m"
+else
+  log "Ralph Loop starting | max=$MAX_ITERATIONS iterations | max_retries=$MAX_RETRIES per item | session_timeout=none (timeout cmd not found)"
+fi
 print_status
 write_state "starting"
 
@@ -529,12 +588,22 @@ $PROGRESS_SNAPSHOT
   # shellcheck disable=SC2086
   CLAUDE_STDERR_FILE=$(mktemp)
   set +e  # Allow claude to exit non-zero without aborting the script
-  OUTPUT=$(echo "$PROMPT" | claude -p \
-    --dangerously-skip-permissions \
-    --output-format text \
-    $MODEL_FLAG \
-    2>"$CLAUDE_STDERR_FILE")
-  CLAUDE_EXIT=$?
+  if [[ -n "$TIMEOUT_CMD" && "$SESSION_TIMEOUT" -gt 0 ]]; then
+    # shellcheck disable=SC2086
+    OUTPUT=$(echo "$PROMPT" | $TIMEOUT_CMD --signal=TERM --kill-after=30 "${SESSION_TIMEOUT}m" claude -p \
+      --dangerously-skip-permissions \
+      --output-format text \
+      $MODEL_FLAG \
+      2>"$CLAUDE_STDERR_FILE")
+    CLAUDE_EXIT=$?
+  else
+    OUTPUT=$(echo "$PROMPT" | claude -p \
+      --dangerously-skip-permissions \
+      --output-format text \
+      $MODEL_FLAG \
+      2>"$CLAUDE_STDERR_FILE")
+    CLAUDE_EXIT=$?
+  fi
   set -e
   CLAUDE_STDERR=$(cat "$CLAUDE_STDERR_FILE")
   rm -f "$CLAUDE_STDERR_FILE"
@@ -543,6 +612,29 @@ $PROGRESS_SNAPSHOT
   echo "$OUTPUT" | head -80 >> "$LOG"
   if [[ -n "$CLAUDE_STDERR" ]]; then
     echo "[claude stderr] $(echo "$CLAUDE_STDERR" | head -5)" >> "$LOG"
+  fi
+
+  # -----------------------------------------------------------------------
+  # Timeout detection — treat as retriable failure
+  # -----------------------------------------------------------------------
+  if [[ $CLAUDE_EXIT -eq 124 ]]; then
+    log "⏱ Claude session timed out after ${SESSION_TIMEOUT}m for item $CURRENT_ITEM_ID"
+    RETRY_COUNTS["$CURRENT_ITEM_ID"]=$(( ${RETRY_COUNTS["$CURRENT_ITEM_ID"]:-0} + 1 ))
+    RETRIES=${RETRY_COUNTS["$CURRENT_ITEM_ID"]}
+    if [[ $RETRIES -ge $MAX_RETRIES ]]; then
+      log "✗ Item $CURRENT_ITEM_ID exceeded retry limit — marking as blocked"
+      mark_blocked "$CURRENT_ITEM_ID" "Timed out after ${SESSION_TIMEOUT}m ($RETRIES attempts)"
+      BLOCKED_IDS=$(echo "$BLOCKED_IDS" | jq --arg id "$CURRENT_ITEM_ID" '. + [$id]')
+      write_state "running" "null" "error" "Item $CURRENT_ITEM_ID timed out and auto-blocked"
+    else
+      log "  Resetting to pending — will retry (attempt $RETRIES/$MAX_RETRIES)"
+      reset_to_pending "$CURRENT_ITEM_ID"
+      write_state "running" "null" "error" "Session timed out (attempt $RETRIES/$MAX_RETRIES)"
+    fi
+    CURRENT_ITEM_ID=""
+    print_status
+    sleep 3
+    continue
   fi
 
   # -----------------------------------------------------------------------

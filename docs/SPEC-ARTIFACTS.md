@@ -120,6 +120,43 @@ MarkerOptions fields:
 - `autoSweep?: boolean` — default `false`
 - `sweepMinAgeDays?: number` — default `0` (sweep all done items)
 
+### Session Timeout
+
+Claude sessions can stall indefinitely — the process stays alive but stops making progress. ralph.sh wraps the `claude -p` invocation with a configurable timeout using GNU `timeout` (or `gtimeout` on macOS).
+
+```
+Session timeout behavior:
+  - Default: 60 minutes per Claude session
+  - Configurable via: options.sessionTimeout in .ralph.json (integer, minutes)
+  - Uses GNU timeout (coreutils) with SIGTERM, then SIGKILL after 30s
+  - Exit code 124 from timeout triggers the retry flow (same as no-signal)
+  - Graceful degradation: if timeout/gtimeout not found, runs without timeout wrapper
+  - Logged as: "⏱ Claude session timed out after Nm for item <id>"
+```
+
+Timeout command resolution:
+
+```
+1. Check for `timeout` in PATH (Linux/WSL — always present)
+2. Check for `gtimeout` in PATH (macOS via `brew install coreutils`)
+3. If neither found: skip timeout wrapper, log warning at loop start
+```
+
+When a timeout fires:
+
+```
+1. Claude receives SIGTERM (graceful shutdown)
+2. If still alive after 30s, receives SIGKILL
+3. Exit code 124 is detected by ralph.sh
+4. Item retry count is incremented
+5. If retries < MAX_RETRIES: reset to pending, retry next iteration
+6. If retries >= MAX_RETRIES: mark as blocked with reason "Timed out after Nm (N attempts)"
+```
+
+MarkerOptions field:
+
+- `sessionTimeout?: number` — default `60` (minutes). Must be a positive integer.
+
 ### Graceful Cancel
 
 ralph.sh supports graceful cancellation via a `.ralph/CANCEL` signal file:

@@ -409,6 +409,30 @@ describe("MarkerOptionsSchema", () => {
   it("rejects model as non-string", () => {
     expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, model: true })).toThrow();
   });
+
+  it("accepts sessionTimeout as optional positive integer", () => {
+    const result = MarkerOptionsSchema.parse({
+      ...validMarkerOptions,
+      sessionTimeout: 60,
+    });
+    expect(result.sessionTimeout).toBe(60);
+  });
+
+  it("accepts options without sessionTimeout (backward compat)", () => {
+    const result = MarkerOptionsSchema.parse(validMarkerOptions);
+    expect(result.sessionTimeout).toBeUndefined();
+  });
+
+  it("rejects sessionTimeout of 0 or negative", () => {
+    expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, sessionTimeout: 0 })).toThrow();
+    expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, sessionTimeout: -1 })).toThrow();
+  });
+
+  it("rejects non-integer sessionTimeout", () => {
+    expect(() =>
+      MarkerOptionsSchema.parse({ ...validMarkerOptions, sessionTimeout: 30.5 }),
+    ).toThrow();
+  });
 });
 
 // ─── ProjectProfile ────────────────────────────────────────────────

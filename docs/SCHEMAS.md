@@ -117,6 +117,7 @@ interface MarkerOptions {
   model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI arg $3 and per-item BacklogItem.model.
   autoSweep?: boolean; // If true, ralph.sh automatically sweeps done items on loop startup. Default: false.
   sweepMinAgeDays?: number; // Only sweep done items older than N days. 0 = sweep all done items. Default: 0.
+  sessionTimeout?: number; // Max minutes per Claude session before kill+retry. Default: 60.
 }
 ```
 
