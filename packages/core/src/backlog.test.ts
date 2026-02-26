@@ -577,6 +577,99 @@ describe("addItem", () => {
     expect(result.value.dependsOn).toBeUndefined();
   });
 
+  it("passes through agentDelegation when provided", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "With delegation",
+      acceptanceCriteria: ["Done"],
+      agentDelegation: {
+        recommendedConcurrency: 3,
+        strategy: "Parallel execution",
+        subtasks: ["Task A", "Task B", "Task C"],
+      },
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.agentDelegation).toEqual({
+      recommendedConcurrency: 3,
+      strategy: "Parallel execution",
+      subtasks: ["Task A", "Task B", "Task C"],
+    });
+  });
+
+  it("passes through specReferences when provided", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "With specs",
+      acceptanceCriteria: ["Done"],
+      specReferences: ["docs/auth-spec.md", "docs/ARCHITECTURE.md"],
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.specReferences).toEqual(["docs/auth-spec.md", "docs/ARCHITECTURE.md"]);
+  });
+
+  it("does not include agentDelegation when not provided", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "No delegation",
+      acceptanceCriteria: ["Done"],
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.agentDelegation).toBeUndefined();
+    expect(result.value.specReferences).toBeUndefined();
+  });
+
+  it("round-trips agentDelegation through write/read", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "Delegation round-trip",
+      acceptanceCriteria: ["Done"],
+      agentDelegation: {
+        recommendedConcurrency: 2,
+        strategy: "Independent modules",
+        subtasks: ["Module A", "Module B"],
+      },
+      specReferences: ["docs/spec.md"],
+    };
+
+    addItem(tmpDir, input);
+
+    const result = readBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const item = result.value.items[0]!;
+    expect(item.agentDelegation).toEqual({
+      recommendedConcurrency: 2,
+      strategy: "Independent modules",
+      subtasks: ["Module A", "Module B"],
+    });
+    expect(item.specReferences).toEqual(["docs/spec.md"]);
+  });
+
   it("persists the new item to disk", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
@@ -827,6 +920,38 @@ describe("updateItem", () => {
     expect(result.value.title).toBe("Updated");
     expect(result.value.description).toBe("Original desc");
     expect(result.value.notes).toBe("Original notes");
+  });
+
+  it("updates agentDelegation", () => {
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
+
+    const result = updateItem(tmpDir, "001", {
+      agentDelegation: {
+        recommendedConcurrency: 3,
+        strategy: "Parallel",
+        subtasks: ["A", "B", "C"],
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.agentDelegation).toEqual({
+      recommendedConcurrency: 3,
+      strategy: "Parallel",
+      subtasks: ["A", "B", "C"],
+    });
+  });
+
+  it("updates specReferences", () => {
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
+
+    const result = updateItem(tmpDir, "001", {
+      specReferences: ["docs/spec.md"],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.specReferences).toEqual(["docs/spec.md"]);
   });
 });
 

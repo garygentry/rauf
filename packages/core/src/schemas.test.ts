@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AgentDelegationSchema,
   BacklogItemSchema,
   BacklogSchema,
   MarkerFileSchema,
@@ -217,6 +218,113 @@ describe("BacklogItemSchema", () => {
 
   it("rejects model as non-string", () => {
     expect(() => BacklogItemSchema.parse({ ...validBacklogItem, model: 42 })).toThrow();
+  });
+
+  it("accepts agentDelegation with all fields", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      agentDelegation: {
+        recommendedConcurrency: 3,
+        strategy: "Implement each module independently",
+        subtasks: ["Implement auth", "Add tests", "Update docs"],
+      },
+    });
+    expect(result.agentDelegation).toBeDefined();
+    expect(result.agentDelegation!.recommendedConcurrency).toBe(3);
+    expect(result.agentDelegation!.strategy).toBe("Implement each module independently");
+    expect(result.agentDelegation!.subtasks).toEqual(["Implement auth", "Add tests", "Update docs"]);
+  });
+
+  it("accepts agentDelegation with partial fields", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      agentDelegation: { strategy: "Parallel execution" },
+    });
+    expect(result.agentDelegation!.strategy).toBe("Parallel execution");
+    expect(result.agentDelegation!.recommendedConcurrency).toBeUndefined();
+    expect(result.agentDelegation!.subtasks).toBeUndefined();
+  });
+
+  it("accepts agentDelegation as empty object", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      agentDelegation: {},
+    });
+    expect(result.agentDelegation).toEqual({});
+  });
+
+  it("accepts item without agentDelegation (backward compat)", () => {
+    const result = BacklogItemSchema.parse(validBacklogItem);
+    expect(result.agentDelegation).toBeUndefined();
+  });
+
+  it("rejects agentDelegation.recommendedConcurrency < 2", () => {
+    expect(() =>
+      BacklogItemSchema.parse({
+        ...validBacklogItem,
+        agentDelegation: { recommendedConcurrency: 1 },
+      }),
+    ).toThrow();
+  });
+
+  it("accepts specReferences as array of strings", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      specReferences: ["docs/auth-spec.md", "docs/ARCHITECTURE.md"],
+    });
+    expect(result.specReferences).toEqual(["docs/auth-spec.md", "docs/ARCHITECTURE.md"]);
+  });
+
+  it("accepts empty specReferences array", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      specReferences: [],
+    });
+    expect(result.specReferences).toEqual([]);
+  });
+
+  it("accepts item without specReferences (backward compat)", () => {
+    const result = BacklogItemSchema.parse(validBacklogItem);
+    expect(result.specReferences).toBeUndefined();
+  });
+
+  it("rejects specReferences as non-array", () => {
+    expect(() =>
+      BacklogItemSchema.parse({ ...validBacklogItem, specReferences: "docs/spec.md" }),
+    ).toThrow();
+  });
+});
+
+// ─── AgentDelegation ──────────────────────────────────────────────
+
+describe("AgentDelegationSchema", () => {
+  it("accepts full delegation object", () => {
+    const result = AgentDelegationSchema.parse({
+      recommendedConcurrency: 3,
+      strategy: "Each module is independent",
+      subtasks: ["Task A", "Task B"],
+    });
+    expect(result.recommendedConcurrency).toBe(3);
+    expect(result.subtasks).toHaveLength(2);
+  });
+
+  it("accepts empty object (all fields optional)", () => {
+    const result = AgentDelegationSchema.parse({});
+    expect(result).toEqual({});
+  });
+
+  it("rejects recommendedConcurrency below 2", () => {
+    expect(() => AgentDelegationSchema.parse({ recommendedConcurrency: 1 })).toThrow();
+    expect(() => AgentDelegationSchema.parse({ recommendedConcurrency: 0 })).toThrow();
+  });
+
+  it("accepts recommendedConcurrency of exactly 2", () => {
+    const result = AgentDelegationSchema.parse({ recommendedConcurrency: 2 });
+    expect(result.recommendedConcurrency).toBe(2);
+  });
+
+  it("rejects non-integer recommendedConcurrency", () => {
+    expect(() => AgentDelegationSchema.parse({ recommendedConcurrency: 2.5 })).toThrow();
   });
 });
 

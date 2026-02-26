@@ -40,6 +40,7 @@ import {
   BacklogItemTypeSchema,
   BacklogItemStatusSchema,
   BacklogItemPrioritySchema,
+  AgentDelegationSchema,
   type InstallOptions,
   type UninstallOptions,
   type InitOptions,
@@ -65,6 +66,8 @@ const CreateItemBodySchema = z.object({
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
+  agentDelegation: AgentDelegationSchema.optional(),
+  specReferences: z.array(z.string()).optional(),
 });
 
 const UpdateItemBodySchema = z
@@ -79,6 +82,8 @@ const UpdateItemBodySchema = z
     dependsOn: z.array(z.string()),
     notes: z.string(),
     estimatedIterations: z.number().int().positive(),
+    agentDelegation: AgentDelegationSchema,
+    specReferences: z.array(z.string()),
   })
   .partial();
 
@@ -101,6 +106,8 @@ const SeedItemSchema = z.object({
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
+  agentDelegation: AgentDelegationSchema.optional(),
+  specReferences: z.array(z.string()).optional(),
 });
 
 const InitBodySchema = z.object({

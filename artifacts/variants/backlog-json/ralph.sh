@@ -491,6 +491,11 @@ $(echo "$ITEM_JSON" | jq -r 'if .dependsOn then "This item depends on: " + (.dep
 ### Notes
 $(echo "$ITEM_JSON" | jq -r '.notes // "No additional notes"' 2>/dev/null)
 
+### Spec References
+$(echo "$ITEM_JSON" | jq -r 'if .specReferences and (.specReferences | length > 0) then "Read these specs before starting:\n" + (.specReferences | map("- " + .) | join("\n")) else "No spec references" end' 2>/dev/null)
+
+$(echo "$ITEM_JSON" | jq -r 'if .agentDelegation then "### Agent Delegation\nThis task has delegation guidance. Use the Task tool to parallelize work:\n\n" + (if .agentDelegation.strategy then "**Strategy:** " + .agentDelegation.strategy + "\n" else "" end) + (if .agentDelegation.recommendedConcurrency then "**Recommended concurrency:** " + (.agentDelegation.recommendedConcurrency | tostring) + " parallel agents\n" else "" end) + (if .agentDelegation.subtasks and (.agentDelegation.subtasks | length > 0) then "\n**Subtasks to delegate:**\n" + ([.agentDelegation.subtasks | to_entries[] | (.key + 1 | tostring) + ". " + .value] | join("\n")) + "\n" else "" end) + "\n**Instructions:**\n- Use Task tool to create sub-agents for each subtask\n- Give each sub-agent clear, self-contained instructions\n- Wait for all sub-agents before running final verification\n- You own the RALPH_DONE/RALPH_BLOCKED signal — sub-agents do not emit these" else "" end' 2>/dev/null)
+
 ---
 ## Full Backlog Context (read-only — do NOT modify this file)
 \`\`\`json

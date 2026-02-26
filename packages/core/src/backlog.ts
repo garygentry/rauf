@@ -7,6 +7,7 @@ import {
   BacklogSchema,
   LoopStateSchema,
   VALID_STATUS_TRANSITIONS,
+  type AgentDelegation,
   type Backlog,
   type BacklogItem,
   type BacklogItemType,
@@ -31,6 +32,8 @@ export interface CreateItemInput {
   dependsOn?: string[];
   notes?: string;
   estimatedIterations?: number;
+  agentDelegation?: AgentDelegation;
+  specReferences?: string[];
 }
 
 export interface UpdateItemInput {
@@ -44,6 +47,8 @@ export interface UpdateItemInput {
   dependsOn?: string[];
   notes?: string;
   estimatedIterations?: number;
+  agentDelegation?: AgentDelegation;
+  specReferences?: string[];
 }
 
 // ─── Path helpers ────────────────────────────────────────────────
@@ -152,6 +157,10 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
     ...(input.estimatedIterations !== undefined
       ? { estimatedIterations: input.estimatedIterations }
       : {}),
+    ...(input.agentDelegation !== undefined
+      ? { agentDelegation: input.agentDelegation }
+      : {}),
+    ...(input.specReferences !== undefined ? { specReferences: input.specReferences } : {}),
   };
 
   // 7. Append and write
@@ -230,6 +239,9 @@ export function updateItem(
   if (updates.notes !== undefined) updatedItem.notes = updates.notes;
   if (updates.estimatedIterations !== undefined)
     updatedItem.estimatedIterations = updates.estimatedIterations;
+  if (updates.agentDelegation !== undefined)
+    updatedItem.agentDelegation = updates.agentDelegation;
+  if (updates.specReferences !== undefined) updatedItem.specReferences = updates.specReferences;
 
   // 5. Auto-set completedAt on done
   if (updates.status === "done") {

@@ -13,6 +13,14 @@ export const BacklogItemIdSchema = z.string().regex(/^\d{3,}$/, {
   message: "ID must be zero-padded digits (e.g. '001')",
 });
 
+// ─── AgentDelegation ──────────────────────────────────────────────
+
+export const AgentDelegationSchema = z.object({
+  recommendedConcurrency: z.number().int().min(2).optional(),
+  strategy: z.string().optional(),
+  subtasks: z.array(z.string()).optional(),
+});
+
 // ─── BacklogItem ───────────────────────────────────────────────────
 
 export const BacklogItemSchema = z.object({
@@ -29,6 +37,8 @@ export const BacklogItemSchema = z.object({
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
   model: z.string().optional(),
+  agentDelegation: AgentDelegationSchema.optional(),
+  specReferences: z.array(z.string()).optional(),
 });
 
 // ─── Backlog ───────────────────────────────────────────────────────
@@ -246,6 +256,7 @@ export const SweepResultSchema = z.object({
 
 export type BacklogItemType = z.infer<typeof BacklogItemTypeSchema>;
 export type BacklogItemStatus = z.infer<typeof BacklogItemStatusSchema>;
+export type AgentDelegation = z.infer<typeof AgentDelegationSchema>;
 export type BacklogItem = z.infer<typeof BacklogItemSchema>;
 export type Backlog = z.infer<typeof BacklogSchema>;
 export type ProfileCommands = z.infer<typeof ProfileCommandsSchema>;

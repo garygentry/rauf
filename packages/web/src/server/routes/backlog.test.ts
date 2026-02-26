@@ -340,6 +340,40 @@ describe("POST /api/projects/:id/backlog", () => {
     expect(body.data.acceptanceCriteria).toEqual(["Step A passes", "Step B passes"]);
   });
 
+  it("creates item with agentDelegation and specReferences", async () => {
+    writeMarker(projectDir);
+    writeBacklog(projectDir);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog", {
+      method: "POST",
+      headers: csrfHeaders,
+      body: JSON.stringify({
+        type: "feature",
+        priority: 2,
+        title: "Delegated task",
+        agentDelegation: {
+          recommendedConcurrency: 3,
+          strategy: "Parallel",
+          subtasks: ["A", "B", "C"],
+        },
+        specReferences: ["docs/spec.md"],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await json(res)) as {
+      data: {
+        agentDelegation: { recommendedConcurrency: number; strategy: string; subtasks: string[] };
+        specReferences: string[];
+      };
+    };
+    expect(body.data.agentDelegation).toEqual({
+      recommendedConcurrency: 3,
+      strategy: "Parallel",
+      subtasks: ["A", "B", "C"],
+    });
+    expect(body.data.specReferences).toEqual(["docs/spec.md"]);
+  });
+
   it("returns 404 when project has no backlog.json", async () => {
     writeMarker(projectDir);
     // No backlog.json written
