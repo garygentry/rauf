@@ -346,8 +346,8 @@
         "Buttons styled consistently with existing UI components",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T14:05:14-08:00",
       "dependsOn": [
         "011"
       ],
