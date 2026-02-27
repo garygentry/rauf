@@ -388,3 +388,23 @@
 - Mock testing: create temp dirs with mock `claude` bash scripts, prepend to PATH, use `exec sleep 999` for cancellation tests
 - Pre-existing test failures: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), `docs` build (Node.js version) — none related to this task
 - 36 new tests in runner.test.ts, total 140 in loop package
+
+### 011 (web): LoopManager + loop API routes + SSE events (completed)
+- `LoopManager` singleton in `packages/web/src/server/loop-manager.ts` — tracks active loops by project path, max one per project
+- `startLoop()` returns `{ ok: true } | { ok: false; error: string }` (not `Result<T,E>`) — simpler for the HTTP layer
+- Event fan-out: subscribes to all 17 LoopEvent types on the runner, forwards to registered listeners via `subscribe(projectPath, listener)`
+- `shutdownAll()` cancels all runners and `Promise.all()`s their completion promises
+- `recoverStaleLoops(rootDir)` discovers all projects, calls `resetStalledItems()` on each — simple and effective
+- `resetLoopManager()` exported for test isolation (resets the singleton)
+- Loop routes in `packages/web/src/server/routes/loop.ts` — `createLoopRouter(rootDirectoryOverride?)` follows same factory pattern as status/projects routers
+- POST start: parses optional `LoopStartOptions` from body, defaults `maxIterations=20`, `maxRetries=3`, `sessionTimeoutMinutes=60`
+- POST start on already-running: returns 409 Conflict (from LoopManager's `{ ok: false }` result)
+- POST stop on non-running: returns 404 Not Found
+- GET events: SSE via `streamSSE` from `hono/streaming` — same pattern as status.ts log/stream
+- SSE event name: `"loop_event"` for all LoopEvents, `"heartbeat"` every 30s
+- `packages/loop/tsconfig.json` needs `composite: true` for project references from web package (same pattern as core)
+- `@ralph/loop` must be built before web tests run — Vitest resolves workspace imports via `main: "dist/index.js"` field
+- Path traversal test pattern: use `a%2Fb` (URL-encoded `/`), NOT `..` — Hono resolves `..` at routing level so it never reaches the handler
+- `start.ts` calls `recoverStaleLoops()` on server startup (fire-and-forget with `.catch()`) and `shutdownAll()` on SIGTERM
+- Pre-existing failures: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), `docs` build (Node.js version), web `vite build` (Tailwind oxide native binding on Node 18) — none related to this task
+- 22 new tests (11 loop-manager + 11 loop routes), total 180 in web package
