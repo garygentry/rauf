@@ -424,8 +424,8 @@
         "No remaining references to shell scripts as the primary/only loop runner in any doc",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T14:38:46-08:00",
       "dependsOn": [
         "015"
       ],
