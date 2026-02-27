@@ -408,3 +408,18 @@
 - `start.ts` calls `recoverStaleLoops()` on server startup (fire-and-forget with `.catch()`) and `shutdownAll()` on SIGTERM
 - Pre-existing failures: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), `docs` build (Node.js version), web `vite build` (Tailwind oxide native binding on Node 18) — none related to this task
 - 22 new tests (11 loop-manager + 11 loop routes), total 180 in web package
+
+### 012: CLI: ralph loop start/stop/follow/run (completed)
+- `loop-commands.ts` implements 4 handlers: `handleLoopStart`, `handleLoopStop`, `handleLoopFollow`, `handleLoopRun`
+- `handleLoopStart` auto-starts server daemon via synthetic `CommandContext` with `flags: new Map([["daemon", true]])` and quiet globalFlags
+- After daemon start, polls health endpoint with `waitForServerReady()` (500ms intervals, 10s timeout) before API call
+- Project ID for API calls: `path.basename(resolvedPath)` — matches web layer's `resolveProjectPath(id)` which joins rootDir + id
+- SSE client in `follow`: manual fetch + ReadableStream parsing (no EventSource dependency), handles `event:` and `data:` lines, blank line = event boundary
+- SSE event name from server is `"loop_event"` — heartbeats use `"heartbeat"` event name (silently ignored)
+- `handleLoopRun` creates `LoopRunner` directly — subscribes to all 17 event types, hooks SIGINT/SIGTERM to `runner.cancel()`
+- `formatAndPrintEvent()` exported for test access — uses Unicode symbols (▶, →, ●, ◆, ◇, ✓, ✗, ↻, ⚠, ◆, ▶, ■) not emojis
+- `formatTime()` manually builds HH:MM:SS via `padStart(2, "0")` — avoids `toLocaleTimeString` locale inconsistencies in tests
+- `@ralph/loop` added as CLI dependency + tsconfig reference `{ "path": "../loop" }`
+- `for (;;)` instead of `while (true)` to avoid ESLint `no-constant-condition` warning
+- Pre-existing failures unchanged: `config.test.ts` (readToolConfig), docs/web build (Node.js version)
+- 29 new tests (loop-commands.test.ts), total 292 in CLI package
