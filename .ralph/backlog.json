@@ -87,8 +87,8 @@
         "Unit tests for success and all error cases (use temp dir fixtures, including missing nested key)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T12:59:58-08:00",
       "notes": "No dependencies — this is independent of the schema work. The usage-checker in packages/loop will use this token to query the Anthropic OAuth usage API (plans/global-server-rearchitecture.md §6)."
     },
     {
