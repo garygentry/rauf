@@ -37,6 +37,12 @@ import {
   handleServerStatus,
   handleServerLogs,
 } from "./server-commands.js";
+import {
+  handleLoopStart,
+  handleLoopStop,
+  handleLoopFollow,
+  handleLoopRun,
+} from "./loop-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -101,6 +107,17 @@ export const COMMANDS: CommandDef[] = [
       { name: "restart", description: "Restart the web server", handler: handleServerRestart },
       { name: "status", description: "Show server status", handler: handleServerStatus },
       { name: "logs", description: "View server logs", handler: handleServerLogs },
+    ],
+  },
+  {
+    name: "loop",
+    description: "Manage ralph autonomous coding loops",
+    usage: "ralph loop <subcommand> [path]",
+    subcommands: [
+      { name: "start", description: "Start a loop via server", handler: handleLoopStart },
+      { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
+      { name: "follow", description: "Follow loop events in real-time", handler: handleLoopFollow },
+      { name: "run", description: "Run loop directly in-process", handler: handleLoopRun },
     ],
   },
   {

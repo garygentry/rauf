@@ -1,0 +1,530 @@
+// ─── Loop Command Handlers ──────────────────────────────────────────
+//
+// Implements: ralph loop start/stop/follow/run
+//
+// Smart routing:
+//   start  → auto-starts server daemon if not running, POST to server API
+//   stop   → POST to server API, error if server not running
+//   follow → SSE stream from server, format events for terminal
+//   run    → direct mode, creates LoopRunner in-process (no server)
+
+import * as path from "node:path";
+
+import { readToolConfig, LoopStartOptionsSchema, type LoopEvent } from "@ralph/core";
+import { LoopRunner } from "@ralph/loop";
+
+import type { CommandContext } from "./commands.js";
+import { ExitCode } from "./commands.js";
+import { extractNumberFlag, extractStringFlag } from "./parser.js";
+import { c, info, print, error, success, outputJson } from "./formatter.js";
+import {
+  readPidFile,
+  isProcessAlive,
+  pingHealthEndpoint,
+  handleServerStart,
+} from "./server-commands.js";
+
+// ─── Constants ──────────────────────────────────────────────────────
+
+const DEFAULT_MAX_ITERATIONS = 20;
+const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
+const SERVER_READY_TIMEOUT_MS = 10_000;
+const SERVER_READY_POLL_MS = 500;
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+/** Resolve the project path from the first positional arg (default: cwd) */
+function resolveProjectPath(ctx: CommandContext): string {
+  const target = ctx.args[0] ?? ".";
+  return path.resolve(target);
+}
+
+/** Derive the project ID (directory basename) for API calls */
+function projectId(projectPath: string): string {
+  return path.basename(projectPath);
+}
+
+/** Get the configured server port */
+function getPort(): number {
+  const configResult = readToolConfig();
+  return configResult.ok ? configResult.value.port : 5173;
+}
+
+/** Build an API URL for loop endpoints */
+function apiUrl(port: number, id: string, endpoint: string): string {
+  return `http://127.0.0.1:${port}/api/projects/${encodeURIComponent(id)}/loop/${endpoint}`;
+}
+
+/** Check if the ralph server is running via PID file */
+function isServerRunning(): boolean {
+  const pid = readPidFile();
+  return pid !== null && isProcessAlive(pid);
+}
+
+/** Wait for the server health endpoint to respond */
+async function waitForServerReady(port: number): Promise<boolean> {
+  const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const health = await pingHealthEndpoint(port);
+    if (health) return true;
+    await new Promise((r) => setTimeout(r, SERVER_READY_POLL_MS));
+  }
+  return false;
+}
+
+/** Auto-start server daemon if not running. Returns true if server is ready. */
+async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
+  if (isServerRunning()) {
+    // Verify health endpoint actually responds
+    const port = getPort();
+    const health = await pingHealthEndpoint(port);
+    if (health) return true;
+  }
+
+  info("Server not running. Starting daemon...");
+
+  // Create synthetic context to start server as daemon, quietly
+  const startCtx: CommandContext = {
+    args: [],
+    flags: new Map<string, string | true>([["daemon", true as const]]),
+    globalFlags: { ...ctx.globalFlags, quiet: true },
+    rawArgv: [],
+  };
+
+  const code = await handleServerStart(startCtx);
+  if (code !== ExitCode.SUCCESS) {
+    error("Failed to start server daemon.");
+    return false;
+  }
+
+  // Wait for health endpoint
+  const port = getPort();
+  const ready = await waitForServerReady(port);
+  if (!ready) {
+    error("Server started but health endpoint not responding.");
+    return false;
+  }
+
+  info(`Server started on port ${port}.`);
+  return true;
+}
+
+// ─── handleLoopStart ────────────────────────────────────────────────
+
+export async function handleLoopStart(ctx: CommandContext): Promise<number> {
+  const projectPath = resolveProjectPath(ctx);
+  const id = projectId(projectPath);
+  const port = getPort();
+
+  // Auto-start server if not running
+  const running = await ensureServerRunning(ctx);
+  if (!running) return ExitCode.ERROR;
+
+  // Build request body from flags
+  const body: Record<string, unknown> = {};
+  const iterations = extractNumberFlag(ctx.flags, "iterations");
+  const retries = extractNumberFlag(ctx.flags, "retries");
+  const model = extractStringFlag(ctx.flags, "model");
+  const timeout = extractNumberFlag(ctx.flags, "timeout");
+  if (iterations !== null) body.maxIterations = iterations;
+  if (retries !== null) body.maxRetries = retries;
+  if (model !== null) body.model = model;
+  if (timeout !== null) body.sessionTimeoutMinutes = timeout;
+
+  try {
+    const url = apiUrl(port, id, "start");
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Ralph-Request": "true",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (resp.ok) {
+      if (ctx.globalFlags.json) {
+        const data = await resp.json();
+        outputJson(data);
+      } else {
+        success(`Loop started for ${c.cyan(id)}`);
+        info(`Follow: ${c.cyan(`ralph loop follow ${ctx.args[0] ?? "."}`)}`);
+      }
+      return ExitCode.SUCCESS;
+    }
+
+    const errBody = (await resp.json().catch(() => ({ error: { message: resp.statusText } }))) as {
+      error?: { message?: string };
+    };
+    const errMsg = errBody?.error?.message ?? resp.statusText;
+
+    if (resp.status === 409) {
+      error(`Loop already running for ${id}.`);
+      info(`Use ${c.cyan("ralph loop stop")} to stop it first.`);
+    } else {
+      error(`Failed to start loop: ${errMsg}`);
+    }
+    return ExitCode.ERROR;
+  } catch (e) {
+    error(`Failed to connect to server: ${e instanceof Error ? e.message : String(e)}`);
+    return ExitCode.ERROR;
+  }
+}
+
+// ─── handleLoopStop ─────────────────────────────────────────────────
+
+export async function handleLoopStop(ctx: CommandContext): Promise<number> {
+  const projectPath = resolveProjectPath(ctx);
+  const id = projectId(projectPath);
+  const port = getPort();
+
+  if (!isServerRunning()) {
+    error("Server is not running.");
+    info(
+      `Start the server with ${c.cyan("ralph server start")} or use ${c.cyan("ralph loop start")} which auto-starts.`,
+    );
+    return ExitCode.ERROR;
+  }
+
+  try {
+    const url = apiUrl(port, id, "stop");
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "X-Ralph-Request": "true" },
+    });
+
+    if (resp.ok) {
+      if (ctx.globalFlags.json) {
+        const data = await resp.json();
+        outputJson(data);
+      } else {
+        success(`Loop stopped for ${c.cyan(id)}`);
+      }
+      return ExitCode.SUCCESS;
+    }
+
+    const errBody = (await resp.json().catch(() => ({ error: { message: resp.statusText } }))) as {
+      error?: { message?: string };
+    };
+    const errMsg = errBody?.error?.message ?? resp.statusText;
+
+    if (resp.status === 404) {
+      error(`No active loop for ${id}.`);
+    } else {
+      error(`Failed to stop loop: ${errMsg}`);
+    }
+    return ExitCode.ERROR;
+  } catch (e) {
+    error(`Failed to connect to server: ${e instanceof Error ? e.message : String(e)}`);
+    return ExitCode.ERROR;
+  }
+}
+
+// ─── handleLoopFollow ───────────────────────────────────────────────
+
+export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
+  const projectPath = resolveProjectPath(ctx);
+  const id = projectId(projectPath);
+  const port = getPort();
+
+  if (!isServerRunning()) {
+    error("Server is not running.");
+    info(`Start a loop with ${c.cyan("ralph loop start")} first.`);
+    return ExitCode.ERROR;
+  }
+
+  const url = apiUrl(port, id, "events");
+
+  info(`Following loop events for ${c.cyan(id)}...`);
+  info(c.dim("Press Ctrl+C to stop."));
+
+  return new Promise<number>((resolve) => {
+    const controller = new AbortController();
+
+    const stop = () => {
+      controller.abort();
+      resolve(ExitCode.SUCCESS);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+
+    connectSSE(url, controller.signal, (event) => {
+      formatAndPrintEvent(event);
+    })
+      .then(() => resolve(ExitCode.SUCCESS))
+      .catch((e) => {
+        if (controller.signal.aborted) {
+          resolve(ExitCode.SUCCESS);
+          return;
+        }
+        error(`SSE connection failed: ${e instanceof Error ? e.message : String(e)}`);
+        resolve(ExitCode.ERROR);
+      });
+  });
+}
+
+/** Connect to an SSE endpoint, parse events, and invoke callback for each LoopEvent */
+async function connectSSE(
+  url: string,
+  signal: AbortSignal,
+  onEvent: (event: LoopEvent) => void,
+): Promise<void> {
+  const resp = await fetch(url, {
+    headers: { Accept: "text/event-stream" },
+    signal,
+  });
+
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+  }
+
+  if (!resp.body) {
+    throw new Error("No response body");
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let currentEvent = "";
+  let currentData = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        currentData = line.slice(6);
+      } else if (line === "" && currentData) {
+        if (currentEvent === "loop_event") {
+          try {
+            const parsed = JSON.parse(currentData) as LoopEvent;
+            onEvent(parsed);
+          } catch {
+            // Invalid JSON — skip
+          }
+        }
+        currentEvent = "";
+        currentData = "";
+      }
+    }
+  }
+}
+
+// ─── handleLoopRun ──────────────────────────────────────────────────
+
+export async function handleLoopRun(ctx: CommandContext): Promise<number> {
+  const projectPath = resolveProjectPath(ctx);
+
+  const iterations = extractNumberFlag(ctx.flags, "iterations") ?? DEFAULT_MAX_ITERATIONS;
+  const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
+  const model = extractStringFlag(ctx.flags, "model") ?? undefined;
+  const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
+
+  const options = LoopStartOptionsSchema.parse({
+    maxIterations: iterations,
+    maxRetries: retries,
+    model,
+    sessionTimeoutMinutes: timeout,
+  });
+
+  info(`Running loop directly for ${c.cyan(path.basename(projectPath))}`);
+  info(
+    c.dim(
+      `iterations=${options.maxIterations}, retries=${options.maxRetries}, timeout=${options.sessionTimeoutMinutes}m`,
+    ),
+  );
+
+  const runner = new LoopRunner(projectPath, options);
+
+  // Subscribe to all events for terminal output
+  const eventTypes: LoopEvent["type"][] = [
+    "loop_started",
+    "iteration_start",
+    "item_selected",
+    "claude_spawned",
+    "claude_exited",
+    "signal_parsed",
+    "item_completed",
+    "item_blocked",
+    "item_retried",
+    "needs_human",
+    "usage_limit_hit",
+    "usage_limit_cleared",
+    "sleep_start",
+    "sleep_end",
+    "loop_completed",
+    "loop_error",
+    "loop_cancelled",
+  ];
+  for (const eventType of eventTypes) {
+    runner.on(eventType, (event: LoopEvent) => {
+      formatAndPrintEvent(event);
+    });
+  }
+
+  // Graceful cancel on Ctrl+C / SIGTERM
+  const onSignal = () => runner.cancel();
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
+  try {
+    const result = await runner.start();
+
+    if (ctx.globalFlags.json) {
+      outputJson(result);
+    } else {
+      print("");
+      if (result.cancelled) {
+        info("Loop cancelled.");
+      } else {
+        success(
+          `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`,
+        );
+      }
+    }
+
+    return ExitCode.SUCCESS;
+  } catch (e) {
+    error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
+    return ExitCode.ERROR;
+  } finally {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
+  }
+}
+
+// ─── Event Formatting ───────────────────────────────────────────────
+
+/** Format and print a LoopEvent for terminal output with colors and icons */
+export function formatAndPrintEvent(event: LoopEvent): void {
+  const time = formatTime(event.timestamp);
+  const prefix = c.dim(time);
+
+  switch (event.type) {
+    case "loop_started":
+      print(
+        `${prefix} ${c.green("\u25B6")} ${c.bold("Loop started")} (max ${event.maxIterations} iterations${event.model ? `, model: ${event.model}` : ""})`,
+      );
+      break;
+
+    case "iteration_start":
+      print(
+        `${prefix} ${c.cyan("\u2192")} ${c.bold(`Iteration ${event.iteration}/${event.maxIterations}`)}`,
+      );
+      break;
+
+    case "item_selected":
+      print(
+        `${prefix} ${c.blue("\u25CF")} Selected ${c.bold(`#${event.itemId}`)} ${event.title} ${c.dim(`(P${event.priority})`)}`,
+      );
+      break;
+
+    case "claude_spawned":
+      print(
+        `${prefix} ${c.magenta("\u25C6")} Claude spawned${event.model ? ` (${event.model})` : ""} ${c.dim(`timeout: ${event.timeoutMinutes}m`)}`,
+      );
+      break;
+
+    case "claude_exited": {
+      const duration = Math.round(event.durationMs / 1000);
+      const icon = event.exitCode === 0 ? c.green("\u25C7") : c.yellow("\u25C7");
+      const timedOutLabel = event.timedOut ? c.red(" TIMED OUT") : "";
+      print(
+        `${prefix} ${icon} Claude exited (code=${event.exitCode}, ${duration}s)${timedOutLabel}`,
+      );
+      break;
+    }
+
+    case "signal_parsed": {
+      const signalColor =
+        event.signal === "done"
+          ? c.green
+          : event.signal === "blocked"
+            ? c.red
+            : event.signal === "needs_human"
+              ? c.magenta
+              : c.yellow;
+      print(
+        `${prefix}   Signal: ${signalColor(event.signal)}${event.reason ? ` \u2014 ${event.reason}` : ""}`,
+      );
+      break;
+    }
+
+    case "item_completed":
+      print(
+        `${prefix} ${c.green("\u2713")} ${c.green(`Completed #${event.itemId}`)} ${event.title}`,
+      );
+      break;
+
+    case "item_blocked":
+      print(`${prefix} ${c.red("\u2717")} ${c.red(`Blocked #${event.itemId}`)} ${event.reason}`);
+      break;
+
+    case "item_retried":
+      print(
+        `${prefix} ${c.yellow("\u21BB")} Retry #${event.itemId} (${event.attempt}/${event.maxRetries})`,
+      );
+      break;
+
+    case "needs_human":
+      print(
+        `${prefix} ${c.magenta("\u26A0")} ${c.magenta(`Needs human #${event.itemId}`)} ${event.reason}`,
+      );
+      break;
+
+    case "usage_limit_hit":
+      print(
+        `${prefix} ${c.yellow("\u26A0")} ${c.yellow("Usage limit hit")} (${event.limitType}, ${event.utilization}%)`,
+      );
+      break;
+
+    case "usage_limit_cleared":
+      print(`${prefix} ${c.green("\u2713")} Usage limit cleared (${event.limitType})`);
+      break;
+
+    case "sleep_start":
+      print(
+        `${prefix} ${c.blue("\u25C6")} ${c.blue("Sleeping")} until ${event.sleepUntil} \u2014 ${event.reason}`,
+      );
+      break;
+
+    case "sleep_end":
+      print(`${prefix} ${c.green("\u25B6")} Woke from sleep`);
+      break;
+
+    case "loop_completed":
+      print(
+        `${prefix} ${c.green("\u25A0")} ${c.green("Loop completed")} \u2014 ${event.completedCount} done, ${event.blockedCount} blocked`,
+      );
+      break;
+
+    case "loop_error":
+      print(`${prefix} ${c.red("\u2717")} ${c.red("Loop error:")} ${event.error}`);
+      break;
+
+    case "loop_cancelled":
+      print(`${prefix} ${c.yellow("\u25A0")} ${c.yellow("Loop cancelled")}`);
+      break;
+  }
+}
+
+/** Format ISO timestamp to HH:MM:SS */
+function formatTime(isoTimestamp: string): string {
+  try {
+    const d = new Date(isoTimestamp);
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    const s = String(d.getSeconds()).padStart(2, "0");
+    return `${h}:${m}:${s}`;
+  } catch {
+    return isoTimestamp;
+  }
+}

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@ralph/core": "workspace:*",
+    "@ralph/loop": "workspace:*",
     "picocolors": "^1.1.0"
   },
   "devDependencies": {

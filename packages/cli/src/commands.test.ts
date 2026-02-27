@@ -70,6 +70,7 @@ describe("COMMANDS registry", () => {
     expect(names).toContain("profile");
     expect(names).toContain("config");
     expect(names).toContain("projects");
+    expect(names).toContain("loop");
   });
 
   it("has descriptions for all commands", () => {
