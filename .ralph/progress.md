@@ -341,3 +341,18 @@
 - Test pattern: integration tests use real `ARTIFACTS_DIR` pointing to `artifacts/variants/backlog-json/` — tests exercise the real artifact deployment
 - API tests use `createApp(Date.now(), { rootDirectory: tmpDir })` to inject a controlled root directory
 - Total test count: 974 tests across the monorepo (554 core + 263 cli + 157 web)
+
+### 002: Core: writeLoopState, appendLog, DONE/CANCEL helpers (completed)
+- 6 new write primitives added to `packages/core/src/status.ts` — existing file only had read functions
+- `writeLoopState` uses `atomicWrite` from fs-utils (write .tmp → rename) and validates against `LoopStateSchema` before writing
+- `writeLoopState` auto-sets `updatedAt` to current ISO timestamp — callers can omit or provide (will be overwritten)
+- `appendLog` uses `fs.appendFileSync` (not atomic write) — simple append is appropriate for log files
+- Timestamp format manually built from Date parts: `[YYYY-MM-DD HH:MM:SS]` — matches `LOG_PATTERNS.timestamp` regex in schemas.ts
+- `clearDoneFile` and `clearCancelFile` handle ENOENT gracefully by checking `(e as NodeJS.ErrnoException).code`
+- `checkCancelRequested` returns `boolean` directly (not `Result<boolean>`) — per task spec, only this function is unwrapped
+- `clearCancelFile` returns `Result<boolean>` — `true` if file existed and was removed, `false` if didn't exist
+- Test file had local `writeDoneFile` helper that collided with new export — renamed to `setupDoneFile`
+- Export collision avoidance: `CANCEL_FILENAME` is unique; all 6 new functions have unique names across modules
+- `index.ts` already has `export * from "./status.js"` — no changes needed to re-export new functions
+- 31 new tests, total 647 in core package (79 in status.test.ts)
+- Pre-existing failures: 2 config test failures (cli + web), web/docs build failures (Node.js version), format issues in 6 unrelated files

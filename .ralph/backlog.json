@@ -38,8 +38,8 @@
         "Unit tests for each function including error cases",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T12:30:30-08:00",
       "dependsOn": [
         "001"
       ],
