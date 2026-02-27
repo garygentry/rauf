@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { BacklogItem, DerivedStatus } from "@ralph/core";
-import { ralphFetchJson } from "../../lib/fetch";
+import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
 
 // ─── Loop state badge config ──────────────────────────────────────
 
@@ -65,6 +65,11 @@ const STATE_BADGE: Record<string, StateBadgeConfig> = {
     borderColor: "rgba(107, 114, 128, 0.2)",
   },
 };
+
+// ─── Loop control state sets ──────────────────────────────────────
+
+const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ERROR"]);
+const STOPPABLE_STATES = new Set(["RUNNING", "SLEEPING_LIMIT"]);
 
 // ─── Elapsed time formatter ───────────────────────────────────────
 
@@ -530,6 +535,51 @@ export function StatusView() {
     },
   });
 
+  // ── Loop control mutations ─────────────────────────────────────
+  const [loopError, setLoopError] = useState<string | null>(null);
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/start`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      setLoopError(null);
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: (err: Error) => {
+      setLoopError(err.message);
+    },
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/stop`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+    },
+    onSuccess: () => {
+      setLoopError(null);
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: (err: Error) => {
+      setLoopError(err.message);
+    },
+  });
+
   // Derive display data from backlog
   const currentItem = useMemo(() => {
     if (!allItems || !status?.currentItem) return null;
@@ -708,7 +758,59 @@ export function StatusView() {
                   </span>
                 )}
               </div>
+
+              {/* Loop control buttons — pushed to the right */}
+              <div className="ml-auto flex items-center gap-2">
+                {STARTABLE_STATES.has(status.loopState) && (
+                  <button
+                    onClick={() => startMutation.mutate()}
+                    disabled={startMutation.isPending}
+                    className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      backgroundColor: "rgba(22, 163, 74, 0.12)",
+                      borderColor: "rgba(22, 163, 74, 0.35)",
+                      color: "#16a34a",
+                    }}
+                  >
+                    {startMutation.isPending ? "Starting…" : "Start Loop"}
+                  </button>
+                )}
+                {STOPPABLE_STATES.has(status.loopState) && (
+                  <button
+                    onClick={() => stopMutation.mutate()}
+                    disabled={stopMutation.isPending}
+                    className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      backgroundColor: "rgba(220, 38, 38, 0.12)",
+                      borderColor: "rgba(220, 38, 38, 0.35)",
+                      color: "#dc2626",
+                    }}
+                  >
+                    {stopMutation.isPending ? "Stopping…" : "Stop Loop"}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Error message for loop control failures */}
+            {loopError && (
+              <div
+                className="mt-3 flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: "rgba(220, 38, 38, 0.05)",
+                  borderColor: "rgba(220, 38, 38, 0.3)",
+                  color: "#dc2626",
+                }}
+              >
+                <span>{loopError}</span>
+                <button
+                  onClick={() => setLoopError(null)}
+                  className="ml-3 flex-shrink-0 text-xs font-medium underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
           </Card>
 
           {/* Backlog summary */}
