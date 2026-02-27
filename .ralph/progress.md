@@ -440,3 +440,20 @@
 - `SCRIPT_ARTIFACTS` list remains `["ralph.sh", "ralph-status.sh", "ralph-add.sh"]` — `ralph-stop.sh` exists in artifacts but was never deployed by installer
 - Pre-existing failures unchanged: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), docs/web build (Node.js version)
 - 692 tests pass in core (was 680), total across monorepo ~1300
+
+### 015: Cleanup: Remove shell scripts + simplify embedding pipeline (completed)
+- Removed 4 shell scripts from `artifacts/variants/backlog-json/`: ralph.sh, ralph-status.sh, ralph-add.sh, ralph-stop.sh
+- Removed 4 root-level symlinks: ralph.sh, ralph-status.sh, ralph-add.sh, ralph-stop.sh
+- `generate-embedded-artifacts.ts` now skips `.sh` files via `entry.name.endsWith(".sh")` check
+- `embedded-artifacts.ts` shrank from 1,539 lines (~64KB) to 333 lines (~11KB) — 6 artifacts (no scripts)
+- `installer.ts` cleanup: removed `SCRIPT_ARTIFACTS`, `deployScript`, `writeFileWithMode`, `threeWayCompare`, `threeWayCompareContent`, `compareHashes`, `HashComparison` type
+- `installer.ts`: install/update/uninstall no longer have any script-related code paths
+- `installer.ts`: removed `crypto` import (was only used in `threeWayCompareContent`)
+- `installer.ts`: removed `jq_available` preflight check (only needed for shell scripts) — preflight now returns 4 checks instead of 5
+- `checkArtifactStaleness()` kept as stub returning empty report for web API compatibility
+- `RuntimeSchema` and `runtime` field kept in `MarkerOptionsSchema` for backward compatibility with existing `.ralph.json` files, but installer no longer writes `runtime`
+- Repo-integrity tests replaced: 4 symlink-exists tests → 2 symlink-absent + script-absent tests
+- Removed ~27 script-related tests, added 3 replacement tests — core package from 692 → 669 tests (net -23)
+- CLI/web UI text updated: `./ralph.sh` → `ralph loop run`, `ralph-stop.sh` → `ralph loop stop`, `./ralph-add.sh` → `ralph backlog add`
+- Web frontend file preview lists updated in both install and init wizards (removed script entries)
+- Pre-existing failures unchanged: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), docs build (Node.js version), 5 format warnings in unrelated files

@@ -398,8 +398,8 @@
         "All remaining features still work: install deploys data files, init works, update works for non-script files",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T14:30:55-08:00",
       "dependsOn": [
         "014"
       ],
