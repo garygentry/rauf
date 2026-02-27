@@ -9,6 +9,8 @@ import {
   readToolConfig,
   writeToolConfig,
   resolveRootDirectory,
+  readClaudeOAuthToken,
+  getClaudeCredentialsPath,
   MARKER_FILENAME,
   TOOL_CONFIG_DIR,
   TOOL_CONFIG_PATH,
@@ -474,5 +476,159 @@ describe("resolveRootDirectory", () => {
     // Without config, cwd wins
     fs.unlinkSync(configPath);
     expect(resolveRootDirectory()).toBe(process.cwd());
+  });
+});
+
+// ─── readClaudeOAuthToken ───────────────────────────────────────
+
+describe("readClaudeOAuthToken", () => {
+  let oauthTmpDir: string;
+  let credentialsFile: string;
+
+  beforeEach(() => {
+    oauthTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-oauth-"));
+    credentialsFile = path.join(oauthTmpDir, "credentials.json");
+  });
+
+  afterEach(() => {
+    fs.rmSync(oauthTmpDir, { recursive: true, force: true });
+  });
+
+  it("getClaudeCredentialsPath returns path under homedir", () => {
+    const result = getClaudeCredentialsPath();
+    expect(result).toBe(path.join(os.homedir(), ".config", "claude-code", "credentials.json"));
+  });
+
+  it("returns ok with token when credentials file is valid", () => {
+    fs.writeFileSync(
+      credentialsFile,
+      JSON.stringify({
+        claudeAiOauth: { accessToken: "sk-ant-oauth-test-token-123" },
+      }),
+    );
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("sk-ant-oauth-test-token-123");
+  });
+
+  it("returns ok with token when file has extra fields", () => {
+    fs.writeFileSync(
+      credentialsFile,
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: "my-token",
+          refreshToken: "refresh-123",
+          expiresAt: "2026-12-31T00:00:00Z",
+        },
+        someOtherKey: "value",
+      }),
+    );
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("my-token");
+  });
+
+  it("returns FILE_NOT_FOUND when credentials file does not exist", () => {
+    const missingPath = path.join(oauthTmpDir, "nonexistent", "credentials.json");
+    const result = readClaudeOAuthToken(missingPath);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.FILE_NOT_FOUND);
+  });
+
+  it("returns INVALID_JSON when credentials file contains malformed JSON", () => {
+    fs.writeFileSync(credentialsFile, "{ not valid json }}");
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.INVALID_JSON);
+  });
+
+  it("returns VALIDATION_ERROR when claudeAiOauth key is missing", () => {
+    fs.writeFileSync(credentialsFile, JSON.stringify({ accessToken: "top-level-token" }));
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(result.error.message).toContain("claudeAiOauth");
+  });
+
+  it("returns VALIDATION_ERROR when claudeAiOauth is not an object", () => {
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: "not-an-object" }));
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+  });
+
+  it("returns VALIDATION_ERROR when claudeAiOauth is null", () => {
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: null }));
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+  });
+
+  it("returns VALIDATION_ERROR when accessToken is missing from claudeAiOauth", () => {
+    fs.writeFileSync(
+      credentialsFile,
+      JSON.stringify({ claudeAiOauth: { refreshToken: "refresh-only" } }),
+    );
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(result.error.message).toContain("accessToken");
+  });
+
+  it("returns VALIDATION_ERROR when accessToken is empty string", () => {
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: "" } }));
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+  });
+
+  it("returns VALIDATION_ERROR when accessToken is not a string", () => {
+    fs.writeFileSync(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 12345 } }));
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+  });
+
+  it("returns VALIDATION_ERROR when JSON is an array (not an object)", () => {
+    fs.writeFileSync(credentialsFile, JSON.stringify(["not", "an", "object"]));
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+  });
+
+  it("ignores top-level accessToken (only reads nested claudeAiOauth.accessToken)", () => {
+    fs.writeFileSync(
+      credentialsFile,
+      JSON.stringify({
+        accessToken: "top-level-should-be-ignored",
+        claudeAiOauth: { accessToken: "nested-correct-token" },
+      }),
+    );
+
+    const result = readClaudeOAuthToken(credentialsFile);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("nested-correct-token");
   });
 });

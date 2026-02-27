@@ -1,7 +1,8 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-import { type Result, ok, ErrorCodes } from "./errors.js";
+import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, ensureDir } from "./fs-utils.js";
 import { MarkerFileSchema, ToolConfigSchema, type MarkerFile, type ToolConfig } from "./schemas.js";
 
@@ -97,6 +98,77 @@ export function resolveRootDirectory(cliRoot?: string, envRoot?: string): string
 
   // 4. Current working directory (fallback)
   return process.cwd();
+}
+
+// ─── readClaudeOAuthToken ────────────────────────────────────────
+//
+// Read the Claude OAuth bearer token from the Claude Code credentials file.
+// Extracts .claudeAiOauth.accessToken from the parsed JSON.
+
+const CLAUDE_CREDENTIALS_REL = path.join(".config", "claude-code", "credentials.json");
+
+export function getClaudeCredentialsPath(): string {
+  return path.join(os.homedir(), CLAUDE_CREDENTIALS_REL);
+}
+
+export function readClaudeOAuthToken(credentialsPathOverride?: string): Result<string> {
+  const credentialsPath = credentialsPathOverride ?? getClaudeCredentialsPath();
+
+  let raw: string;
+  try {
+    raw = fs.readFileSync(credentialsPath, "utf-8");
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message: `Claude credentials file not found: ${credentialsPath}`,
+      });
+    }
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Cannot read Claude credentials file: ${credentialsPath}`,
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return err({
+      code: ErrorCodes.INVALID_JSON,
+      message: `Claude credentials file contains malformed JSON: ${credentialsPath}`,
+    });
+  }
+
+  if (typeof parsed !== "object" || parsed === null) {
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR,
+      message: "Claude credentials file does not contain a JSON object",
+    });
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const claudeAiOauth = obj["claudeAiOauth"];
+
+  if (typeof claudeAiOauth !== "object" || claudeAiOauth === null) {
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR,
+      message: "Claude credentials missing claudeAiOauth object",
+    });
+  }
+
+  const oauthObj = claudeAiOauth as Record<string, unknown>;
+  const accessToken = oauthObj["accessToken"];
+
+  if (typeof accessToken !== "string" || accessToken === "") {
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR,
+      message: "Claude credentials missing or empty claudeAiOauth.accessToken",
+    });
+  }
+
+  return ok(accessToken);
 }
 
 // ─── Exported constants (for testing) ────────────────────────────
