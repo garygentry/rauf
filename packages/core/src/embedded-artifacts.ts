@@ -6,7 +6,9 @@
  * Keys are relative paths within artifacts/variants/backlog-json/.
  */
 export const EMBEDDED_ARTIFACTS: ReadonlyMap<string, string> = new Map([
-  [".ralph/RALPH.md.tmpl", `# Ralph — Per-Iteration Instructions
+  [
+    ".ralph/RALPH.md.tmpl",
+    `# Ralph — Per-Iteration Instructions
 
 <!-- ralph:managed:start -->
 
@@ -67,15 +69,21 @@ Items may also include a \`specReferences\` field listing paths to specification
 
 ## Project-Specific Instructions
 <!-- Add custom instructions below this line — they survive ralph update -->
-`],
-  [".ralph/backlog.json", `{
+`,
+  ],
+  [
+    ".ralph/backlog.json",
+    `{
   "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "project": "",
   "description": "",
   "items": []
 }
-`],
-  [".ralph/backlog.schema.json", `{
+`,
+  ],
+  [
+    ".ralph/backlog.schema.json",
+    `{
   "type": "object",
   "properties": {
     "project": {
@@ -168,6 +176,31 @@ Items may also include a \`specReferences\` field listing paths to specification
           "model": {
             "type": "string",
             "description": "Per-item Claude model override (e.g. 'claude-opus-4-6')"
+          },
+          "agentDelegation": {
+            "type": "object",
+            "properties": {
+              "recommendedConcurrency": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "strategy": {
+                "type": "string"
+              },
+              "subtasks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "specReferences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -196,16 +229,22 @@ Items may also include a \`specReferences\` field listing paths to specification
   "title": "Ralph Backlog",
   "description": "Task backlog for a ralph autonomous coding loop project"
 }
-`],
-  [".ralph/progress.md", `# Progress & Learnings
+`,
+  ],
+  [
+    ".ralph/progress.md",
+    `# Progress & Learnings
 
 ## Codebase Patterns
 <!-- Patterns discovered during development will be logged here -->
 
 ## Session Log
 <!-- Each iteration appends its learnings here -->
-`],
-  ["CLAUDE_ADDON.md", `<!-- ralph:start -->
+`,
+  ],
+  [
+    "CLAUDE_ADDON.md",
+    `<!-- ralph:start -->
 
 ## Autonomous Loop (Ralph)
 
@@ -234,8 +273,11 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`.ralph/progress.md\` for accumulated project learnings
 - Append new learnings to \`.ralph/progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`],
-  ["CLAUDE_GREENFIELD.md.tmpl", `# {{projectName}}
+`,
+  ],
+  [
+    "CLAUDE_GREENFIELD.md.tmpl",
+    `# {{projectName}}
 
 ## Overview
 {{projectDescription}}
@@ -290,8 +332,11 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`.ralph/progress.md\` for accumulated project learnings
 - Append new learnings to \`.ralph/progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`],
-  ["ralph-add.sh", `#!/usr/bin/env bash
+`,
+  ],
+  [
+    "ralph-add.sh",
+    `#!/usr/bin/env bash
 # =============================================================================
 # ralph-add.sh — Add a new item to the backlog
 # Usage: ./ralph-add.sh
@@ -470,8 +515,11 @@ echo ""
 if [[ -x "./ralph-status.sh" ]]; then
   ./ralph-status.sh 2>/dev/null || true
 fi
-`],
-  ["ralph-status.sh", `#!/usr/bin/env bash
+`,
+  ],
+  [
+    "ralph-status.sh",
+    `#!/usr/bin/env bash
 # =============================================================================
 # ralph-status.sh — Print a quick summary of backlog and loop state
 # Usage: ./ralph-status.sh
@@ -662,8 +710,11 @@ if [[ -f "$LOG" ]]; then
   tail -5 "$LOG"
   echo ""
 fi
-`],
-  ["ralph-stop.sh", `#!/usr/bin/env bash
+`,
+  ],
+  [
+    "ralph-stop.sh",
+    `#!/usr/bin/env bash
 # =============================================================================
 # ralph-stop.sh — Request graceful loop cancellation
 # Usage: ./ralph-stop.sh
@@ -683,8 +734,11 @@ fi
 
 touch "$CANCEL_FILE"
 echo "Cancel requested. Loop will stop after current iteration."
-`],
-  ["ralph.sh", `#!/usr/bin/env bash
+`,
+  ],
+  [
+    "ralph.sh",
+    `#!/usr/bin/env bash
 # =============================================================================
 # ralph.sh — Autonomous Claude Code loop runner
 # Usage: ./ralph.sh [max_iterations] [max_retries] [model]
@@ -1466,7 +1520,8 @@ write_state "limit_reached" "null" "clean"
 notify_done "Ralph hit iteration limit — $SUMMARY"
 trap - EXIT
 exit 1
-`],
+`,
+  ],
 ]);
 
 /**

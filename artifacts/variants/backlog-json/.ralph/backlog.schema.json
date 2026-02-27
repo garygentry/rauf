@@ -91,6 +91,31 @@
           "model": {
             "type": "string",
             "description": "Per-item Claude model override (e.g. 'claude-opus-4-6')"
+          },
+          "agentDelegation": {
+            "type": "object",
+            "properties": {
+              "recommendedConcurrency": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "strategy": {
+                "type": "string"
+              },
+              "subtasks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "specReferences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [

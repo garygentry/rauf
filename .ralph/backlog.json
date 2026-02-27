@@ -16,8 +16,8 @@
         "Unit tests verify each event variant parses correctly and rejects invalid data",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T12:25:21-08:00",
       "notes": "Reference plans/global-server-rearchitecture.md §5 for the full event schema and §6 for LoopStartOptions. All events carry base shape { type, timestamp, projectPath } plus type-specific payload. See the LoopEvent union type definition in the architecture doc for exact field names per variant."
     },
     {
@@ -40,7 +40,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "These are write primitives needed by the loop runner (plans/global-server-rearchitecture.md §6). The existing status.ts only has read functions (deriveStatus, readLogTail, watchLog). Use atomicWrite from fs-utils.ts for state.json. appendLog can use simple fs.appendFile. Reference existing patterns in status.ts for path resolution."
     },
     {
@@ -63,7 +65,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "selectNextItem is the dependency-aware replacement for the shell script's simple 'first pending by priority' selection (plans/global-server-rearchitecture.md §6). An item is only eligible if every ID in its dependsOn array maps to a done item in the backlog. Items without dependsOn are always eligible if pending."
     },
     {
@@ -106,7 +110,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "This is the scaffolding step for the new loop package (plans/global-server-rearchitecture.md §5). All subsequent loop modules (006-009) build on this. Follow the same package structure patterns as packages/core and packages/cli for tsconfig and vitest setup."
     },
     {
@@ -131,7 +137,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005"],
+      "dependsOn": [
+        "005"
+      ],
       "notes": "Signal parser ports ralph.sh's signal detection logic (~lines 400-430). Git commit is a simple child process wrapper. These are pure functions with no shared state — easy to test in isolation."
     },
     {
@@ -154,7 +162,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005"],
+      "dependsOn": [
+        "005"
+      ],
       "notes": "Reference ralph.sh lines 530-571 for the current prompt structure. The prompt builder replaces shell string concatenation with clean TypeScript template assembly. Use core's fileExists and fs.readFile for reading project files."
     },
     {
@@ -182,7 +192,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["004", "005"],
+      "dependsOn": [
+        "004",
+        "005"
+      ],
       "notes": "Ports ralph.sh's check_usage_api (line 294) and sleep_with_cancel (line 335) functions. Uses native fetch() instead of curl. Required header `anthropic-beta: oauth-2025-04-20` per ralph.sh line 299. Response fields five_hour/seven_day parsed at lines 416-418. The 10s timeout matches --max-time 10 at line 300. The heartbeat callback replaces ralph.sh's explicit state.json updatedAt touch every 5 minutes during sleep (lines 355-359), preventing deriveStatus() from marking the loop as stale. Depends on item 004 for readClaudeOAuthToken()."
     },
     {
@@ -208,7 +221,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005"],
+      "dependsOn": [
+        "005"
+      ],
       "notes": "Uses Bun.spawn() or node:child_process.spawn(). Ports ralph.sh's claude invocation (~lines 450-500). The timeout mechanism replaces the shell 'timeout' command. The 30s grace between SIGTERM and SIGKILL allows Claude to save state. See plans/global-server-rearchitecture.md §5 for process manager spec."
     },
     {
@@ -247,7 +262,14 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "003", "006", "007", "008", "009"],
+      "dependsOn": [
+        "002",
+        "003",
+        "006",
+        "007",
+        "008",
+        "009"
+      ],
       "estimatedIterations": 2,
       "notes": "The largest and most critical item. Key behavioral parity with ralph.sh: (1) Auto-sweep at startup (lines 386-404), (2) Pre-loop usage preflight (lines 407-452), (3) Stderr usage limit detection mid-loop (lines 640-700), (4) DONE file on all exit paths (lines 123, 345, 429, 481, 676), (5) Crash cleanup via EXIT trap (lines 363-373), (6) Model resolution item > CLI > project (line 577), (7) NEEDS_HUMAN leaves item in_progress (lines 731-740), (8) limit_reached on maxIterations (line 779). Import sweepItems from core's archive module. Reference plans/global-server-rearchitecture.md §5 for class API and event flow."
     },
@@ -274,7 +296,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["010"],
+      "dependsOn": [
+        "010"
+      ],
       "estimatedIterations": 2,
       "notes": "Reference plans/global-server-rearchitecture.md §2 for server architecture and §5 for LoopManager API. Use the existing SSE pattern from packages/web/src/server/routes/status.ts (log/stream endpoint) as reference. The LoopManager is the bridge between the runner module and the HTTP layer."
     },
@@ -300,7 +324,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["010"],
+      "dependsOn": [
+        "010"
+      ],
       "notes": "Reference plans/global-server-rearchitecture.md §2 CLI integration section. Smart routing: if server running → HTTP, else for 'run' → direct, for 'start' → auto-start server first. Follow existing CLI patterns in packages/cli/src/commands.ts for command registration and arg parsing."
     },
     {
@@ -322,7 +348,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011"],
+      "dependsOn": [
+        "011"
+      ],
       "notes": "Minimal frontend change (plans/global-server-rearchitecture.md §7 Phase 1E). The existing status view already shows loop state — just add control buttons. Reference the existing mutation patterns in packages/web/src/client/routes/projects/backlog.tsx for TanStack Query mutation usage and the fetch wrapper in lib/fetch.ts."
     },
     {
@@ -346,7 +374,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["010", "011", "012"],
+      "dependsOn": [
+        "010",
+        "011",
+        "012"
+      ],
       "notes": "This gates on all of Phase 1 being stable (plans/global-server-rearchitecture.md §7 Phase 2). The global runtime must be proven functional before changing the default. Existing projects keep runtime: 'shell' until explicitly updated. Three-way hash comparison for scripts should warn but not auto-remove customized scripts."
     },
     {
@@ -368,7 +400,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["014"],
+      "dependsOn": [
+        "014"
+      ],
       "estimatedIterations": 2,
       "notes": "Plans/global-server-rearchitecture.md §7 Phase 3. This is a significant cleanup touching multiple files. Be careful to only remove script-related code — the embedding pipeline must still handle template files. The embedded-artifacts.ts was 63.8KB mostly due to script content; it should shrink dramatically."
     },
@@ -392,7 +426,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["015"],
+      "dependsOn": [
+        "015"
+      ],
       "notes": "Final cleanup item (plans/global-server-rearchitecture.md §7 Phase 3). All code changes are complete by this point — this is purely documentation alignment. Also consider updating README.md quick start section if it references shell scripts."
     }
   ]
