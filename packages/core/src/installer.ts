@@ -242,21 +242,26 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   const dirResult = ensureDir(ralphDir);
   if (!dirResult.ok) return dirResult;
 
-  // 4. Deploy script artifacts
+  // 4. Deploy script artifacts (only for 'shell' runtime)
   const artifactHashes: Record<string, string> = {};
 
-  for (const script of SCRIPT_ARTIFACTS) {
-    const destPath = path.join(resolved, script);
+  // Determine runtime: explicit override > existing marker > 'global' (new install default)
+  const runtime = options.options?.runtime ?? existingOptions?.runtime ?? ("global" as const);
 
-    const deployResult = deployScript(script, destPath, artifactsDir);
-    if (!deployResult.ok) return deployResult;
+  if (runtime === "shell") {
+    for (const script of SCRIPT_ARTIFACTS) {
+      const destPath = path.join(resolved, script);
 
-    actions.push(deployResult.value);
+      const deployResult = deployScript(script, destPath, artifactsDir);
+      if (!deployResult.ok) return deployResult;
 
-    // Compute hash of deployed file
-    const hashResult = computeHash(destPath);
-    if (hashResult.ok) {
-      artifactHashes[script] = hashResult.value;
+      actions.push(deployResult.value);
+
+      // Compute hash of deployed file
+      const hashResult = computeHash(destPath);
+      if (hashResult.ok) {
+        artifactHashes[script] = hashResult.value;
+      }
     }
   }
 
@@ -315,6 +320,7 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     gitignoreScripts:
       options.options?.gitignoreScripts ?? existingOptions?.gitignoreScripts ?? false,
     maxIterations: options.options?.maxIterations ?? existingOptions?.maxIterations ?? 20,
+    runtime,
   };
 
   const marker: MarkerFile = {
@@ -376,59 +382,73 @@ export function update(
   const marker = markerResult.value;
   const storedHashes = marker.artifactHashes;
   const newHashes: Record<string, string> = { ...storedHashes };
+  const runtime = marker.options.runtime ?? "shell";
 
-  // Update script artifacts via three-way comparison
-  for (const script of SCRIPT_ARTIFACTS) {
-    const destPath = path.join(resolved, script);
+  // Update script artifacts via three-way comparison (only for 'shell' runtime)
+  if (runtime === "shell") {
+    // Log migration hint for shell runtime projects
+    warnings.push(
+      'This project uses runtime: "shell". You can migrate to runtime: "global" ' +
+        "to use the built-in TypeScript loop runner instead of shell scripts. " +
+        'Update .ralph.json options.runtime to "global" to migrate.',
+    );
 
-    const contentResult = readArtifact(script, artifactsDir);
-    if (!contentResult.ok) return contentResult as Result<InstallationReport>;
+    for (const script of SCRIPT_ARTIFACTS) {
+      const destPath = path.join(resolved, script);
 
-    const compResult = threeWayCompareContent(storedHashes[script], destPath, contentResult.value);
-    if (!compResult.ok) return compResult;
+      const contentResult = readArtifact(script, artifactsDir);
+      if (!contentResult.ok) return contentResult as Result<InstallationReport>;
 
-    const comparison = compResult.value;
+      const compResult = threeWayCompareContent(
+        storedHashes[script],
+        destPath,
+        contentResult.value,
+      );
+      if (!compResult.ok) return compResult;
 
-    switch (comparison) {
-      case "up_to_date":
-        actions.push({
-          file: script,
-          action: "skipped",
-          detail: "Already up to date",
-        });
-        break;
+      const comparison = compResult.value;
 
-      case "safe_update": {
-        const writeResult = writeFileWithMode(destPath, contentResult.value, 0o755);
-        if (!writeResult.ok) return writeResult;
+      switch (comparison) {
+        case "up_to_date":
+          actions.push({
+            file: script,
+            action: "skipped",
+            detail: "Already up to date",
+          });
+          break;
 
-        const hashResult = computeHash(destPath);
-        if (hashResult.ok) newHashes[script] = hashResult.value;
+        case "safe_update": {
+          const writeResult = writeFileWithMode(destPath, contentResult.value, 0o755);
+          if (!writeResult.ok) return writeResult;
 
-        actions.push({
-          file: script,
-          action: "updated",
-          detail: "Updated to new canonical version",
-        });
-        break;
+          const hashResult = computeHash(destPath);
+          if (hashResult.ok) newHashes[script] = hashResult.value;
+
+          actions.push({
+            file: script,
+            action: "updated",
+            detail: "Updated to new canonical version",
+          });
+          break;
+        }
+
+        case "local_only":
+          actions.push({
+            file: script,
+            action: "skipped",
+            detail: "Local modifications preserved (canonical unchanged)",
+          });
+          break;
+
+        case "conflict":
+          warnings.push(`${script}: local modifications conflict with new canonical version`);
+          actions.push({
+            file: script,
+            action: "skipped",
+            detail: "Conflict: both local and canonical modified",
+          });
+          break;
       }
-
-      case "local_only":
-        actions.push({
-          file: script,
-          action: "skipped",
-          detail: "Local modifications preserved (canonical unchanged)",
-        });
-        break;
-
-      case "conflict":
-        warnings.push(`${script}: local modifications conflict with new canonical version`);
-        actions.push({
-          file: script,
-          action: "skipped",
-          detail: "Conflict: both local and canonical modified",
-        });
-        break;
     }
   }
 
@@ -538,30 +558,38 @@ export function checkArtifactStaleness(
     });
   }
 
+  const runtime = markerResult.value.options.runtime ?? "shell";
   const storedHashes = markerResult.value.artifactHashes;
   const files: Record<string, ArtifactFileStatus> = {};
   let updatesAvailable = 0;
   let conflicts = 0;
 
-  for (const script of SCRIPT_ARTIFACTS) {
-    const destPath = path.join(resolved, script);
+  // Only check script staleness for 'shell' runtime
+  if (runtime === "shell") {
+    for (const script of SCRIPT_ARTIFACTS) {
+      const destPath = path.join(resolved, script);
 
-    if (!fileExists(destPath)) {
-      files[script] = "missing";
-      continue;
+      if (!fileExists(destPath)) {
+        files[script] = "missing";
+        continue;
+      }
+
+      const contentResult = readArtifact(script, artifactsDir);
+      if (!contentResult.ok) return contentResult as Result<ArtifactStalenessReport>;
+
+      const compResult = threeWayCompareContent(
+        storedHashes[script],
+        destPath,
+        contentResult.value,
+      );
+      if (!compResult.ok) return compResult as Result<ArtifactStalenessReport>;
+
+      const status = compResult.value as ArtifactFileStatus;
+      files[script] = status;
+
+      if (status === "safe_update") updatesAvailable++;
+      if (status === "conflict") conflicts++;
     }
-
-    const contentResult = readArtifact(script, artifactsDir);
-    if (!contentResult.ok) return contentResult as Result<ArtifactStalenessReport>;
-
-    const compResult = threeWayCompareContent(storedHashes[script], destPath, contentResult.value);
-    if (!compResult.ok) return compResult as Result<ArtifactStalenessReport>;
-
-    const status = compResult.value as ArtifactFileStatus;
-    files[script] = status;
-
-    if (status === "safe_update") updatesAvailable++;
-    if (status === "conflict") conflicts++;
   }
 
   return ok({ files, updatesAvailable, conflicts });
@@ -588,11 +616,14 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   const keepProgress = options.keepProgress ?? true;
   const keepLog = options.keepLog ?? true;
   const removeClaudeMdSection = options.removeClaudeMdSection ?? true;
+  const runtime = markerResult.value.options.runtime ?? "shell";
 
-  // Remove scripts from project root
-  for (const script of SCRIPT_ARTIFACTS) {
-    const scriptPath = path.join(resolved, script);
-    safeUnlink(scriptPath);
+  // Remove scripts from project root (only for 'shell' runtime)
+  if (runtime === "shell") {
+    for (const script of SCRIPT_ARTIFACTS) {
+      const scriptPath = path.join(resolved, script);
+      safeUnlink(scriptPath);
+    }
   }
 
   // Remove RALPH.md (always)

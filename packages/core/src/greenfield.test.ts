@@ -147,13 +147,13 @@ describe("initProject", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_END);
   });
 
-  it("installs standard ralph artifacts via installer", () => {
+  it("installs standard ralph artifacts via installer (global runtime, no scripts)", () => {
     const projectDir = path.join(tmpDir, "artifacts-project");
     initProject(projectDir, baseOpts());
 
-    // Check scripts deployed
+    // No scripts deployed (global runtime is the default for new installs)
     for (const script of SCRIPT_ARTIFACTS) {
-      expect(fileExists(path.join(projectDir, script))).toBe(true);
+      expect(fileExists(path.join(projectDir, script))).toBe(false);
     }
 
     // Check .ralph/ contents

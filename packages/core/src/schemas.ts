@@ -71,6 +71,8 @@ export const ProjectProfileSchema = z.object({
 
 // ─── MarkerOptions ─────────────────────────────────────────────────
 
+export const RuntimeSchema = z.enum(["shell", "global"]);
+
 export const MarkerOptionsSchema = z.object({
   ignoreInTool: z.boolean(),
   gitignoreScripts: z.boolean(),
@@ -79,6 +81,8 @@ export const MarkerOptionsSchema = z.object({
   autoSweep: z.boolean().optional(),
   sweepMinAgeDays: z.number().int().nonnegative().optional(),
   sessionTimeout: z.number().int().positive().optional(),
+  /** Runtime mode: 'shell' (legacy scripts) or 'global' (TypeScript loop runner). Defaults to 'shell' when omitted for backward compat. */
+  runtime: RuntimeSchema.optional(),
 });
 
 // ─── MarkerFile (.ralph.json) ──────────────────────────────────────

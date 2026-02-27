@@ -69,6 +69,14 @@ function installOpts(overrides: Partial<InstallOptions> = {}): InstallOptions {
   };
 }
 
+/** Install options for shell runtime (with scripts) */
+function shellInstallOpts(overrides: Partial<InstallOptions> = {}): InstallOptions {
+  return installOpts({
+    ...overrides,
+    options: { runtime: "shell" as const, ...overrides.options },
+  });
+}
+
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-installer-"));
 });
@@ -149,10 +157,10 @@ describe("install", () => {
     expect(report.profile.stack).toBe("node-typescript");
   });
 
-  it("creates scripts with executable permissions", () => {
+  it("creates scripts with executable permissions (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
 
-    const result = install(tmpDir, installOpts());
+    const result = install(tmpDir, shellInstallOpts());
     expect(result.ok).toBe(true);
 
     for (const script of SCRIPT_ARTIFACTS) {
@@ -229,10 +237,10 @@ describe("install", () => {
     expect(markerResult.value.profile.stack).toBe("node-typescript");
   });
 
-  it("stores artifact hashes in marker file", () => {
+  it("stores artifact hashes in marker file (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
 
-    install(tmpDir, installOpts());
+    install(tmpDir, shellInstallOpts());
 
     const markerResult = readMarkerFile(tmpDir);
     expect(markerResult.ok).toBe(true);
@@ -311,10 +319,10 @@ describe("install", () => {
     expect(backlog.items).toEqual([]);
   });
 
-  it("returns actions for each deployed artifact", () => {
+  it("returns actions for each deployed artifact (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
 
-    const result = install(tmpDir, installOpts());
+    const result = install(tmpDir, shellInstallOpts());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -385,12 +393,12 @@ describe("install — idempotency", () => {
     expect(claudeMd2).toBe(claudeMd1);
   });
 
-  it("second install skips existing scripts with same content", () => {
+  it("second install skips existing scripts with same content (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
 
-    install(tmpDir, installOpts());
+    install(tmpDir, shellInstallOpts());
 
-    const r2 = install(tmpDir, installOpts());
+    const r2 = install(tmpDir, shellInstallOpts());
     expect(r2.ok).toBe(true);
     if (!r2.ok) return;
 
@@ -442,9 +450,9 @@ describe("update", () => {
     expect(result.error.code).toBe("NOT_INSTALLED");
   });
 
-  it("succeeds when installed and nothing changed", () => {
+  it("succeeds when installed and nothing changed (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
+    install(tmpDir, shellInstallOpts());
 
     const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
 
@@ -474,9 +482,9 @@ describe("update", () => {
     expect(progressAction?.action).toBe("skipped");
   });
 
-  it("detects locally modified scripts and preserves them", () => {
+  it("detects locally modified scripts and preserves them (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
+    install(tmpDir, shellInstallOpts());
 
     // Modify a script locally
     const scriptPath = path.join(tmpDir, "ralph.sh");
@@ -540,9 +548,9 @@ describe("uninstall", () => {
     expect(result.error.code).toBe("NOT_INSTALLED");
   });
 
-  it("removes scripts from project root", () => {
+  it("removes scripts from project root (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
+    install(tmpDir, shellInstallOpts());
 
     // Verify scripts exist
     for (const script of SCRIPT_ARTIFACTS) {
@@ -682,11 +690,11 @@ describe("uninstall", () => {
 // ─── full lifecycle: install → update → uninstall ─────────────────
 
 describe("full lifecycle", () => {
-  it("install → update → uninstall works end-to-end", () => {
+  it("install → update → uninstall works end-to-end (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
 
-    // Install
-    const installResult = install(tmpDir, installOpts({ projectName: "lifecycle-test" }));
+    // Install with shell runtime
+    const installResult = install(tmpDir, shellInstallOpts({ projectName: "lifecycle-test" }));
     expect(installResult.ok).toBe(true);
 
     // Verify installation
@@ -894,9 +902,9 @@ describe("edge cases", () => {
     expect(result.value.projectName).toBe(path.basename(tmpDir));
   });
 
-  it("update after local script modification with canonical change reports conflict", () => {
+  it("update after local script modification with canonical change reports conflict (shell runtime)", () => {
     createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
+    install(tmpDir, shellInstallOpts());
 
     // Modify a script locally
     const scriptPath = path.join(tmpDir, "ralph-status.sh");
@@ -939,5 +947,229 @@ describe("edge cases", () => {
 
     // Should have a warning about the conflict
     expect(result.value.warnings.some((w) => w.includes("ralph-status.sh"))).toBe(true);
+  });
+});
+
+// ─── runtime: 'global' mode ────────────────────────────────────────
+
+describe("runtime: global", () => {
+  it("new install defaults to runtime: 'global'", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+
+    expect(markerResult.value.options.runtime).toBe("global");
+  });
+
+  it("does not deploy scripts when runtime is 'global'", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+
+    // No scripts should be deployed
+    for (const script of SCRIPT_ARTIFACTS) {
+      expect(fileExists(path.join(tmpDir, script))).toBe(false);
+    }
+  });
+
+  it("artifactHashes only contains non-script file hashes when runtime is 'global'", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    install(tmpDir, installOpts());
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+
+    const hashes = markerResult.value.artifactHashes;
+    // Should NOT have script hashes
+    expect(hashes["ralph.sh"]).toBeUndefined();
+    expect(hashes["ralph-status.sh"]).toBeUndefined();
+    expect(hashes["ralph-add.sh"]).toBeUndefined();
+    // Should have RALPH.md hash
+    expect(hashes["RALPH.md"]).toBeDefined();
+  });
+
+  it("deploys data files regardless of runtime", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+
+    expect(fileExists(path.join(tmpDir, ".ralph", "RALPH.md"))).toBe(true);
+    expect(fileExists(path.join(tmpDir, ".ralph", "backlog.json"))).toBe(true);
+    expect(fileExists(path.join(tmpDir, ".ralph", "progress.md"))).toBe(true);
+  });
+
+  it("manages CLAUDE.md section regardless of runtime", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    install(tmpDir, installOpts());
+
+    const claudeMd = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
+    expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_END);
+  });
+
+  it("returns actions without script entries when runtime is 'global'", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const actionFiles = result.value.actions.map((a) => a.file);
+    expect(actionFiles).not.toContain("ralph.sh");
+    expect(actionFiles).not.toContain("ralph-status.sh");
+    expect(actionFiles).not.toContain("ralph-add.sh");
+    expect(actionFiles).toContain(".ralph/RALPH.md");
+    expect(actionFiles).toContain(".ralph/backlog.json");
+    expect(actionFiles).toContain("CLAUDE.md");
+  });
+
+  it("update skips scripts when runtime is 'global'", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // No script actions at all in global mode
+    const scriptActions = result.value.actions.filter((a) => SCRIPT_ARTIFACTS.includes(a.file));
+    expect(scriptActions).toHaveLength(0);
+  });
+
+  it("update on runtime: 'global' does not produce migration warning", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.warnings.some((w) => w.includes("migrate"))).toBe(false);
+  });
+
+  it("install → update → uninstall lifecycle works for global runtime", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true });
+
+    const installResult = install(tmpDir, installOpts({ projectName: "global-test" }));
+    expect(installResult.ok).toBe(true);
+
+    // No scripts deployed
+    expect(fileExists(path.join(tmpDir, "ralph.sh"))).toBe(false);
+    expect(fileExists(path.join(tmpDir, ".ralph.json"))).toBe(true);
+    expect(fileExists(path.join(tmpDir, ".ralph", "RALPH.md"))).toBe(true);
+
+    // Update
+    const updateResult = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(updateResult.ok).toBe(true);
+
+    // Uninstall
+    const uninstallResult = uninstall(tmpDir);
+    expect(uninstallResult.ok).toBe(true);
+
+    expect(fileExists(path.join(tmpDir, ".ralph.json"))).toBe(false);
+    expect(fileExists(path.join(tmpDir, ".ralph", "RALPH.md"))).toBe(false);
+    expect(fileExists(path.join(tmpDir, ".ralph", "backlog.json"))).toBe(true);
+  });
+});
+
+// ─── runtime: 'shell' mode ──────────────────────────────────────────
+
+describe("runtime: shell", () => {
+  it("explicit runtime: 'shell' deploys scripts", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, shellInstallOpts());
+    expect(result.ok).toBe(true);
+
+    for (const script of SCRIPT_ARTIFACTS) {
+      expect(fileExists(path.join(tmpDir, script))).toBe(true);
+    }
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+    expect(markerResult.value.options.runtime).toBe("shell");
+  });
+
+  it("update on runtime: 'shell' logs migration message", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, shellInstallOpts());
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.warnings.some((w) => w.includes("migrate"))).toBe(true);
+    expect(result.value.warnings.some((w) => w.includes('"global"'))).toBe(true);
+  });
+
+  it("re-install preserves existing runtime: 'shell'", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    // First install with shell runtime
+    install(tmpDir, shellInstallOpts());
+
+    // Second install without explicit runtime — should preserve shell
+    const r2 = install(tmpDir, installOpts());
+    expect(r2.ok).toBe(true);
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+    expect(markerResult.value.options.runtime).toBe("shell");
+  });
+});
+
+// ─── backward compatibility ──────────────────────────────────────────
+
+describe("backward compatibility", () => {
+  it("existing .ralph.json without runtime field parses as 'shell'", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    // Write a marker file without the runtime field (simulating pre-014 project)
+    const markerContent = JSON.stringify(
+      {
+        ralph: true,
+        version: "1",
+        variant: "backlog-json",
+        installedAt: "2026-01-01T00:00:00Z",
+        installedBy: "ralph-manager@0.1.0",
+        profile: {
+          stack: "custom",
+          packageManager: null,
+          monorepo: false,
+          commands: { test: null, typecheck: null, lint: null, build: null, format: null },
+          verify: "",
+        },
+        artifactHashes: {},
+        options: {
+          ignoreInTool: false,
+          gitignoreScripts: false,
+          maxIterations: 20,
+        },
+      },
+      null,
+      2,
+    );
+    fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), markerContent);
+
+    const result = readMarkerFile(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Parses correctly — runtime is undefined (treated as 'shell' by consuming code)
+    expect(result.value.options.runtime).toBeUndefined();
+    // Installer and update treat undefined as 'shell'
+    expect(result.value.options.runtime ?? "shell").toBe("shell");
   });
 });

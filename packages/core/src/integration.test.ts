@@ -136,7 +136,7 @@ describe("Integration: install into fresh directory", () => {
     expect(pf.passed).toBe(true);
     expect(pf.checks.every((c) => c.severity !== "error" || c.passed)).toBe(true);
 
-    // Step 2: Install
+    // Step 2: Install (defaults to runtime: 'global')
     const result = install(projectDir, {
       artifactsDir: ARTIFACTS_DIR,
       projectName: "integration-test",
@@ -148,11 +148,9 @@ describe("Integration: install into fresh directory", () => {
     const report = result.value;
 
     // Step 3: Verify all expected files exist
-    // Scripts at project root
+    // No scripts at project root (global runtime)
     for (const script of SCRIPT_ARTIFACTS) {
-      expect(fileExists(path.join(projectDir, script))).toBe(true);
-      const stat = fs.statSync(path.join(projectDir, script));
-      expect(stat.mode & 0o100).toBeTruthy(); // executable
+      expect(fileExists(path.join(projectDir, script))).toBe(false);
     }
 
     // .ralph/ directory with data files
@@ -172,9 +170,11 @@ describe("Integration: install into fresh directory", () => {
     if (!markerResult.ok) return;
 
     expect(markerResult.value.ralph).toBe(true);
+    expect(markerResult.value.options.runtime).toBe("global");
     expect(markerResult.value.profile.stack).toBe("node-typescript");
     expect(markerResult.value.profile.packageManager).toBe("pnpm");
-    expect(Object.keys(markerResult.value.artifactHashes).length).toBeGreaterThanOrEqual(4);
+    // Only RALPH.md hash (no script hashes in global mode)
+    expect(Object.keys(markerResult.value.artifactHashes).length).toBeGreaterThanOrEqual(1);
 
     // RALPH.md contains rendered commands (not raw template vars)
     const ralphMd = fs.readFileSync(path.join(projectDir, ".ralph", "RALPH.md"), "utf-8");
@@ -195,18 +195,19 @@ describe("Integration: install into fresh directory", () => {
     expect(report.actions.length).toBeGreaterThan(0);
   });
 
-  it("install → update → uninstall lifecycle", () => {
+  it("install → update → uninstall lifecycle (shell runtime)", () => {
     const projectDir = path.join(tmpDir, "lifecycle-project");
     createProject(projectDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
 
-    // Install
+    // Install with shell runtime to test script lifecycle
     const installResult = install(projectDir, {
       artifactsDir: ARTIFACTS_DIR,
       projectName: "lifecycle",
+      options: { runtime: "shell" },
     });
     expect(installResult.ok).toBe(true);
 
-    // Verify installed
+    // Verify installed (shell runtime deploys scripts)
     expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(true);
     expect(fileExists(path.join(projectDir, MARKER_FILENAME))).toBe(true);
 
@@ -300,9 +301,9 @@ describe("Integration: greenfield init creates valid project", () => {
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("node_modules");
 
-    // Scripts deployed
+    // No scripts deployed (greenfield defaults to global runtime)
     for (const script of SCRIPT_ARTIFACTS) {
-      expect(fileExists(path.join(projectDir, script))).toBe(true);
+      expect(fileExists(path.join(projectDir, script))).toBe(false);
     }
 
     // .ralph/ data files
