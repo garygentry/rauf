@@ -63,8 +63,8 @@
         "Unit tests with dependency chain scenarios (diamond deps, missing deps, all-done deps)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T12:35:07-08:00",
       "dependsOn": [
         "001"
       ],
