@@ -7,12 +7,17 @@ Reference: `packages/cli/`
 
 ## Binary
 
-Name: `ralph` (global). Must not conflict with `./ralph.sh` (project-level script).
+Name: `ralph` (global).
 
 ## Command Tree
 
 ```
 ralph <command> [subcommand] [options]
+
+ralph loop start [path] [--iterations N] [--retries N] [--model <m>] [--timeout N]
+ralph loop stop [path]
+ralph loop follow [path]
+ralph loop run [path] [--iterations N] [--retries N] [--model <m>] [--timeout N]
 
 ralph server start [--port N] [--root <path>] [--foreground] [--daemon]
 ralph server stop
@@ -90,6 +95,38 @@ ralph help [command]
 - Read PID from `~/.ralph/server.pid`, send SIGTERM
 - Wait 5s for graceful shutdown, then SIGKILL
 - Report success or "no server running"
+
+### ralph loop start [path]
+
+- Starts a loop via the server API (`POST /api/projects/:id/loop/start`)
+- Auto-starts server daemon if not already running (polls health endpoint until ready)
+- `--iterations N`: max iterations (default: 20)
+- `--retries N`: max retries per item (default: 3)
+- `--model <model>`: model override (e.g., `claude-opus-4-6`)
+- `--timeout N`: session timeout in minutes (default: 60)
+- Prints follow hint on success
+- Returns 409 if loop already running for this project
+
+### ralph loop stop [path]
+
+- Sends graceful cancel to a running loop (`POST /api/projects/:id/loop/stop`)
+- Requires server to be running (does not auto-start)
+- Returns 404 if no active loop for the project
+
+### ralph loop follow [path]
+
+- Connects to SSE endpoint (`GET /api/projects/:id/loop/events`) and streams formatted events
+- Events formatted with colors and Unicode icons (iteration, item selection, signals, etc.)
+- Requires server to be running
+- Runs until loop completes or Ctrl+C
+
+### ralph loop run [path]
+
+- Direct mode: creates LoopRunner in-process, no server required
+- Same flags as `ralph loop start`: `--iterations`, `--retries`, `--model`, `--timeout`
+- Events printed directly to terminal
+- Responds to SIGINT/SIGTERM for graceful cancellation
+- Returns `LoopResult { completedCount, blockedCount, cancelled }` with `--json`
 
 ### ralph install <path>
 

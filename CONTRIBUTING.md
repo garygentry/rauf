@@ -10,7 +10,7 @@ description: Development setup, coding conventions, and contribution workflow fo
 - [Node.js](https://nodejs.org/) v22+
 - [Bun](https://bun.sh/) v1.0+ (runtime for the web server and binary compilation)
 - [pnpm](https://pnpm.io/) v9+ (package manager)
-- [jq](https://jqlang.github.io/jq/) (used by loop shell scripts)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (for running loops)
 
 ### Getting Started
 
@@ -57,7 +57,8 @@ cd packages/web && pnpm dev
 ralph/
 ├── packages/
 │   ├── core/    — Shared business logic (discovery, installer, backlog, status, profile, template)
-│   ├── cli/     — CLI tool (commands call core directly)
+│   ├── loop/    — Loop runner engine (LoopRunner, events, claude process, signal parsing)
+│   ├── cli/     — CLI tool (commands call core directly or HTTP when server is running)
 │   └── web/     — Hono API server + React frontend (TanStack Router + Query)
 ├── artifacts/   — Canonical template files installed into target projects
 │   └── variants/backlog-json/
@@ -109,8 +110,8 @@ Before implementing features, read the relevant spec in `docs/`:
 | `SPEC-CORE.md`      | Core package modules and logic                       |
 | `SPEC-CLI.md`       | CLI commands, flags, exit codes                      |
 | `SPEC-WEB.md`       | Web API endpoints and frontend components            |
-| `SPEC-ARTIFACTS.md` | Artifact templates (ralph.sh, RALPH.md, etc.)        |
+| `SPEC-ARTIFACTS.md` | Artifact templates (RALPH.md, CLAUDE_ADDON.md, etc.) |
 
 ## Self-Hosting
 
-This repository is itself a ralph-managed project. The `.ralph/` directory at the repo root and `ralph.sh` are this project's own ralph installation. The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into other projects. Do not confuse them.
+This repository is itself a ralph-managed project. The `.ralph/` directory at the repo root is this project's own ralph loop state. Run the loop with `ralph loop run` (direct mode) or `ralph loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into other projects. Do not confuse them.

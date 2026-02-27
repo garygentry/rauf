@@ -23,25 +23,25 @@ These are **complementary, not competing** systems:
 | **Managed by**     | Human + ralph manager tool           | Claude Code agent                  |
 | **Granularity**    | Feature/bug/chore items              | Sub-steps to implement one item    |
 | **Cross-session**  | Always (it's a file)                 | Only if TASK_LIST_ID is set        |
-| **Status updates** | ralph.sh loop + manager tool         | Claude Code internally             |
+| **Status updates** | Loop runner + manager tool           | Claude Code internally             |
 
 ### The Relationship
 
 ```
 backlog.json item "001: Implement user auth"
-  └─► ralph.sh picks it, marks in_progress
+  └─► Loop runner picks it, marks in_progress
       └─► claude -p session starts
           └─► Agent may use Tasks internally:
               Task 1: "Design auth schema" ──►
               Task 2: "Implement login endpoint" (blocked by 1) ──►
               Task 3: "Add tests" (blocked by 2) ──►
           └─► Session ends, agent outputs RALPH_DONE
-      └─► ralph.sh marks item "done" in backlog.json
+      └─► Loop runner marks item "done" in backlog.json
 ```
 
 ## Configuration Recommendations
 
-### Do NOT set CLAUDE_CODE_TASK_LIST_ID in ralph.sh
+### Do NOT set CLAUDE_CODE_TASK_LIST_ID in the loop runner
 
 Each ralph iteration spawns a fresh `claude -p` session. Setting a shared task list ID would cause:
 

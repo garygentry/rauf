@@ -10,6 +10,7 @@ Ralph Manager is a CLI + web tool for installing, managing, and monitoring ralph
 ralph/
 ├── packages/
 │   ├── core/    — Shared business logic (discovery, installer, backlog, status, profile, template)
+│   ├── loop/    — Loop runner engine (LoopRunner, events, claude process, signal parsing)
 │   ├── cli/     — CLI tool (commands call core directly or HTTP when server is running)
 │   └── web/     — Hono API server + React frontend (TanStack Router + Query)
 ├── artifacts/   — Canonical template files installed into target projects
@@ -36,7 +37,7 @@ ralph/
 3. **Path sandboxing:** Never write outside ROOT_DIRECTORY or ~/.ralph/. Validate with `path.resolve()` + `startsWith()`.
 4. **The web server binds to 127.0.0.1 ONLY.** All mutation endpoints require `X-Ralph-Request: true` header.
 5. **Per-project artifacts are self-contained.** A project with ralph installed must work without the manager tool.
-6. **Status derivation reads files directly** — never invokes shell scripts or subprocesses for status.
+6. **Status derivation reads files directly** — never invokes subprocesses for status.
 
 ## Specification Documents
 
@@ -47,7 +48,7 @@ Before implementing any feature, read the relevant spec:
 - **Core package logic:** `docs/SPEC-CORE.md`
 - **CLI commands & behavior:** `docs/SPEC-CLI.md`
 - **Web API & frontend:** `docs/SPEC-WEB.md`
-- **Artifact templates (ralph.sh, RALPH.md, etc.):** `docs/SPEC-ARTIFACTS.md`
+- **Artifact templates (RALPH.md, CLAUDE_ADDON.md, etc.):** `docs/SPEC-ARTIFACTS.md`
 - **Claude Code Tasks integration notes:** `docs/CLAUDE-CODE-TASKS.md`
 
 ## Development Commands
@@ -82,7 +83,7 @@ This project uses `.ralph/backlog.json` as the persistent task queue for the ral
 
 ## Self-Hosting Note
 
-This repository IS a ralph-managed project. The `.ralph/` directory at the repo root and `ralph.sh` etc. are this project's own ralph installation. The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
+This repository IS a ralph-managed project. The `.ralph/` directory at the repo root is this project's own ralph loop state. Run the loop with `ralph loop run` (direct mode) or `ralph loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
 
 ---
 

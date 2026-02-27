@@ -114,10 +114,11 @@ interface MarkerOptions {
   ignoreInTool: boolean; // Default: false
   gitignoreScripts: boolean; // Default: false
   maxIterations: number; // Default: 20
-  model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI arg $3 and per-item BacklogItem.model.
-  autoSweep?: boolean; // If true, ralph.sh automatically sweeps done items on loop startup. Default: false.
+  model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI --model flag and per-item BacklogItem.model.
+  autoSweep?: boolean; // If true, loop runner automatically sweeps done items on startup. Default: false.
   sweepMinAgeDays?: number; // Only sweep done items older than N days. 0 = sweep all done items. Default: 0.
   sessionTimeout?: number; // Max minutes per Claude session before kill+retry. Default: 60.
+  runtime?: "shell" | "global"; // Loop runtime mode. "shell" = legacy scripts (deprecated), "global" = TypeScript loop runner. Defaults to "shell" when omitted for backward compat.
 }
 ```
 
@@ -160,7 +161,7 @@ interface LoopState {
 | `sleeping_limit` | Sleeping until 5-hour Claude usage window resets |
 | `weekly_limit`   | 7-day weekly Claude usage cap exhausted          |
 
-File: `.ralph/state.json` (written by ralph.sh, read-only for manager tool)
+File: `.ralph/state.json` (written by the loop runner, read by status derivation)
 
 ## ToolConfig (~/.ralph/config.json)
 
@@ -282,6 +283,148 @@ Variables available in .tmpl files ({{variableName}} syntax):
 | `verifyCommand`      | profile.verify (composite)   |
 | `stackDescription`   | Human-readable stack label   |
 | `requirements`       | User input (greenfield only) |
+
+## LoopStartOptions
+
+Options passed to LoopRunner when starting a loop.
+
+```typescript
+interface LoopStartOptions {
+  maxIterations: number; // Positive integer. Max loop iterations before stopping.
+  maxRetries: number; // Positive integer. Max retries per item on "none" signal before marking blocked.
+  model?: string; // Optional model override (e.g., "claude-opus-4-6"). Overridden by per-item BacklogItem.model.
+  sessionTimeoutMinutes: number; // Positive integer. Max minutes per Claude session before kill+retry.
+}
+```
+
+## LoopEvent (discriminated union)
+
+All events emitted by LoopRunner during the loop lifecycle. Discriminated on the `type` field. All events share a common base shape.
+
+```typescript
+// Base fields shared by all events
+interface LoopEventBase {
+  type: string; // Discriminator
+  timestamp: string; // ISO 8601
+  projectPath: string; // Absolute path to the project
+}
+```
+
+### All 17 Event Types
+
+| Type                  | Additional Fields                                             | Emitted When                                      |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                     | Loop begins                                       |
+| `iteration_start`     | `iteration`, `maxIterations`                                  | Each iteration starts                             |
+| `item_selected`       | `itemId`, `title`, `priority`                                 | Next item picked from backlog                     |
+| `claude_spawned`      | `itemId`, `model?`, `timeoutMinutes`                          | `claude -p` process launched                      |
+| `claude_exited`       | `itemId`, `exitCode`, `timedOut`, `durationMs`                | `claude -p` process exits                         |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/none), `reason?` | Exit signal extracted from stdout                 |
+| `item_completed`      | `itemId`, `title`                                             | Item marked done                                  |
+| `item_blocked`        | `itemId`, `reason`                                            | Item marked blocked                               |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`                             | Item re-queued for retry                          |
+| `needs_human`         | `itemId`, `reason`                                            | Loop paused for human input                       |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                     | Claude API usage limit detected                   |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                    | Usage limit window reset                          |
+| `sleep_start`         | `sleepUntil`, `reason`                                        | Loop enters sleep (usage limit)                   |
+| `sleep_end`           | _(base only)_                                                 | Loop wakes from sleep                             |
+| `loop_completed`      | `completedCount`, `blockedCount`                              | Loop finishes normally                            |
+| `loop_error`          | `error`                                                       | Unexpected error terminates loop                  |
+| `loop_cancelled`      | _(base only)_                                                 | Loop cancelled via AbortController or CANCEL file |
+
+```typescript
+// Full union type (inferred from Zod schema)
+type LoopEvent =
+  | {
+      type: "loop_started";
+      timestamp: string;
+      projectPath: string;
+      maxIterations: number;
+      model?: string;
+    }
+  | {
+      type: "iteration_start";
+      timestamp: string;
+      projectPath: string;
+      iteration: number;
+      maxIterations: number;
+    }
+  | {
+      type: "item_selected";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      title: string;
+      priority: number;
+    }
+  | {
+      type: "claude_spawned";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      model?: string;
+      timeoutMinutes: number;
+    }
+  | {
+      type: "claude_exited";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      exitCode: number;
+      timedOut: boolean;
+      durationMs: number;
+    }
+  | {
+      type: "signal_parsed";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      signal: "done" | "blocked" | "needs_human" | "none";
+      reason?: string;
+    }
+  | {
+      type: "item_completed";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      title: string;
+    }
+  | { type: "item_blocked"; timestamp: string; projectPath: string; itemId: string; reason: string }
+  | {
+      type: "item_retried";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      attempt: number;
+      maxRetries: number;
+    }
+  | { type: "needs_human"; timestamp: string; projectPath: string; itemId: string; reason: string }
+  | {
+      type: "usage_limit_hit";
+      timestamp: string;
+      projectPath: string;
+      limitType: "5h" | "7d";
+      utilization: number;
+    }
+  | { type: "usage_limit_cleared"; timestamp: string; projectPath: string; limitType: "5h" | "7d" }
+  | {
+      type: "sleep_start";
+      timestamp: string;
+      projectPath: string;
+      sleepUntil: string;
+      reason: string;
+    }
+  | { type: "sleep_end"; timestamp: string; projectPath: string }
+  | {
+      type: "loop_completed";
+      timestamp: string;
+      projectPath: string;
+      completedCount: number;
+      blockedCount: number;
+    }
+  | { type: "loop_error"; timestamp: string; projectPath: string; error: string }
+  | { type: "loop_cancelled"; timestamp: string; projectPath: string };
+```
 
 ## Log Line Patterns (fallback parsing)
 

@@ -22,23 +22,23 @@ Ralph installs, manages, and monitors AI coding loops across your local projects
 </p>
 
 1. **Backlog** — You define work items with titles, priorities, and acceptance criteria
-2. **Pick** — The loop runner (`ralph.sh`) selects the next pending item by priority
+2. **Pick** — The loop runner selects the next pending item by priority (dependency-aware)
 3. **Claude Code** — A fresh Claude Code session reads the item, implements changes, and runs verification
 4. **Verify & Commit** — If all criteria pass, changes are committed and the loop advances
 
 Each iteration produces one of three exit signals:
 
-| Signal | Meaning | What happens |
-|--------|---------|-------------|
-| `RALPH_DONE` | All acceptance criteria passed | Item marked done, loop continues |
-| `RALPH_BLOCKED` | Missing dependency or unclear spec | Item paused, loop retries or skips |
-| `RALPH_NEEDS_HUMAN` | Requires a decision or API key | Loop pauses for human input |
+| Signal              | Meaning                            | What happens                       |
+| ------------------- | ---------------------------------- | ---------------------------------- |
+| `RALPH_DONE`        | All acceptance criteria passed     | Item marked done, loop continues   |
+| `RALPH_BLOCKED`     | Missing dependency or unclear spec | Item paused, loop retries or skips |
+| `RALPH_NEEDS_HUMAN` | Requires a decision or API key     | Loop pauses for human input        |
 
 ---
 
 ## Features
 
-- **Auto-detect & install** — Detects Node.js, Python, Go, Rust stacks and deploys loop scripts in one command
+- **Auto-detect & install** — Detects Node.js, Python, Go, Rust stacks and deploys loop artifacts in one command
 - **Greenfield init** — Scaffold a new project with git, CLAUDE.md, backlog, and loop infrastructure
 - **Structured backlog** — JSON-based task queue with priorities, types, acceptance criteria, and dependencies
 - **Real-time status** — Loop state derived directly from `state.json` with log-parsing fallback
@@ -51,7 +51,7 @@ Each iteration produces one of three exit signals:
 
 ## Quick Start
 
-**Prerequisites:** [Bun](https://bun.sh/) 1.0+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI, [jq](https://jqlang.github.io/jq/), Git
+**Prerequisites:** [Bun](https://bun.sh/) 1.0+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI, Git
 
 ```bash
 # Clone and build
@@ -69,7 +69,7 @@ ralph backlog add ~/workspace/my-project \
   --ac "pnpm test passes"
 
 # Start the loop
-cd ~/workspace/my-project && ./ralph.sh
+ralph loop run ~/workspace/my-project
 ```
 
 ---
@@ -116,6 +116,15 @@ ralph backlog show <path> <id>            # Show item details
 ralph backlog sweep <path> --yes          # Archive completed items
 ```
 
+### Loop
+
+```bash
+ralph loop run <path>                     # Run loop directly (no server)
+ralph loop start <path>                   # Start loop via server (auto-starts daemon)
+ralph loop stop <path>                    # Stop a running loop
+ralph loop follow <path>                  # Stream loop events in terminal
+```
+
 ### Monitoring
 
 ```bash
@@ -140,7 +149,8 @@ ralph server status                       # Show server status
 
 ```
 ralph/
-├── packages/core/     Shared business logic (zero deps on cli/web)
+├── packages/core/     Shared business logic (zero deps on cli/web/loop)
+├── packages/loop/     Loop runner engine (LoopRunner, events, claude process)
 ├── packages/cli/      CLI tool
 ├── packages/web/      Hono API + React frontend
 ├── artifacts/         Template files installed into target projects
@@ -149,14 +159,14 @@ ralph/
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System design, data flow, component boundaries |
-| [Schemas](docs/SCHEMAS.md) | All TypeScript types and JSON schemas |
-| [Core Spec](docs/SPEC-CORE.md) | Core package logic and algorithms |
-| [CLI Spec](docs/SPEC-CLI.md) | CLI commands, flags, and behavior |
-| [Web Spec](docs/SPEC-WEB.md) | API endpoints and frontend architecture |
-| [Artifacts Spec](docs/SPEC-ARTIFACTS.md) | Template files and installation process |
+| Document                                 | Description                                    |
+| ---------------------------------------- | ---------------------------------------------- |
+| [Architecture](docs/ARCHITECTURE.md)     | System design, data flow, component boundaries |
+| [Schemas](docs/SCHEMAS.md)               | All TypeScript types and JSON schemas          |
+| [Core Spec](docs/SPEC-CORE.md)           | Core package logic and algorithms              |
+| [CLI Spec](docs/SPEC-CLI.md)             | CLI commands, flags, and behavior              |
+| [Web Spec](docs/SPEC-WEB.md)             | API endpoints and frontend architecture        |
+| [Artifacts Spec](docs/SPEC-ARTIFACTS.md) | Template files and installation process        |
 
 ## Contributing
 
