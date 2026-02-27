@@ -6,4 +6,6 @@ export type { GitCommitSuccess } from "./git-commit.js";
 export { buildPrompt } from "./prompt-builder.js";
 export { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 export type { UsageLimitResult } from "./usage-checker.js";
+export { spawnClaude } from "./claude-process.js";
+export type { SpawnClaudeOptions, SpawnClaudeResult } from "./claude-process.js";
 export type { LoopEvent, LoopStartOptions } from "@ralph/core";
