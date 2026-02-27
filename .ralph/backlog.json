@@ -294,8 +294,8 @@
         "Server SIGTERM handler calls shutdownAll to cancel all active loops gracefully",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T13:53:56-08:00",
       "dependsOn": [
         "010"
       ],
