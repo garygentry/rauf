@@ -9,15 +9,55 @@ BACKLOG="$RALPH_DIR/backlog.json"
 STATE="$RALPH_DIR/state.json"
 LOG="$RALPH_DIR/ralph.log"
 
+# ---------------------------------------------------------------------------
+# Ensure a required command is available, offering to install if missing.
+# Usage: ensure_command <cmd> [friendly_name]
+# ---------------------------------------------------------------------------
+ensure_command() {
+  local cmd="$1" name="${2:-$1}"
+  command -v "$cmd" &>/dev/null && return 0
+
+  echo "Required tool '$name' not found."
+
+  local install_cmd=""
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    if command -v brew &>/dev/null; then
+      install_cmd="brew install $cmd"
+    fi
+  elif [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    case "${ID:-}" in
+      ubuntu|debian|pop|linuxmint) install_cmd="sudo apt-get install -y $cmd" ;;
+      fedora)                      install_cmd="sudo dnf install -y $cmd" ;;
+      rhel|centos|rocky|alma)      install_cmd="sudo yum install -y $cmd" ;;
+      arch|manjaro)                install_cmd="sudo pacman -S --noconfirm $cmd" ;;
+      alpine)                      install_cmd="sudo apk add $cmd" ;;
+    esac
+  fi
+
+  if [[ -n "$install_cmd" ]]; then
+    read -rp "Install with '$install_cmd'? [y/N] " answer
+    if [[ "${answer,,}" == "y" ]]; then
+      eval "$install_cmd"
+      if command -v "$cmd" &>/dev/null; then
+        echo "'$name' installed successfully."
+        return 0
+      fi
+      echo "ERROR: Installation appeared to succeed but '$name' still not found."
+    fi
+  fi
+
+  echo "ERROR: '$name' is required. Install manually: https://jqlang.github.io/jq/download/"
+  exit 1
+}
+
 if [[ ! -f "$BACKLOG" ]]; then
   echo "ERROR: .ralph/backlog.json not found. Run from project root."
   exit 1
 fi
 
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: jq not found. Install with: sudo apt install jq"
-  exit 1
-fi
+ensure_command jq
 
 echo ""
 echo "=== Ralph Backlog Status ==="

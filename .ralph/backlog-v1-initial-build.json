@@ -1,0 +1,1009 @@
+{
+  "project": "ralph",
+  "description": "Management tool for ralph autonomous coding loops — CLI + web UI for installing, managing, and monitoring ralph across local projects",
+  "items": [
+    {
+      "id": "001",
+      "type": "chore",
+      "priority": 1,
+      "title": "Project scaffolding — pnpm workspace, TypeScript configs, Vitest setup",
+      "description": "Set up the monorepo structure with pnpm workspaces. Configure TypeScript for all three packages (core, cli, web) with strict mode. Set up Vitest as the test runner. Ensure pnpm build, pnpm test, and pnpm typecheck all work (even if tests are empty and builds produce minimal output). Add ESLint flat config and Prettier config.",
+      "acceptanceCriteria": [
+        "pnpm install succeeds with no errors",
+        "pnpm build compiles all three packages",
+        "pnpm test runs vitest (0 tests is OK)",
+        "pnpm -r typecheck passes with no errors",
+        "Each package can import from @ralph/core",
+        "ESLint config exists and pnpm -r lint runs"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T19:14:23+00:00",
+      "notes": "Read docs/ARCHITECTURE.md for package structure. Core has zero deps on cli/web. Vitest config per package or root."
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Zod schemas and TypeScript types",
+      "description": "Implement all Zod schemas in packages/core/src/schemas.ts matching docs/SCHEMAS.md. Export both schemas and inferred types.",
+      "acceptanceCriteria": [
+        "All types from docs/SCHEMAS.md have corresponding Zod schemas",
+        "Types inferred from Zod (not manually duplicated)",
+        "BacklogItem validates id format, type enum, priority 1-4, status enum",
+        "MarkerFile validates ralph===true sentinel",
+        "Unit tests verify valid data accepted, invalid rejected",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:00:34+00:00",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "Reference docs/SCHEMAS.md for exact field definitions."
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Result type, error codes, and fs-utils module",
+      "description": "Implement Result<T,E> type in errors.ts. Implement fs-utils.ts with: atomicWrite, readJsonFile (Zod validation), computeHash (SHA-256), validatePath (sandbox), fileExists, ensureDir.",
+      "acceptanceCriteria": [
+        "Result type with ok()/err() helpers exported",
+        "ErrorCodes enum with all codes from SPEC-CORE.md",
+        "atomicWrite: .tmp then rename, .bak for backlog",
+        "readJsonFile: parse + Zod validate, structured errors",
+        "computeHash: SHA-256 hex string",
+        "validatePath: rejects .. traversal escaping roots",
+        "Unit tests for each function including error cases",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:05:26+00:00",
+      "dependsOn": [
+        "002"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md fs-utils section. Use node: prefix imports."
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Project discovery module",
+      "description": "Implement discovery.ts — scan ROOT_DIRECTORY depth=1 for .ralph.json files. Filter out artifacts/ paths. Return sorted DiscoveredProject[].",
+      "acceptanceCriteria": [
+        "discoverProjects returns projects with valid .ralph.json",
+        "Depth=1 only (immediate children)",
+        "ROOT_DIRECTORY itself included if it has .ralph.json",
+        "Paths containing /artifacts/ excluded",
+        "Invalid .ralph.json skipped with warnings",
+        "Unit tests with temp directory fixtures",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:08:15+00:00",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md discovery.ts."
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Config module — marker file and tool config",
+      "description": "Implement config.ts: readMarkerFile, writeMarkerFile, readToolConfig (defaults if missing), writeToolConfig, resolveRootDirectory.",
+      "acceptanceCriteria": [
+        "readMarkerFile parses/validates .ralph.json",
+        "writeMarkerFile writes atomically",
+        "readToolConfig returns defaults if file missing",
+        "writeToolConfig creates ~/.ralph/ if needed",
+        "resolveRootDirectory: flag > env > config > cwd",
+        "Unit tests for round-trips and fallbacks",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:11:05+00:00",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md config.ts."
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Tech-stack detection and profile management",
+      "description": "Implement profile.ts: detectProfile, getPreset, mergeProfileOverrides. Detect Node.js/TS/Python/Go/Rust/monorepo from indicator files.",
+      "acceptanceCriteria": [
+        "Detects Node.js/TypeScript with pnpm correctly",
+        "Detects Python, Go, Rust from their indicator files",
+        "Package manager detection from lock files",
+        "Monorepo detection from workspace configs",
+        "Command derivation checks package.json scripts exist",
+        "getPreset returns correct defaults per preset",
+        "mergeProfileOverrides applies overrides correctly",
+        "Unit tests with mock project directories",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:14:52+00:00",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md profile.ts and PRD §7."
+    },
+    {
+      "id": "007",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Template engine with interpolation and sentinel blocks",
+      "description": "Implement template.ts: renderTemplate ({{var}} replacement), renderTemplateFile, updateSentinelBlock (find/replace between markers).",
+      "acceptanceCriteria": [
+        "renderTemplate replaces all {{var}} occurrences",
+        "Unknown variables left as-is",
+        "Null values replaced with empty string",
+        "updateSentinelBlock replaces between markers",
+        "updateSentinelBlock appends if markers not found",
+        "Content outside sentinels preserved exactly",
+        "Unit tests for interpolation and sentinel handling",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:17:18+00:00",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md template.ts."
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: CLAUDE.md smart merge logic",
+      "description": "Implement CLAUDE.md merge as part of installer. Uses sentinel blocks. Handles: create, append, skip, replace scenarios.",
+      "acceptanceCriteria": [
+        "Non-existent CLAUDE.md: creates file with ralph section",
+        "Existing without sentinels: appends ralph block",
+        "Sentinels exist, content matches: skip",
+        "Sentinels exist, content differs: replace bounded block only",
+        "Content outside sentinels preserved",
+        "Unit tests for all four scenarios",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:20:43+00:00",
+      "dependsOn": [
+        "007"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md and PRD §9.3."
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Backlog CRUD with validation and smart defaults",
+      "description": "Implement backlog.ts: readBacklog, writeBacklog (atomic+bak), addItem (auto ID, smart defaults), updateItem (transition validation), deleteItem, restoreFromBackup.",
+      "acceptanceCriteria": [
+        "readBacklog validates schema, returns errors for bad JSON",
+        "writeBacklog atomic with .bak backup",
+        "addItem auto-assigns zero-padded ID (max+1)",
+        "addItem injects smart default criterion if no AC",
+        "addItem validates dependsOn references",
+        "updateItem enforces valid status transitions",
+        "updateItem auto-sets completedAt on done",
+        "deleteItem blocks in_progress if loop active",
+        "restoreFromBackup copies .bak over current",
+        "Unit tests for all operations",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:26:10+00:00",
+      "dependsOn": [
+        "003",
+        "005"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md backlog.ts and PRD §11."
+    },
+    {
+      "id": "010",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Status derivation (state.json + log parsing fallback)",
+      "description": "Implement status.ts: deriveStatus (two-tier), readLogTail, watchLog. Primary: state.json. Fallback: log parsing. Always reads backlog for summary.",
+      "acceptanceCriteria": [
+        "Correct state from valid state.json",
+        "Staleness: running >5min old → PAUSED",
+        "Fallback: RUNNING from log mtime <60s",
+        "Fallback: COMPLETE from DONE file",
+        "BacklogSummary always populated",
+        "stateSource correctly reported",
+        "readLogTail returns last N lines",
+        "Missing files handled gracefully",
+        "Unit tests for each scenario",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:31:47+00:00",
+      "dependsOn": [
+        "003",
+        "009"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md status.ts and PRD §12, §16."
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Installer module for existing projects",
+      "description": "Implement installer.ts orchestrating: preflight, profile detect, artifact deploy, CLAUDE.md merge, .ralph.json creation. Plus update (hash comparison) and uninstall.",
+      "acceptanceCriteria": [
+        "install() runs preflight checks, reports results",
+        "Scripts copied with chmod +x, hashes stored",
+        "RALPH.md rendered from template with profile vars",
+        "backlog.json created empty if missing, validated if exists",
+        "CLAUDE.md merged via smart merge",
+        ".ralph.json written with profile and hashes",
+        "Idempotent: twice = same result",
+        "update() uses three-way hash comparison",
+        "uninstall() removes artifacts per options",
+        "Returns InstallationReport",
+        "Unit tests for install/update/uninstall",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:41:24+00:00",
+      "dependsOn": [
+        "006",
+        "007",
+        "008",
+        "009"
+      ],
+      "estimatedIterations": 2,
+      "notes": "Reference docs/SPEC-CORE.md installer.ts and PRD §9. Large module."
+    },
+    {
+      "id": "012",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: Greenfield project initialization",
+      "description": "Implement greenfield.ts: create dir, git init, .gitignore, CLAUDE.md from template, install artifacts, seed backlog from JSON/markdown.",
+      "acceptanceCriteria": [
+        "Creates directory (mkdir -p)",
+        "Runs git init + initial empty commit",
+        "Generates stack-appropriate .gitignore",
+        "CLAUDE.md from CLAUDE_GREENFIELD.md.tmpl",
+        "Standard artifacts installed via installer",
+        "Parses JSON seed (Backlog or item array)",
+        "Parses markdown seed (- [ ] [type] title)",
+        "Auto-assigns IDs and priorities",
+        "Warns if path outside ROOT_DIRECTORY",
+        "Returns InstallationReport",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:52:42+00:00",
+      "dependsOn": [
+        "011"
+      ],
+      "notes": "Reference docs/SPEC-CORE.md greenfield.ts and PRD §10."
+    },
+    {
+      "id": "013",
+      "type": "feature",
+      "priority": 2,
+      "title": "CLI: Command framework, arg parsing, help, output formatting",
+      "description": "Set up CLI entry point, command routing, help system, table renderer, color helpers (picocolors), --json/--no-color/--quiet flag support. Wire up version and help commands.",
+      "acceptanceCriteria": [
+        "CLI parses commands and subcommands",
+        "ralph version prints version",
+        "ralph help shows available commands",
+        "Unknown commands: helpful error + exit 2",
+        "--json available on read commands",
+        "--no-color suppresses ANSI",
+        "Table renderer produces aligned columns",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T21:08:30+00:00",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "Reference docs/SPEC-CLI.md."
+    },
+    {
+      "id": "014",
+      "type": "feature",
+      "priority": 2,
+      "title": "CLI: Server management commands",
+      "description": "Implement ralph server start/stop/status/restart/logs.",
+      "acceptanceCriteria": [
+        "start --foreground runs in foreground",
+        "start --daemon forks, writes PID, logs to file",
+        "start detects existing server",
+        "stop sends SIGTERM, reports result",
+        "status reports running/stopped, port, uptime",
+        "logs --tail N shows last N lines",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:08:44+00:00",
+      "dependsOn": [
+        "013",
+        "020"
+      ],
+      "notes": "Depends on web server (020) being minimally functional."
+    },
+    {
+      "id": "015",
+      "type": "feature",
+      "priority": 2,
+      "title": "CLI: Install and init commands",
+      "description": "Implement ralph install, ralph init, ralph update, ralph uninstall CLI commands.",
+      "acceptanceCriteria": [
+        "ralph install runs installation, prints report",
+        "ralph install --yes skips confirmations",
+        "Command override flags work (--test-cmd etc.)",
+        "ralph init creates project with git, prints report",
+        "ralph init --stack/--seed/--name/--description work",
+        "ralph update runs hash comparison update",
+        "ralph uninstall removes artifacts with prompts",
+        "Correct exit codes",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T21:15:01+00:00",
+      "dependsOn": [
+        "013",
+        "011",
+        "012"
+      ],
+      "notes": "Reference docs/SPEC-CLI.md."
+    },
+    {
+      "id": "016",
+      "type": "feature",
+      "priority": 2,
+      "title": "CLI: Backlog management commands",
+      "description": "Implement ralph backlog list/add/edit/delete/show/restore.",
+      "acceptanceCriteria": [
+        "list shows table, --json for raw output",
+        "list --status/--type filters work",
+        "add creates item, --ac repeatable",
+        "add with no --ac: smart default + warning",
+        "edit updates fields, --ac replaces array",
+        "delete with confirmation",
+        "show displays single item",
+        "restore recovers from .bak",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T21:50:00+00:00",
+      "dependsOn": [
+        "013",
+        "009"
+      ],
+      "notes": "Reference docs/SPEC-CLI.md backlog commands."
+    },
+    {
+      "id": "017",
+      "type": "feature",
+      "priority": 2,
+      "title": "CLI: Status, log, and progress commands",
+      "description": "Implement ralph status, ralph log (with --follow), ralph progress.",
+      "acceptanceCriteria": [
+        "status prints loop state, source indicator",
+        "status exit codes per spec",
+        "log --tail N shows last N lines",
+        "log --follow streams until Ctrl+C",
+        "progress outputs markdown content",
+        "Missing files handled gracefully",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T21:54:19+00:00",
+      "dependsOn": [
+        "013",
+        "010"
+      ],
+      "notes": "Reference docs/SPEC-CLI.md."
+    },
+    {
+      "id": "018",
+      "type": "feature",
+      "priority": 2,
+      "title": "CLI: Profile and config commands",
+      "description": "Implement ralph profile show/detect/set, ralph config get/set/list, ralph projects list/status.",
+      "acceptanceCriteria": [
+        "profile show displays stack and commands",
+        "profile detect shows auto-detection results",
+        "profile set updates .ralph.json profile",
+        "config list/get/set manage tool config",
+        "projects list shows discovered projects",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T21:59:22+00:00",
+      "dependsOn": [
+        "013",
+        "005",
+        "006"
+      ],
+      "notes": "Reference docs/SPEC-CLI.md."
+    },
+    {
+      "id": "019",
+      "type": "chore",
+      "priority": 3,
+      "title": "CLI: Error message polish and edge case handling",
+      "description": "Review all CLI commands for consistent error messages (problem + fix), exit codes, and graceful edge case handling.",
+      "acceptanceCriteria": [
+        "All errors include problem AND suggested fix",
+        "Exit codes match spec consistently",
+        "Malformed files produce recovery messages",
+        "--quiet respected across all commands",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:45:26+00:00",
+      "dependsOn": [
+        "015",
+        "016",
+        "017",
+        "018"
+      ]
+    },
+    {
+      "id": "020",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web: Hono server setup — middleware, CSRF, health endpoint",
+      "description": "Set up Hono server on Bun. Bind 127.0.0.1. CSRF middleware for mutations. Static serving. Health endpoint. Error handling middleware.",
+      "acceptanceCriteria": [
+        "Binds to 127.0.0.1 ONLY",
+        "POST/PUT/DELETE without X-Ralph-Request: 403",
+        "With header: proceeds normally",
+        "No CORS headers",
+        "GET /api/health returns version, uptime",
+        "Error responses follow standard format",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:03:16+00:00",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "Reference docs/SPEC-WEB.md server section."
+    },
+    {
+      "id": "021",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web API: Projects routes",
+      "description": "Implement /api/projects endpoints: list, detail, install, init, update, uninstall.",
+      "acceptanceCriteria": [
+        "GET /api/projects returns discovered projects",
+        "GET /api/projects/:id returns detail",
+        "POST install/init/update/uninstall work",
+        ":id validates against ROOT_DIRECTORY",
+        "404 for non-existent projects",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:14:51+00:00",
+      "dependsOn": [
+        "020",
+        "004",
+        "011",
+        "012"
+      ]
+    },
+    {
+      "id": "022",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web API: Backlog CRUD routes",
+      "description": "Implement /api/projects/:id/backlog endpoints: list (with filters), create, read single, update, delete, restore.",
+      "acceptanceCriteria": [
+        "GET with ?status, ?type, ?sort filters",
+        "POST creates item, returns with ID",
+        "GET single item by ID",
+        "PUT updates with transition validation",
+        "DELETE with status restrictions",
+        "POST restore from backup",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:21:06+00:00",
+      "dependsOn": [
+        "020",
+        "009"
+      ]
+    },
+    {
+      "id": "023",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web API: Status routes + SSE log streaming",
+      "description": "Implement status, log, log/stream (SSE), progress endpoints.",
+      "acceptanceCriteria": [
+        "GET status returns DerivedStatus",
+        "GET log?tail=N returns lines",
+        "GET log/stream returns SSE",
+        "SSE emits log/status/heartbeat events",
+        "GET progress returns markdown",
+        "Missing files handled gracefully",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:34:55+00:00",
+      "dependsOn": [
+        "020",
+        "010"
+      ]
+    },
+    {
+      "id": "024",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web API: Profile and config routes",
+      "description": "Implement profile GET/PUT/detect and config GET/PUT routes.",
+      "acceptanceCriteria": [
+        "Profile CRUD works correctly",
+        "Config CRUD works correctly",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:38:54+00:00",
+      "dependsOn": [
+        "020",
+        "005",
+        "006"
+      ]
+    },
+    {
+      "id": "025",
+      "type": "chore",
+      "priority": 3,
+      "title": "Web API: Error handling standardization",
+      "description": "Review all routes for consistent error format. Add Zod validation on request bodies. Handle edge cases.",
+      "acceptanceCriteria": [
+        "All errors follow {error: {code, message, details}}",
+        "Request body validation on POST/PUT",
+        "Edge cases handled (corrupt files, missing projects)",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:55:54+00:00",
+      "dependsOn": [
+        "021",
+        "022",
+        "023",
+        "024"
+      ]
+    },
+    {
+      "id": "026",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: React + TanStack Router + Query setup, app shell",
+      "description": "Set up React SPA with TanStack Router, TanStack Query, Tailwind CSS. Create app shell with sidebar navigation. Shared fetch wrapper with X-Ralph-Request header. Route structure per SPEC-WEB.md.",
+      "acceptanceCriteria": [
+        "React app renders with TanStack Router",
+        "Sidebar navigation works across all routes",
+        "TanStack Query configured with shared fetch wrapper",
+        "Fetch wrapper includes X-Ralph-Request header",
+        "Tailwind CSS working for styling",
+        "Light/dark theme support",
+        "Vite dev server runs for development",
+        "Build produces static assets servable by Hono",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:44:00+00:00",
+      "dependsOn": [
+        "020"
+      ],
+      "notes": "Reference docs/SPEC-WEB.md frontend section."
+    },
+    {
+      "id": "027",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: Projects dashboard",
+      "description": "Implement the projects dashboard view. Card grid of discovered projects with name, stack badge, loop state badge, backlog summary, last activity. Install and Init buttons.",
+      "acceptanceCriteria": [
+        "Dashboard shows all discovered projects as cards",
+        "Each card: name, stack badge, state badge, backlog counts",
+        "Install Ralph button visible for non-ralph projects",
+        "Initialize New Project button available",
+        "Auto-refresh every 30s + manual refresh",
+        "Ignored projects shown muted at bottom",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:50:44+00:00",
+      "dependsOn": [
+        "026"
+      ]
+    },
+    {
+      "id": "028",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: Backlog list view with filtering and sorting",
+      "description": "Implement backlog list view with filter bar (type, status, priority), sort control, summary counts, item cards with badges.",
+      "acceptanceCriteria": [
+        "Items displayed as cards with ID, type, priority, status, title",
+        "Filter by type, status, priority works",
+        "Sort by priority (default), id, status",
+        "Summary counts: Pending | In Progress | Blocked | Done",
+        "Acceptance criteria count shown per item",
+        "Dependencies shown with status indicators",
+        "Active loop warning banner when running",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T22:54:59+00:00",
+      "dependsOn": [
+        "026"
+      ]
+    },
+    {
+      "id": "029",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: Backlog create/edit side panel",
+      "description": "Implement item create and edit in a side panel. Dynamic acceptance criteria list. Status transition enforcement. Dependency selector.",
+      "acceptanceCriteria": [
+        "Add Item opens side panel with form",
+        "Fields: title, type, priority, description, criteria, depends, notes",
+        "Dynamic criteria list: add/remove lines",
+        "Smart default criterion shown with 'auto' badge",
+        "Click existing item opens edit panel",
+        "Status transition enforced (invalid transitions blocked)",
+        "Save performs atomic write, item appears in list",
+        "Delete with confirmation dialog",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:02:21+00:00",
+      "dependsOn": [
+        "028"
+      ]
+    },
+    {
+      "id": "030",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: Status view with loop state and backlog summary",
+      "description": "Implement status view: loop state header, source indicator, timing, backlog summary, current/blocked/recent items.",
+      "acceptanceCriteria": [
+        "Loop state badge prominent (IDLE/RUNNING/COMPLETE/etc.)",
+        "Source indicator: 'via state.json' or 'via log parsing'",
+        "Elapsed time displayed when running",
+        "Backlog summary counts",
+        "In-progress item detail shown",
+        "Blocked items list with reasons",
+        "Recently completed items (last 5)",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:05:00+00:00",
+      "dependsOn": [
+        "026"
+      ]
+    },
+    {
+      "id": "031",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: Live log tail (SSE) and progress.md viewer",
+      "description": "Implement live log tail consuming SSE stream. Monospaced scrollable panel. Auto-scroll with pause-on-scroll-up. Progress.md rendered as markdown below.",
+      "acceptanceCriteria": [
+        "Log panel connects to SSE endpoint",
+        "New lines appear in real-time",
+        "Auto-scrolls to bottom on new content",
+        "Pauses auto-scroll when user scrolls up",
+        "Shows last 50 lines in monospaced font",
+        "Progress.md rendered as formatted markdown",
+        "Graceful handling when log/progress files missing",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:10:57+00:00",
+      "dependsOn": [
+        "030"
+      ]
+    },
+    {
+      "id": "032",
+      "type": "feature",
+      "priority": 3,
+      "title": "Web Frontend: Installation wizard (existing project)",
+      "description": "Implement 6-step installation wizard: Select Target → Preflight → Tech Stack → Configure → Review → Result.",
+      "acceptanceCriteria": [
+        "Step 1: directory path input with validation",
+        "Step 2: preflight checks displayed as checklist",
+        "Step 3: auto-detected profile, all fields editable",
+        "Step 4: project name, gitignore toggle, options",
+        "Step 5: file preview, RALPH.md verification section",
+        "Step 6: installation report with quick links",
+        "Can navigate back and forth between steps",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T04:55:41+00:00",
+      "dependsOn": [
+        "026"
+      ]
+    },
+    {
+      "id": "033",
+      "type": "feature",
+      "priority": 3,
+      "title": "Web Frontend: Greenfield initialization wizard",
+      "description": "Implement 5-step greenfield wizard: Project Info → Tech Stack → Initial Backlog → Review → Result.",
+      "acceptanceCriteria": [
+        "Step 1: name, path, description inputs",
+        "Step 2: preset selection, command fields",
+        "Step 3: empty/import/inline backlog entry",
+        "Step 4: file preview, CLAUDE.md preview",
+        "Step 5: creation report with next steps",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T05:03:37+00:00",
+      "dependsOn": [
+        "026"
+      ]
+    },
+    {
+      "id": "034",
+      "type": "feature",
+      "priority": 3,
+      "title": "Web Frontend: Settings page and project settings panel",
+      "description": "Implement global settings (ROOT_DIRECTORY, port, theme) and per-project settings (profile commands, options, artifact status).",
+      "acceptanceCriteria": [
+        "Global: ROOT_DIRECTORY input triggers re-discovery",
+        "Global: theme toggle works",
+        "Project: profile commands editable",
+        "Project: options toggles work",
+        "Project: re-detect stack button",
+        "Project: artifact hash status display",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T05:10:40+00:00",
+      "dependsOn": [
+        "026"
+      ]
+    },
+    {
+      "id": "035",
+      "type": "feature",
+      "priority": 1,
+      "title": "Artifact: ralph.sh with state.json writes and targeted jq updates",
+      "description": "Create the canonical ralph.sh script in artifacts/variants/backlog-json/. Must use targeted jq writes for backlog status updates and write state.json on every state change. This is the main loop runner.",
+      "acceptanceCriteria": [
+        "Reads backlog.json, finds first pending item by priority",
+        "Marks item in_progress via targeted jq write",
+        "Spawns claude -p per iteration with RALPH.md context",
+        "Detects exit signals: RALPH_DONE, RALPH_BLOCKED, RALPH_NEEDS_HUMAN",
+        "Updates item status via targeted jq write (not full file)",
+        "Writes state.json on every state change",
+        "state.json includes all fields from LoopState schema",
+        "Writes DONE file on completion/pause",
+        "Writes timestamped ralph.log throughout",
+        "Handles max iterations limit",
+        "Script is self-contained (no external deps beyond jq and claude)"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T20:57:34+00:00",
+      "dependsOn": [
+        "002"
+      ],
+      "estimatedIterations": 2,
+      "notes": "Reference docs/SPEC-ARTIFACTS.md and PRD §6.6, §6.7. This is the most critical artifact."
+    },
+    {
+      "id": "036",
+      "type": "feature",
+      "priority": 2,
+      "title": "Artifact: ralph-status.sh and ralph-add.sh scripts",
+      "description": "Create the ralph-status.sh and ralph-add.sh canonical scripts in artifacts/variants/backlog-json/.",
+      "acceptanceCriteria": [
+        "ralph-status.sh reads backlog.json and shows summary counts",
+        "ralph-status.sh reads state.json for loop state if available",
+        "ralph-status.sh shows current item and last log lines",
+        "ralph-add.sh prompts for type, priority, title, description",
+        "ralph-add.sh auto-assigns ID using jq",
+        "ralph-add.sh validates required fields",
+        "Both scripts work standalone with only jq dependency"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:12:50+00:00",
+      "dependsOn": [
+        "035"
+      ]
+    },
+    {
+      "id": "037",
+      "type": "feature",
+      "priority": 2,
+      "title": "Artifact: RALPH.md.tmpl, CLAUDE_ADDON.md, CLAUDE_GREENFIELD.md.tmpl finalization",
+      "description": "Finalize and test all markdown template artifacts. Ensure template variables are correct, sentinel blocks are properly formatted, and content matches PRD specifications.",
+      "acceptanceCriteria": [
+        "RALPH.md.tmpl renders correctly with all template variables",
+        "Sentinel blocks (managed:start/end) properly formatted",
+        "CLAUDE_ADDON.md has ralph:start/end sentinels",
+        "CLAUDE_GREENFIELD.md.tmpl renders with all variables",
+        "Template rendering tests pass for each template",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:17:19+00:00",
+      "dependsOn": [
+        "007"
+      ]
+    },
+    {
+      "id": "038",
+      "type": "feature",
+      "priority": 3,
+      "title": "Artifact embedding for binary compilation",
+      "description": "Embed canonical artifact templates into the compiled binary so ralph install/init work without access to the source repo.",
+      "acceptanceCriteria": [
+        "Artifacts embedded as string constants or bundled assets at build time",
+        "ralph install reads templates from embedded source",
+        "ralph init reads templates from embedded source",
+        "Works after bun build --compile (no file path dependency)",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T05:25:04+00:00",
+      "dependsOn": [
+        "011",
+        "035",
+        "036",
+        "037"
+      ],
+      "notes": "Can be a build script that generates a TypeScript module with template strings."
+    },
+    {
+      "id": "039",
+      "type": "chore",
+      "priority": 2,
+      "title": "Self-hosting validation: ralph install . --yes",
+      "description": "Verify that the ralph tool can install itself. Run ralph install . --yes on the ralph repository and validate the result. Fix any issues with discovery filtering, CLAUDE.md merge, or profile detection.",
+      "acceptanceCriteria": [
+        "ralph install . --yes succeeds with no errors",
+        "Profile correctly detects node-typescript/pnpm/monorepo",
+        "CLAUDE.md ralph section matches canonical addon",
+        "Discovery doesn't false-positive on artifacts/ directory",
+        ".ralph.json is valid and contains correct profile",
+        "All artifact hashes computed and stored",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:22:54+00:00",
+      "dependsOn": [
+        "011",
+        "015"
+      ]
+    },
+    {
+      "id": "040",
+      "type": "feature",
+      "priority": 3,
+      "title": "Binary compilation via bun build --compile",
+      "description": "Set up bun build --compile to produce a single self-contained binary. Binary includes CLI, embedded web server, compiled React frontend, and embedded artifact templates.",
+      "acceptanceCriteria": [
+        "bun build --compile produces a single ralph binary",
+        "Binary includes CLI command handling",
+        "Binary includes Hono web server with embedded React assets",
+        "Binary includes embedded artifact templates",
+        "ralph version works from compiled binary",
+        "ralph server start works from compiled binary",
+        "ralph install works from compiled binary"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T05:41:50+00:00",
+      "dependsOn": [
+        "019",
+        "025",
+        "034",
+        "038"
+      ]
+    },
+    {
+      "id": "041",
+      "type": "chore",
+      "priority": 3,
+      "title": "Integration test suite",
+      "description": "Create end-to-end integration tests: install into fresh project, greenfield init, backlog CRUD cycle, status derivation with mock state files, API round-trips.",
+      "acceptanceCriteria": [
+        "Integration test: install into fresh directory succeeds",
+        "Integration test: greenfield init creates valid project",
+        "Integration test: backlog add/list/edit/delete cycle",
+        "Integration test: status derivation with mock state.json",
+        "Integration test: API endpoint round-trips",
+        "All integration tests pass in CI-like environment",
+        "pnpm test passes (includes integration tests)"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T05:51:49+00:00",
+      "dependsOn": [
+        "025",
+        "019"
+      ]
+    },
+    {
+      "id": "042",
+      "type": "chore",
+      "priority": 3,
+      "title": "Documentation: README, contributing guide, quick start",
+      "description": "Write README.md with overview, installation instructions, quick start guide. Add CONTRIBUTING.md for development setup.",
+      "acceptanceCriteria": [
+        "README.md with: overview, features, installation, quick start",
+        "Quick start covers: install, create project, add items, run loop",
+        "CLI command reference section",
+        "CONTRIBUTING.md with dev setup instructions",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-22T05:55:32+00:00",
+      "dependsOn": [
+        "039"
+      ]
+    },
+    {
+      "id": "043",
+      "type": "feature",
+      "priority": 2,
+      "title": "Model selection: 3-tier model override for ralph sessions",
+      "description": "Allow users to specify which Claude model ralph.sh uses, with three levels of priority: per-task (BacklogItem.model), per-run (CLI arg $3), and project-default (MarkerOptions.model in .ralph.json). When a model is specified, pass --model <model> to the claude -p invocation.",
+      "acceptanceCriteria": [
+        "Add model?: string to BacklogItemSchema (Zod optional field)",
+        "Add model?: string to MarkerOptionsSchema (Zod optional field)",
+        "ralph.sh reads model from CLI arg $3 (./ralph.sh [iterations] [retries] [model])",
+        "ralph.sh reads project-level default from .ralph.json options.model (jq .options.model // empty)",
+        "ralph.sh reads per-item override from backlog item .model field",
+        "Resolution order: item.model > CLI arg > options.model > no flag (Claude default)",
+        "When resolved model is non-empty, passes --model <model> to claude -p",
+        "Existing .ralph.json files without model field continue to work (optional field, no migration)",
+        "Unit tests: schemas accept/reject model field correctly",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:26:25+00:00",
+      "dependsOn": [
+        "002",
+        "035"
+      ],
+      "notes": "Reference docs/SCHEMAS.md and docs/SPEC-ARTIFACTS.md for model field definitions. The --model flag for claude CLI accepts model IDs like claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001."
+    },
+    {
+      "id": "044",
+      "type": "feature",
+      "priority": 2,
+      "title": "Graceful cancel: ralph-stop.sh and CANCEL signal file mechanism",
+      "description": "Implement graceful loop cancellation via a .ralph/CANCEL signal file. The loop checks for this file at each iteration boundary (after the current Claude session completes). On detection, the loop exits cleanly with state paused. A ralph-stop.sh script creates the CANCEL file. Add root symlink and repo-integrity test.",
+      "acceptanceCriteria": [
+        "Create artifacts/variants/backlog-json/ralph-stop.sh that writes .ralph/CANCEL",
+        "ralph.sh checks for .ralph/CANCEL at top of each while-loop iteration (before item selection)",
+        "On CANCEL detection: remove .ralph/CANCEL, write state.json status=paused lastSignal=clean, write DONE file with content 'cancel', exit 0",
+        "Current in-progress item is NOT reset — cancel only fires at iteration boundary, item was already resolved",
+        "ralph-stop.sh symlinked at repo root: ralph-stop.sh -> artifacts/variants/backlog-json/ralph-stop.sh",
+        "repo-integrity.test.ts verifies ralph-stop.sh symlink",
+        "ralph-stop.sh outputs helpful message: 'Cancel requested. Loop will stop after current iteration.'",
+        "pnpm test && pnpm -r typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-21T23:28:53+00:00",
+      "dependsOn": [
+        "035"
+      ],
+      "notes": "Reference docs/SPEC-ARTIFACTS.md for the CANCEL signal file protocol. LoopStateStatus already includes 'paused' — no schema change needed."
+    }
+  ]
+}
