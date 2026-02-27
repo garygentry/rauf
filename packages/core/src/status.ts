@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
-import { readJsonFile, fileExists } from "./fs-utils.js";
+import { readJsonFile, fileExists, atomicWrite } from "./fs-utils.js";
 import { readBacklog } from "./backlog.js";
 import {
   LoopStateSchema,
@@ -19,6 +19,7 @@ const RALPH_DIR = ".ralph";
 const STATE_FILENAME = "state.json";
 const LOG_FILENAME = "ralph.log";
 const DONE_FILENAME = "DONE";
+const CANCEL_FILENAME = "CANCEL";
 
 /** Staleness threshold in milliseconds (5 minutes) */
 const STALENESS_THRESHOLD_MS = 5 * 60 * 1000;
@@ -44,6 +45,10 @@ function getLogPath(projectPath: string): string {
 
 function getDonePath(projectPath: string): string {
   return path.join(path.resolve(projectPath), RALPH_DIR, DONE_FILENAME);
+}
+
+function getCancelPath(projectPath: string): string {
+  return path.join(path.resolve(projectPath), RALPH_DIR, CANCEL_FILENAME);
 }
 
 // ─── BacklogSummary ──────────────────────────────────────────────
@@ -395,6 +400,149 @@ export function watchLog(projectPath: string, callback: (lines: string[]) => voi
   };
 }
 
+// ─── writeLoopState ──────────────────────────────────────────────
+//
+// Atomic write of .ralph/state.json with LoopStateSchema validation.
+// Auto-sets updatedAt to current ISO timestamp before writing.
+
+export function writeLoopState(
+  projectPath: string,
+  state: Omit<LoopState, "updatedAt"> & { updatedAt?: string },
+): Result<void> {
+  const stateWithTimestamp: LoopState = {
+    ...state,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Validate against schema before writing
+  const validation = LoopStateSchema.safeParse(stateWithTimestamp);
+  if (!validation.success) {
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR,
+      message: "Invalid loop state",
+      details: {
+        issues: validation.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      },
+    });
+  }
+
+  const statePath = getStatePath(projectPath);
+  return atomicWrite(statePath, JSON.stringify(validation.data, null, 2) + "\n");
+}
+
+// ─── appendLog ───────────────────────────────────────────────────
+//
+// Append a timestamped line to .ralph/ralph.log.
+// Format: [YYYY-MM-DD HH:MM:SS] message\n
+
+export function appendLog(projectPath: string, message: string): Result<void> {
+  const logPath = getLogPath(projectPath);
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const timestamp = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  const line = `[${timestamp}] ${message}\n`;
+
+  try {
+    fs.appendFileSync(logPath, line, "utf-8");
+    return ok(undefined);
+  } catch (e) {
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Failed to append to log: ${e instanceof Error ? e.message : String(e)}`,
+      details: { path: logPath },
+    });
+  }
+}
+
+// ─── writeDoneFile ───────────────────────────────────────────────
+//
+// Write content string to .ralph/DONE marker file.
+
+export function writeDoneFile(projectPath: string, content: string): Result<void> {
+  const donePath = getDonePath(projectPath);
+
+  try {
+    fs.writeFileSync(donePath, content, "utf-8");
+    return ok(undefined);
+  } catch (e) {
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Failed to write DONE file: ${e instanceof Error ? e.message : String(e)}`,
+      details: { path: donePath },
+    });
+  }
+}
+
+// ─── clearDoneFile ───────────────────────────────────────────────
+//
+// Remove .ralph/DONE file. Returns ok even if file doesn't exist.
+
+export function clearDoneFile(projectPath: string): Result<void> {
+  const donePath = getDonePath(projectPath);
+
+  try {
+    fs.unlinkSync(donePath);
+  } catch (e) {
+    // ENOENT is fine — file didn't exist
+    if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code !== "ENOENT") {
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message: `Failed to clear DONE file: ${e.message}`,
+        details: { path: donePath },
+      });
+    }
+  }
+
+  return ok(undefined);
+}
+
+// ─── checkCancelRequested ────────────────────────────────────────
+//
+// Check if .ralph/CANCEL file exists. Returns boolean directly
+// (not wrapped in Result).
+
+export function checkCancelRequested(projectPath: string): boolean {
+  return fileExists(getCancelPath(projectPath));
+}
+
+// ─── clearCancelFile ─────────────────────────────────────────────
+//
+// Remove .ralph/CANCEL file. Returns whether the file existed.
+
+export function clearCancelFile(projectPath: string): Result<boolean> {
+  const cancelPath = getCancelPath(projectPath);
+
+  try {
+    fs.unlinkSync(cancelPath);
+    return ok(true);
+  } catch (e) {
+    // ENOENT means file didn't exist — return false (not an error)
+    if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code === "ENOENT") {
+      return ok(false);
+    }
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Failed to clear CANCEL file: ${e instanceof Error ? e.message : String(e)}`,
+      details: { path: cancelPath },
+    });
+  }
+}
+
 // ─── Exported constants (for testing) ────────────────────────────
 
-export { RALPH_DIR, LOG_FILENAME, DONE_FILENAME, STALENESS_THRESHOLD_MS, LOG_ACTIVE_THRESHOLD_MS };
+export {
+  RALPH_DIR,
+  LOG_FILENAME,
+  DONE_FILENAME,
+  CANCEL_FILENAME,
+  STALENESS_THRESHOLD_MS,
+  LOG_ACTIVE_THRESHOLD_MS,
+};
