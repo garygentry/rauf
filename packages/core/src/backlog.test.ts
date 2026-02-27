@@ -11,6 +11,8 @@ import {
   deleteItem,
   validateStatusTransition,
   restoreFromBackup,
+  selectNextItem,
+  resetStalledItems,
   BACKLOG_DIR,
   BACKLOG_FILENAME,
   STATE_FILENAME,
@@ -1115,5 +1117,291 @@ describe("restoreFromBackup", () => {
     expect(restored.ok).toBe(true);
     if (!restored.ok) return;
     expect(restored.value.items[0]!.title).toBe("Backup version");
+  });
+});
+
+// ─── selectNextItem ──────────────────────────────────────────────
+
+describe("selectNextItem", () => {
+  it("returns highest-priority pending item", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 3, status: "pending" }),
+      makeItem({ id: "002", priority: 1, status: "pending" }),
+      makeItem({ id: "003", priority: 2, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("002");
+  });
+
+  it("returns null when no pending items exist", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "done", completedAt: "2026-01-01T00:00:00Z" }),
+      makeItem({ id: "002", status: "in_progress" }),
+      makeItem({ id: "003", status: "blocked" }),
+    ]);
+
+    expect(selectNextItem(backlog)).toBeNull();
+  });
+
+  it("returns null for empty backlog", () => {
+    const backlog = makeBacklog([]);
+    expect(selectNextItem(backlog)).toBeNull();
+  });
+
+  it("skips items whose dependsOn includes non-done items", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "pending", dependsOn: ["002"] }),
+      makeItem({ id: "002", priority: 2, status: "in_progress" }),
+      makeItem({ id: "003", priority: 3, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    // 001 has higher priority but depends on 002 which is in_progress
+    expect(result!.id).toBe("003");
+  });
+
+  it("selects item when all dependencies are done", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 2, status: "done", completedAt: "2026-01-01T00:00:00Z" }),
+      makeItem({ id: "002", priority: 1, status: "pending", dependsOn: ["001"] }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("002");
+  });
+
+  it("breaks priority ties by lower item ID (lexicographic)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "003", priority: 1, status: "pending" }),
+      makeItem({ id: "001", priority: 1, status: "pending" }),
+      makeItem({ id: "002", priority: 1, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("001");
+  });
+
+  it("items without dependsOn are always eligible if pending", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 2, status: "pending" }),
+      makeItem({ id: "002", priority: 1, status: "pending", dependsOn: ["003"] }),
+      makeItem({ id: "003", priority: 3, status: "pending" }),
+    ]);
+
+    // 002 has highest priority but depends on 003 (pending, not done)
+    // 001 has no deps, priority 2
+    // 003 has no deps, priority 3
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("001");
+  });
+
+  it("handles diamond dependency pattern", () => {
+    // Diamond: D depends on B and C, B and C depend on A
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "done", completedAt: "2026-01-01T00:00:00Z" }), // A
+      makeItem({
+        id: "002",
+        priority: 1,
+        status: "done",
+        completedAt: "2026-01-02T00:00:00Z",
+        dependsOn: ["001"],
+      }), // B
+      makeItem({
+        id: "003",
+        priority: 1,
+        status: "done",
+        completedAt: "2026-01-03T00:00:00Z",
+        dependsOn: ["001"],
+      }), // C
+      makeItem({ id: "004", priority: 1, status: "pending", dependsOn: ["002", "003"] }), // D
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("004");
+  });
+
+  it("blocks diamond dependency when one branch is not done", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "done", completedAt: "2026-01-01T00:00:00Z" }),
+      makeItem({
+        id: "002",
+        priority: 1,
+        status: "done",
+        completedAt: "2026-01-02T00:00:00Z",
+        dependsOn: ["001"],
+      }),
+      makeItem({ id: "003", priority: 1, status: "in_progress", dependsOn: ["001"] }),
+      makeItem({ id: "004", priority: 1, status: "pending", dependsOn: ["002", "003"] }),
+    ]);
+
+    // 004 depends on 003 which is in_progress — not eligible
+    expect(selectNextItem(backlog)).toBeNull();
+  });
+
+  it("handles missing dependsOn IDs gracefully (treats as unsatisfied)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "pending", dependsOn: ["999"] }),
+    ]);
+
+    // dependsOn references non-existent item — not in done set
+    expect(selectNextItem(backlog)).toBeNull();
+  });
+
+  it("skips blocked and in_progress items", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "blocked" }),
+      makeItem({ id: "002", priority: 1, status: "in_progress" }),
+      makeItem({ id: "003", priority: 2, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("003");
+  });
+
+  it("handles empty dependsOn array as no dependencies", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "pending", dependsOn: [] }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("001");
+  });
+
+  it("complex chain: selects correct item in multi-level dependencies", () => {
+    // A(done) → B(done) → C(pending), D(pending, no deps)
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "done", completedAt: "2026-01-01T00:00:00Z" }),
+      makeItem({
+        id: "002",
+        priority: 1,
+        status: "done",
+        completedAt: "2026-01-02T00:00:00Z",
+        dependsOn: ["001"],
+      }),
+      makeItem({ id: "003", priority: 1, status: "pending", dependsOn: ["002"] }),
+      makeItem({ id: "004", priority: 2, status: "pending" }),
+    ]);
+
+    // Both 003 and 004 are eligible; 003 has higher priority (1 < 2)
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("003");
+  });
+
+  it("tie-breaking uses lexicographic comparison on zero-padded IDs", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "010", priority: 2, status: "pending" }),
+      makeItem({ id: "002", priority: 2, status: "pending" }),
+      makeItem({ id: "009", priority: 2, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("002");
+  });
+});
+
+// ─── resetStalledItems ───────────────────────────────────────────
+
+describe("resetStalledItems", () => {
+  it("resets all in_progress items to pending", () => {
+    writeBacklogRaw(
+      makeBacklog([
+        makeItem({ id: "001", status: "in_progress" }),
+        makeItem({ id: "002", status: "in_progress" }),
+        makeItem({ id: "003", status: "pending" }),
+      ]),
+    );
+
+    const result = resetStalledItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.resetCount).toBe(2);
+
+    // Verify on disk
+    const backlog = readBacklog(tmpDir);
+    expect(backlog.ok).toBe(true);
+    if (!backlog.ok) return;
+
+    expect(backlog.value.items[0]!.status).toBe("pending");
+    expect(backlog.value.items[1]!.status).toBe("pending");
+    expect(backlog.value.items[2]!.status).toBe("pending");
+  });
+
+  it("returns count of reset items", () => {
+    writeBacklogRaw(
+      makeBacklog([
+        makeItem({ id: "001", status: "in_progress" }),
+        makeItem({ id: "002", status: "pending" }),
+        makeItem({ id: "003", status: "in_progress" }),
+        makeItem({ id: "004", status: "done", completedAt: "2026-01-01T00:00:00Z" }),
+      ]),
+    );
+
+    const result = resetStalledItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.resetCount).toBe(2);
+  });
+
+  it("handles empty backlog gracefully", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const result = resetStalledItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.resetCount).toBe(0);
+  });
+
+  it("handles no in_progress items gracefully", () => {
+    writeBacklogRaw(
+      makeBacklog([
+        makeItem({ id: "001", status: "pending" }),
+        makeItem({ id: "002", status: "done", completedAt: "2026-01-01T00:00:00Z" }),
+        makeItem({ id: "003", status: "blocked" }),
+      ]),
+    );
+
+    const result = resetStalledItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.resetCount).toBe(0);
+  });
+
+  it("returns error when backlog.json is missing", () => {
+    // .ralph dir exists but no backlog.json
+    const result = resetStalledItems(tmpDir);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.error.code).toBe(ErrorCodes.FILE_NOT_FOUND);
+  });
+
+  it("uses updateItem for proper validation", () => {
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
+
+    const result = resetStalledItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Verify item was properly reset on disk
+    const backlog = readBacklog(tmpDir);
+    expect(backlog.ok).toBe(true);
+    if (!backlog.ok) return;
+
+    expect(backlog.value.items[0]!.status).toBe("pending");
   });
 });

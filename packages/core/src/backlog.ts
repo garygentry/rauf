@@ -157,9 +157,7 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
     ...(input.estimatedIterations !== undefined
       ? { estimatedIterations: input.estimatedIterations }
       : {}),
-    ...(input.agentDelegation !== undefined
-      ? { agentDelegation: input.agentDelegation }
-      : {}),
+    ...(input.agentDelegation !== undefined ? { agentDelegation: input.agentDelegation } : {}),
     ...(input.specReferences !== undefined ? { specReferences: input.specReferences } : {}),
   };
 
@@ -239,8 +237,7 @@ export function updateItem(
   if (updates.notes !== undefined) updatedItem.notes = updates.notes;
   if (updates.estimatedIterations !== undefined)
     updatedItem.estimatedIterations = updates.estimatedIterations;
-  if (updates.agentDelegation !== undefined)
-    updatedItem.agentDelegation = updates.agentDelegation;
+  if (updates.agentDelegation !== undefined) updatedItem.agentDelegation = updates.agentDelegation;
   if (updates.specReferences !== undefined) updatedItem.specReferences = updates.specReferences;
 
   // 5. Auto-set completedAt on done
@@ -331,6 +328,55 @@ export function restoreFromBackup(projectPath: string): Result<void> {
       details: { path: bakPath },
     });
   }
+}
+
+// ─── selectNextItem ──────────────────────────────────────────────
+//
+// Returns the highest-priority pending item whose dependencies are
+// all done. Returns null if no eligible items exist.
+// Ties in priority broken by lower item ID (lexicographic).
+
+export function selectNextItem(backlog: Backlog): BacklogItem | null {
+  // Build a set of done item IDs for O(1) lookup
+  const doneIds = new Set(backlog.items.filter((i) => i.status === "done").map((i) => i.id));
+
+  // Filter to pending items with all dependencies satisfied
+  const eligible = backlog.items.filter((item) => {
+    if (item.status !== "pending") return false;
+    const deps = item.dependsOn ?? [];
+    return deps.every((depId) => doneIds.has(depId));
+  });
+
+  if (eligible.length === 0) return null;
+
+  // Sort by priority (ascending), then by ID (lexicographic ascending)
+  eligible.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.id.localeCompare(b.id);
+  });
+
+  return eligible[0]!;
+}
+
+// ─── resetStalledItems ───────────────────────────────────────────
+//
+// Reads backlog, resets all in_progress items to pending via
+// updateItem. Returns count of reset items.
+
+export function resetStalledItems(projectPath: string): Result<{ resetCount: number }> {
+  const backlogResult = readBacklog(projectPath);
+  if (!backlogResult.ok) return backlogResult;
+
+  const inProgressItems = backlogResult.value.items.filter((i) => i.status === "in_progress");
+
+  let resetCount = 0;
+  for (const item of inProgressItems) {
+    const result = updateItem(projectPath, item.id, { status: "pending" });
+    if (!result.ok) return result;
+    resetCount++;
+  }
+
+  return ok({ resetCount });
 }
 
 // ─── Exported constants (for testing) ────────────────────────────
