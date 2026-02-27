@@ -135,8 +135,8 @@
         "Unit tests for all signal parsing cases and git commit success/failure",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T13:08:18-08:00",
       "dependsOn": [
         "005"
       ],
