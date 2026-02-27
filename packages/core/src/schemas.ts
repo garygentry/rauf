@@ -253,6 +253,146 @@ export const SweepResultSchema = z.object({
   archivedMonths: z.array(z.string()),
 });
 
+// ─── LoopStartOptions ─────────────────────────────────────────────
+
+export const LoopStartOptionsSchema = z.object({
+  maxIterations: z.number().int().positive(),
+  maxRetries: z.number().int().positive(),
+  model: z.string().optional(),
+  sessionTimeoutMinutes: z.number().int().positive(),
+});
+
+// ─── LoopEvent (discriminated union) ──────────────────────────────
+
+const LoopEventBaseSchema = z.object({
+  timestamp: z.string(),
+  projectPath: z.string(),
+});
+
+const LoopEventLimitTypeSchema = z.enum(["5h", "7d"]);
+
+const LoopStartedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_started"),
+  maxIterations: z.number().int().positive(),
+  model: z.string().optional(),
+});
+
+const IterationStartSchema = LoopEventBaseSchema.extend({
+  type: z.literal("iteration_start"),
+  iteration: z.number().int().positive(),
+  maxIterations: z.number().int().positive(),
+});
+
+const ItemSelectedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("item_selected"),
+  itemId: z.string(),
+  title: z.string(),
+  priority: z.number().int(),
+});
+
+const ClaudeSpawnedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("claude_spawned"),
+  itemId: z.string(),
+  model: z.string().optional(),
+  timeoutMinutes: z.number().int().positive(),
+});
+
+const ClaudeExitedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("claude_exited"),
+  itemId: z.string(),
+  exitCode: z.number().int(),
+  timedOut: z.boolean(),
+  durationMs: z.number().nonnegative(),
+});
+
+const SignalParsedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("signal_parsed"),
+  itemId: z.string(),
+  signal: z.enum(["done", "blocked", "needs_human", "none"]),
+  reason: z.string().optional(),
+});
+
+const ItemCompletedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("item_completed"),
+  itemId: z.string(),
+  title: z.string(),
+});
+
+const ItemBlockedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("item_blocked"),
+  itemId: z.string(),
+  reason: z.string(),
+});
+
+const ItemRetriedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("item_retried"),
+  itemId: z.string(),
+  attempt: z.number().int().positive(),
+  maxRetries: z.number().int().positive(),
+});
+
+const NeedsHumanSchema = LoopEventBaseSchema.extend({
+  type: z.literal("needs_human"),
+  itemId: z.string(),
+  reason: z.string(),
+});
+
+const UsageLimitHitSchema = LoopEventBaseSchema.extend({
+  type: z.literal("usage_limit_hit"),
+  limitType: LoopEventLimitTypeSchema,
+  utilization: z.number(),
+});
+
+const UsageLimitClearedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("usage_limit_cleared"),
+  limitType: LoopEventLimitTypeSchema,
+});
+
+const SleepStartSchema = LoopEventBaseSchema.extend({
+  type: z.literal("sleep_start"),
+  sleepUntil: z.string(),
+  reason: z.string(),
+});
+
+const SleepEndSchema = LoopEventBaseSchema.extend({
+  type: z.literal("sleep_end"),
+});
+
+const LoopCompletedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_completed"),
+  completedCount: z.number().int().nonnegative(),
+  blockedCount: z.number().int().nonnegative(),
+});
+
+const LoopErrorSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_error"),
+  error: z.string(),
+});
+
+const LoopCancelledSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_cancelled"),
+});
+
+export const LoopEventSchema = z.discriminatedUnion("type", [
+  LoopStartedSchema,
+  IterationStartSchema,
+  ItemSelectedSchema,
+  ClaudeSpawnedSchema,
+  ClaudeExitedSchema,
+  SignalParsedSchema,
+  ItemCompletedSchema,
+  ItemBlockedSchema,
+  ItemRetriedSchema,
+  NeedsHumanSchema,
+  UsageLimitHitSchema,
+  UsageLimitClearedSchema,
+  SleepStartSchema,
+  SleepEndSchema,
+  LoopCompletedSchema,
+  LoopErrorSchema,
+  LoopCancelledSchema,
+]);
+
 // ─── Inferred Types ────────────────────────────────────────────────
 
 export type BacklogItemType = z.infer<typeof BacklogItemTypeSchema>;
@@ -279,3 +419,5 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type RalphError = z.infer<typeof RalphErrorSchema>;
 export type ArchiveMonth = z.infer<typeof ArchiveMonthSchema>;
 export type SweepResult = z.infer<typeof SweepResultSchema>;
+export type LoopStartOptions = z.infer<typeof LoopStartOptionsSchema>;
+export type LoopEvent = z.infer<typeof LoopEventSchema>;
