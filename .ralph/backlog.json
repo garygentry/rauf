@@ -160,8 +160,8 @@
         "Unit tests with mock project files verify prompt structure and content",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-02-27T13:12:16-08:00",
       "dependsOn": [
         "005"
       ],
