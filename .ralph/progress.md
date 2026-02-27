@@ -356,3 +356,16 @@
 - `index.ts` already has `export * from "./status.js"` — no changes needed to re-export new functions
 - 31 new tests, total 647 in core package (79 in status.test.ts)
 - Pre-existing failures: 2 config test failures (cli + web), web/docs build failures (Node.js version), format issues in 6 unrelated files
+
+### 009: claude-process.ts (completed)
+- `spawnClaude(prompt, options)` spawns `claude -p` with `--dangerously-skip-permissions` and `--output-format text` flags
+- Uses `node:child_process.spawn()` with `detached: true` to create process group — enables clean tree kills via `process.kill(-pid, signal)`
+- `killTree()` helper sends signal to process group (negative PID), falls back to direct `proc.kill()` if group kill fails
+- Timeout: `setTimeout` at `sessionTimeoutMinutes * 60 * 1000` → SIGTERM → 30s grace (`GRACE_PERIOD_MS`) → SIGKILL
+- AbortController signal: listens for `abort` event, kills process with SIGTERM (not marked as `timedOut`)
+- EPIPE handling: `proc.stdin!.on("error", () => {})` — swallows EPIPE errors when process exits before reading all stdin
+- Mock testing pattern: create temp dir with executable `claude` bash script, prepend to PATH — allows testing without real claude binary
+- `exec sleep 999` in mock scripts makes sleep respond to SIGTERM directly (without `exec`, bash's child `sleep` survives parent SIGTERM)
+- Returns `Result<SpawnClaudeResult>` — `ok` on normal completion (even with non-zero exit), `err` only on spawn failure (ENOENT)
+- Timer container pattern (`const timers = {}`) avoids ESLint `prefer-const` errors for variables assigned after declaration
+- 15 new tests, total 104 in loop package
