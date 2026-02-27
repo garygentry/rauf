@@ -6,10 +6,11 @@
 // In compiled binary mode, serves the React SPA from embedded assets.
 // In dev mode, the Vite dev server handles frontend assets separately.
 
-import { readToolConfig } from "@ralph/core";
+import { readToolConfig, resolveRootDirectory } from "@ralph/core";
 
 import { createApp } from "./app.js";
 import { EMBEDDED_ASSETS, getAssetMimeType } from "./embedded-assets.js";
+import { getLoopManager } from "./loop-manager.js";
 
 export interface StartServerOptions {
   /** Override port (default: from config or 5173) */
@@ -63,4 +64,20 @@ export function startServer(options?: StartServerOptions): void {
   });
 
   console.log(`Ralph web server running at http://127.0.0.1:${port}`);
+
+  // ── Recover stale loops on startup ────────────────────────────
+  const rootDirectory = configResult.ok ? configResult.value.rootDirectory : resolveRootDirectory();
+  const manager = getLoopManager();
+  manager.recoverStaleLoops(rootDirectory).catch((err) => {
+    console.error("Failed to recover stale loops:", err);
+  });
+
+  // ── Graceful shutdown on SIGTERM ──────────────────────────────
+  process.on("SIGTERM", () => {
+    console.log("SIGTERM received, shutting down loops...");
+    manager.shutdownAll().then(
+      () => process.exit(0),
+      () => process.exit(1),
+    );
+  });
 }

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { VERSION, readToolConfig, resolveRootDirectory, discoverProjects } from "@ralph/core";
 import { createProjectsRouter } from "./routes/projects.js";
 import { createStatusRouter } from "./routes/status.js";
+import { createLoopRouter } from "./routes/loop.js";
 import { createProfileRouter, createConfigRouter } from "./routes/profile-config.js";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -93,6 +94,10 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
   // ── Status / log / progress routes ───────────────────────────
 
   app.route("/api/projects", createStatusRouter(appOptions.rootDirectory));
+
+  // ── Loop routes ─────────────────────────────────────────────
+
+  app.route("/api/projects", createLoopRouter(appOptions.rootDirectory));
 
   // ── Profile routes ────────────────────────────────────────────
 
