@@ -1,0 +1,694 @@
+import type { LoopStartOptions, LoopEvent, LoopState, Backlog } from "@ralph/core";
+import {
+  readBacklog,
+  selectNextItem,
+  updateItem,
+  readMarkerFile,
+  readClaudeOAuthToken,
+  writeLoopState,
+  appendLog,
+  writeDoneFile,
+  clearDoneFile,
+  checkCancelRequested,
+  clearCancelFile,
+  sweepBacklog,
+} from "@ralph/core";
+
+import { TypedEventEmitter } from "./events.js";
+import { spawnClaude } from "./claude-process.js";
+import { parseSignal } from "./signal-parser.js";
+import { buildPrompt } from "./prompt-builder.js";
+import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
+import { gitCommit } from "./git-commit.js";
+
+// ─── Types ──────────────────────────────────────────────────────────
+
+/** Result returned when the loop finishes */
+export interface LoopResult {
+  completedCount: number;
+  blockedCount: number;
+  cancelled: boolean;
+}
+
+/** Usage limit patterns detected in stderr (case-insensitive) */
+const USAGE_LIMIT_PATTERNS = [
+  "usage limit",
+  "rate limit",
+  "claude ai usage limit",
+  "too many requests",
+];
+
+// ─── LoopRunner ─────────────────────────────────────────────────────
+
+export class LoopRunner extends TypedEventEmitter {
+  private readonly projectPath: string;
+  private readonly options: LoopStartOptions;
+  private readonly abortController: AbortController;
+  private iterationCount = 0;
+  private completedCount = 0;
+  private blockedCount = 0;
+  private completedItemIds: string[] = [];
+  private blockedItemIds: string[] = [];
+  private currentItemId: string | null = null;
+  private startedAt: string = "";
+  private retryCounts: Map<string, number> = new Map();
+
+  constructor(projectPath: string, options: LoopStartOptions) {
+    super();
+    this.projectPath = projectPath;
+    this.options = options;
+    this.abortController = new AbortController();
+  }
+
+  /** Trigger graceful cancellation via AbortController signal */
+  cancel(): void {
+    this.abortController.abort();
+  }
+
+  /** Run the main loop. Resolves with LoopResult when done. */
+  async start(): Promise<LoopResult> {
+    this.startedAt = new Date().toISOString();
+
+    try {
+      // (1) Clear DONE and CANCEL files at startup
+      clearDoneFile(this.projectPath);
+      clearCancelFile(this.projectPath);
+
+      // (2) Read .ralph.json marker for project-level options
+      const markerResult = readMarkerFile(this.projectPath);
+      let autoSweep = false;
+      let sweepMinAgeDays = 0;
+      let projectModel: string | undefined;
+
+      if (markerResult.ok) {
+        const opts = markerResult.value.options;
+        autoSweep = opts.autoSweep ?? false;
+        sweepMinAgeDays = opts.sweepMinAgeDays ?? 0;
+        projectModel = opts.model;
+      }
+
+      // (3) Auto-sweep if enabled
+      if (autoSweep) {
+        appendLog(this.projectPath, "Auto-sweep enabled, sweeping completed items");
+        sweepBacklog(this.projectPath, { minAgeDays: sweepMinAgeDays });
+      }
+
+      // Write initial state
+      this.writeState("starting", null);
+
+      // (4) Pre-loop usage limit preflight
+      const preflightResult = await this.runUsagePreflight();
+      if (preflightResult === "exit") {
+        return { completedCount: 0, blockedCount: 0, cancelled: false };
+      }
+
+      // Emit loop_started
+      this.emitEvent("loop_started", {
+        maxIterations: this.options.maxIterations,
+        model: this.options.model ?? projectModel,
+      });
+      appendLog(this.projectPath, `Loop started (maxIterations=${this.options.maxIterations})`);
+      this.writeState("running", null);
+
+      // (5) Main loop
+      while (this.iterationCount < this.options.maxIterations) {
+        // Check cancellation at iteration boundary
+        if (this.isCancelled()) {
+          appendLog(this.projectPath, "Loop cancelled");
+          this.emitEvent("loop_cancelled", {});
+          this.writeState("paused", null);
+          writeDoneFile(this.projectPath, "cancel");
+          return {
+            completedCount: this.completedCount,
+            blockedCount: this.blockedCount,
+            cancelled: true,
+          };
+        }
+
+        this.iterationCount++;
+        this.emitEvent("iteration_start", {
+          iteration: this.iterationCount,
+          maxIterations: this.options.maxIterations,
+        });
+        appendLog(
+          this.projectPath,
+          `--- Iteration ${this.iterationCount} / ${this.options.maxIterations} ---`,
+        );
+
+        // Select next item
+        const backlogResult = readBacklog(this.projectPath);
+        if (!backlogResult.ok) {
+          appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
+          this.emitEvent("loop_error", { error: backlogResult.error.message });
+          break;
+        }
+
+        const backlog: Backlog = backlogResult.value;
+        const item = selectNextItem(backlog);
+
+        if (!item) {
+          appendLog(this.projectPath, "No eligible items found, loop complete");
+          break;
+        }
+
+        this.currentItemId = item.id;
+        this.emitEvent("item_selected", {
+          itemId: item.id,
+          title: item.title,
+          priority: item.priority,
+        });
+        appendLog(this.projectPath, `Selected item ${item.id}: ${item.title}`);
+
+        // Mark item as in_progress
+        const markResult = updateItem(this.projectPath, item.id, {
+          status: "in_progress",
+        });
+        if (!markResult.ok) {
+          appendLog(
+            this.projectPath,
+            `Failed to mark item ${item.id} in_progress: ${markResult.error.message}`,
+          );
+          break;
+        }
+        this.writeState("running", item.id);
+
+        // Resolve model: item.model > options.model
+        const resolvedModel = item.model ?? this.options.model ?? projectModel;
+
+        // Build prompt
+        // Re-read backlog since we just updated the item status
+        const freshBacklog = readBacklog(this.projectPath);
+        const promptBacklog = freshBacklog.ok ? freshBacklog.value : backlog;
+        const promptResult = buildPrompt(this.projectPath, item, promptBacklog);
+        if (!promptResult.ok) {
+          appendLog(this.projectPath, `Failed to build prompt: ${promptResult.error.message}`);
+          // Reset item to pending since we couldn't process it
+          updateItem(this.projectPath, item.id, { status: "pending" });
+          this.currentItemId = null;
+          continue;
+        }
+
+        // Spawn claude
+        this.emitEvent("claude_spawned", {
+          itemId: item.id,
+          model: resolvedModel,
+          timeoutMinutes: this.options.sessionTimeoutMinutes,
+        });
+        appendLog(
+          this.projectPath,
+          `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
+        );
+
+        const claudeResult = await spawnClaude(promptResult.value, {
+          sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
+          model: resolvedModel,
+          signal: this.abortController.signal,
+        });
+
+        if (!claudeResult.ok) {
+          appendLog(this.projectPath, `Failed to spawn claude: ${claudeResult.error.message}`);
+          updateItem(this.projectPath, item.id, { status: "pending" });
+          this.currentItemId = null;
+          this.emitEvent("loop_error", { error: claudeResult.error.message });
+          break;
+        }
+
+        const { exitCode, stdout, stderr, timedOut, durationMs } = claudeResult.value;
+        this.emitEvent("claude_exited", {
+          itemId: item.id,
+          exitCode,
+          timedOut,
+          durationMs,
+        });
+        appendLog(
+          this.projectPath,
+          `Claude exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
+        );
+
+        // Check stderr for usage limit patterns BEFORE normal signal parsing
+        if (exitCode !== 0 && this.hasUsageLimitInStderr(stderr)) {
+          appendLog(this.projectPath, "Usage limit detected in stderr");
+          // Reset item to pending
+          updateItem(this.projectPath, item.id, { status: "pending" });
+          this.currentItemId = null;
+
+          // Check API for 5h vs 7d
+          const stderrLimitResult = await this.handleStderrUsageLimit();
+          if (stderrLimitResult === "exit") {
+            return {
+              completedCount: this.completedCount,
+              blockedCount: this.blockedCount,
+              cancelled: false,
+            };
+          }
+          // If we get here, we slept through a 5h limit and can continue
+          continue;
+        }
+
+        // Parse signal from stdout
+        const parsed = parseSignal(stdout);
+        this.emitEvent("signal_parsed", {
+          itemId: item.id,
+          signal: parsed.signal,
+          reason: parsed.reason,
+        });
+        appendLog(
+          this.projectPath,
+          `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`,
+        );
+
+        // Handle signal
+        switch (parsed.signal) {
+          case "done": {
+            updateItem(this.projectPath, item.id, { status: "done" });
+            this.completedCount++;
+            this.completedItemIds.push(item.id);
+            this.emitEvent("item_completed", {
+              itemId: item.id,
+              title: item.title,
+            });
+            appendLog(this.projectPath, `Item ${item.id} completed: ${item.title}`);
+            this.writeState("running", null, "clean");
+
+            // Auto-commit
+            const commitResult = await gitCommit(this.projectPath, item.id, item.title);
+            if (commitResult.ok && commitResult.value.commitHash) {
+              appendLog(this.projectPath, `Committed: ${commitResult.value.commitHash}`);
+            }
+            break;
+          }
+
+          case "blocked": {
+            const reason = parsed.reason ?? "No reason provided";
+            updateItem(this.projectPath, item.id, {
+              status: "blocked",
+              blockedReason: reason,
+            });
+            this.blockedCount++;
+            this.blockedItemIds.push(item.id);
+            this.emitEvent("item_blocked", {
+              itemId: item.id,
+              reason,
+            });
+            appendLog(this.projectPath, `Item ${item.id} blocked: ${reason}`);
+            this.writeState("running", null, "blocked");
+            break;
+          }
+
+          case "needs_human": {
+            const reason = parsed.reason ?? "No reason provided";
+            // IMPORTANT: Leave item as in_progress (do NOT reset)
+            // Clear currentItemId so the finally block doesn't reset it to pending
+            this.currentItemId = null;
+            this.emitEvent("needs_human", {
+              itemId: item.id,
+              reason,
+            });
+            appendLog(this.projectPath, `Item ${item.id} needs human input: ${reason}`);
+            this.writeState("paused_human", item.id, "needs_human");
+            writeDoneFile(this.projectPath, `needs_human: ${reason}`);
+            return {
+              completedCount: this.completedCount,
+              blockedCount: this.blockedCount,
+              cancelled: false,
+            };
+          }
+
+          case "none": {
+            // No signal — retry logic
+            const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
+            this.retryCounts.set(item.id, retries);
+
+            if (retries >= this.options.maxRetries) {
+              // Max retries reached — mark as blocked
+              const reason = `No signal after ${retries} attempts`;
+              updateItem(this.projectPath, item.id, {
+                status: "blocked",
+                blockedReason: reason,
+              });
+              this.blockedCount++;
+              this.blockedItemIds.push(item.id);
+              this.emitEvent("item_blocked", {
+                itemId: item.id,
+                reason,
+              });
+              appendLog(this.projectPath, `Item ${item.id} blocked after ${retries} retries`);
+              this.writeState("running", null, "error");
+            } else {
+              // Re-queue: reset to pending for retry
+              updateItem(this.projectPath, item.id, { status: "pending" });
+              this.emitEvent("item_retried", {
+                itemId: item.id,
+                attempt: retries,
+                maxRetries: this.options.maxRetries,
+              });
+              appendLog(
+                this.projectPath,
+                `Item ${item.id} retry ${retries}/${this.options.maxRetries}`,
+              );
+            }
+            break;
+          }
+        }
+
+        this.currentItemId = null;
+
+        // Between iterations: check usage limits and cancellation
+        if (this.iterationCount < this.options.maxIterations) {
+          const betweenResult = await this.checkBetweenIterations();
+          if (betweenResult === "exit") {
+            return {
+              completedCount: this.completedCount,
+              blockedCount: this.blockedCount,
+              cancelled: this.isCancelled(),
+            };
+          }
+        }
+      }
+
+      // Loop ended
+      if (this.iterationCount >= this.options.maxIterations) {
+        // Max iterations reached
+        appendLog(this.projectPath, `Max iterations reached (${this.options.maxIterations})`);
+        this.writeState("limit_reached", null);
+        this.emitEvent("loop_completed", {
+          completedCount: this.completedCount,
+          blockedCount: this.blockedCount,
+        });
+        const summary = this.buildSummary();
+        writeDoneFile(this.projectPath, summary);
+      } else {
+        // No more items or loop completed naturally
+        this.writeState("complete", null);
+        this.emitEvent("loop_completed", {
+          completedCount: this.completedCount,
+          blockedCount: this.blockedCount,
+        });
+        const summary = this.buildSummary();
+        writeDoneFile(this.projectPath, summary);
+        appendLog(this.projectPath, "Loop completed");
+      }
+
+      return {
+        completedCount: this.completedCount,
+        blockedCount: this.blockedCount,
+        cancelled: false,
+      };
+    } catch (e) {
+      // Crash cleanup: reset in_progress item to pending
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      appendLog(this.projectPath, `Loop error: ${errorMsg}`);
+      this.emitEvent("loop_error", { error: errorMsg });
+      this.writeState("error", null, "error", errorMsg);
+      throw e;
+    } finally {
+      // Reset in_progress item on crash/unexpected termination
+      if (this.currentItemId) {
+        try {
+          updateItem(this.projectPath, this.currentItemId, { status: "pending" });
+          appendLog(
+            this.projectPath,
+            `Reset item ${this.currentItemId} to pending (crash cleanup)`,
+          );
+        } catch {
+          // Best effort
+        }
+        this.currentItemId = null;
+      }
+    }
+  }
+
+  // ─── Private helpers ──────────────────────────────────────────────
+
+  /** Check if cancellation has been requested via AbortController or CANCEL file */
+  private isCancelled(): boolean {
+    if (this.abortController.signal.aborted) return true;
+    return checkCancelRequested(this.projectPath);
+  }
+
+  /** Emit a typed LoopEvent with base fields */
+  private emitEvent<T extends LoopEvent["type"]>(
+    type: T,
+    payload: Omit<Extract<LoopEvent, { type: T }>, "type" | "timestamp" | "projectPath">,
+  ): void {
+    const event = {
+      type,
+      timestamp: new Date().toISOString(),
+      projectPath: this.projectPath,
+      ...payload,
+    } as Extract<LoopEvent, { type: T }>;
+
+    this.emit(type, event);
+  }
+
+  /** Write state.json via core helper */
+  private writeState(
+    status: LoopState["status"],
+    currentItem: string | null,
+    lastSignal?: LoopState["lastSignal"],
+    error?: string,
+  ): void {
+    writeLoopState(this.projectPath, {
+      status,
+      iteration: this.iterationCount,
+      maxIterations: this.options.maxIterations,
+      currentItem,
+      lastSignal: lastSignal ?? "clean",
+      startedAt: this.startedAt,
+      completedItems: this.completedItemIds,
+      blockedItems: this.blockedItemIds,
+      error: error ?? null,
+    });
+  }
+
+  /** Check stderr for usage limit patterns (case-insensitive) */
+  private hasUsageLimitInStderr(stderr: string): boolean {
+    const lower = stderr.toLowerCase();
+    return USAGE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+  }
+
+  /** Run pre-loop usage limit preflight check */
+  private async runUsagePreflight(): Promise<"continue" | "exit"> {
+    const tokenResult = readClaudeOAuthToken();
+    if (!tokenResult.ok) {
+      // Can't read token — proceed with reactive-only detection
+      appendLog(this.projectPath, "OAuth token unavailable, skipping usage preflight");
+      return "continue";
+    }
+
+    const usageResult = await checkUsageLimit(tokenResult.value);
+
+    if (!usageResult.limited) {
+      return "continue";
+    }
+
+    if (usageResult.limitType === "7d") {
+      // Weekly limit — write DONE and exit
+      const resetsAt = usageResult.resetsAt ?? "unknown";
+      appendLog(this.projectPath, `Weekly usage limit reached (resets at ${resetsAt})`);
+      this.emitEvent("usage_limit_hit", {
+        limitType: "7d",
+        utilization: usageResult.utilization ?? 100,
+      });
+      this.writeState("weekly_limit", null);
+      writeDoneFile(this.projectPath, `weekly_limit:${resetsAt}`);
+      return "exit";
+    }
+
+    if (usageResult.limitType === "5h") {
+      // 5-hour limit — sleep until reset
+      const resetsAt = usageResult.resetsAt ?? "";
+      const retryAfter = usageResult.retryAfter ?? 0;
+      appendLog(
+        this.projectPath,
+        `5-hour usage limit reached, sleeping until ${resetsAt} (${retryAfter}s)`,
+      );
+      this.emitEvent("usage_limit_hit", {
+        limitType: "5h",
+        utilization: usageResult.utilization ?? 100,
+      });
+      this.emitEvent("sleep_start", {
+        sleepUntil: resetsAt,
+        reason: "5-hour usage limit",
+      });
+      this.writeState("sleeping_limit", null);
+
+      await interruptibleSleep(retryAfter * 1000, this.abortController.signal, () =>
+        this.writeState("sleeping_limit", null),
+      );
+
+      this.emitEvent("sleep_end", {});
+      appendLog(this.projectPath, "Woke from usage limit sleep");
+
+      if (this.isCancelled()) {
+        appendLog(this.projectPath, "Loop cancelled during sleep");
+        this.emitEvent("loop_cancelled", {});
+        writeDoneFile(this.projectPath, "cancel");
+        return "exit";
+      }
+
+      this.emitEvent("usage_limit_cleared", { limitType: "5h" });
+    }
+
+    return "continue";
+  }
+
+  /** Handle usage limit detected via stderr mid-loop */
+  private async handleStderrUsageLimit(): Promise<"continue" | "exit"> {
+    const tokenResult = readClaudeOAuthToken();
+    if (!tokenResult.ok) {
+      // Can't check API — treat as 5h limit with short sleep
+      appendLog(this.projectPath, "OAuth token unavailable for usage check, sleeping 60s");
+      this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
+      this.emitEvent("sleep_start", {
+        sleepUntil: new Date(Date.now() + 60_000).toISOString(),
+        reason: "Usage limit (API unavailable)",
+      });
+      this.writeState("sleeping_limit", null);
+      await interruptibleSleep(60_000, this.abortController.signal, () =>
+        this.writeState("sleeping_limit", null),
+      );
+      this.emitEvent("sleep_end", {});
+      if (this.isCancelled()) {
+        writeDoneFile(this.projectPath, "cancel");
+        return "exit";
+      }
+      return "continue";
+    }
+
+    const usageResult = await checkUsageLimit(tokenResult.value);
+
+    if (!usageResult.limited) {
+      // API says we're not limited — proceed
+      return "continue";
+    }
+
+    if (usageResult.limitType === "7d") {
+      // Weekly limit — exit
+      const resetsAt = usageResult.resetsAt ?? "unknown";
+      appendLog(this.projectPath, `Weekly usage limit detected (resets at ${resetsAt})`);
+      this.emitEvent("usage_limit_hit", {
+        limitType: "7d",
+        utilization: usageResult.utilization ?? 100,
+      });
+      this.writeState("weekly_limit", null);
+      writeDoneFile(this.projectPath, `weekly_limit:${resetsAt}`);
+      return "exit";
+    }
+
+    // 5-hour limit — sleep
+    const resetsAt = usageResult.resetsAt ?? "";
+    const retryAfter = usageResult.retryAfter ?? 0;
+    appendLog(
+      this.projectPath,
+      `5-hour usage limit detected, sleeping until ${resetsAt} (${retryAfter}s)`,
+    );
+    this.emitEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: usageResult.utilization ?? 100,
+    });
+    this.emitEvent("sleep_start", {
+      sleepUntil: resetsAt,
+      reason: "5-hour usage limit (stderr)",
+    });
+    this.writeState("sleeping_limit", null);
+
+    await interruptibleSleep(retryAfter * 1000, this.abortController.signal, () =>
+      this.writeState("sleeping_limit", null),
+    );
+
+    this.emitEvent("sleep_end", {});
+    appendLog(this.projectPath, "Woke from usage limit sleep");
+
+    if (this.isCancelled()) {
+      appendLog(this.projectPath, "Loop cancelled during sleep");
+      writeDoneFile(this.projectPath, "cancel");
+      return "exit";
+    }
+
+    this.emitEvent("usage_limit_cleared", { limitType: "5h" });
+    return "continue";
+  }
+
+  /** Check usage limits between iterations */
+  private async checkBetweenIterations(): Promise<"continue" | "exit"> {
+    // Check cancellation
+    if (this.isCancelled()) {
+      appendLog(this.projectPath, "Loop cancelled between iterations");
+      this.emitEvent("loop_cancelled", {});
+      this.writeState("paused", null);
+      writeDoneFile(this.projectPath, "cancel");
+      return "exit";
+    }
+
+    const tokenResult = readClaudeOAuthToken();
+    if (!tokenResult.ok) {
+      return "continue";
+    }
+
+    const usageResult = await checkUsageLimit(tokenResult.value);
+    if (!usageResult.limited) {
+      return "continue";
+    }
+
+    if (usageResult.limitType === "7d") {
+      const resetsAt = usageResult.resetsAt ?? "unknown";
+      appendLog(
+        this.projectPath,
+        `Weekly usage limit hit between iterations (resets at ${resetsAt})`,
+      );
+      this.emitEvent("usage_limit_hit", {
+        limitType: "7d",
+        utilization: usageResult.utilization ?? 100,
+      });
+      this.writeState("weekly_limit", null);
+      writeDoneFile(this.projectPath, `weekly_limit:${resetsAt}`);
+      return "exit";
+    }
+
+    // 5h limit — sleep
+    const resetsAt = usageResult.resetsAt ?? "";
+    const retryAfter = usageResult.retryAfter ?? 0;
+    appendLog(
+      this.projectPath,
+      `5-hour usage limit between iterations, sleeping until ${resetsAt}`,
+    );
+    this.emitEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: usageResult.utilization ?? 100,
+    });
+    this.emitEvent("sleep_start", {
+      sleepUntil: resetsAt,
+      reason: "5-hour usage limit (between iterations)",
+    });
+    this.writeState("sleeping_limit", null);
+
+    await interruptibleSleep(retryAfter * 1000, this.abortController.signal, () =>
+      this.writeState("sleeping_limit", null),
+    );
+
+    this.emitEvent("sleep_end", {});
+    appendLog(this.projectPath, "Woke from usage limit sleep");
+
+    if (this.isCancelled()) {
+      appendLog(this.projectPath, "Loop cancelled during sleep");
+      writeDoneFile(this.projectPath, "cancel");
+      return "exit";
+    }
+
+    this.emitEvent("usage_limit_cleared", { limitType: "5h" });
+    return "continue";
+  }
+
+  /** Build a summary string for the DONE file */
+  private buildSummary(): string {
+    const parts: string[] = [];
+    parts.push(`completed=${this.completedCount}`);
+    parts.push(`blocked=${this.blockedCount}`);
+    parts.push(`iterations=${this.iterationCount}`);
+    if (this.completedItemIds.length > 0) {
+      parts.push(`items=${this.completedItemIds.join(",")}`);
+    }
+    return parts.join(" ");
+  }
+}

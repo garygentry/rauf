@@ -8,4 +8,6 @@ export { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 export type { UsageLimitResult } from "./usage-checker.js";
 export { spawnClaude } from "./claude-process.js";
 export type { SpawnClaudeOptions, SpawnClaudeResult } from "./claude-process.js";
+export { LoopRunner } from "./runner.js";
+export type { LoopResult } from "./runner.js";
 export type { LoopEvent, LoopStartOptions } from "@ralph/core";
