@@ -423,3 +423,20 @@
 - `for (;;)` instead of `while (true)` to avoid ESLint `no-constant-condition` warning
 - Pre-existing failures unchanged: `config.test.ts` (readToolConfig), docs/web build (Node.js version)
 - 29 new tests (loop-commands.test.ts), total 292 in CLI package
+
+### 014: Core: runtime field in MarkerOptions + installer awareness (completed)
+- `RuntimeSchema = z.enum(["shell", "global"])` added to `schemas.ts`; `MarkerOptionsSchema.runtime` is `.optional()` (not `.default()`) to avoid `z.ZodType<T>` TypeScript inference issues with `readJsonFile` generic
+- `z.ZodDefault` causes TypeScript to leak the input type (`T | undefined`) through `z.ZodType<T>` in generic functions — using `.optional()` + `?? "shell"` in code is the pragmatic workaround
+- New install defaults to `runtime: "global"` — installer uses `options.options?.runtime ?? existingOptions?.runtime ?? "global"` priority chain
+- Re-install preserves existing runtime (reads from marker's `existingOptions`)
+- When `runtime === "global"`: installer skips entire `SCRIPT_ARTIFACTS` loop, `artifactHashes` only contains non-script hashes (just RALPH.md)
+- When `runtime === "shell"`: full backward compat — scripts deployed with chmod +x, hashes stored
+- `update()` on shell runtime projects: adds migration warning to `warnings[]` suggesting change to "global"
+- `update()` on global runtime: skips script three-way comparison entirely
+- `uninstall()` is runtime-aware: only removes scripts when `runtime === "shell"`
+- `checkArtifactStaleness()` also skips script checks for global runtime
+- 13 new tests added to `installer.test.ts` (3 describe blocks: "runtime: global", "runtime: shell", "backward compatibility")
+- Existing tests that check script deployment updated to use `shellInstallOpts()` helper (passes `runtime: "shell"`)
+- `SCRIPT_ARTIFACTS` list remains `["ralph.sh", "ralph-status.sh", "ralph-add.sh"]` — `ralph-stop.sh` exists in artifacts but was never deployed by installer
+- Pre-existing failures unchanged: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), docs/web build (Node.js version)
+- 692 tests pass in core (was 680), total across monorepo ~1300
