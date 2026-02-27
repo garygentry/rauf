@@ -352,7 +352,7 @@ function printInitReport(report: InstallationReport): void {
   info("");
   info(c.dim("Next steps:"));
   info(c.dim(`  cd ${report.projectPath}`));
-  info(c.dim(`  ./ralph.sh    # Start the autonomous loop`));
+  info(c.dim(`  ralph loop run  # Start the autonomous loop`));
 }
 
 /** Print update report in human-readable format */

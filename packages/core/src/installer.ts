@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as crypto from "node:crypto";
 import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
@@ -31,9 +30,6 @@ const TOOL_VERSION = "0.1.0";
 
 /** Name of the .ralph directory — duplicated here to avoid circular imports with status.ts */
 const DOT_RALPH = ".ralph";
-
-/** Scripts deployed to the project root */
-const SCRIPT_ARTIFACTS = ["ralph.sh", "ralph-status.sh", "ralph-add.sh"];
 
 /** Files deployed inside .ralph/ */
 const DIR_FILES = {
@@ -162,16 +158,7 @@ export function preflight(projectPath: string): PreflightResult {
     severity: "error",
   });
 
-  // 4. jq in PATH?
-  const hasJq = isCommandInPath("jq");
-  checks.push({
-    name: "jq_available",
-    passed: hasJq,
-    message: hasJq ? "jq found in PATH" : "jq not found in PATH (required by ralph.sh loop runner)",
-    severity: "warning",
-  });
-
-  // 5. claude in PATH?
+  // 4. claude in PATH?
   const hasClaude = isCommandInPath("claude");
   checks.push({
     name: "claude_available",
@@ -242,28 +229,8 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   const dirResult = ensureDir(ralphDir);
   if (!dirResult.ok) return dirResult;
 
-  // 4. Deploy script artifacts (only for 'shell' runtime)
+  // 4. Prepare artifact tracking
   const artifactHashes: Record<string, string> = {};
-
-  // Determine runtime: explicit override > existing marker > 'global' (new install default)
-  const runtime = options.options?.runtime ?? existingOptions?.runtime ?? ("global" as const);
-
-  if (runtime === "shell") {
-    for (const script of SCRIPT_ARTIFACTS) {
-      const destPath = path.join(resolved, script);
-
-      const deployResult = deployScript(script, destPath, artifactsDir);
-      if (!deployResult.ok) return deployResult;
-
-      actions.push(deployResult.value);
-
-      // Compute hash of deployed file
-      const hashResult = computeHash(destPath);
-      if (hashResult.ok) {
-        artifactHashes[script] = hashResult.value;
-      }
-    }
-  }
 
   // 5. Render RALPH.md from template
   const templateVars = buildTemplateVars(profile);
@@ -320,7 +287,6 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     gitignoreScripts:
       options.options?.gitignoreScripts ?? existingOptions?.gitignoreScripts ?? false,
     maxIterations: options.options?.maxIterations ?? existingOptions?.maxIterations ?? 20,
-    runtime,
   };
 
   const marker: MarkerFile = {
@@ -354,11 +320,46 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   });
 }
 
+// ─── checkArtifactStaleness ───────────────────────────────────────
+//
+// Previously checked script staleness via three-way hash comparison.
+// Scripts have been removed; this now always returns an empty report.
+// Kept for API compatibility with the web frontend.
+
+export type ArtifactFileStatus =
+  | "up_to_date"
+  | "safe_update"
+  | "local_only"
+  | "conflict"
+  | "missing";
+
+export type ArtifactStalenessReport = {
+  files: Record<string, ArtifactFileStatus>;
+  updatesAvailable: number;
+  conflicts: number;
+};
+
+export function checkArtifactStaleness(
+  projectPath: string,
+  _options: UpdateOptions = {},
+): Result<ArtifactStalenessReport> {
+  const resolved = path.resolve(projectPath);
+
+  const markerResult = readMarkerFile(resolved);
+  if (!markerResult.ok) {
+    return err({
+      code: ErrorCodes.NOT_INSTALLED,
+      message: `Ralph is not installed in ${resolved}`,
+      details: { path: resolved },
+    });
+  }
+
+  return ok({ files: {}, updatesAvailable: 0, conflicts: 0 });
+}
+
 // ─── update ───────────────────────────────────────────────────────
 //
-// Re-sync artifacts using three-way hash comparison.
-// Auto-updates unmodified files, reports conflicts for customized files.
-// Never touches backlog.json or progress.md.
+// Re-sync data artifacts. Never touches backlog.json or progress.md.
 
 export function update(
   projectPath: string,
@@ -382,75 +383,6 @@ export function update(
   const marker = markerResult.value;
   const storedHashes = marker.artifactHashes;
   const newHashes: Record<string, string> = { ...storedHashes };
-  const runtime = marker.options.runtime ?? "shell";
-
-  // Update script artifacts via three-way comparison (only for 'shell' runtime)
-  if (runtime === "shell") {
-    // Log migration hint for shell runtime projects
-    warnings.push(
-      'This project uses runtime: "shell". You can migrate to runtime: "global" ' +
-        "to use the built-in TypeScript loop runner instead of shell scripts. " +
-        'Update .ralph.json options.runtime to "global" to migrate.',
-    );
-
-    for (const script of SCRIPT_ARTIFACTS) {
-      const destPath = path.join(resolved, script);
-
-      const contentResult = readArtifact(script, artifactsDir);
-      if (!contentResult.ok) return contentResult as Result<InstallationReport>;
-
-      const compResult = threeWayCompareContent(
-        storedHashes[script],
-        destPath,
-        contentResult.value,
-      );
-      if (!compResult.ok) return compResult;
-
-      const comparison = compResult.value;
-
-      switch (comparison) {
-        case "up_to_date":
-          actions.push({
-            file: script,
-            action: "skipped",
-            detail: "Already up to date",
-          });
-          break;
-
-        case "safe_update": {
-          const writeResult = writeFileWithMode(destPath, contentResult.value, 0o755);
-          if (!writeResult.ok) return writeResult;
-
-          const hashResult = computeHash(destPath);
-          if (hashResult.ok) newHashes[script] = hashResult.value;
-
-          actions.push({
-            file: script,
-            action: "updated",
-            detail: "Updated to new canonical version",
-          });
-          break;
-        }
-
-        case "local_only":
-          actions.push({
-            file: script,
-            action: "skipped",
-            detail: "Local modifications preserved (canonical unchanged)",
-          });
-          break;
-
-        case "conflict":
-          warnings.push(`${script}: local modifications conflict with new canonical version`);
-          actions.push({
-            file: script,
-            action: "skipped",
-            detail: "Conflict: both local and canonical modified",
-          });
-          break;
-      }
-    }
-  }
 
   // Re-render RALPH.md managed sections
   const profile = marker.profile;
@@ -523,78 +455,6 @@ export function update(
   });
 }
 
-// ─── checkArtifactStaleness ───────────────────────────────────────
-//
-// Read-only pre-flight: mirrors update()'s comparison step without
-// writing anything. Only covers SCRIPT_ARTIFACTS (RALPH.md is always
-// re-rendered by update() and is excluded).
-
-export type ArtifactFileStatus =
-  | "up_to_date"
-  | "safe_update"
-  | "local_only"
-  | "conflict"
-  | "missing";
-
-export type ArtifactStalenessReport = {
-  files: Record<string, ArtifactFileStatus>;
-  updatesAvailable: number;
-  conflicts: number;
-};
-
-export function checkArtifactStaleness(
-  projectPath: string,
-  options: UpdateOptions = {},
-): Result<ArtifactStalenessReport> {
-  const resolved = path.resolve(projectPath);
-  const artifactsDir = options.artifactsDir ? path.resolve(options.artifactsDir) : undefined;
-
-  const markerResult = readMarkerFile(resolved);
-  if (!markerResult.ok) {
-    return err({
-      code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed in ${resolved}`,
-      details: { path: resolved },
-    });
-  }
-
-  const runtime = markerResult.value.options.runtime ?? "shell";
-  const storedHashes = markerResult.value.artifactHashes;
-  const files: Record<string, ArtifactFileStatus> = {};
-  let updatesAvailable = 0;
-  let conflicts = 0;
-
-  // Only check script staleness for 'shell' runtime
-  if (runtime === "shell") {
-    for (const script of SCRIPT_ARTIFACTS) {
-      const destPath = path.join(resolved, script);
-
-      if (!fileExists(destPath)) {
-        files[script] = "missing";
-        continue;
-      }
-
-      const contentResult = readArtifact(script, artifactsDir);
-      if (!contentResult.ok) return contentResult as Result<ArtifactStalenessReport>;
-
-      const compResult = threeWayCompareContent(
-        storedHashes[script],
-        destPath,
-        contentResult.value,
-      );
-      if (!compResult.ok) return compResult as Result<ArtifactStalenessReport>;
-
-      const status = compResult.value as ArtifactFileStatus;
-      files[script] = status;
-
-      if (status === "safe_update") updatesAvailable++;
-      if (status === "conflict") conflicts++;
-    }
-  }
-
-  return ok({ files, updatesAvailable, conflicts });
-}
-
 // ─── uninstall ────────────────────────────────────────────────────
 //
 // Remove ralph artifacts. Preserves backlog/progress/log by default.
@@ -616,15 +476,6 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   const keepProgress = options.keepProgress ?? true;
   const keepLog = options.keepLog ?? true;
   const removeClaudeMdSection = options.removeClaudeMdSection ?? true;
-  const runtime = markerResult.value.options.runtime ?? "shell";
-
-  // Remove scripts from project root (only for 'shell' runtime)
-  if (runtime === "shell") {
-    for (const script of SCRIPT_ARTIFACTS) {
-      const scriptPath = path.join(resolved, script);
-      safeUnlink(scriptPath);
-    }
-  }
 
   // Remove RALPH.md (always)
   safeUnlink(path.join(resolved, DOT_RALPH, "RALPH.md"));
@@ -679,69 +530,6 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
     verifyCommand: profile.verify,
     stackDescription: profile.stack,
   };
-}
-
-/** Deploy a script artifact: write content from embedded/filesystem source */
-function deployScript(
-  scriptName: string,
-  destPath: string,
-  artifactsDir?: string,
-): Result<InstallAction> {
-  const contentResult = readArtifact(scriptName, artifactsDir);
-  if (!contentResult.ok) return contentResult;
-
-  const content = contentResult.value;
-
-  if (fileExists(destPath)) {
-    // Compare content — skip if identical
-    try {
-      const existing = fs.readFileSync(destPath, "utf-8");
-      if (existing === content) {
-        return ok({
-          file: scriptName,
-          action: "skipped" as const,
-          detail: "Script already exists with same content",
-        });
-      }
-    } catch {
-      // Can't read existing — proceed with write
-    }
-
-    // Different content — update
-    const writeResult = writeFileWithMode(destPath, content, 0o755);
-    if (!writeResult.ok) return writeResult;
-
-    return ok({
-      file: scriptName,
-      action: "updated" as const,
-      detail: "Script updated to new version",
-    });
-  }
-
-  // Write new script
-  const writeResult = writeFileWithMode(destPath, content, 0o755);
-  if (!writeResult.ok) return writeResult;
-
-  return ok({
-    file: scriptName,
-    action: "created" as const,
-    detail: "Script installed with executable permissions",
-  });
-}
-
-/** Write content to a file and set permissions */
-function writeFileWithMode(destPath: string, content: string, mode: number): Result<void> {
-  try {
-    fs.writeFileSync(destPath, content, "utf-8");
-    fs.chmodSync(destPath, mode);
-    return ok(undefined);
-  } catch (e) {
-    return err({
-      code: ErrorCodes.FILE_NOT_FOUND,
-      message: `Failed to write ${destPath}: ${e instanceof Error ? e.message : String(e)}`,
-      details: { dest: destPath },
-    });
-  }
 }
 
 /** Render RALPH.md from template with profile variables */
@@ -914,85 +702,6 @@ function claudeMdActionDetail(action: string): string {
   }
 }
 
-/** Three-way hash comparison for update */
-type HashComparison = "up_to_date" | "safe_update" | "local_only" | "conflict";
-
-function threeWayCompare(
-  storedHash: string | undefined,
-  currentPath: string,
-  canonicalPath: string,
-): Result<HashComparison> {
-  // Get current file hash
-  const currentHashResult = fileExists(currentPath)
-    ? computeHash(currentPath)
-    : ok(null as string | null);
-
-  if (!currentHashResult.ok) return currentHashResult as Result<HashComparison>;
-  const currentHash = currentHashResult.value;
-
-  // Get canonical file hash
-  const canonicalHashResult = computeHash(canonicalPath);
-  if (!canonicalHashResult.ok) return canonicalHashResult as Result<HashComparison>;
-  const canonicalHash = canonicalHashResult.value;
-
-  return ok(compareHashes(storedHash, currentHash, canonicalHash));
-}
-
-/** Three-way comparison using canonical content string instead of file path */
-function threeWayCompareContent(
-  storedHash: string | undefined,
-  currentPath: string,
-  canonicalContent: string,
-): Result<HashComparison> {
-  // Get current file hash
-  const currentHashResult = fileExists(currentPath)
-    ? computeHash(currentPath)
-    : ok(null as string | null);
-
-  if (!currentHashResult.ok) return currentHashResult as Result<HashComparison>;
-  const currentHash = currentHashResult.value;
-
-  // Hash the canonical content
-  const canonicalHash = crypto.createHash("sha256").update(canonicalContent).digest("hex");
-
-  return ok(compareHashes(storedHash, currentHash, canonicalHash));
-}
-
-/** Shared hash comparison logic */
-function compareHashes(
-  storedHash: string | undefined,
-  currentHash: string | null,
-  canonicalHash: string,
-): HashComparison {
-  // File doesn't exist locally but canonical exists → safe to create
-  if (currentHash === null) {
-    return "safe_update";
-  }
-
-  // Current matches canonical → already up to date
-  if (currentHash === canonicalHash) {
-    return "up_to_date";
-  }
-
-  // No stored hash (first-time tracking) → treat as safe update
-  if (!storedHash) {
-    return "safe_update";
-  }
-
-  // Current matches stored, different from canonical → safe to update (no local mods)
-  if (currentHash === storedHash) {
-    return "safe_update";
-  }
-
-  // Stored matches canonical, current differs → local-only modifications
-  if (storedHash === canonicalHash) {
-    return "local_only";
-  }
-
-  // All three differ → conflict
-  return "conflict";
-}
-
 /** Check if a command exists in PATH (no subprocess needed) */
 function isCommandInPath(cmd: string): boolean {
   const pathDirs = process.env["PATH"]?.split(path.delimiter) ?? [];
@@ -1066,8 +775,8 @@ function tryRemoveEmptyDir(dirPath: string): void {
 
 // ─── Exported constants (for testing) ────────────────────────────
 
-export { DOT_RALPH, SCRIPT_ARTIFACTS, DIR_FILES, CLAUDE_ADDON_FILE };
+export { DOT_RALPH, DIR_FILES, CLAUDE_ADDON_FILE };
 
 // ─── Exported helpers (for testing) ──────────────────────────────
 
-export { buildTemplateVars, isCommandInPath, threeWayCompare, readArtifact };
+export { buildTemplateVars, isCommandInPath, readArtifact };

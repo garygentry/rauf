@@ -27,6 +27,8 @@ function collectFiles(dir: string, base: string = dir): string[] {
     if (entry.isDirectory()) {
       files.push(...collectFiles(fullPath, base));
     } else if (entry.isFile()) {
+      // Skip shell scripts — they are no longer deployed as artifacts
+      if (entry.name.endsWith(".sh")) continue;
       files.push(path.relative(base, fullPath));
     }
   }

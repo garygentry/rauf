@@ -1,1 +1,0 @@
-artifacts/variants/backlog-json/ralph-stop.sh

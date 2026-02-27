@@ -126,7 +126,7 @@ describe("handleInstall", () => {
 
     // Verify artifacts deployed
     expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(false);
     expect(fs.existsSync(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
   });
@@ -239,7 +239,7 @@ describe("handleInit", () => {
     expect(fs.existsSync(path.join(projectDir, ".git"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".gitignore"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(false);
     expect(fs.existsSync(path.join(projectDir, "CLAUDE.md"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
   });
@@ -437,7 +437,6 @@ describe("handleUninstall", () => {
 
     // Verify installed
     expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(true);
 
     // Uninstall
     const uninstallCtx = makeCtx({
@@ -447,9 +446,8 @@ describe("handleUninstall", () => {
     const code = await handleUninstall(uninstallCtx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    // Verify scripts removed
+    // Verify marker removed
     expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(false);
-    expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(false);
   });
 
   it("preserves backlog and progress by default", async () => {

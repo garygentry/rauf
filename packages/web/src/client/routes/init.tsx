@@ -759,10 +759,6 @@ function StepReview({
   const FILES_TO_CREATE = [
     { file: "CLAUDE.md", description: "Project instructions with ralph loop section" },
     { file: ".gitignore", description: "Stack-appropriate gitignore" },
-    { file: "ralph.sh", description: "Main loop runner script" },
-    { file: "ralph-status.sh", description: "Status check script" },
-    { file: "ralph-add.sh", description: "Quick-add backlog items" },
-    { file: "ralph-stop.sh", description: "Graceful cancel script" },
     { file: ".ralph/RALPH.md", description: "Per-iteration instructions" },
     { file: ".ralph/backlog.json", description: "Task queue" },
     { file: ".ralph/progress.md", description: "Accumulated learnings log" },
@@ -1086,7 +1082,7 @@ function StepResult({ state }: { state: WizardState }) {
                 border: "1px solid var(--color-border)",
               }}
             >
-              ./ralph-add.sh
+              ralph backlog add
             </code>
           </p>
         </div>
@@ -1117,7 +1113,7 @@ function StepResult({ state }: { state: WizardState }) {
                 border: "1px solid var(--color-border)",
               }}
             >
-              cd {report.projectPath} && ./ralph.sh
+              ralph loop run {report.projectPath}
             </code>
           </p>
         </div>

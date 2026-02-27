@@ -16,7 +16,6 @@ import { readBacklog } from "./backlog.js";
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
 import { fileExists } from "./fs-utils.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
-import { SCRIPT_ARTIFACTS } from "./installer.js";
 import { ErrorCodes } from "./errors.js";
 
 // ─── Test Fixtures ────────────────────────────────────────────────
@@ -147,14 +146,14 @@ describe("initProject", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_END);
   });
 
-  it("installs standard ralph artifacts via installer (global runtime, no scripts)", () => {
+  it("installs standard ralph artifacts via installer (no scripts)", () => {
     const projectDir = path.join(tmpDir, "artifacts-project");
     initProject(projectDir, baseOpts());
 
-    // No scripts deployed (global runtime is the default for new installs)
-    for (const script of SCRIPT_ARTIFACTS) {
-      expect(fileExists(path.join(projectDir, script))).toBe(false);
-    }
+    // No scripts deployed
+    expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(false);
+    expect(fileExists(path.join(projectDir, "ralph-add.sh"))).toBe(false);
+    expect(fileExists(path.join(projectDir, "ralph-status.sh"))).toBe(false);
 
     // Check .ralph/ contents
     expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);

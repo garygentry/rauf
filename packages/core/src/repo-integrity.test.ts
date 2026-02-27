@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lstatSync, readlinkSync, existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 
 import { renderTemplate } from "./template.js";
@@ -7,67 +7,20 @@ import { renderTemplate } from "./template.js";
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 
 describe("repo integrity", () => {
-  it("ralph.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph.sh", () => {
-    const rootScript = resolve(REPO_ROOT, "ralph.sh");
-    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph.sh");
-
-    // Canonical file must exist as a regular file
-    expect(existsSync(canonicalScript), "canonical ralph.sh must exist").toBe(true);
-    const canonicalStat = lstatSync(canonicalScript);
-    expect(canonicalStat.isFile(), "canonical ralph.sh must be a regular file").toBe(true);
-
-    // Root ralph.sh must be a symlink
-    const rootStat = lstatSync(rootScript);
-    expect(rootStat.isSymbolicLink(), "root ralph.sh must be a symlink").toBe(true);
-
-    // Symlink must point to the canonical location
-    const target = readlinkSync(rootScript);
-    expect(target).toBe("artifacts/variants/backlog-json/ralph.sh");
+  it("no shell scripts exist at repo root", () => {
+    // Shell scripts have been removed in favor of the global TypeScript loop runner
+    expect(existsSync(resolve(REPO_ROOT, "ralph.sh"))).toBe(false);
+    expect(existsSync(resolve(REPO_ROOT, "ralph-add.sh"))).toBe(false);
+    expect(existsSync(resolve(REPO_ROOT, "ralph-status.sh"))).toBe(false);
+    expect(existsSync(resolve(REPO_ROOT, "ralph-stop.sh"))).toBe(false);
   });
 
-  it("ralph-add.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-add.sh", () => {
-    const rootScript = resolve(REPO_ROOT, "ralph-add.sh");
-    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph-add.sh");
-
-    expect(existsSync(canonicalScript), "canonical ralph-add.sh must exist").toBe(true);
-    const canonicalStat = lstatSync(canonicalScript);
-    expect(canonicalStat.isFile(), "canonical ralph-add.sh must be a regular file").toBe(true);
-
-    const rootStat = lstatSync(rootScript);
-    expect(rootStat.isSymbolicLink(), "root ralph-add.sh must be a symlink").toBe(true);
-
-    const target = readlinkSync(rootScript);
-    expect(target).toBe("artifacts/variants/backlog-json/ralph-add.sh");
-  });
-
-  it("ralph-status.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-status.sh", () => {
-    const rootScript = resolve(REPO_ROOT, "ralph-status.sh");
-    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph-status.sh");
-
-    expect(existsSync(canonicalScript), "canonical ralph-status.sh must exist").toBe(true);
-    const canonicalStat = lstatSync(canonicalScript);
-    expect(canonicalStat.isFile(), "canonical ralph-status.sh must be a regular file").toBe(true);
-
-    const rootStat = lstatSync(rootScript);
-    expect(rootStat.isSymbolicLink(), "root ralph-status.sh must be a symlink").toBe(true);
-
-    const target = readlinkSync(rootScript);
-    expect(target).toBe("artifacts/variants/backlog-json/ralph-status.sh");
-  });
-
-  it("ralph-stop.sh at repo root is a symlink to artifacts/variants/backlog-json/ralph-stop.sh", () => {
-    const rootScript = resolve(REPO_ROOT, "ralph-stop.sh");
-    const canonicalScript = resolve(REPO_ROOT, "artifacts/variants/backlog-json/ralph-stop.sh");
-
-    expect(existsSync(canonicalScript), "canonical ralph-stop.sh must exist").toBe(true);
-    const canonicalStat = lstatSync(canonicalScript);
-    expect(canonicalStat.isFile(), "canonical ralph-stop.sh must be a regular file").toBe(true);
-
-    const rootStat = lstatSync(rootScript);
-    expect(rootStat.isSymbolicLink(), "root ralph-stop.sh must be a symlink").toBe(true);
-
-    const target = readlinkSync(rootScript);
-    expect(target).toBe("artifacts/variants/backlog-json/ralph-stop.sh");
+  it("no shell scripts exist in artifacts directory", () => {
+    const artifactsDir = resolve(REPO_ROOT, "artifacts/variants/backlog-json");
+    expect(existsSync(join(artifactsDir, "ralph.sh"))).toBe(false);
+    expect(existsSync(join(artifactsDir, "ralph-add.sh"))).toBe(false);
+    expect(existsSync(join(artifactsDir, "ralph-status.sh"))).toBe(false);
+    expect(existsSync(join(artifactsDir, "ralph-stop.sh"))).toBe(false);
   });
 });
 

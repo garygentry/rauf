@@ -15,7 +15,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { spawnSync } from "node:child_process";
 
-import { install, preflight, update, uninstall, SCRIPT_ARTIFACTS } from "./installer.js";
+import { install, preflight, update, uninstall } from "./installer.js";
 import { initProject } from "./greenfield.js";
 import { readBacklog, addItem, updateItem, deleteItem, restoreFromBackup } from "./backlog.js";
 import { deriveStatus, readLogTail, RALPH_DIR, LOG_FILENAME, DONE_FILENAME } from "./status.js";
@@ -148,10 +148,10 @@ describe("Integration: install into fresh directory", () => {
     const report = result.value;
 
     // Step 3: Verify all expected files exist
-    // No scripts at project root (global runtime)
-    for (const script of SCRIPT_ARTIFACTS) {
-      expect(fileExists(path.join(projectDir, script))).toBe(false);
-    }
+    // No scripts at project root
+    expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(false);
+    expect(fileExists(path.join(projectDir, "ralph-add.sh"))).toBe(false);
+    expect(fileExists(path.join(projectDir, "ralph-status.sh"))).toBe(false);
 
     // .ralph/ directory with data files
     expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);
@@ -170,10 +170,9 @@ describe("Integration: install into fresh directory", () => {
     if (!markerResult.ok) return;
 
     expect(markerResult.value.ralph).toBe(true);
-    expect(markerResult.value.options.runtime).toBe("global");
     expect(markerResult.value.profile.stack).toBe("node-typescript");
     expect(markerResult.value.profile.packageManager).toBe("pnpm");
-    // Only RALPH.md hash (no script hashes in global mode)
+    // Only RALPH.md hash (no script hashes)
     expect(Object.keys(markerResult.value.artifactHashes).length).toBeGreaterThanOrEqual(1);
 
     // RALPH.md contains rendered commands (not raw template vars)
@@ -195,41 +194,29 @@ describe("Integration: install into fresh directory", () => {
     expect(report.actions.length).toBeGreaterThan(0);
   });
 
-  it("install → update → uninstall lifecycle (shell runtime)", () => {
+  it("install → update → uninstall lifecycle", () => {
     const projectDir = path.join(tmpDir, "lifecycle-project");
     createProject(projectDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
 
-    // Install with shell runtime to test script lifecycle
     const installResult = install(projectDir, {
       artifactsDir: ARTIFACTS_DIR,
       projectName: "lifecycle",
-      options: { runtime: "shell" },
     });
     expect(installResult.ok).toBe(true);
 
-    // Verify installed (shell runtime deploys scripts)
-    expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(true);
+    // Verify installed — no scripts, data files present
+    expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(false);
     expect(fileExists(path.join(projectDir, MARKER_FILENAME))).toBe(true);
 
     // Update (no changes — should be idempotent)
     const updateResult = update(projectDir, { artifactsDir: ARTIFACTS_DIR });
     expect(updateResult.ok).toBe(true);
-    if (!updateResult.ok) return;
-
-    // All scripts should be skipped (up_to_date)
-    const scriptActions = updateResult.value.actions.filter((a) =>
-      SCRIPT_ARTIFACTS.includes(a.file),
-    );
-    for (const action of scriptActions) {
-      expect(action.action).toBe("skipped");
-    }
 
     // Uninstall
     const uninstallResult = uninstall(projectDir);
     expect(uninstallResult.ok).toBe(true);
 
     // Verify removed
-    expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(false);
     expect(fileExists(path.join(projectDir, MARKER_FILENAME))).toBe(false);
     expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(false);
 
@@ -301,10 +288,10 @@ describe("Integration: greenfield init creates valid project", () => {
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("node_modules");
 
-    // No scripts deployed (greenfield defaults to global runtime)
-    for (const script of SCRIPT_ARTIFACTS) {
-      expect(fileExists(path.join(projectDir, script))).toBe(false);
-    }
+    // No scripts deployed
+    expect(fileExists(path.join(projectDir, "ralph.sh"))).toBe(false);
+    expect(fileExists(path.join(projectDir, "ralph-add.sh"))).toBe(false);
+    expect(fileExists(path.join(projectDir, "ralph-status.sh"))).toBe(false);
 
     // .ralph/ data files
     expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);

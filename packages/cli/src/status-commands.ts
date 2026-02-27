@@ -83,7 +83,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
       outputJson({ error: result.error });
     } else {
       error(result.error.message);
-      info(`No log yet. Start the loop with: ${c.cyan("./ralph.sh")}`);
+      info(`No log yet. Start the loop with: ${c.cyan("ralph loop run")}`);
     }
     return ExitCode.ERROR;
   }
@@ -247,7 +247,7 @@ function printStatusSummary(status: DerivedStatus): void {
       const countdown = formatCountdown(status.sleepUntil);
       print(`${c.bold("Usage Limit:")} Claude's 5-hour window is active.`);
       print(`             The loop will resume at ${c.cyan(timeStr)} (${countdown}).`);
-      print(`             Run ${c.dim("ralph-stop.sh")} to cancel the wait.`);
+      print(`             Run ${c.dim("ralph loop stop")} to cancel the wait.`);
     } else {
       print(`${c.bold("Usage Limit:")} Claude's 5-hour window is active. Waiting for reset.`);
     }
@@ -263,7 +263,7 @@ function printStatusSummary(status: DerivedStatus): void {
       });
       const timeStr = resetDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       print(`${c.bold("Usage Limit:")} Weekly Claude cap reached.`);
-      print(`             Restart ralph.sh after ${c.cyan(`${dateStr} at ${timeStr}`)}.`);
+      print(`             Restart the loop after ${c.cyan(`${dateStr} at ${timeStr}`)}.`);
     } else {
       print(
         `${c.bold("Usage Limit:")} Weekly Claude cap reached. Check https://claude.ai for reset time.`,

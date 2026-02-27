@@ -624,7 +624,7 @@ function StepConfigure({
             }}
           />
           <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
-            How many backlog items ralph.sh processes before stopping. Default: 20.
+            How many backlog items the loop processes before stopping. Default: 20.
           </p>
         </div>
 
@@ -696,10 +696,6 @@ function StepReview({
   }
 
   const FILES_TO_CREATE = [
-    { file: "ralph.sh", location: "project root", description: "Main loop runner script" },
-    { file: "ralph-status.sh", location: "project root", description: "Status check script" },
-    { file: "ralph-add.sh", location: "project root", description: "Quick-add backlog items" },
-    { file: "ralph-stop.sh", location: "project root", description: "Graceful cancel script" },
     { file: ".ralph/RALPH.md", location: ".ralph/", description: "Per-iteration instructions" },
     {
       file: ".ralph/backlog.json",
