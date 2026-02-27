@@ -369,3 +369,22 @@
 - Returns `Result<SpawnClaudeResult>` — `ok` on normal completion (even with non-zero exit), `err` only on spawn failure (ENOENT)
 - Timer container pattern (`const timers = {}`) avoids ESLint `prefer-const` errors for variables assigned after declaration
 - 15 new tests, total 104 in loop package
+
+### 010: LoopRunner class (runner.ts) (completed)
+- `LoopRunner extends TypedEventEmitter` — main class orchestrating the loop lifecycle
+- Constructor takes `(projectPath, options: LoopStartOptions)` with AbortController for cancel
+- `start()` lifecycle: clear DONE/CANCEL → read marker → auto-sweep → usage preflight → main loop → DONE file
+- `cancel()` aborts via `AbortController` — checked at iteration boundaries and during `interruptibleSleep`
+- Model resolution chain: `item.model > options.model > marker.options.model` — first defined wins
+- `needs_human` signal: item stays `in_progress` (NOT reset to pending), clear `currentItemId` BEFORE return to prevent `finally` block from resetting
+- `try/finally` crash cleanup: resets `currentItemId` to pending if set — must clear it in `needs_human` path to avoid unwanted reset
+- Stderr usage limit detection: only checked when `exitCode !== 0` — four case-insensitive patterns: "usage limit", "rate limit", "claude ai usage limit", "too many requests"
+- When OAuth token unavailable during stderr limit, falls back to 60s sleep (cancellable via AbortController)
+- `checkBetweenIterations()` returns `"exit"` for both cancel and usage limit — caller checks `isCancelled()` to set `cancelled` flag correctly in `LoopResult`
+- Iteration counter increments at loop top — after last item completes, counter increments once more on the empty-items pass before breaking
+- `LoopResult { completedCount, blockedCount, cancelled }` — `cancelled` is true for both AbortController and CANCEL file
+- DONE file written on ALL terminal paths: completion (summary), cancel ("cancel"), weekly limit ("weekly_limit:<timestamp>"), max iterations (summary), needs_human
+- `sweepBacklog` is the actual function name in core (not `sweepItems` as mentioned in task description)
+- Mock testing: create temp dirs with mock `claude` bash scripts, prepend to PATH, use `exec sleep 999` for cancellation tests
+- Pre-existing test failures: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), `docs` build (Node.js version) — none related to this task
+- 36 new tests in runner.test.ts, total 140 in loop package
