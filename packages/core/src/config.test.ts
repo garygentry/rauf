@@ -213,20 +213,30 @@ describe("readToolConfig", () => {
   // we intercept at the readJsonFile level.
 
   it("returns defaults when config file does not exist", () => {
-    // Mock readJsonFile to simulate missing file by mocking at the module level
-    // Instead, we test the actual behavior: readToolConfig falls back on FILE_NOT_FOUND
-    const result = readToolConfig();
+    // Temporarily remove the real config file to test the fallback path
+    let savedConfig: string | null = null;
+    try {
+      savedConfig = fs.readFileSync(TOOL_CONFIG_PATH, "utf-8");
+      fs.unlinkSync(TOOL_CONFIG_PATH);
+    } catch {
+      // Config doesn't exist — that's the state we want
+    }
 
-    // This will either:
-    // 1. Read the real ~/.ralph/config.json if it exists, or
-    // 2. Return defaults if it doesn't
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    try {
+      const result = readToolConfig();
 
-    // The result should have all required fields
-    expect(result.value).toHaveProperty("rootDirectory");
-    expect(result.value).toHaveProperty("port");
-    expect(result.value).toHaveProperty("theme");
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      // Should return defaults when file is missing
+      expect(result.value).toEqual(DEFAULT_TOOL_CONFIG);
+    } finally {
+      // Restore the config file if it existed
+      if (savedConfig !== null) {
+        fs.mkdirSync(path.dirname(TOOL_CONFIG_PATH), { recursive: true });
+        fs.writeFileSync(TOOL_CONFIG_PATH, savedConfig);
+      }
+    }
   });
 
   it("default config has expected values", () => {

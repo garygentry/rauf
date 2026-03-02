@@ -264,7 +264,7 @@ describe("handleStatus", () => {
     configureOutput({ noColor: true, quiet: true, json: false });
 
     expect(output.toLowerCase()).toMatch(/weekly/i);
-    expect(output).toMatch(/restart ralph\.sh/i);
+    expect(output).toMatch(/restart the loop after/i);
   });
 
   it("returns 0 when loop is PAUSED", async () => {

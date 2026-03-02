@@ -424,6 +424,13 @@ describe("GET /api/config", () => {
   });
 
   it("returns config with all required fields", async () => {
+    // Ensure config file is removed so readToolConfig returns clean defaults
+    try {
+      fs.unlinkSync(CONFIG_PATH);
+    } catch {
+      // May not exist — that's fine
+    }
+
     const app = makeApp(tmpDir);
     const res = await app.request("/api/config");
     expect(res.status).toBe(200);
