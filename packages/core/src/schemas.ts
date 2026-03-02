@@ -225,14 +225,13 @@ export const RalphErrorSchema = z.object({
 // ─── Log Patterns (fallback parsing) ───────────────────────────────
 
 export const LOG_PATTERNS = {
-  loopStart: /Ralph Loop starting \| max=(\d+) iterations/,
+  loopStart: /Loop started \(maxIterations=(\d+)\)/,
   iteration: /--- Iteration (\d+) \/ (\d+) ---/,
-  status: /Status → pending:(\d+)\s+in_progress:(\d+)\s+blocked:(\d+)\s+done:(\d+)\s+total:(\d+)/,
-  done: /✓ Clean completion signal received/,
-  blocked: /⚠ Task blocked: ([^\s]+)/,
-  needsHuman: /⛔ Loop paused — human input needed: (.+)/,
-  complete: /COMPLETE: (.+)/,
-  limitReached: /LIMIT REACHED: (.+)/,
+  done: /Item \d{3,} completed: .+/,
+  blocked: /Item \d{3,} blocked: (.+)/,
+  needsHuman: /Item \d{3,} needs human input: (.+)/,
+  complete: /Loop completed/,
+  limitReached: /Max iterations reached \((\d+)\)/,
   timestamp: /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/,
 } as const;
 

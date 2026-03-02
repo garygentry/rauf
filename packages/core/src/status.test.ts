@@ -369,9 +369,9 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
   it("parses iteration details from log", () => {
     writeLog(
       [
-        "[2026-02-21 10:00:00] Ralph Loop starting | max=10 iterations",
+        "[2026-02-21 10:00:00] Loop started (maxIterations=10)",
         "[2026-02-21 10:00:01] --- Iteration 1 / 10 ---",
-        "[2026-02-21 10:00:30] ✓ Clean completion signal received",
+        "[2026-02-21 10:00:30] Item 001 completed: Setup auth",
         "[2026-02-21 10:01:00] --- Iteration 2 / 10 ---",
         "[2026-02-21 10:01:30] Working on task...",
         "",
@@ -389,7 +389,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog(
       [
         "[2026-02-21 10:00:00] --- Iteration 1 / 10 ---",
-        "[2026-02-21 10:00:30] ⚠ Task blocked: 005",
+        "[2026-02-21 10:00:30] Item 005 blocked: Missing API key",
         "",
       ].join("\n"),
     );
@@ -404,7 +404,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog(
       [
         "[2026-02-21 10:00:00] --- Iteration 1 / 10 ---",
-        "[2026-02-21 10:00:30] ✓ Clean completion signal received",
+        "[2026-02-21 10:00:30] Item 001 completed: Implement feature",
         "",
       ].join("\n"),
     );
@@ -419,7 +419,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog(
       [
         "[2026-02-21 10:00:00] --- Iteration 1 / 10 ---",
-        "[2026-02-21 10:00:30] ⛔ Loop paused — human input needed: need API key",
+        "[2026-02-21 10:00:30] Item 003 needs human input: need API key",
         "",
       ].join("\n"),
     );

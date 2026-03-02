@@ -1,3 +1,8 @@
+---
+title: Claude Code Tasks
+description: How ralph's backlog.json relates to Claude Code's native Tasks system.
+---
+
 # Claude Code Tasks Integration
 
 ## Background

@@ -24,6 +24,7 @@ export default defineConfig({
           items: [
             { label: "System Architecture", slug: "architecture" },
             { label: "Schemas Reference", slug: "schemas" },
+            { label: "Claude Code Tasks", slug: "claude-code-tasks" },
           ],
         },
         {

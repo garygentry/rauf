@@ -43,7 +43,9 @@ Non-throwing existence check.
 
 All Zod schemas corresponding to types in docs/SCHEMAS.md. Export both schemas and inferred TypeScript types.
 
-Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`.
+Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`, `LoopEventSchema`, `LoopStartOptionsSchema`, `LoopStateEnumSchema`, `RuntimeSchema`.
+
+Also exports `LOG_PATTERNS` (regex patterns for Tier 2 log-parsing fallback) and `VALID_STATUS_TRANSITIONS`.
 
 ## Module: errors.ts
 
@@ -111,6 +113,10 @@ Write to `~/.ralph/config.json`. Create `~/.ralph/` if needed.
 ### resolveRootDirectory(cliRoot?, envRoot?) → string
 
 Resolution order: cliRoot → RALPH_ROOT env → config file → cwd.
+
+### readClaudeOAuthToken(credentialsPathOverride?) → Result\<string\>
+
+Read the Claude OAuth bearer token from `~/.config/claude-code/credentials.json`. Extracts `.claudeAiOauth.accessToken` from the parsed JSON. Returns `FILE_NOT_FOUND` if the credentials file doesn't exist, `INVALID_JSON` if malformed, or `VALIDATION_ERROR` if the expected fields are missing. Optional path override for testing.
 
 ## Module: profile.ts
 
@@ -204,6 +210,14 @@ Check against the allowed transitions map.
 
 Copy `.ralph/backlog.json.bak` → `.ralph/backlog.json` if backup exists.
 
+### selectNextItem(backlog: Backlog) → BacklogItem | null
+
+Returns the highest-priority pending item whose dependencies are all done. Returns null if no eligible items exist. Ties in priority broken by lower item ID (lexicographic). Takes a `Backlog` object (not a path) — caller must read the backlog first.
+
+### resetStalledItems(projectPath) → Result\<{ resetCount: number }\>
+
+Read backlog, reset all `in_progress` items to `pending` via `updateItem`. Returns count of reset items. Used by the loop runner at startup and by the server's LoopManager for stale loop recovery.
+
 ## Module: status.ts
 
 ### deriveStatus(projectPath) → Result<DerivedStatus>
@@ -234,6 +248,30 @@ Read last N lines of ralph.log. Cap at 10000 for display.
 ### watchLog(projectPath, callback) → cleanup function
 
 Watch ralph.log for changes using fs.watch. Call callback with new lines. Return cleanup function to stop watching.
+
+### writeLoopState(projectPath, state) → Result\<void\>
+
+Atomic write of `.ralph/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema` — returns `VALIDATION_ERROR` if invalid.
+
+### appendLog(projectPath, message) → Result\<void\>
+
+Append a timestamped line to `.ralph/ralph.log`. Format: `[YYYY-MM-DD HH:MM:SS] message\n`. Creates the file if it doesn't exist (when `.ralph/` directory exists).
+
+### writeDoneFile(projectPath, content) → Result\<void\>
+
+Write content string to `.ralph/DONE` marker file. Overwrites if file already exists.
+
+### clearDoneFile(projectPath) → Result\<void\>
+
+Remove `.ralph/DONE` file. Returns `ok` even if the file doesn't exist (ENOENT is not an error).
+
+### checkCancelRequested(projectPath) → boolean
+
+Check if `.ralph/CANCEL` file exists. Returns boolean directly (not wrapped in Result). Used by the loop runner to detect graceful cancellation requests.
+
+### clearCancelFile(projectPath) → Result\<boolean\>
+
+Remove `.ralph/CANCEL` file. Returns `ok(true)` if the file existed and was removed, `ok(false)` if it didn't exist.
 
 ## Module: installer.ts
 
@@ -350,7 +388,7 @@ Moves done backlog items into monthly archive files under `.ralph/archive/YYYY-M
 | archive.ts       | `.ralph/archive/YYYY-MM.json`                                  |
 | installer.ts     | All `.ralph/` files, scripts, CLAUDE.md, `.ralph.json`         |
 | greenfield.ts    | All of installer + directory creation + git init               |
-| status.ts        | (read-only)                                                    |
+| status.ts        | `.ralph/state.json`, `.ralph/ralph.log`, `.ralph/DONE`, `.ralph/CANCEL` |
 | discovery.ts     | (read-only)                                                    |
 | profile.ts       | (read-only, result stored by installer)                        |
 | template.ts      | (pure functions, no direct file I/O unless renderTemplateFile) |

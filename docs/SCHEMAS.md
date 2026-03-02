@@ -205,7 +205,9 @@ type LoopStateEnum =
   | "PAUSED_HUMAN"
   | "LIMIT_REACHED"
   | "ERROR"
-  | "NOT_INSTALLED";
+  | "NOT_INSTALLED"
+  | "SLEEPING_LIMIT"   // Sleeping until 5-hour usage window resets
+  | "WEEKLY_LIMIT";    // 7-day weekly cap exhausted
 ```
 
 ## DiscoveredProject
@@ -428,16 +430,17 @@ type LoopEvent =
 
 ## Log Line Patterns (fallback parsing)
 
+Used by `status.ts` Tier 2 fallback to derive loop state from `ralph.log` when `state.json` is unavailable. Patterns match the log output written by the TypeScript loop runner (`packages/loop`).
+
 ```typescript
 const LOG_PATTERNS = {
-  loopStart: /Ralph Loop starting \| max=(\d+) iterations/,
+  loopStart: /Loop started \(maxIterations=(\d+)\)/,
   iteration: /--- Iteration (\d+) \/ (\d+) ---/,
-  status: /Status → pending:(\d+)\s+in_progress:(\d+)\s+blocked:(\d+)\s+done:(\d+)\s+total:(\d+)/,
-  done: /✓ Clean completion signal received/,
-  blocked: /⚠ Task blocked: ([^\s]+)/,
-  needsHuman: /⛔ Loop paused — human input needed: (.+)/,
-  complete: /COMPLETE: (.+)/,
-  limitReached: /LIMIT REACHED: (.+)/,
+  done: /Item \d{3,} completed: .+/,
+  blocked: /Item \d{3,} blocked: (.+)/,
+  needsHuman: /Item \d{3,} needs human input: (.+)/,
+  complete: /Loop completed/,
+  limitReached: /Max iterations reached \((\d+)\)/,
   timestamp: /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/,
 };
 ```

@@ -810,7 +810,7 @@ describe("VALID_STATUS_TRANSITIONS", () => {
 
 describe("LOG_PATTERNS", () => {
   it("loopStart matches expected format", () => {
-    const match = "Ralph Loop starting | max=20 iterations".match(LOG_PATTERNS.loopStart);
+    const match = "Loop started (maxIterations=20)".match(LOG_PATTERNS.loopStart);
     expect(match).not.toBeNull();
     expect(match![1]).toBe("20");
   });
@@ -822,13 +822,34 @@ describe("LOG_PATTERNS", () => {
     expect(match![2]).toBe("20");
   });
 
-  it("status matches expected format", () => {
-    const match = "Status → pending:5 in_progress:1 blocked:0 done:2 total:8".match(
-      LOG_PATTERNS.status,
+  it("done matches item completed format", () => {
+    const match = "Item 001 completed: Implement user auth".match(LOG_PATTERNS.done);
+    expect(match).not.toBeNull();
+  });
+
+  it("blocked matches item blocked format", () => {
+    const match = "Item 003 blocked: Missing API key".match(LOG_PATTERNS.blocked);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("Missing API key");
+  });
+
+  it("needsHuman matches item needs human input format", () => {
+    const match = "Item 005 needs human input: Design review needed".match(
+      LOG_PATTERNS.needsHuman,
     );
     expect(match).not.toBeNull();
-    expect(match![1]).toBe("5");
-    expect(match![5]).toBe("8");
+    expect(match![1]).toBe("Design review needed");
+  });
+
+  it("complete matches loop completed format", () => {
+    const match = "Loop completed".match(LOG_PATTERNS.complete);
+    expect(match).not.toBeNull();
+  });
+
+  it("limitReached matches max iterations format", () => {
+    const match = "Max iterations reached (20)".match(LOG_PATTERNS.limitReached);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("20");
   });
 
   it("timestamp matches ISO-style log prefix", () => {

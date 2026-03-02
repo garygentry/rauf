@@ -15,6 +15,16 @@ Bun.serve({ hostname: "127.0.0.1", port: config.port, fetch: app.fetch });
 
 NEVER bind to 0.0.0.0.
 
+### LoopManager (singleton)
+
+The server maintains a `LoopManager` singleton (`packages/web/src/server/loop-manager.ts`) that:
+
+- Tracks active loops by project path (max one loop per project)
+- Creates `LoopRunner` instances from `@ralph/loop`, subscribes to all 17 event types
+- Fans events out to SSE clients via `subscribe(projectPath, listener)`
+- Recovers stale loops on startup by scanning discovered projects and resetting stalled `in_progress` items to `pending`
+- Handles graceful shutdown (`shutdownAll()`) — cancels all active loops and waits for completion
+
 ### CSRF Middleware
 
 All POST/PUT/DELETE routes require header: `X-Ralph-Request: true`.
@@ -89,6 +99,23 @@ GET    /api/config                            → { data: ToolConfig }
 PUT    /api/config                            → { data: ToolConfig }
 ```
 
+### Loop Management
+
+```
+POST   /api/projects/:id/loop/start   → { data: { started: true, projectPath } }
+       Body (optional): { maxIterations?, maxRetries?, model?, sessionTimeoutMinutes? }
+       Defaults: maxIterations=20, maxRetries=3, sessionTimeoutMinutes=60
+       409 Conflict: Loop already running for this project
+
+POST   /api/projects/:id/loop/stop    → { data: { stopped: true, projectPath } }
+       404 Not Found: No active loop for this project
+
+GET    /api/projects/:id/loop/events  → SSE stream of LoopEvent
+       Event type: "loop_event" (data: JSON-encoded LoopEvent)
+       Heartbeat: "heartbeat" every 30s (data: ISO timestamp)
+       Streams until client disconnects
+```
+
 ### Error Response Format
 
 ```json
@@ -109,7 +136,8 @@ Event types:
 
 - `log` — new log line(s) (data: JSON array of strings)
 - `status` — loop state change detected (data: DerivedStatus JSON)
-- `heartbeat` — sent every 30s (data: timestamp)
+- `loop_event` — LoopEvent from the loop runner (data: JSON-encoded LoopEvent, see SCHEMAS.md)
+- `heartbeat` — sent every 30s (data: ISO timestamp)
 
 Implementation:
 
@@ -161,6 +189,8 @@ All API calls go through this wrapper.
 ['projects', id, 'status']          → derived status
 ['projects', id, 'profile']         → project profile
 ['config']                          → tool config
+['projects', id, 'loop', 'start']  → start loop mutation
+['projects', id, 'loop', 'stop']   → stop loop mutation
 ```
 
 ### UI Views
@@ -187,6 +217,7 @@ All API calls go through this wrapper.
 - Two-column layout (wide screens)
 - Left: loop state badge, iteration info, backlog summary, current/blocked/recent items
 - Right: live log tail panel (monospaced, SSE-fed, auto-scroll)
+- Loop control buttons: Start Loop (visible when state is IDLE, PAUSED, COMPLETE, or ERROR) / Stop Loop (visible when RUNNING or SLEEPING_LIMIT)
 - Below: progress.md rendered as markdown
 
 #### Installation Wizard (6 steps)

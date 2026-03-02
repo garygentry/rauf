@@ -19,8 +19,8 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 <CardGrid stagger>
   <Card title="Project Installation" icon="setting">
-    Auto-detect tech stack (Node.js, Python, Go, Rust) and deploy loop scripts
-    and configuration with a single command.
+    Auto-detect tech stack (Node.js, Python, Go, Rust) and install loop
+    infrastructure with a single command.
   </Card>
   <Card title="Backlog Management" icon="list-format">
     Add, edit, delete, and list work items with priorities, acceptance criteria,
@@ -39,7 +39,7 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 ## How It Works
 
 1. You define work items in a **backlog** (JSON-based task queue)
-2. Ralph's loop runner (`ralph.sh`) picks the next item, spawns a Claude Code session, and monitors the result
+2. The loop runner picks the next item, spawns a Claude Code session, and monitors the result
 3. Each iteration reads acceptance criteria, implements changes, runs verification, and commits
 4. The loop continues until the backlog is empty or a limit is reached
 
@@ -54,5 +54,5 @@ cd ralph && pnpm install && pnpm build
 ralph install ~/workspace/my-project --yes
 
 # Start the loop
-cd ~/workspace/my-project && ./ralph.sh
+ralph loop run ~/workspace/my-project
 ```
