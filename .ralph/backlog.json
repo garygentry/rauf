@@ -46,8 +46,8 @@
         "Unit tests: register a mock provider, create it, verify getAvailableProviders includes it, verify unknown ID throws",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-03T22:21:03.022Z",
       "dependsOn": [
         "001"
       ],
