@@ -101,6 +101,7 @@ export const MarkerFileSchema = z.object({
 // ─── LoopState (state.json) ────────────────────────────────────────
 
 export const LoopStateStatusSchema = z.enum([
+  "idle",
   "starting",
   "running",
   "paused",
@@ -119,9 +120,9 @@ export const LoopStateSchema = z.object({
   iteration: z.number().int().nonnegative(),
   maxIterations: z.number().int().positive(),
   currentItem: z.string().nullable(),
-  lastSignal: LoopStateSignalSchema,
-  startedAt: z.string(),
-  updatedAt: z.string(),
+  lastSignal: LoopStateSignalSchema.nullable(),
+  startedAt: z.string().nullable(),
+  updatedAt: z.string().nullable(),
   completedItems: z.array(z.string()),
   blockedItems: z.array(z.string()),
   error: z.string().nullable(),

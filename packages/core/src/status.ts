@@ -74,6 +74,7 @@ function computeBacklogSummary(projectPath: string): BacklogSummary {
 /** Map LoopState.status → LoopStateEnum */
 function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
   const mapping: Record<LoopState["status"], LoopStateEnum> = {
+    idle: "IDLE",
     starting: "RUNNING",
     running: "RUNNING",
     paused: "PAUSED",
@@ -269,7 +270,8 @@ function parseLogForDetails(logPath: string): Partial<DerivedStatus> {
 
 // ─── Shared helpers ─────────────────────────────────────────────
 
-function computeElapsed(startedAt: string): number | null {
+function computeElapsed(startedAt: string | null): number | null {
+  if (startedAt === null) return null;
   try {
     const start = new Date(startedAt).getTime();
     if (isNaN(start)) return null;
