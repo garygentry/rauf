@@ -299,6 +299,19 @@ describe("BacklogItemSchema", () => {
       BacklogItemSchema.parse({ ...validBacklogItem, specReferences: "docs/spec.md" }),
     ).toThrow();
   });
+
+  it("accepts optional provider string", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      provider: "generic-cli",
+    });
+    expect(result.provider).toBe("generic-cli");
+  });
+
+  it("accepts item without provider (backward compat)", () => {
+    const result = BacklogItemSchema.parse(validBacklogItem);
+    expect(result.provider).toBeUndefined();
+  });
 });
 
 // ─── AgentDelegation ──────────────────────────────────────────────
@@ -440,6 +453,29 @@ describe("MarkerOptionsSchema", () => {
     expect(() =>
       MarkerOptionsSchema.parse({ ...validMarkerOptions, sessionTimeout: 30.5 }),
     ).toThrow();
+  });
+
+  it("accepts optional provider string", () => {
+    const result = MarkerOptionsSchema.parse({
+      ...validMarkerOptions,
+      provider: "claude-cli",
+    });
+    expect(result.provider).toBe("claude-cli");
+  });
+
+  it("accepts optional providerConfig record", () => {
+    const result = MarkerOptionsSchema.parse({
+      ...validMarkerOptions,
+      provider: "generic-cli",
+      providerConfig: { binary: "/usr/bin/aider", args: ["--yes"] },
+    });
+    expect(result.providerConfig).toEqual({ binary: "/usr/bin/aider", args: ["--yes"] });
+  });
+
+  it("accepts options without provider fields (backward compat)", () => {
+    const result = MarkerOptionsSchema.parse(validMarkerOptions);
+    expect(result.provider).toBeUndefined();
+    expect(result.providerConfig).toBeUndefined();
   });
 });
 
@@ -610,6 +646,42 @@ describe("ToolConfigSchema", () => {
         theme: "system",
       }),
     ).toThrow();
+  });
+
+  it("accepts optional defaultProvider string", () => {
+    const result = ToolConfigSchema.parse({
+      rootDirectory: "/tmp",
+      port: 5173,
+      theme: "system",
+      defaultProvider: "generic-cli",
+    });
+    expect(result.defaultProvider).toBe("generic-cli");
+  });
+
+  it("accepts optional providers record of records", () => {
+    const result = ToolConfigSchema.parse({
+      rootDirectory: "/tmp",
+      port: 5173,
+      theme: "system",
+      providers: {
+        "generic-cli": { binary: "/usr/bin/aider", args: ["--yes"] },
+        "openai-codex": { model: "gpt-4" },
+      },
+    });
+    expect(result.providers).toEqual({
+      "generic-cli": { binary: "/usr/bin/aider", args: ["--yes"] },
+      "openai-codex": { model: "gpt-4" },
+    });
+  });
+
+  it("accepts config without provider fields (backward compat)", () => {
+    const result = ToolConfigSchema.parse({
+      rootDirectory: "/tmp",
+      port: 5173,
+      theme: "system",
+    });
+    expect(result.defaultProvider).toBeUndefined();
+    expect(result.providers).toBeUndefined();
   });
 });
 
@@ -928,6 +1000,25 @@ describe("LoopStartOptionsSchema", () => {
     expect(() => LoopStartOptionsSchema.parse({})).toThrow();
     expect(() => LoopStartOptionsSchema.parse({ maxIterations: 10 })).toThrow();
   });
+
+  it("accepts optional provider string", () => {
+    const result = LoopStartOptionsSchema.parse({
+      maxIterations: 20,
+      maxRetries: 3,
+      sessionTimeoutMinutes: 60,
+      provider: "generic-cli",
+    });
+    expect(result.provider).toBe("generic-cli");
+  });
+
+  it("accepts options without provider (backward compat)", () => {
+    const result = LoopStartOptionsSchema.parse({
+      maxIterations: 20,
+      maxRetries: 3,
+      sessionTimeoutMinutes: 60,
+    });
+    expect(result.provider).toBeUndefined();
+  });
 });
 
 // ─── LoopEvent ────────────────────────────────────────────────────
@@ -1017,16 +1108,18 @@ describe("LoopEventSchema", () => {
     });
   });
 
-  describe("claude_spawned", () => {
-    it("accepts valid event", () => {
+  describe("llm_spawned", () => {
+    it("accepts valid event with provider", () => {
       const result = LoopEventSchema.parse({
         ...base,
-        type: "claude_spawned",
+        type: "llm_spawned",
         itemId: "001",
+        provider: "claude-cli",
         timeoutMinutes: 60,
       });
-      expect(result.type).toBe("claude_spawned");
-      if (result.type === "claude_spawned") {
+      expect(result.type).toBe("llm_spawned");
+      if (result.type === "llm_spawned") {
+        expect(result.provider).toBe("claude-cli");
         expect(result.model).toBeUndefined();
         expect(result.timeoutMinutes).toBe(60);
       }
@@ -1035,29 +1128,43 @@ describe("LoopEventSchema", () => {
     it("accepts optional model", () => {
       const result = LoopEventSchema.parse({
         ...base,
-        type: "claude_spawned",
+        type: "llm_spawned",
         itemId: "001",
+        provider: "claude-cli",
         model: "claude-opus-4-6",
         timeoutMinutes: 120,
       });
-      if (result.type === "claude_spawned") {
+      if (result.type === "llm_spawned") {
         expect(result.model).toBe("claude-opus-4-6");
       }
     });
+
+    it("rejects missing provider field", () => {
+      expect(() =>
+        LoopEventSchema.parse({
+          ...base,
+          type: "llm_spawned",
+          itemId: "001",
+          timeoutMinutes: 60,
+        }),
+      ).toThrow();
+    });
   });
 
-  describe("claude_exited", () => {
-    it("accepts valid event", () => {
+  describe("llm_exited", () => {
+    it("accepts valid event with provider", () => {
       const result = LoopEventSchema.parse({
         ...base,
-        type: "claude_exited",
+        type: "llm_exited",
         itemId: "001",
+        provider: "claude-cli",
         exitCode: 0,
         timedOut: false,
         durationMs: 45000,
       });
-      expect(result.type).toBe("claude_exited");
-      if (result.type === "claude_exited") {
+      expect(result.type).toBe("llm_exited");
+      if (result.type === "llm_exited") {
+        expect(result.provider).toBe("claude-cli");
         expect(result.exitCode).toBe(0);
         expect(result.timedOut).toBe(false);
         expect(result.durationMs).toBe(45000);
@@ -1067,15 +1174,29 @@ describe("LoopEventSchema", () => {
     it("accepts timed out event", () => {
       const result = LoopEventSchema.parse({
         ...base,
-        type: "claude_exited",
+        type: "llm_exited",
         itemId: "001",
+        provider: "claude-cli",
         exitCode: 137,
         timedOut: true,
         durationMs: 3600000,
       });
-      if (result.type === "claude_exited") {
+      if (result.type === "llm_exited") {
         expect(result.timedOut).toBe(true);
       }
+    });
+
+    it("rejects missing provider field", () => {
+      expect(() =>
+        LoopEventSchema.parse({
+          ...base,
+          type: "llm_exited",
+          itemId: "001",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 1000,
+        }),
+      ).toThrow();
     });
   });
 
@@ -1405,10 +1526,11 @@ describe("LoopEventSchema", () => {
         { type: "loop_started", maxIterations: 20 },
         { type: "iteration_start", iteration: 1, maxIterations: 20 },
         { type: "item_selected", itemId: "001", title: "Task", priority: 1 },
-        { type: "claude_spawned", itemId: "001", timeoutMinutes: 60 },
+        { type: "llm_spawned", itemId: "001", provider: "claude-cli", timeoutMinutes: 60 },
         {
-          type: "claude_exited",
+          type: "llm_exited",
           itemId: "001",
+          provider: "claude-cli",
           exitCode: 0,
           timedOut: false,
           durationMs: 1000,

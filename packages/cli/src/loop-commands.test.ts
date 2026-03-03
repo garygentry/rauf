@@ -182,35 +182,38 @@ describe("formatAndPrintEvent", () => {
     expect(output.stdout).toContain("P1");
   });
 
-  it("formats claude_spawned event", () => {
-    const event = baseEvent("claude_spawned", {
+  it("formats llm_spawned event", () => {
+    const event = baseEvent("llm_spawned", {
       itemId: "012",
+      provider: "claude-cli",
       model: "sonnet",
       timeoutMinutes: 60,
     });
     const output = captureOutput(() => formatAndPrintEvent(event));
-    expect(output.stdout).toContain("Claude spawned");
+    expect(output.stdout).toContain("claude-cli spawned");
     expect(output.stdout).toContain("sonnet");
     expect(output.stdout).toContain("60m");
   });
 
-  it("formats claude_exited event", () => {
-    const event = baseEvent("claude_exited", {
+  it("formats llm_exited event", () => {
+    const event = baseEvent("llm_exited", {
       itemId: "012",
+      provider: "claude-cli",
       exitCode: 0,
       timedOut: false,
       durationMs: 120000,
     });
     const output = captureOutput(() => formatAndPrintEvent(event));
-    expect(output.stdout).toContain("Claude exited");
+    expect(output.stdout).toContain("claude-cli exited");
     expect(output.stdout).toContain("code=0");
     expect(output.stdout).toContain("120s");
     expect(output.stdout).not.toContain("TIMED OUT");
   });
 
-  it("formats claude_exited with timeout", () => {
-    const event = baseEvent("claude_exited", {
+  it("formats llm_exited with timeout", () => {
+    const event = baseEvent("llm_exited", {
       itemId: "012",
+      provider: "claude-cli",
       exitCode: 1,
       timedOut: true,
       durationMs: 3600000,

@@ -18,7 +18,7 @@ import { ExitCode } from "./commands.js";
 import { extractNumberFlag, extractStringFlag } from "./parser.js";
 import { c, info, print, error, success, outputJson } from "./formatter.js";
 import {
-  readPidFile,
+  readServerState,
   isProcessAlive,
   pingHealthEndpoint,
   handleServerStart,
@@ -29,8 +29,6 @@ import {
 const DEFAULT_MAX_ITERATIONS = 20;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
-const SERVER_READY_TIMEOUT_MS = 10_000;
-const SERVER_READY_POLL_MS = 500;
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -45,8 +43,10 @@ function projectId(projectPath: string): string {
   return path.basename(projectPath);
 }
 
-/** Get the configured server port */
+/** Get the server port — prefer actual port from state file, fall back to config. */
 function getPort(): number {
+  const state = readServerState();
+  if (state) return state.port;
   const configResult = readToolConfig();
   return configResult.ok ? configResult.value.port : 5173;
 }
@@ -56,21 +56,10 @@ function apiUrl(port: number, id: string, endpoint: string): string {
   return `http://127.0.0.1:${port}/api/projects/${encodeURIComponent(id)}/loop/${endpoint}`;
 }
 
-/** Check if the ralph server is running via PID file */
+/** Check if the ralph server is running via state file */
 function isServerRunning(): boolean {
-  const pid = readPidFile();
-  return pid !== null && isProcessAlive(pid);
-}
-
-/** Wait for the server health endpoint to respond */
-async function waitForServerReady(port: number): Promise<boolean> {
-  const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const health = await pingHealthEndpoint(port);
-    if (health) return true;
-    await new Promise((r) => setTimeout(r, SERVER_READY_POLL_MS));
-  }
-  return false;
+  const state = readServerState();
+  return state !== null && isProcessAlive(state.pid);
 }
 
 /** Auto-start server daemon if not running. Returns true if server is ready. */
@@ -92,20 +81,14 @@ async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
     rawArgv: [],
   };
 
+  // startDaemon now waits for readiness before returning
   const code = await handleServerStart(startCtx);
   if (code !== ExitCode.SUCCESS) {
     error("Failed to start server daemon.");
     return false;
   }
 
-  // Wait for health endpoint
   const port = getPort();
-  const ready = await waitForServerReady(port);
-  if (!ready) {
-    error("Server started but health endpoint not responding.");
-    return false;
-  }
-
   info(`Server started on port ${port}.`);
   return true;
 }
@@ -349,8 +332,8 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     "loop_started",
     "iteration_start",
     "item_selected",
-    "claude_spawned",
-    "claude_exited",
+    "llm_spawned",
+    "llm_exited",
     "signal_parsed",
     "item_completed",
     "item_blocked",
@@ -427,18 +410,18 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       );
       break;
 
-    case "claude_spawned":
+    case "llm_spawned":
       print(
-        `${prefix} ${c.magenta("\u25C6")} Claude spawned${event.model ? ` (${event.model})` : ""} ${c.dim(`timeout: ${event.timeoutMinutes}m`)}`,
+        `${prefix} ${c.magenta("\u25C6")} ${event.provider} spawned${event.model ? ` (${event.model})` : ""} ${c.dim(`timeout: ${event.timeoutMinutes}m`)}`,
       );
       break;
 
-    case "claude_exited": {
+    case "llm_exited": {
       const duration = Math.round(event.durationMs / 1000);
       const icon = event.exitCode === 0 ? c.green("\u25C7") : c.yellow("\u25C7");
       const timedOutLabel = event.timedOut ? c.red(" TIMED OUT") : "";
       print(
-        `${prefix} ${icon} Claude exited (code=${event.exitCode}, ${duration}s)${timedOutLabel}`,
+        `${prefix} ${icon} ${event.provider} exited (code=${event.exitCode}, ${duration}s)${timedOutLabel}`,
       );
       break;
     }

@@ -39,6 +39,7 @@ export const BacklogItemSchema = z.object({
   model: z.string().optional(),
   agentDelegation: AgentDelegationSchema.optional(),
   specReferences: z.array(z.string()).optional(),
+  provider: z.string().optional(),
 });
 
 // ─── Backlog ───────────────────────────────────────────────────────
@@ -83,6 +84,8 @@ export const MarkerOptionsSchema = z.object({
   sessionTimeout: z.number().int().positive().optional(),
   /** Runtime mode: 'shell' (legacy scripts) or 'global' (TypeScript loop runner). Defaults to 'shell' when omitted for backward compat. */
   runtime: RuntimeSchema.optional(),
+  provider: z.string().optional(),
+  providerConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ─── MarkerFile (.ralph.json) ──────────────────────────────────────
@@ -137,6 +140,8 @@ export const ToolConfigSchema = z.object({
   rootDirectory: z.string(),
   port: z.number().int().positive(),
   theme: ToolConfigThemeSchema,
+  defaultProvider: z.string().optional(),
+  providers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
 
 // ─── DerivedStatus ─────────────────────────────────────────────────
@@ -264,6 +269,7 @@ export const LoopStartOptionsSchema = z.object({
   maxRetries: z.number().int().positive(),
   model: z.string().optional(),
   sessionTimeoutMinutes: z.number().int().positive(),
+  provider: z.string().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
@@ -294,16 +300,18 @@ const ItemSelectedSchema = LoopEventBaseSchema.extend({
   priority: z.number().int(),
 });
 
-const ClaudeSpawnedSchema = LoopEventBaseSchema.extend({
-  type: z.literal("claude_spawned"),
+const LlmSpawnedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("llm_spawned"),
   itemId: z.string(),
+  provider: z.string(),
   model: z.string().optional(),
   timeoutMinutes: z.number().int().positive(),
 });
 
-const ClaudeExitedSchema = LoopEventBaseSchema.extend({
-  type: z.literal("claude_exited"),
+const LlmExitedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("llm_exited"),
   itemId: z.string(),
+  provider: z.string(),
   exitCode: z.number().int(),
   timedOut: z.boolean(),
   durationMs: z.number().nonnegative(),
@@ -381,8 +389,8 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   LoopStartedSchema,
   IterationStartSchema,
   ItemSelectedSchema,
-  ClaudeSpawnedSchema,
-  ClaudeExitedSchema,
+  LlmSpawnedSchema,
+  LlmExitedSchema,
   SignalParsedSchema,
   ItemCompletedSchema,
   ItemBlockedSchema,

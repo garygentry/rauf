@@ -128,14 +128,16 @@ describe("TypedEventEmitter", () => {
       },
       {
         ...makeBaseFields(),
-        type: "claude_spawned",
+        type: "llm_spawned",
         itemId: "001",
+        provider: "claude-cli",
         timeoutMinutes: 30,
       },
       {
         ...makeBaseFields(),
-        type: "claude_exited",
+        type: "llm_exited",
         itemId: "001",
+        provider: "claude-cli",
         exitCode: 0,
         timedOut: false,
         durationMs: 1000,

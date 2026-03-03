@@ -374,13 +374,13 @@ describe("LoopRunner", () => {
         ...DEFAULT_OPTIONS,
         model: "claude-sonnet-4-6",
       });
-      runner.on("claude_spawned", (e) => events.push(e));
+      runner.on("llm_spawned", (e) => events.push(e));
 
       await runner.start();
 
-      const spawnedEvents = events.filter((e) => e.type === "claude_spawned");
+      const spawnedEvents = events.filter((e) => e.type === "llm_spawned");
       expect(spawnedEvents).toHaveLength(1);
-      expect((spawnedEvents[0] as Extract<LoopEvent, { type: "claude_spawned" }>).model).toBe(
+      expect((spawnedEvents[0] as Extract<LoopEvent, { type: "llm_spawned" }>).model).toBe(
         "claude-opus-4-6",
       );
     });
@@ -394,12 +394,12 @@ describe("LoopRunner", () => {
         ...DEFAULT_OPTIONS,
         model: "claude-sonnet-4-6",
       });
-      runner.on("claude_spawned", (e) => events.push(e));
+      runner.on("llm_spawned", (e) => events.push(e));
 
       await runner.start();
 
-      const spawnedEvents = events.filter((e) => e.type === "claude_spawned");
-      expect((spawnedEvents[0] as Extract<LoopEvent, { type: "claude_spawned" }>).model).toBe(
+      const spawnedEvents = events.filter((e) => e.type === "llm_spawned");
+      expect((spawnedEvents[0] as Extract<LoopEvent, { type: "llm_spawned" }>).model).toBe(
         "claude-sonnet-4-6",
       );
     });
@@ -613,8 +613,8 @@ echo "RALPH_DONE"`,
       runner.on("loop_started", () => eventTypes.push("loop_started"));
       runner.on("iteration_start", () => eventTypes.push("iteration_start"));
       runner.on("item_selected", () => eventTypes.push("item_selected"));
-      runner.on("claude_spawned", () => eventTypes.push("claude_spawned"));
-      runner.on("claude_exited", () => eventTypes.push("claude_exited"));
+      runner.on("llm_spawned", () => eventTypes.push("llm_spawned"));
+      runner.on("llm_exited", () => eventTypes.push("llm_exited"));
       runner.on("signal_parsed", () => eventTypes.push("signal_parsed"));
       runner.on("item_completed", () => eventTypes.push("item_completed"));
       runner.on("loop_completed", () => eventTypes.push("loop_completed"));
@@ -624,8 +624,8 @@ echo "RALPH_DONE"`,
       expect(eventTypes).toContain("loop_started");
       expect(eventTypes).toContain("iteration_start");
       expect(eventTypes).toContain("item_selected");
-      expect(eventTypes).toContain("claude_spawned");
-      expect(eventTypes).toContain("claude_exited");
+      expect(eventTypes).toContain("llm_spawned");
+      expect(eventTypes).toContain("llm_exited");
       expect(eventTypes).toContain("signal_parsed");
       expect(eventTypes).toContain("item_completed");
       expect(eventTypes).toContain("loop_completed");
@@ -805,13 +805,13 @@ fi`,
         ...DEFAULT_OPTIONS,
         sessionTimeoutMinutes: 42,
       });
-      runner.on("claude_spawned", (e) => events.push(e));
+      runner.on("llm_spawned", (e) => events.push(e));
 
       await runner.start();
 
-      const spawnedEvent = events.find((e) => e.type === "claude_spawned") as Extract<
+      const spawnedEvent = events.find((e) => e.type === "llm_spawned") as Extract<
         LoopEvent,
-        { type: "claude_spawned" }
+        { type: "llm_spawned" }
       >;
       expect(spawnedEvent.timeoutMinutes).toBe(42);
     });

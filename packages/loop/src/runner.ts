@@ -189,8 +189,9 @@ export class LoopRunner extends TypedEventEmitter {
         }
 
         // Spawn claude
-        this.emitEvent("claude_spawned", {
+        this.emitEvent("llm_spawned", {
           itemId: item.id,
+          provider: "claude-cli",
           model: resolvedModel,
           timeoutMinutes: this.options.sessionTimeoutMinutes,
         });
@@ -214,8 +215,9 @@ export class LoopRunner extends TypedEventEmitter {
         }
 
         const { exitCode, stdout, stderr, timedOut, durationMs } = claudeResult.value;
-        this.emitEvent("claude_exited", {
+        this.emitEvent("llm_exited", {
           itemId: item.id,
+          provider: "claude-cli",
           exitCode,
           timedOut,
           durationMs,
