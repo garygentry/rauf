@@ -42,7 +42,7 @@ const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
 
 // ─── SSE constants ───────────────────────────────────────────────
 
-const SSE_HEARTBEAT_MS = 30_000;
+const SSE_HEARTBEAT_MS = 15_000;
 
 // ─── createLoopRouter ────────────────────────────────────────────
 
@@ -161,6 +161,9 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
 
       const cleanups: Array<() => void> = [];
 
+      // Immediate heartbeat so the connection is active from the start
+      await stream.writeSSE({ data: new Date().toISOString(), event: "heartbeat" });
+
       // Subscribe to loop events for this project
       const manager = getLoopManager();
       const unsubscribe = manager.subscribe(projectPath, (event) => {
@@ -169,7 +172,7 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       });
       cleanups.push(unsubscribe);
 
-      // Heartbeat every 30s
+      // Heartbeat every 15s
       const heartbeatInterval = setInterval(() => {
         if (stream.aborted || stream.closed) return;
         stream.writeSSE({ data: new Date().toISOString(), event: "heartbeat" }).catch(() => {});
