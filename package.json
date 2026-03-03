@@ -19,9 +19,11 @@
     "build:docs": "pnpm --filter @ralph/docs build",
     "compile": "pnpm build && bun build --compile scripts/binary-entry.ts --outfile ralph-bin",
     "clean": "pnpm -r clean",
-    "generate:diagrams": "bun run scripts/generate-diagrams.ts"
+    "generate:diagrams": "bun run scripts/generate-diagrams.ts",
+    "ralph": "ralph"
   },
   "devDependencies": {
+    "@ralph/cli": "workspace:*",
     "@eslint/js": "^9.39.3",
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",

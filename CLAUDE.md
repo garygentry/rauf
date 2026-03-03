@@ -62,6 +62,57 @@ pnpm lint             # ESLint
 pnpm format:check     # Prettier check
 ```
 
+## Dev Environment Setup
+
+### Prerequisites
+
+- **Bun** — TypeScript runtime (`curl -fsSL https://bun.sh/install | bash`)
+- **pnpm** — Package manager (`npm install -g pnpm@9`)
+- **direnv** — Auto-loads environment per directory (recommended)
+
+### Installing direnv
+
+```bash
+# macOS
+brew install direnv
+
+# Ubuntu/Debian
+sudo apt install direnv
+
+# Arch
+sudo pacman -S direnv
+```
+
+Then hook it into your shell by adding to `~/.zshrc` (or `~/.bashrc`):
+
+```bash
+eval "$(direnv hook zsh)"   # or: eval "$(direnv hook bash)"
+```
+
+Restart your shell, then from the repo root:
+
+```bash
+direnv allow
+```
+
+### Running the CLI in dev
+
+After `pnpm install`, direnv automatically adds `scripts/bin/ralph` to your PATH. This wrapper runs `bun` directly on the TypeScript source — no build step needed, always uses the latest code:
+
+```bash
+ralph status .          # Show loop state + backlog summary
+ralph backlog list .    # List all backlog items
+ralph loop run .        # Run a loop iteration
+```
+
+If you don't use direnv, you can achieve the same manually:
+
+```bash
+export PATH="$(pwd)/scripts/bin:$PATH"
+```
+
+Alternatively, `pnpm ralph <args>` also works (routes through `node_modules/.bin/ralph` which requires `pnpm build` first).
+
 ## Coding Conventions
 
 - Strict TypeScript (`strict: true`, `noUncheckedIndexedAccess: true`)
