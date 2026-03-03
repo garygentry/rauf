@@ -4,12 +4,13 @@
 //
 // Server lifecycle:
 //   --foreground: inherit stdio, block until exit (default in TTY)
-//   --daemon:     spawn detached, write PID to ~/.ralph/server.pid,
+//   --daemon:     spawn detached, write state to ~/.ralph/server.json,
 //                 redirect stdio to ~/.ralph/server.log
 //
 // Process health:
-//   PID file check + process.kill(pid, 0) for liveness
-//   Optional health endpoint ping for uptime/version
+//   State file check + process.kill(pid, 0) for liveness
+//   Health endpoint ping for uptime/version/pid
+//   Error file for daemon startup failure propagation
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -26,10 +27,14 @@ import { c, info, print, error, outputJson } from "./formatter.js";
 // ─── Constants ───────────────────────────────────────────────────
 
 const RALPH_CONFIG_DIR = path.join(os.homedir(), ".ralph");
-export const SERVER_PID_FILE = path.join(RALPH_CONFIG_DIR, "server.pid");
+export const SERVER_STATE_FILE = path.join(RALPH_CONFIG_DIR, "server.json");
 export const SERVER_LOG_FILE = path.join(RALPH_CONFIG_DIR, "server.log");
+export const SERVER_ERROR_FILE = path.join(RALPH_CONFIG_DIR, "server.error");
+const LEGACY_PID_FILE = path.join(RALPH_CONFIG_DIR, "server.pid");
 const SIGTERM_TIMEOUT_MS = 5000;
 const HEALTH_PING_TIMEOUT_MS = 2000;
+const DAEMON_READY_TIMEOUT_MS = 10_000;
+const DAEMON_READY_POLL_MS = 300;
 
 // ─── Path resolution ─────────────────────────────────────────────
 
@@ -77,29 +82,92 @@ function getServerSpawnArgs(port: number | undefined): { cmd: string; args: stri
   return { cmd: "bun", args: ["run", resolveServerEntry()] };
 }
 
-// ─── PID file helpers ─────────────────────────────────────────────
+// ─── Server state file helpers ───────────────────────────────────
 
-/** Read the stored PID, or null if file missing/invalid. */
-export function readPidFile(): number | null {
+/** Structured server state persisted to ~/.ralph/server.json */
+export interface ServerState {
+  pid: number;
+  port: number;
+  startedAt: string;
+}
+
+/** Read the server state file, or null if missing/malformed. Falls back to legacy server.pid. */
+export function readServerState(): ServerState | null {
+  // Try server.json first
   try {
-    const content = fs.readFileSync(SERVER_PID_FILE, "utf-8").trim();
-    const pid = parseInt(content, 10);
-    return isNaN(pid) ? null : pid;
+    const content = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    const parsed = JSON.parse(content) as Partial<ServerState>;
+    if (typeof parsed.pid === "number" && typeof parsed.port === "number" && typeof parsed.startedAt === "string") {
+      return { pid: parsed.pid, port: parsed.port, startedAt: parsed.startedAt };
+    }
   } catch {
-    return null;
+    // Fall through to legacy check
+  }
+
+  // Legacy fallback: read server.pid and construct state with config port
+  try {
+    const content = fs.readFileSync(LEGACY_PID_FILE, "utf-8").trim();
+    const pid = parseInt(content, 10);
+    if (!isNaN(pid)) {
+      return { pid, port: getPort(), startedAt: new Date().toISOString() };
+    }
+  } catch {
+    // No state available
+  }
+
+  return null;
+}
+
+/** Write server state atomically, creating ~/.ralph/ if needed. */
+export function writeServerState(state: ServerState): void {
+  fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
+  const tmpFile = SERVER_STATE_FILE + ".tmp";
+  fs.writeFileSync(tmpFile, JSON.stringify(state), "utf-8");
+  fs.renameSync(tmpFile, SERVER_STATE_FILE);
+}
+
+/** Remove the server state file (and legacy PID file if present). */
+export function removeServerState(): void {
+  try {
+    fs.unlinkSync(SERVER_STATE_FILE);
+  } catch {
+    // Already removed — fine.
+  }
+  try {
+    fs.unlinkSync(LEGACY_PID_FILE);
+  } catch {
+    // Already removed — fine.
   }
 }
 
-/** Write a PID to the server PID file, creating ~/.ralph/ if needed. */
-export function writePidFile(pid: number): void {
-  fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
-  fs.writeFileSync(SERVER_PID_FILE, String(pid), "utf-8");
+// ─── Server error file helpers ───────────────────────────────────
+
+/** Structured error written by the daemon on startup failure. */
+export interface ServerStartError {
+  code: "EADDRINUSE" | "UNKNOWN";
+  message: string;
+  port: number;
+  timestamp: string;
 }
 
-/** Remove the server PID file (silently ignore if already gone). */
-export function removePidFile(): void {
+/** Read the daemon error file, or null if missing/malformed. */
+export function readServerError(): ServerStartError | null {
   try {
-    fs.unlinkSync(SERVER_PID_FILE);
+    const content = fs.readFileSync(SERVER_ERROR_FILE, "utf-8");
+    const parsed = JSON.parse(content) as Partial<ServerStartError>;
+    if (typeof parsed.code === "string" && typeof parsed.message === "string") {
+      return parsed as ServerStartError;
+    }
+  } catch {
+    // Missing or malformed
+  }
+  return null;
+}
+
+/** Remove the daemon error file. */
+export function removeServerError(): void {
+  try {
+    fs.unlinkSync(SERVER_ERROR_FILE);
   } catch {
     // Already removed — fine.
   }
@@ -130,6 +198,7 @@ function sleep(ms: number): Promise<void> {
 interface HealthData {
   uptime: number;
   version: string;
+  pid?: number;
 }
 
 /**
@@ -144,10 +213,11 @@ export async function pingHealthEndpoint(port: number): Promise<HealthData | nul
     try {
       const resp = await fetch(url, { signal: controller.signal });
       if (!resp.ok) return null;
-      const body = (await resp.json()) as { data?: { uptime?: number; version?: string } };
+      const body = (await resp.json()) as { data?: { uptime?: number; version?: string; pid?: number } };
       return {
         uptime: body.data?.uptime ?? 0,
         version: body.data?.version ?? "unknown",
+        pid: body.data?.pid,
       };
     } finally {
       clearTimeout(timeout);
@@ -165,11 +235,95 @@ function getPort(): number {
   return configResult.ok ? configResult.value.port : 5173;
 }
 
+// ─── Daemon readiness polling ────────────────────────────────────
+
+type DaemonReadyResult =
+  | { status: "ready" }
+  | { status: "eaddrinuse"; message: string; port: number }
+  | { status: "crashed"; message: string }
+  | { status: "timeout" };
+
+/**
+ * Poll for daemon readiness after spawn. Checks three conditions each cycle:
+ * 1. Error file from daemon → startup failure (EADDRINUSE, etc.)
+ * 2. Process died → crashed without writing error file
+ * 3. Health endpoint responds → server is ready
+ */
+async function waitForDaemonReady(port: number, pid: number): Promise<DaemonReadyResult> {
+  const deadline = Date.now() + DAEMON_READY_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    // 1. Check for error file
+    const startError = readServerError();
+    if (startError) {
+      removeServerError();
+      if (startError.code === "EADDRINUSE") {
+        return { status: "eaddrinuse", message: startError.message, port: startError.port };
+      }
+      return { status: "crashed", message: startError.message };
+    }
+
+    // 2. Check if process died
+    if (!isProcessAlive(pid)) {
+      // Give a moment for error file to be written
+      await sleep(100);
+      const lateError = readServerError();
+      if (lateError) {
+        removeServerError();
+        if (lateError.code === "EADDRINUSE") {
+          return { status: "eaddrinuse", message: lateError.message, port: lateError.port };
+        }
+        return { status: "crashed", message: lateError.message };
+      }
+      return { status: "crashed", message: `Server process exited unexpectedly. Check ${SERVER_LOG_FILE}` };
+    }
+
+    // 3. Check health endpoint
+    const health = await pingHealthEndpoint(port);
+    if (health) {
+      return { status: "ready" };
+    }
+
+    await sleep(DAEMON_READY_POLL_MS);
+  }
+
+  return { status: "timeout" };
+}
+
+// ─── Orphan detection helpers ────────────────────────────────────
+
+/**
+ * Kill a process by PID: SIGTERM → wait → SIGKILL if needed.
+ * Returns true if the process was successfully killed.
+ */
+async function killProcess(pid: number): Promise<boolean> {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return false;
+  }
+
+  const deadline = Date.now() + SIGTERM_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) return true;
+    await sleep(200);
+  }
+
+  // Force kill
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // May already be dead
+  }
+  await sleep(200);
+  return !isProcessAlive(pid);
+}
+
 // ─── handleServerStart ───────────────────────────────────────────
 //
 // Start the ralph web server.
 // --foreground (default in TTY): inherit stdio, block until process exits.
-// --daemon: spawn detached, write PID file, log to ~/.ralph/server.log.
+// --daemon: spawn detached, write state file, log to ~/.ralph/server.log.
 
 export async function handleServerStart(ctx: CommandContext): Promise<number> {
   const foreground = extractBoolFlag(ctx.flags, "foreground");
@@ -177,26 +331,42 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
   const portFlag = extractNumberFlag(ctx.flags, "port");
   const port = portFlag ?? getPort();
 
-  // Check for an existing running server
-  const existingPid = readPidFile();
-  if (existingPid !== null && isProcessAlive(existingPid)) {
-    if (ctx.globalFlags.json) {
-      outputJson({
-        error: {
-          code: "SERVER_ALREADY_RUNNING",
-          message: `Server already running (PID ${existingPid})`,
-        },
-      });
-    } else {
-      error(`Server is already running (PID ${existingPid}).`);
-      info(`Use ${c.cyan("ralph server stop")} to stop it first.`);
+  // ── Check for existing server via state file ──────────────────
+  const state = readServerState();
+  if (state && isProcessAlive(state.pid)) {
+    // PID is alive — verify it's actually our server via health probe
+    const health = await pingHealthEndpoint(state.port);
+    if (health) {
+      // Genuinely running ralph server
+      if (ctx.globalFlags.json) {
+        outputJson({
+          error: {
+            code: "SERVER_ALREADY_RUNNING",
+            message: `Server already running (PID ${state.pid})`,
+          },
+        });
+      } else {
+        error(`Server is already running (PID ${state.pid}).`);
+        info(`Use ${c.cyan("ralph server stop")} to stop it first.`);
+      }
+      return ExitCode.CONFLICT;
     }
-    return ExitCode.CONFLICT;
+    // Health failed — PID reused by unrelated process. Clean up stale state.
+    removeServerState();
+  } else if (state) {
+    // Stale state file (process is dead) — clean it up
+    removeServerState();
   }
 
-  // Stale PID file (process is dead) — clean it up
-  if (existingPid !== null) {
-    removePidFile();
+  // ── Check for orphaned ralph server on our target port ────────
+  const portHealth = await pingHealthEndpoint(port);
+  if (portHealth && portHealth.pid) {
+    // Something is responding on our port with ralph health data — orphan
+    if (!ctx.globalFlags.quiet) {
+      info(`Detected orphaned ralph server (PID ${portHealth.pid}) on port ${port}. Cleaning up...`);
+    }
+    await killProcess(portHealth.pid);
+    await sleep(500); // Wait for port release
   }
 
   // In dev mode, verify the server entry point exists
@@ -238,8 +408,8 @@ function startForeground(port: number, ctx: CommandContext): number {
   return (result.status ?? 0) === 0 ? ExitCode.SUCCESS : ExitCode.ERROR;
 }
 
-/** Start as daemon: spawn detached, redirect output to log file, write PID. */
-function startDaemon(port: number, ctx: CommandContext): number {
+/** Start as daemon: spawn detached, redirect output to log file, write state, wait for readiness. */
+async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
   // Ensure ~/.ralph/ directory exists
   try {
     fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
@@ -247,6 +417,9 @@ function startDaemon(port: number, ctx: CommandContext): number {
     error(`Failed to create config directory: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   }
+
+  // Clean up any stale error file before spawning
+  removeServerError();
 
   // Open log file for appending (stdout + stderr both go here)
   let logFd: number;
@@ -276,40 +449,98 @@ function startDaemon(port: number, ctx: CommandContext): number {
     return ExitCode.ERROR;
   }
 
-  writePidFile(child.pid);
+  // Write server state immediately
+  writeServerState({
+    pid: child.pid,
+    port,
+    startedAt: new Date().toISOString(),
+  });
 
-  if (ctx.globalFlags.json) {
-    outputJson({
-      running: true,
-      pid: child.pid,
-      port,
-      url: `http://127.0.0.1:${port}`,
-      logFile: SERVER_LOG_FILE,
-    });
-  } else {
-    print(`${c.green("✓")} Ralph server started (PID ${child.pid})`);
-    print(`  URL:  ${c.cyan(`http://127.0.0.1:${port}`)}`);
-    print(`  Log:  ${SERVER_LOG_FILE}`);
-    print(`  PID:  ${child.pid}`);
-    print(`  Stop: ${c.cyan("ralph server stop")}`);
+  // Wait for daemon to become ready
+  const result = await waitForDaemonReady(port, child.pid);
+
+  switch (result.status) {
+    case "ready":
+      if (ctx.globalFlags.json) {
+        outputJson({
+          running: true,
+          pid: child.pid,
+          port,
+          url: `http://127.0.0.1:${port}`,
+          logFile: SERVER_LOG_FILE,
+        });
+      } else {
+        print(`${c.green("\u2713")} Ralph server started (PID ${child.pid})`);
+        print(`  URL:  ${c.cyan(`http://127.0.0.1:${port}`)}`);
+        print(`  Log:  ${SERVER_LOG_FILE}`);
+        print(`  PID:  ${child.pid}`);
+        print(`  Stop: ${c.cyan("ralph server stop")}`);
+      }
+      return ExitCode.SUCCESS;
+
+    case "eaddrinuse":
+      removeServerState();
+      if (ctx.globalFlags.json) {
+        outputJson({
+          error: {
+            code: "EADDRINUSE",
+            message: `Port ${result.port} is already in use`,
+          },
+        });
+      } else {
+        error(`Port ${result.port} is already in use.`);
+        print("  Options:");
+        print("    1. Stop the other process");
+        print(`    2. Use a different port: ${c.cyan(`ralph server start --port <N>`)}`);
+        print(`    3. Update default port:  ${c.cyan("ralph config set port <N>")}`);
+      }
+      return ExitCode.ERROR;
+
+    case "crashed":
+      removeServerState();
+      if (ctx.globalFlags.json) {
+        outputJson({
+          error: {
+            code: "CRASHED",
+            message: result.message,
+          },
+        });
+      } else {
+        error(`Server failed to start: ${result.message}`);
+        info(`Check logs: ${c.cyan(`ralph server logs`)}`);
+      }
+      return ExitCode.ERROR;
+
+    case "timeout":
+      // Server may still be starting up — leave state file, warn user
+      if (ctx.globalFlags.json) {
+        outputJson({
+          error: {
+            code: "TIMEOUT",
+            message: "Server started but health endpoint not responding within timeout",
+          },
+        });
+      } else {
+        error("Server started but health endpoint not responding within timeout.");
+        info(`Check logs: ${c.cyan(`ralph server logs`)}`);
+      }
+      return ExitCode.ERROR;
   }
-
-  return ExitCode.SUCCESS;
 }
 
 // ─── handleServerStop ────────────────────────────────────────────
 //
 // Stop the running server.
-// Reads PID from ~/.ralph/server.pid, sends SIGTERM,
+// Reads state from ~/.ralph/server.json, sends SIGTERM,
 // waits up to 5s, then SIGKILL if still alive.
 
 export async function handleServerStop(ctx: CommandContext): Promise<number> {
-  const pid = readPidFile();
+  const state = readServerState();
 
-  // No PID file, or process is already dead
-  if (pid === null || !isProcessAlive(pid)) {
-    if (pid !== null) {
-      removePidFile(); // Clean up stale file
+  // No state file, or process is already dead
+  if (state === null || !isProcessAlive(state.pid)) {
+    if (state !== null) {
+      removeServerState(); // Clean up stale file
     }
     if (ctx.globalFlags.json) {
       outputJson({ running: false, message: "No server running" });
@@ -321,35 +552,35 @@ export async function handleServerStop(ctx: CommandContext): Promise<number> {
 
   // Send SIGTERM for graceful shutdown
   try {
-    process.kill(pid, "SIGTERM");
+    process.kill(state.pid, "SIGTERM");
   } catch (e) {
-    error(`Failed to send SIGTERM to PID ${pid}: ${e instanceof Error ? e.message : String(e)}`);
+    error(`Failed to send SIGTERM to PID ${state.pid}: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   }
 
   // Wait up to SIGTERM_TIMEOUT_MS for process to exit
   const deadline = Date.now() + SIGTERM_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (!isProcessAlive(pid)) break;
+    if (!isProcessAlive(state.pid)) break;
     await sleep(200);
   }
 
   // Force kill if graceful shutdown didn't work
-  if (isProcessAlive(pid)) {
+  if (isProcessAlive(state.pid)) {
     try {
-      process.kill(pid, "SIGKILL");
+      process.kill(state.pid, "SIGKILL");
     } catch {
       // May already be dead
     }
     await sleep(200);
   }
 
-  removePidFile();
+  removeServerState();
 
   if (ctx.globalFlags.json) {
-    outputJson({ running: false, pid, message: "Server stopped" });
+    outputJson({ running: false, pid: state.pid, message: "Server stopped" });
   } else {
-    print(`${c.green("✓")} Server stopped (PID ${pid}).`);
+    print(`${c.green("\u2713")} Server stopped (PID ${state.pid}).`);
   }
 
   return ExitCode.SUCCESS;
@@ -377,20 +608,21 @@ export async function handleServerRestart(ctx: CommandContext): Promise<number> 
 // Report whether the server is running: PID, port, uptime.
 
 export async function handleServerStatus(ctx: CommandContext): Promise<number> {
-  const port = getPort();
-  const pid = readPidFile();
+  const state = readServerState();
+  const port = state?.port ?? getPort();
+  const pid = state?.pid ?? null;
   const alive = pid !== null && isProcessAlive(pid);
 
-  // Clean up stale PID file if process is dead
-  if (pid !== null && !alive) {
-    removePidFile();
+  // Clean up stale state file if process is dead
+  if (state !== null && !alive) {
+    removeServerState();
   }
 
   if (!alive) {
     if (ctx.globalFlags.json) {
       outputJson({ running: false, port });
     } else {
-      print(`${c.red("●")} Server is ${c.bold("stopped")}`);
+      print(`${c.red("\u25CF")} Server is ${c.bold("stopped")}`);
       print(`  Port: ${port}`);
       print(`  Start: ${c.cyan("ralph server start")}`);
     }
@@ -412,7 +644,7 @@ export async function handleServerStatus(ctx: CommandContext): Promise<number> {
     return ExitCode.SUCCESS;
   }
 
-  print(`${c.green("●")} Server is ${c.bold("running")}`);
+  print(`${c.green("\u25CF")} Server is ${c.bold("running")}`);
   print(`  PID:  ${pid}`);
   print(`  Port: ${port}`);
   print(`  URL:  ${c.cyan(`http://127.0.0.1:${port}`)}`);

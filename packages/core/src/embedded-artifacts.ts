@@ -6,7 +6,9 @@
  * Keys are relative paths within artifacts/variants/backlog-json/.
  */
 export const EMBEDDED_ARTIFACTS: ReadonlyMap<string, string> = new Map([
-  [".ralph/RALPH.md.tmpl", `# Ralph — Per-Iteration Instructions
+  [
+    ".ralph/RALPH.md.tmpl",
+    `# Ralph — Per-Iteration Instructions
 
 <!-- ralph:managed:start -->
 
@@ -67,15 +69,21 @@ Items may also include a \`specReferences\` field listing paths to specification
 
 ## Project-Specific Instructions
 <!-- Add custom instructions below this line — they survive ralph update -->
-`],
-  [".ralph/backlog.json", `{
+`,
+  ],
+  [
+    ".ralph/backlog.json",
+    `{
   "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "project": "",
   "description": "",
   "items": []
 }
-`],
-  [".ralph/backlog.schema.json", `{
+`,
+  ],
+  [
+    ".ralph/backlog.schema.json",
+    `{
   "type": "object",
   "properties": {
     "project": {
@@ -193,6 +201,9 @@ Items may also include a \`specReferences\` field listing paths to specification
             "items": {
               "type": "string"
             }
+          },
+          "provider": {
+            "type": "string"
           }
         },
         "required": [
@@ -221,16 +232,22 @@ Items may also include a \`specReferences\` field listing paths to specification
   "title": "Ralph Backlog",
   "description": "Task backlog for a ralph autonomous coding loop project"
 }
-`],
-  [".ralph/progress.md", `# Progress & Learnings
+`,
+  ],
+  [
+    ".ralph/progress.md",
+    `# Progress & Learnings
 
 ## Codebase Patterns
 <!-- Patterns discovered during development will be logged here -->
 
 ## Session Log
 <!-- Each iteration appends its learnings here -->
-`],
-  ["CLAUDE_ADDON.md", `<!-- ralph:start -->
+`,
+  ],
+  [
+    "CLAUDE_ADDON.md",
+    `<!-- ralph:start -->
 
 ## Autonomous Loop (Ralph)
 
@@ -259,8 +276,11 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`.ralph/progress.md\` for accumulated project learnings
 - Append new learnings to \`.ralph/progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`],
-  ["CLAUDE_GREENFIELD.md.tmpl", `# {{projectName}}
+`,
+  ],
+  [
+    "CLAUDE_GREENFIELD.md.tmpl",
+    `# {{projectName}}
 
 ## Overview
 {{projectDescription}}
@@ -315,7 +335,8 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`.ralph/progress.md\` for accumulated project learnings
 - Append new learnings to \`.ralph/progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`],
+`,
+  ],
 ]);
 
 /**

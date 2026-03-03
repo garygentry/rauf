@@ -1,0 +1,434 @@
+{
+  "month": "2026-02",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: LoopEventSchema + LoopStartOptionsSchema",
+      "description": "Add new Zod schemas to packages/core/src/schemas.ts for the loop event system. LoopEventSchema is a 17-type discriminated union on the 'type' field covering: loop_started, iteration_start, item_selected, claude_spawned, claude_exited, signal_parsed, item_completed, item_blocked, item_retried, needs_human, usage_limit_hit, usage_limit_cleared, sleep_start, sleep_end, loop_completed, loop_error, loop_cancelled. All events share base fields: { type, timestamp: string, projectPath: string }. LoopStartOptionsSchema covers: { maxIterations: number, maxRetries: number, model?: string, sessionTimeoutMinutes: number }. Export inferred TypeScript types (LoopEvent, LoopStartOptions) from index.ts.",
+      "acceptanceCriteria": [
+        "LoopEventSchema is a Zod discriminated union on 'type' with all 17 event types from plans/global-server-rearchitecture.md §5",
+        "Each event variant has correct payload fields matching the architecture doc",
+        "LoopStartOptionsSchema validates maxIterations (positive int), maxRetries (positive int), model (optional string), sessionTimeoutMinutes (positive int)",
+        "TypeScript types LoopEvent and LoopStartOptions are exported from packages/core/src/index.ts",
+        "Unit tests verify each event variant parses correctly and rejects invalid data",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T12:25:21-08:00",
+      "notes": "Reference plans/global-server-rearchitecture.md §5 for the full event schema and §6 for LoopStartOptions. All events carry base shape { type, timestamp, projectPath } plus type-specific payload. See the LoopEvent union type definition in the architecture doc for exact field names per variant."
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: writeLoopState, appendLog, DONE/CANCEL helpers",
+      "description": "Add 6 new functions to packages/core/src/status.ts: (1) writeLoopState(projectPath, state) — atomic write of .ralph/state.json with LoopStateSchema validation, auto-sets updatedAt. (2) appendLog(projectPath, message) — append timestamped line to .ralph/ralph.log. (3) writeDoneFile(projectPath, content) — write .ralph/DONE marker file. (4) clearDoneFile(projectPath) — remove DONE file at loop start. (5) checkCancelRequested(projectPath) — check if .ralph/CANCEL file exists, returns boolean. (6) clearCancelFile(projectPath) — remove CANCEL file, return whether it existed. All functions return Result<T, RalphError> except checkCancelRequested which returns boolean. Export from index.ts.",
+      "acceptanceCriteria": [
+        "writeLoopState validates against LoopStateSchema before writing, auto-sets updatedAt to current ISO timestamp",
+        "writeLoopState uses atomicWrite for .ralph/state.json",
+        "appendLog appends '[YYYY-MM-DD HH:MM:SS] message\\n' to .ralph/ralph.log",
+        "writeDoneFile writes content string to .ralph/DONE",
+        "clearDoneFile removes .ralph/DONE, returns ok even if file doesn't exist",
+        "checkCancelRequested returns true if .ralph/CANCEL exists, false otherwise",
+        "clearCancelFile removes .ralph/CANCEL, returns boolean indicating whether file existed",
+        "All 6 functions exported from packages/core/src/index.ts",
+        "Unit tests for each function including error cases",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T12:30:30-08:00",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "These are write primitives needed by the loop runner (plans/global-server-rearchitecture.md §6). The existing status.ts only has read functions (deriveStatus, readLogTail, watchLog). Use atomicWrite from fs-utils.ts for state.json. appendLog can use simple fs.appendFile. Reference existing patterns in status.ts for path resolution."
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: selectNextItem + resetStalledItems",
+      "description": "Add 2 new functions to packages/core/src/backlog.ts: (1) selectNextItem(backlog) — returns the first pending item by priority (lowest number = highest priority) where ALL items in dependsOn have status 'done'. Returns null if no eligible items. Breaks priority ties by lower item ID. (2) resetStalledItems(projectPath) — reads backlog, finds any in_progress items, resets them to pending (using updateItem for proper validation). Returns Result<{ resetCount }>.",
+      "acceptanceCriteria": [
+        "selectNextItem returns highest-priority pending item with all dependencies done",
+        "selectNextItem returns null when no pending items exist",
+        "selectNextItem skips items whose dependsOn includes non-done items",
+        "selectNextItem breaks priority ties by lower item ID (lexicographic on zero-padded IDs)",
+        "resetStalledItems resets all in_progress items to pending via updateItem",
+        "resetStalledItems returns count of reset items",
+        "resetStalledItems handles empty backlog and no in_progress items gracefully",
+        "Both functions exported from packages/core/src/index.ts",
+        "Unit tests with dependency chain scenarios (diamond deps, missing deps, all-done deps)",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T12:35:07-08:00",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "selectNextItem is the dependency-aware replacement for the shell script's simple 'first pending by priority' selection (plans/global-server-rearchitecture.md §6). An item is only eligible if every ID in its dependsOn array maps to a done item in the backlog. Items without dependsOn are always eligible if pending."
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "Core: readClaudeOAuthToken",
+      "description": "Add readClaudeOAuthToken() to packages/core/src/config.ts. Reads the Claude OAuth bearer token from ~/.config/claude-code/credentials.json. The file contains a JSON object; extract the token at `.claudeAiOauth.accessToken` (NOT a top-level accessToken field). Return Result<string, RalphError> — ok with the token string, or err with appropriate error code if file missing, unreadable, or malformed. Export from index.ts.",
+      "acceptanceCriteria": [
+        "Reads from ~/.config/claude-code/credentials.json (using path.join(os.homedir(), '.config', 'claude-code', 'credentials.json'))",
+        "Extracts nested field .claudeAiOauth.accessToken from parsed JSON (NOT a top-level accessToken)",
+        "Returns ok(token) when file exists and contains valid claudeAiOauth.accessToken",
+        "Returns err with FILE_NOT_FOUND when credentials file doesn't exist",
+        "Returns err with PARSE_ERROR when JSON is malformed",
+        "Returns err with VALIDATION_ERROR when claudeAiOauth object or its accessToken field is missing or empty",
+        "Exported from packages/core/src/index.ts",
+        "Unit tests for success and all error cases (use temp dir fixtures, including missing nested key)",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T12:59:58-08:00",
+      "notes": "No dependencies — this is independent of the schema work. The usage-checker in packages/loop will use this token to query the Anthropic OAuth usage API (plans/global-server-rearchitecture.md §6)."
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Scaffold packages/loop + events.ts",
+      "description": "Create the new packages/loop workspace package. Set up package.json (name: @ralph/loop, depends on @ralph/core), tsconfig.json extending root config, vitest config. Create src/index.ts as public API surface and src/events.ts implementing TypedEventEmitter<LoopEvent> — a typed wrapper around Node's EventEmitter that emits LoopEvent objects with type-safe on/emit/off methods. Add packages/loop to pnpm-workspace.yaml. Run pnpm install to wire up the workspace.",
+      "acceptanceCriteria": [
+        "packages/loop/package.json exists with name @ralph/loop, dependency on @ralph/core",
+        "packages/loop/tsconfig.json extends root tsconfig with correct paths",
+        "packages/loop added to pnpm-workspace.yaml packages list",
+        "pnpm install resolves the new workspace package without errors",
+        "src/events.ts exports TypedEventEmitter class with typed on/emit/off methods for LoopEvent",
+        "TypedEventEmitter extends EventEmitter and constrains emit/on to valid LoopEvent type values",
+        "src/index.ts re-exports public API (TypedEventEmitter, types)",
+        "Unit test verifies TypedEventEmitter emits and receives typed events correctly",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:03:49-08:00",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "This is the scaffolding step for the new loop package (plans/global-server-rearchitecture.md §5). All subsequent loop modules (006-009) build on this. Follow the same package structure patterns as packages/core and packages/cli for tsconfig and vitest setup."
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 1,
+      "title": "signal-parser.ts + git-commit.ts",
+      "description": "Create two pure-logic modules in packages/loop/src/. (1) signal-parser.ts: parseSignal(stdout) scans Claude's stdout for exit signals. Checks the last non-empty line for RALPH_DONE, RALPH_BLOCKED:<reason>, or RALPH_NEEDS_HUMAN:<reason>. Returns { signal: 'done' | 'blocked' | 'needs_human' | 'none', reason?: string }. (2) git-commit.ts: gitCommit(projectPath, itemId, title) runs 'git add -A && git commit -m \"[ralph] <itemId>: <title>\"' as a child process in the project directory, using the commit message format '[ralph] <id>: <title>' matching the shell script convention. Returns Result with success/failure. Non-fatal on failure (loop continues). Export both from index.ts.",
+      "acceptanceCriteria": [
+        "parseSignal(stdout) returns { signal: 'done' } when RALPH_DONE appears as final non-empty line",
+        "parseSignal returns { signal: 'blocked', reason } when RALPH_BLOCKED:<reason> appears",
+        "parseSignal returns { signal: 'needs_human', reason } when RALPH_NEEDS_HUMAN:<reason> appears",
+        "parseSignal returns { signal: 'none' } when no recognized signal found",
+        "parseSignal handles empty string, whitespace-only input, and multi-line output with signal on last line",
+        "gitCommit(projectPath, itemId, title) runs git add -A && git commit in the given project directory",
+        "gitCommit uses commit message format '[ralph] <itemId>: <title>' matching shell script convention",
+        "gitCommit returns ok on success with commit hash, err on failure (non-fatal)",
+        "gitCommit handles 'nothing to commit' gracefully (not an error)",
+        "Both modules exported from packages/loop/src/index.ts",
+        "Unit tests for all signal parsing cases and git commit success/failure",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:08:18-08:00",
+      "dependsOn": [
+        "005"
+      ],
+      "notes": "Signal parser ports ralph.sh's signal detection logic (~lines 400-430). Git commit is a simple child process wrapper. These are pure functions with no shared state — easy to test in isolation."
+    },
+    {
+      "id": "007",
+      "type": "feature",
+      "priority": 1,
+      "title": "prompt-builder.ts",
+      "description": "Create packages/loop/src/prompt-builder.ts that builds the prompt string sent to 'claude -p'. Ports the logic from ralph.sh lines 530-571. The function buildPrompt(projectPath, item, backlog) reads: .ralph/RALPH.md (full content as system context), the current backlog item (formatted JSON with all fields), backlog summary (pending/blocked/done counts + titles of blocked items), and .ralph/progress.md (if exists, for accumulated learnings). Assembles them into a structured prompt with clear section headers. Includes agent delegation context if item.estimatedIterations > 1.",
+      "acceptanceCriteria": [
+        "buildPrompt(projectPath, item, backlog) returns the complete prompt string",
+        "Prompt includes full RALPH.md content as system context section",
+        "Prompt includes the current item as formatted JSON with all fields",
+        "Prompt includes backlog summary: count of pending/in_progress/blocked/done items",
+        "Prompt includes progress.md content if the file exists, omits section if file missing",
+        "Prompt includes agent delegation hint when item.estimatedIterations > 1",
+        "Handles missing RALPH.md gracefully (returns Result err)",
+        "Prompt sections are clearly delimited with headers for readability",
+        "Unit tests with mock project files verify prompt structure and content",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:12:16-08:00",
+      "dependsOn": [
+        "005"
+      ],
+      "notes": "Reference ralph.sh lines 530-571 for the current prompt structure. The prompt builder replaces shell string concatenation with clean TypeScript template assembly. Use core's fileExists and fs.readFile for reading project files."
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "usage-checker.ts",
+      "description": "Create packages/loop/src/usage-checker.ts that checks Claude API usage limits via the Anthropic OAuth API. Uses the token from core's readClaudeOAuthToken(). Queries GET `https://api.anthropic.com/api/oauth/usage` with `Authorization: Bearer <token>` and required header `anthropic-beta: oauth-2025-04-20`, with a 10-second timeout. Response structure: `{ five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at } }` where utilization is a percentage (0-100+) and resets_at is an ISO timestamp. Returns `{ limited: boolean, limitType?: '5h' | '7d', utilization?: number, retryAfter?: number, resetsAt?: string }`. Also implements `interruptibleSleep(durationMs, abortSignal, onHeartbeat?)` — a sleep that can be cancelled via AbortController signal, checking the signal every ~30 seconds. If onHeartbeat callback is provided, it is called every ~5 minutes during sleep (used by the runner to update state.json updatedAt to prevent staleness detection).",
+      "acceptanceCriteria": [
+        "checkUsageLimit(token) queries GET https://api.anthropic.com/api/oauth/usage with Authorization: Bearer <token>",
+        "Request includes required header: anthropic-beta: oauth-2025-04-20",
+        "Request uses a 10-second timeout (AbortSignal.timeout or equivalent)",
+        "Parses response structure: { five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at } }",
+        "Detects 5-hour usage limit when five_hour.utilization >= 100",
+        "Detects 7-day weekly limit when seven_day.utilization >= 100",
+        "Returns structured result: { limited, limitType, utilization, retryAfter, resetsAt }",
+        "Returns { limited: false } when no limits detected",
+        "interruptibleSleep(ms, signal, onHeartbeat?) resolves after ms milliseconds",
+        "interruptibleSleep rejects/resolves early when AbortController signal fires",
+        "interruptibleSleep checks abort signal every ~30s, not just at start",
+        "interruptibleSleep calls onHeartbeat callback every ~5 minutes if provided (for state.json updatedAt refresh)",
+        "Handles API errors gracefully (network failure, auth error -> assume not limited, log warning)",
+        "Unit tests with mocked fetch for limit/no-limit/error scenarios, and heartbeat callback verification",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:17:03-08:00",
+      "dependsOn": [
+        "004",
+        "005"
+      ],
+      "notes": "Ports ralph.sh's check_usage_api (line 294) and sleep_with_cancel (line 335) functions. Uses native fetch() instead of curl. Required header `anthropic-beta: oauth-2025-04-20` per ralph.sh line 299. Response fields five_hour/seven_day parsed at lines 416-418. The 10s timeout matches --max-time 10 at line 300. The heartbeat callback replaces ralph.sh's explicit state.json updatedAt touch every 5 minutes during sleep (lines 355-359), preventing deriveStatus() from marking the loop as stale. Depends on item 004 for readClaudeOAuthToken()."
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "claude-process.ts",
+      "description": "Create packages/loop/src/claude-process.ts that spawns 'claude -p' as a child process. Always passes `--dangerously-skip-permissions` and `--output-format text` flags (required for headless autonomous operation). Pipes the prompt string via stdin, captures stdout and stderr as separate strings. Implements configurable timeout via setTimeout + proc.kill('SIGTERM') → 30s grace period → proc.kill('SIGKILL'). The timeout value comes from options.sessionTimeoutMinutes (converted to ms). Returns { exitCode, stdout, stderr, timedOut, durationMs }. Supports optional --model flag when options.model is specified. Supports external cancellation via AbortController signal.",
+      "acceptanceCriteria": [
+        "spawnClaude(prompt, options) spawns 'claude -p' with prompt piped to stdin",
+        "Always passes --dangerously-skip-permissions flag (required for headless operation)",
+        "Always passes --output-format text flag (required for signal parsing from stdout)",
+        "Captures stdout and stderr as separate strings (stdout for signal parsing, stderr for usage limit detection)",
+        "Passes --model <model> flag when options.model is specified",
+        "Accepts sessionTimeoutMinutes in options; converts to ms and uses as the process timeout",
+        "Timeout kills process with SIGTERM first, waits 30s grace period, then SIGKILL if still alive",
+        "Returns { exitCode, stdout, stderr, timedOut, durationMs } on completion",
+        "Handles process spawn failure gracefully (claude not found -> err result)",
+        "Supports AbortController signal for external cancellation (cancel kills process with SIGTERM)",
+        "durationMs accurately measures wall-clock time from spawn to exit",
+        "Unit tests with mock/simple test script to verify capture, timeout, and flag passing",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:23:26-08:00",
+      "dependsOn": [
+        "005"
+      ],
+      "notes": "Uses Bun.spawn() or node:child_process.spawn(). Ports ralph.sh's claude invocation (~lines 450-500). The timeout mechanism replaces the shell 'timeout' command. The 30s grace between SIGTERM and SIGKILL allows Claude to save state. See plans/global-server-rearchitecture.md §5 for process manager spec."
+    },
+    {
+      "id": "010",
+      "type": "feature",
+      "priority": 1,
+      "title": "LoopRunner class (runner.ts)",
+      "description": "Create packages/loop/src/runner.ts implementing the main LoopRunner class. LoopRunner extends TypedEventEmitter<LoopEvent>. constructor(projectPath, options: LoopStartOptions). start() is async: (1) clears DONE/CANCEL files, (2) reads .ralph.json marker options for autoSweep, sweepMinAgeDays, project-level model, (3) runs auto-sweep if autoSweep enabled via core.sweepItems, (4) pre-loop usage limit preflight (weekly >= 100%: write DONE 'weekly_limit:<timestamp>', exit; 5h >= 100%: interruptibleSleep until reset; API unreachable: proceed), (5) main loop: selectNextItem → resolve model (item.model > options.model) → build prompt → spawn claude (sessionTimeoutMinutes as timeout) → check stderr for usage limit patterns → parse signal → update item → write state → git commit on DONE → check limits → check cancel → repeat. cancel() aborts via AbortController. Writes state.json/ralph.log throughout. Uses try/finally to reset in_progress items on crash. Writes DONE file on all exit paths.",
+      "acceptanceCriteria": [
+        "LoopRunner extends TypedEventEmitter<LoopEvent>",
+        "constructor(projectPath, options: LoopStartOptions) initializes runner state and AbortController",
+        "start() clears DONE and CANCEL files at startup via core helpers",
+        "start() reads .ralph.json marker options for autoSweep, sweepMinAgeDays, and project-level model",
+        "start() runs auto-sweep if marker options.autoSweep is enabled, calling core.sweepItems with sweepMinAgeDays",
+        "start() pre-loop usage preflight: weekly >= 100% writes state 'weekly_limit', writes DONE file 'weekly_limit:<resetsAt>', returns; 5h >= 100% sleeps until reset; API unreachable proceeds with reactive-only detection",
+        "Main loop: select item -> resolve model -> build prompt -> spawn claude -> check stderr -> parse signal -> update item -> write state -> repeat",
+        "Model resolution: item.model > options.model (caller consolidates CLI arg and project default into options.model)",
+        "Passes sessionTimeoutMinutes to spawnClaude as the process timeout",
+        "After claude exits non-zero, checks stderr for usage limit patterns ('usage limit', 'rate limit', 'Claude AI Usage Limit', 'too many requests' case-insensitive) BEFORE normal signal parsing",
+        "On stderr usage limit detection: resets item to pending, checks API for 5h vs 7d, sleeps or exits accordingly",
+        "start() resolves with LoopResult { completedCount, blockedCount, cancelled } when loop ends",
+        "cancel() triggers graceful cancellation via AbortController signal",
+        "Emits all LoopEvent types at correct lifecycle points",
+        "Writes state.json via core.writeLoopState() on every state change",
+        "Appends to ralph.log via core.appendLog() for key events",
+        "When maxIterations reached: writes state 'limit_reached' and emits loop_completed",
+        "Retry logic: on 'none' signal, re-queues item up to maxRetries then marks blocked",
+        "Between iterations: checks usage limits, passes heartbeat callback to interruptibleSleep to keep state.json updatedAt fresh",
+        "Checks cancel at iteration boundaries (AbortController + CANCEL file)",
+        "Auto-commits on RALPH_DONE via gitCommit(projectPath, itemId, title)",
+        "On RALPH_NEEDS_HUMAN: leaves item as in_progress (does NOT reset), writes state 'paused_human', emits needs_human event, returns",
+        "Writes DONE file on all terminal exit paths: completion (summary), cancel ('cancel'), weekly limit ('weekly_limit:<timestamp>'), max iterations (summary)",
+        "Crash cleanup: try/finally resets in_progress item to pending and writes error state on unexpected termination",
+        "Integration tests with mocked claude process verify full lifecycle including preflight, stderr detection, DONE file writing",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:37:38-08:00",
+      "dependsOn": [
+        "002",
+        "003",
+        "006",
+        "007",
+        "008",
+        "009"
+      ],
+      "estimatedIterations": 2,
+      "notes": "The largest and most critical item. Key behavioral parity with ralph.sh: (1) Auto-sweep at startup (lines 386-404), (2) Pre-loop usage preflight (lines 407-452), (3) Stderr usage limit detection mid-loop (lines 640-700), (4) DONE file on all exit paths (lines 123, 345, 429, 481, 676), (5) Crash cleanup via EXIT trap (lines 363-373), (6) Model resolution item > CLI > project (line 577), (7) NEEDS_HUMAN leaves item in_progress (lines 731-740), (8) limit_reached on maxIterations (line 779). Import sweepItems from core's archive module. Reference plans/global-server-rearchitecture.md §5 for class API and event flow."
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "Web: LoopManager + loop API routes + SSE events",
+      "description": "Wire the loop runner into the Hono server. Create packages/web/src/server/loop-manager.ts implementing LoopManager singleton: tracks active loops by project path (max one per project), creates LoopRunner instances, subscribes to their events, fans events to SSE clients. Create packages/web/src/server/routes/loop.ts with: POST /api/projects/:id/loop/start (start loop), POST /api/projects/:id/loop/stop (graceful cancel), GET /api/projects/:id/loop/events (SSE stream of LoopEvent). Mount in app.ts. Add recoverStaleLoops() on server startup and shutdownAll() on SIGTERM in start.ts.",
+      "acceptanceCriteria": [
+        "LoopManager singleton tracks active loops per project (one loop per project max)",
+        "LoopManager.startLoop creates LoopRunner, subscribes to events, starts the loop",
+        "LoopManager.stopLoop calls runner.cancel() for graceful cancellation",
+        "LoopManager.subscribe(projectPath, listener) fans out LoopEvents to multiple listeners",
+        "POST /api/projects/:id/loop/start creates and starts a loop, returns 200",
+        "POST /api/projects/:id/loop/start on already-running project returns 409 Conflict",
+        "POST /api/projects/:id/loop/stop triggers graceful cancellation, returns 200",
+        "POST /api/projects/:id/loop/stop on non-running project returns 404",
+        "GET /api/projects/:id/loop/events returns SSE stream of JSON-encoded LoopEvent objects",
+        "Loop routes mounted in app.ts under /api/projects/:id/loop/*",
+        "Server startup calls recoverStaleLoops (resets stale in_progress items via resetStalledItems)",
+        "Server SIGTERM handler calls shutdownAll to cancel all active loops gracefully",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T13:53:56-08:00",
+      "dependsOn": [
+        "010"
+      ],
+      "estimatedIterations": 2,
+      "notes": "Reference plans/global-server-rearchitecture.md §2 for server architecture and §5 for LoopManager API. Use the existing SSE pattern from packages/web/src/server/routes/status.ts (log/stream endpoint) as reference. The LoopManager is the bridge between the runner module and the HTTP layer."
+    },
+    {
+      "id": "012",
+      "type": "feature",
+      "priority": 1,
+      "title": "CLI: ralph loop start/stop/follow/run",
+      "description": "Add 'ralph loop' subcommand group to the CLI. (1) ralph loop start [path] — POST to server loop/start endpoint; auto-starts server daemon if not running. (2) ralph loop stop [path] — POST to server loop/stop endpoint; error if server not running. (3) ralph loop follow [path] — connect to SSE loop/events endpoint, format events for terminal with colors/icons. (4) ralph loop run [path] — direct mode: create LoopRunner in-process without server, print events to terminal. Supports --iterations, --retries, --model, --timeout flags. Register 'loop' in packages/cli/src/commands.ts, implement handlers in new loop-commands.ts.",
+      "acceptanceCriteria": [
+        "ralph loop start [path] sends POST to server /api/projects/:id/loop/start",
+        "ralph loop start auto-starts server daemon if not already running (using existing server start logic)",
+        "ralph loop stop [path] sends POST to server /api/projects/:id/loop/stop",
+        "ralph loop stop errors with helpful message if server not running",
+        "ralph loop follow [path] connects to SSE /api/projects/:id/loop/events and streams formatted output",
+        "ralph loop follow formats events with colors and icons (iteration_start, item_selected, signal_parsed, etc.)",
+        "ralph loop run [path] creates LoopRunner directly in-process, no server required",
+        "ralph loop run supports --iterations, --retries, --model, --timeout flags",
+        "ralph loop (no subcommand) shows help listing available loop subcommands",
+        "All commands resolve [path] to project path using existing resolveProjectPath convention",
+        "Proper exit codes: 0 on success, 1 on error, 2 on usage error",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T14:02:57-08:00",
+      "dependsOn": [
+        "010"
+      ],
+      "notes": "Reference plans/global-server-rearchitecture.md §2 CLI integration section. Smart routing: if server running → HTTP, else for 'run' → direct, for 'start' → auto-start server first. Follow existing CLI patterns in packages/cli/src/commands.ts for command registration and arg parsing."
+    },
+    {
+      "id": "013",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web Frontend: Start/Stop buttons on status view",
+      "description": "Add loop control buttons to the project status view in packages/web/src/client/routes/projects/status.tsx. Show a 'Start Loop' button when status is IDLE/PAUSED/COMPLETE/ERROR. Show a 'Stop Loop' button when status is RUNNING/SLEEPING_LIMIT. Buttons call the loop API endpoints via fetch wrapper. Use TanStack Query mutation with invalidation to refresh status after mutations. Show loading states during API calls and error messages on failure.",
+      "acceptanceCriteria": [
+        "Start Loop button visible when loopState is IDLE, PAUSED, COMPLETE, or ERROR",
+        "Stop Loop button visible when loopState is RUNNING or SLEEPING_LIMIT",
+        "Start button triggers POST /api/projects/:id/loop/start via fetch wrapper with X-Ralph-Request header",
+        "Stop button triggers POST /api/projects/:id/loop/stop via fetch wrapper",
+        "Status view refreshes automatically after start/stop via TanStack Query invalidation",
+        "Buttons show loading/disabled state during API call",
+        "Error toast or inline message shown if start/stop fails (e.g., 409 conflict, network error)",
+        "Buttons styled consistently with existing UI components",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T14:05:14-08:00",
+      "dependsOn": [
+        "011"
+      ],
+      "notes": "Minimal frontend change (plans/global-server-rearchitecture.md §7 Phase 1E). The existing status view already shows loop state — just add control buttons. Reference the existing mutation patterns in packages/web/src/client/routes/projects/backlog.tsx for TanStack Query mutation usage and the fetch wrapper in lib/fetch.ts."
+    },
+    {
+      "id": "014",
+      "type": "feature",
+      "priority": 2,
+      "title": "Core: runtime field in MarkerOptions + installer awareness",
+      "description": "Add runtime: 'shell' | 'global' field to MarkerOptionsSchema in packages/core/src/schemas.ts (default 'shell' for backward compat). Update installer.ts: when runtime is 'global', skip shell script deployment (ralph.sh, ralph-status.sh, ralph-add.sh, ralph-stop.sh) and omit script hashes from artifactHashes. New ralph install defaults to runtime: 'global'. ralph update detects runtime: 'shell' and can migrate to 'global'. Data files (.ralph/RALPH.md, backlog.json, progress.md, backlog-schema.json) and CLAUDE.md section deployed regardless of runtime.",
+      "acceptanceCriteria": [
+        "MarkerOptionsSchema includes runtime field: z.enum(['shell', 'global']).default('shell')",
+        "Existing .ralph.json files without runtime field parse correctly (default 'shell')",
+        "New ralph install sets runtime: 'global' by default",
+        "When runtime: 'global', installer skips script deployment (no ralph.sh, ralph-status.sh, ralph-add.sh, ralph-stop.sh)",
+        "When runtime: 'global', artifactHashes only contains non-script file hashes",
+        "When runtime: 'shell', installer deploys scripts as before (full backward compatibility)",
+        "ralph update on runtime: 'shell' project logs message about available migration to 'global'",
+        "Data files (.ralph/RALPH.md, backlog.json, progress.md) deployed regardless of runtime",
+        "CLAUDE.md sentinel section managed regardless of runtime",
+        "Unit tests for both runtime modes in installer",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T14:17:02-08:00",
+      "dependsOn": [
+        "010",
+        "011",
+        "012"
+      ],
+      "notes": "This gates on all of Phase 1 being stable (plans/global-server-rearchitecture.md §7 Phase 2). The global runtime must be proven functional before changing the default. Existing projects keep runtime: 'shell' until explicitly updated. Three-way hash comparison for scripts should warn but not auto-remove customized scripts."
+    },
+    {
+      "id": "015",
+      "type": "feature",
+      "priority": 3,
+      "title": "Cleanup: Remove shell scripts + simplify embedding pipeline",
+      "description": "Remove shell script artifacts: artifacts/variants/backlog-json/ralph.sh, ralph-status.sh, ralph-add.sh, ralph-stop.sh. Remove root-level symlinks (ralph.sh, ralph-stop.sh). Simplify scripts/generate-embedded-artifacts.ts to only embed non-script files (RALPH.md.tmpl, CLAUDE_ADDON.md, CLAUDE_GREENFIELD.md.tmpl, backlog-schema.json). Regenerate embedded-artifacts.ts. Remove three-way hash comparison code for scripts in installer.ts. Update repo-integrity tests to no longer check for script symlinks.",
+      "acceptanceCriteria": [
+        "Shell scripts removed from artifacts/variants/backlog-json/ (ralph.sh, ralph-status.sh, ralph-add.sh, ralph-stop.sh)",
+        "Root-level symlinks removed (ralph.sh, ralph-stop.sh)",
+        "generate-embedded-artifacts.ts updated to skip .sh files",
+        "embedded-artifacts.ts regenerated — significantly smaller without script content",
+        "installer.ts script deployment code paths removed (no more chmod, no script hashing)",
+        "Three-way hash comparison for scripts removed from installer.ts",
+        "repo-integrity tests updated (remove assertions for script symlinks)",
+        "All remaining features still work: install deploys data files, init works, update works for non-script files",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T14:30:55-08:00",
+      "dependsOn": [
+        "014"
+      ],
+      "estimatedIterations": 2,
+      "notes": "Plans/global-server-rearchitecture.md §7 Phase 3. This is a significant cleanup touching multiple files. Be careful to only remove script-related code — the embedding pipeline must still handle template files. The embedded-artifacts.ts was 63.8KB mostly due to script content; it should shrink dramatically."
+    },
+    {
+      "id": "016",
+      "type": "chore",
+      "priority": 3,
+      "title": "Docs: Update ARCHITECTURE, SCHEMAS, SPEC-CLI, CLAUDE.md",
+      "description": "Update all documentation to reflect the completed migration. docs/ARCHITECTURE.md: add packages/loop to package structure, document server-centric loop management model, update data flow diagrams. docs/SCHEMAS.md: add LoopEvent discriminated union, LoopStartOptions, runtime field in MarkerOptions. docs/SPEC-CLI.md: document ralph loop start/stop/follow/run commands with flags and behavior. CLAUDE.md: update self-hosting section to reference global runtime instead of shell scripts. Remove any remaining references to shell scripts as the primary loop runner.",
+      "acceptanceCriteria": [
+        "docs/ARCHITECTURE.md includes packages/loop in the package structure diagram",
+        "docs/ARCHITECTURE.md documents server-centric loop management model with LoopManager",
+        "docs/ARCHITECTURE.md data flow diagram shows LoopRunner → events → SSE → CLI/Frontend",
+        "docs/SCHEMAS.md includes LoopEvent discriminated union (all 17 types)",
+        "docs/SCHEMAS.md includes LoopStartOptions schema",
+        "docs/SCHEMAS.md documents runtime field in MarkerOptions",
+        "docs/SPEC-CLI.md documents ralph loop start/stop/follow/run with flags and exit codes",
+        "CLAUDE.md self-hosting section updated to reflect global runtime (ralph loop run instead of ./ralph.sh)",
+        "No remaining references to shell scripts as the primary/only loop runner in any doc",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-02-27T14:38:46-08:00",
+      "dependsOn": [
+        "015"
+      ],
+      "notes": "Final cleanup item (plans/global-server-rearchitecture.md §7 Phase 3). All code changes are complete by this point — this is purely documentation alignment. Also consider updating README.md quick start section if it references shell scripts."
+    }
+  ]
+}

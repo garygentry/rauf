@@ -81,6 +81,7 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
       data: {
         version: VERSION,
         uptime,
+        pid: process.pid,
         rootDirectory,
         projectCount,
       },

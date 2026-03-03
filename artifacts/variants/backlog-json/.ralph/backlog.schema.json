@@ -116,6 +116,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "provider": {
+            "type": "string"
           }
         },
         "required": [

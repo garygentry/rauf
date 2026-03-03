@@ -150,6 +150,14 @@ describe("GET /api/health", () => {
     expect(typeof body.data["projectCount"]).toBe("number");
   });
 
+  it("returns pid as a number", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/health");
+    const body = (await json(res)) as { data: Record<string, unknown> };
+    expect(typeof body.data["pid"]).toBe("number");
+    expect(body.data["pid"]).toBeGreaterThan(0);
+  });
+
   it("uptime increases over time", async () => {
     // Start with a time 2 seconds in the past
     const twoSecondsAgo = Date.now() - 2000;

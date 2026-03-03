@@ -457,3 +457,15 @@
 - CLI/web UI text updated: `./ralph.sh` → `ralph loop run`, `ralph-stop.sh` → `ralph loop stop`, `./ralph-add.sh` → `ralph backlog add`
 - Web frontend file preview lists updated in both install and init wizards (removed script entries)
 - Pre-existing failures unchanged: `config.test.ts` (readToolConfig), `profile-config.test.ts` (GET /api/config), docs build (Node.js version), 5 format warnings in unrelated files
+
+### 001: Core schemas: Rename events + add provider fields (LLM-agnostic milestone)
+- `ClaudeSpawnedSchema` → `LlmSpawnedSchema` (type literal `claude_spawned` → `llm_spawned`), `ClaudeExitedSchema` → `LlmExitedSchema` (`claude_exited` → `llm_exited`)
+- Both renamed schemas gain required `provider: z.string()` field — identifies which provider ran
+- Optional provider fields added: `MarkerOptionsSchema` (provider, providerConfig), `BacklogItemSchema` (provider), `LoopStartOptionsSchema` (provider), `ToolConfigSchema` (defaultProvider, providers)
+- Event rename cascades to: `runner.ts` (emit calls), `loop-commands.ts` (switch cases + eventTypes array), `loop-manager.ts` (LOOP_EVENT_TYPES), all test files
+- `runner.ts` event emissions hardcode `provider: "claude-cli"` for now — item 004 will refactor to use the provider interface
+- `loop-commands.ts` display text now uses `event.provider` instead of hardcoded "Claude"
+- `TypedEventEmitter` in `events.ts` derives types from `LoopEvent["type"]` — renaming the discriminated union automatically flows through
+- Must `pnpm --filter @ralph/core build` before `pnpm typecheck` in loop/cli/web packages — project references resolve via built `dist/` types
+- New optional fields use `z.string().optional()` and `z.record().optional()` — backward compatible, existing data without them still parses
+- 685 core tests, 140 loop tests, 300 cli tests pass; pre-existing web failure unchanged
