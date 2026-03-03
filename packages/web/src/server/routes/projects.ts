@@ -50,6 +50,7 @@ import {
 } from "@ralph/core";
 
 import { errorResponse } from "../app.js";
+import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 
 // ─── Request body schemas ────────────────────────────────────────
 
@@ -143,12 +144,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
    * Returns null if the id contains illegal path components (/, ..).
    */
   function resolveProjectPath(id: string): string | null {
-    const decoded = decodeURIComponent(id);
-    // Reject traversal attempts — the id must be a plain directory name
-    if (decoded.includes("/") || decoded.includes("\\") || decoded === "." || decoded === "..") {
-      return null;
-    }
-    return path.join(getRootDirectory(), decoded);
+    return resolveProjectPathShared(id, getRootDirectory());
   }
 
   /**

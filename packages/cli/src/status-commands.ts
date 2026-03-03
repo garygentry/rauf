@@ -29,11 +29,19 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph status <path>");
+    info("Usage: ralph status <path> [--watch] [--interval N]");
     return ExitCode.INVALID_ARGS;
   }
 
+  const watch = extractBoolFlag(ctx.flags, "watch");
+  const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
+
   const resolved = path.resolve(targetPath);
+
+  if (watch) {
+    return handleStatusWatch(resolved, interval);
+  }
+
   const result = deriveStatus(resolved);
 
   if (!result.ok) {
@@ -177,6 +185,48 @@ async function handleLogFollow(projectPath: string, initialLines: number): Promi
 
     // If the process is not interactive (e.g. no TTY and no watch possible),
     // we still resolve on signal only
+  });
+}
+
+// ─── Status watch mode ──────────────────────────────────────────
+
+async function handleStatusWatch(
+  projectPath: string,
+  intervalSeconds: number,
+): Promise<number> {
+  return new Promise<number>((resolve) => {
+    let running = true;
+
+    const stop = () => {
+      running = false;
+      resolve(ExitCode.SUCCESS);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+
+    const tick = () => {
+      if (!running) return;
+
+      // Clear screen and move cursor to top-left
+      process.stdout.write("\x1b[2J\x1b[H");
+
+      const now = new Date().toLocaleTimeString();
+      print(c.dim(`ralph status  (${now})  Ctrl+C to stop`));
+      print("");
+
+      const result = deriveStatus(projectPath);
+      if (!result.ok) {
+        error(result.error.message);
+      } else {
+        printStatusSummary(result.value);
+      }
+
+      if (running) {
+        setTimeout(tick, intervalSeconds * 1000);
+      }
+    };
+
+    tick();
   });
 }
 

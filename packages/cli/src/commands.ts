@@ -114,7 +114,12 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage ralph autonomous coding loops",
     usage: "ralph loop <subcommand> [path]",
     subcommands: [
-      { name: "start", description: "Start a loop via server", handler: handleLoopStart },
+      {
+        name: "start",
+        description: "Start a loop via server",
+        usage: "ralph loop start <path> [--iterations N] [--follow]",
+        handler: handleLoopStart,
+      },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
       { name: "follow", description: "Follow loop events in real-time", handler: handleLoopFollow },
       { name: "run", description: "Run loop directly in-process", handler: handleLoopRun },
@@ -170,7 +175,7 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "status",
     description: "Show loop status for a project",
-    usage: "ralph status <path>",
+    usage: "ralph status <path> [--watch] [--interval N]",
     handler: handleStatus,
   },
   {

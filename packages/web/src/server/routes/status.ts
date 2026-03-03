@@ -23,6 +23,7 @@ import {
 } from "@ralph/core";
 
 import { errorResponse } from "../app.js";
+import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -56,11 +57,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
    * Returns null if the id contains illegal path components.
    */
   function resolveProjectPath(id: string): string | null {
-    const decoded = decodeURIComponent(id);
-    if (decoded.includes("/") || decoded.includes("\\") || decoded === "." || decoded === "..") {
-      return null;
-    }
-    return path.join(getRootDirectory(), decoded);
+    return resolveProjectPathShared(id, getRootDirectory());
   }
 
   /** Validate that a resolved path is within ROOT_DIRECTORY. Returns error code or null. */

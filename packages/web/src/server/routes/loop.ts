@@ -7,8 +7,6 @@
 // All mutation routes require X-Ralph-Request: true (enforced by
 // app-level CSRF middleware).
 
-import * as path from "node:path";
-
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
@@ -22,6 +20,7 @@ import {
 
 import { errorResponse } from "../app.js";
 import { getLoopManager } from "../loop-manager.js";
+import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 
 // ─── Request body schema ─────────────────────────────────────────
 
@@ -58,11 +57,7 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
   }
 
   function resolveProjectPath(id: string): string | null {
-    const decoded = decodeURIComponent(id);
-    if (decoded.includes("/") || decoded.includes("\\") || decoded === "." || decoded === "..") {
-      return null;
-    }
-    return path.join(getRootDirectory(), decoded);
+    return resolveProjectPathShared(id, getRootDirectory());
   }
 
   function validateProjectPath(projectPath: string): string | null {

@@ -15,7 +15,7 @@ import { LoopRunner } from "@ralph/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
-import { extractNumberFlag, extractStringFlag } from "./parser.js";
+import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
 import { c, info, print, error, success, outputJson } from "./formatter.js";
 import {
   readServerState,
@@ -98,11 +98,13 @@ async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
 export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
-  const port = getPort();
+  const follow = extractBoolFlag(ctx.flags, "follow");
 
   // Auto-start server if not running
   const running = await ensureServerRunning(ctx);
   if (!running) return ExitCode.ERROR;
+
+  const port = getPort();
 
   // Build request body from flags
   const body: Record<string, unknown> = {};
@@ -132,6 +134,15 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
         outputJson(data);
       } else {
         success(`Loop started for ${c.cyan(id)}`);
+      }
+
+      if (follow) {
+        const eventsUrl = apiUrl(port, id, "events");
+        info(c.dim("Following loop events... Press Ctrl+C to stop."));
+        return streamEventsUntilDone(eventsUrl);
+      }
+
+      if (!ctx.globalFlags.json) {
         info(`Follow: ${c.cyan(`ralph loop follow ${ctx.args[0] ?? "."}`)}`);
       }
       return ExitCode.SUCCESS;
@@ -204,6 +215,55 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
   }
 }
 
+// ─── Shared SSE streaming ───────────────────────────────────────────
+
+const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "loop_completed",
+  "loop_error",
+  "loop_cancelled",
+]);
+
+/**
+ * Connect to a loop's SSE endpoint, format and print events, and
+ * auto-disconnect when a terminal event is received.
+ * Returns the exit code.
+ */
+async function streamEventsUntilDone(url: string): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const controller = new AbortController();
+    let resolved = false;
+
+    const finish = (code: number) => {
+      if (resolved) return;
+      resolved = true;
+      controller.abort();
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
+      resolve(code);
+    };
+
+    const stop = () => finish(ExitCode.SUCCESS);
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+
+    connectSSE(url, controller.signal, (event) => {
+      formatAndPrintEvent(event);
+      if (TERMINAL_EVENT_TYPES.has(event.type)) {
+        finish(event.type === "loop_error" ? ExitCode.ERROR : ExitCode.SUCCESS);
+      }
+    })
+      .then(() => finish(ExitCode.SUCCESS))
+      .catch((e) => {
+        if (controller.signal.aborted) {
+          finish(ExitCode.SUCCESS);
+          return;
+        }
+        error(`SSE connection failed: ${e instanceof Error ? e.message : String(e)}`);
+        finish(ExitCode.ERROR);
+      });
+  });
+}
+
 // ─── handleLoopFollow ───────────────────────────────────────────────
 
 export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
@@ -222,29 +282,7 @@ export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
   info(`Following loop events for ${c.cyan(id)}...`);
   info(c.dim("Press Ctrl+C to stop."));
 
-  return new Promise<number>((resolve) => {
-    const controller = new AbortController();
-
-    const stop = () => {
-      controller.abort();
-      resolve(ExitCode.SUCCESS);
-    };
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
-
-    connectSSE(url, controller.signal, (event) => {
-      formatAndPrintEvent(event);
-    })
-      .then(() => resolve(ExitCode.SUCCESS))
-      .catch((e) => {
-        if (controller.signal.aborted) {
-          resolve(ExitCode.SUCCESS);
-          return;
-        }
-        error(`SSE connection failed: ${e instanceof Error ? e.message : String(e)}`);
-        resolve(ExitCode.ERROR);
-      });
-  });
+  return streamEventsUntilDone(url);
 }
 
 /** Connect to an SSE endpoint, parse events, and invoke callback for each LoopEvent */

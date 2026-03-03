@@ -312,4 +312,176 @@ describe("LoopManager", () => {
       expect(manager.isRunning(projectPath)).toBe(false);
     });
   });
+
+  describe("event buffer", () => {
+    it("replays buffered events to late subscribers", async () => {
+      const manager = new LoopManager();
+      writeMarker(projectPath);
+      writeBacklog(projectPath, [
+        {
+          id: "001",
+          type: "feature",
+          priority: 1,
+          title: "Test item",
+          description: "Test",
+          acceptanceCriteria: ["test"],
+          status: "pending",
+          completedAt: null,
+        },
+      ]);
+      writeRalphMd(projectPath);
+      setupMockClaude();
+
+      manager.startLoop(projectPath, {
+        maxIterations: 1,
+        maxRetries: 1,
+        sessionTimeoutMinutes: 1,
+      });
+
+      // Wait for the loop to complete (no subscriber yet)
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (!manager.isRunning(projectPath)) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 50);
+      });
+
+      // Now subscribe after loop finished — should get buffered events
+      const events: LoopEvent[] = [];
+      manager.subscribe(projectPath, (event) => {
+        events.push(event);
+      });
+
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.some((e) => e.type === "loop_started")).toBe(true);
+    });
+
+    it("caps buffer at 100 events", () => {
+      const manager = new LoopManager();
+
+      // Use subscribe to peek at buffer replay — push 150 events via fanOut
+      // We'll access the buffer indirectly by subscribing before and after
+      const earlyEvents: LoopEvent[] = [];
+      manager.subscribe(projectPath, (event) => {
+        earlyEvents.push(event);
+      });
+
+      // Start a loop and push fake events through fanOut
+      writeMarker(projectPath);
+      writeBacklog(projectPath);
+      writeRalphMd(projectPath);
+      setupMockClaude();
+
+      // Instead of starting a loop, we'll test via a second subscriber
+      // Push 150 events by starting a loop with a mock that emits many events
+      // Simpler: use the manager's subscribe/fanOut indirectly
+      // Actually, let's just verify the buffer size after subscribing with a new listener
+
+      // We need to test the internal buffer — use a loop that emits events
+      // For simplicity, create 150 fake loop_started events via startLoop
+      // This is tricky without access to internals, so let's test via replay count
+
+      // Alternative approach: start a loop, wait, then check replay count
+      // The mock claude exits immediately so we won't get 150 events
+      // Let's directly test the buffer cap by using the manager's internal buffer
+      // via the (manager as any) escape hatch for testing
+      const buf: LoopEvent[] = [];
+      const baseEvent: LoopEvent = {
+        type: "iteration_start",
+        timestamp: new Date().toISOString(),
+        iteration: 1,
+        maxIterations: 1,
+      };
+
+      for (let i = 0; i < 150; i++) {
+        buf.push({ ...baseEvent, iteration: i + 1 });
+      }
+
+      // Set the buffer directly for testing
+      (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> }).eventBuffers.set(
+        "/test-project",
+        buf.slice(),
+      );
+
+      // Verify buffer has 150
+      expect(
+        (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> }).eventBuffers.get(
+          "/test-project",
+        )!.length,
+      ).toBe(150);
+
+      // Now the bufferEvent method would cap, but since we set directly let's test subscribe replay
+      // Subscribe should replay all 150 (the cap applies on insert, not replay)
+      const replayed: LoopEvent[] = [];
+      manager.subscribe("/test-project", (event) => {
+        replayed.push(event);
+      });
+      expect(replayed.length).toBe(150);
+
+      // Test that bufferEvent caps correctly by pushing through fanOut
+      // We need a fresh path for clean test
+      const testPath = "/test-cap";
+      for (let i = 0; i < 150; i++) {
+        // Access private method via escape hatch
+        (manager as unknown as { bufferEvent: (p: string, e: LoopEvent) => void }).bufferEvent(
+          testPath,
+          { ...baseEvent, iteration: i + 1 },
+        );
+      }
+
+      const cappedBuffer = (
+        manager as unknown as { eventBuffers: Map<string, LoopEvent[]> }
+      ).eventBuffers.get(testPath)!;
+      expect(cappedBuffer.length).toBe(100);
+      // Should have events 51-150 (last 100)
+      expect((cappedBuffer[0] as { iteration: number }).iteration).toBe(51);
+      expect((cappedBuffer[99] as { iteration: number }).iteration).toBe(150);
+    });
+
+    it("cleans up buffer after loop completion + timeout", async () => {
+      const manager = new LoopManager();
+      writeMarker(projectPath);
+      writeBacklog(projectPath, [
+        {
+          id: "001",
+          type: "feature",
+          priority: 1,
+          title: "Test item",
+          description: "Test",
+          acceptanceCriteria: ["test"],
+          status: "pending",
+          completedAt: null,
+        },
+      ]);
+      writeRalphMd(projectPath);
+      setupMockClaude();
+
+      manager.startLoop(projectPath, {
+        maxIterations: 1,
+        maxRetries: 1,
+        sessionTimeoutMinutes: 1,
+      });
+
+      // Wait for the loop to complete
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (!manager.isRunning(projectPath)) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 50);
+      });
+
+      // Buffer should exist immediately after completion
+      const buffers = (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> })
+        .eventBuffers;
+      expect(buffers.has(projectPath)).toBe(true);
+
+      // After shutdownAll, buffers should be cleared
+      await manager.shutdownAll();
+      expect(buffers.has(projectPath)).toBe(false);
+    });
+  });
 });

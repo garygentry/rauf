@@ -47,6 +47,8 @@ const LOOP_EVENT_TYPES: ReadonlyArray<LoopEvent["type"]> = [
   "loop_cancelled",
 ];
 
+const MAX_BUFFER_SIZE = 100;
+
 // ─── LoopManager ─────────────────────────────────────────────────
 
 export class LoopManager {
@@ -55,6 +57,12 @@ export class LoopManager {
 
   /** Event listeners keyed by project path */
   private listeners = new Map<string, Set<LoopEventListener>>();
+
+  /** Buffered events keyed by project path (ring buffer, max MAX_BUFFER_SIZE) */
+  private eventBuffers = new Map<string, LoopEvent[]>();
+
+  /** Pending buffer cleanup timers */
+  private bufferCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
    * Start a loop for a project. Returns an error string if already running.
@@ -80,10 +88,12 @@ export class LoopManager {
     const promise = runner.start().then(
       (result) => {
         this.activeLoops.delete(projectPath);
+        this.deferBufferCleanup(projectPath);
         return result;
       },
       (error) => {
         this.activeLoops.delete(projectPath);
+        this.deferBufferCleanup(projectPath);
         throw error;
       },
     );
@@ -106,6 +116,18 @@ export class LoopManager {
    * Subscribe to LoopEvents for a project. Returns an unsubscribe function.
    */
   subscribe(projectPath: string, listener: LoopEventListener): () => void {
+    // Replay buffered events to the new subscriber
+    const buffer = this.eventBuffers.get(projectPath);
+    if (buffer) {
+      for (const event of buffer) {
+        try {
+          listener(event);
+        } catch {
+          // Best effort
+        }
+      }
+    }
+
     let set = this.listeners.get(projectPath);
     if (!set) {
       set = new Set();
@@ -153,11 +175,21 @@ export class LoopManager {
     }
 
     await Promise.all(promises);
+
+    // Clear all buffers and cancel cleanup timers
+    this.eventBuffers.clear();
+    for (const timer of this.bufferCleanupTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.bufferCleanupTimers.clear();
   }
 
   // ─── Private ───────────────────────────────────────────────────
 
   private fanOut(projectPath: string, event: LoopEvent): void {
+    // Buffer the event (ring buffer)
+    this.bufferEvent(projectPath, event);
+
     const set = this.listeners.get(projectPath);
     if (!set) return;
     for (const listener of set) {
@@ -166,6 +198,30 @@ export class LoopManager {
       } catch {
         // Best effort — don't let a broken listener crash the loop
       }
+    }
+  }
+
+  private deferBufferCleanup(projectPath: string): void {
+    // Cancel any existing timer for this path
+    const existing = this.bufferCleanupTimers.get(projectPath);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.eventBuffers.delete(projectPath);
+      this.bufferCleanupTimers.delete(projectPath);
+    }, 30_000);
+    this.bufferCleanupTimers.set(projectPath, timer);
+  }
+
+  private bufferEvent(projectPath: string, event: LoopEvent): void {
+    let buffer = this.eventBuffers.get(projectPath);
+    if (!buffer) {
+      buffer = [];
+      this.eventBuffers.set(projectPath, buffer);
+    }
+    buffer.push(event);
+    if (buffer.length > MAX_BUFFER_SIZE) {
+      buffer.splice(0, buffer.length - MAX_BUFFER_SIZE);
     }
   }
 }
