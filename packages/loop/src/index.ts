@@ -11,3 +11,21 @@ export type { SpawnClaudeOptions, SpawnClaudeResult } from "./claude-process.js"
 export { LoopRunner } from "./runner.js";
 export type { LoopResult } from "./runner.js";
 export type { LoopEvent, LoopStartOptions } from "@ralph/core";
+
+// Provider system
+export {
+  registerProvider,
+  createProvider,
+  getAvailableProviders,
+  clearProviders,
+} from "./providers/index.js";
+export type {
+  ProviderId,
+  LLMProvider,
+  ExecuteOptions,
+  ExecutionResult,
+  ProviderProgressEvent,
+  UsageLimitResult as ProviderUsageLimitResult,
+  ProviderFactory,
+  ProgressCallback,
+} from "./providers/index.js";
