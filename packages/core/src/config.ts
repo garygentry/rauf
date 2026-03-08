@@ -5,6 +5,7 @@ import * as os from "node:os";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, ensureDir } from "./fs-utils.js";
 import { MarkerFileSchema, ToolConfigSchema, type MarkerFile, type ToolConfig } from "./schemas.js";
+import ports from "../../../config/ports.json";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -15,7 +16,7 @@ const RALPH_ROOT_ENV = "RALPH_ROOT";
 
 const DEFAULT_TOOL_CONFIG: ToolConfig = {
   rootDirectory: process.cwd(),
-  port: 5173,
+  port: ports.serverPort,
   theme: "system",
 };
 

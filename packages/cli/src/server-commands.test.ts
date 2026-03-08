@@ -23,6 +23,7 @@ import {
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
+import ports from "../../../config/ports.json";
 
 // ─── Setup & teardown ────────────────────────────────────────────
 
@@ -153,7 +154,7 @@ describe("readServerState", () => {
   });
 
   it("returns state when file contains valid JSON", () => {
-    const state = { pid: 12345, port: 5173, startedAt: "2025-01-01T00:00:00Z" };
+    const state = { pid: 12345, port: ports.serverPort, startedAt: "2025-01-01T00:00:00Z" };
     writeServerState(state);
     expect(readServerState()).toEqual(state);
   });
@@ -196,7 +197,7 @@ describe("writeServerState / removeServerState", () => {
   });
 
   it("removeServerState cleans up the file", () => {
-    const state = { pid: 99999, port: 5173, startedAt: "2025-01-01T00:00:00Z" };
+    const state = { pid: 99999, port: ports.serverPort, startedAt: "2025-01-01T00:00:00Z" };
     writeServerState(state);
     removeServerState();
     expect(readServerState()).toBeNull();
@@ -225,15 +226,15 @@ describe("readServerError", () => {
     fs.mkdirSync(path.dirname(SERVER_ERROR_FILE), { recursive: true });
     const errorData = {
       code: "EADDRINUSE",
-      message: "Port 5173 in use",
-      port: 5173,
+      message: `Port ${ports.serverPort} in use`,
+      port: ports.serverPort,
       timestamp: "2025-01-01T00:00:00Z",
     };
     fs.writeFileSync(SERVER_ERROR_FILE, JSON.stringify(errorData));
     const result = readServerError();
     expect(result).not.toBeNull();
     expect(result!.code).toBe("EADDRINUSE");
-    expect(result!.port).toBe(5173);
+    expect(result!.port).toBe(ports.serverPort);
   });
 
   it("returns null when error file contains malformed JSON", () => {
@@ -306,7 +307,7 @@ describe("handleServerStop", () => {
 
   it("cleans up stale state file when process is dead", async () => {
     // Write a state with PID that definitely does not exist
-    writeServerState({ pid: 999999999, port: 5173, startedAt: new Date().toISOString() });
+    writeServerState({ pid: 999999999, port: ports.serverPort, startedAt: new Date().toISOString() });
     const ctx = makeCtx();
     const code = await handleServerStop(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
@@ -319,7 +320,7 @@ describe("handleServerStop", () => {
     // Instead, test the flow: write own PID as if server, verify the stop logic
     // runs through (it will fail to kill since we're not the server, but won't crash).
     // This just verifies the code path runs without throwing.
-    writeServerState({ pid: process.pid, port: 5173, startedAt: new Date().toISOString() });
+    writeServerState({ pid: process.pid, port: ports.serverPort, startedAt: new Date().toISOString() });
     // The stop handler will find our PID alive, send SIGTERM, but since we're
     // in the test process, SIGTERM won't actually kill us.
     // We need to remove the state file ourselves after to avoid side effects.
@@ -351,7 +352,7 @@ describe("handleServerStatus", () => {
   });
 
   it("cleans up stale state file and reports stopped", async () => {
-    writeServerState({ pid: 999999999, port: 5173, startedAt: new Date().toISOString() }); // Non-existent PID
+    writeServerState({ pid: 999999999, port: ports.serverPort, startedAt: new Date().toISOString() }); // Non-existent PID
     const ctx = makeCtx();
     const code = await handleServerStatus(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
@@ -483,7 +484,7 @@ describe("handleServerStart", () => {
 
   it("removes stale state file before attempting to start", async () => {
     // Write a dead PID — the start handler should clean it and attempt to start
-    writeServerState({ pid: 999999999, port: 5173, startedAt: new Date().toISOString() });
+    writeServerState({ pid: 999999999, port: ports.serverPort, startedAt: new Date().toISOString() });
 
     // The server entry point won't exist in this test context (no real web server),
     // so it will fail with ERROR — but that's after cleaning the stale state.

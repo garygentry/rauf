@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as child_process from "node:child_process";
 
 import { readToolConfig } from "@ralph/core";
+import ports from "../../../config/ports.json";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -232,7 +233,7 @@ export async function pingHealthEndpoint(port: number): Promise<HealthData | nul
 /** Get the configured server port (from tool config, default 5173). */
 function getPort(): number {
   const configResult = readToolConfig();
-  return configResult.ok ? configResult.value.port : 5173;
+  return configResult.ok ? configResult.value.port : ports.serverPort;
 }
 
 // ─── Daemon readiness polling ────────────────────────────────────

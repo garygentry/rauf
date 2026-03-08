@@ -1,0 +1,5 @@
+{
+  "serverPort": 5173,
+  "serverHost": "127.0.0.1",
+  "vitePort": 5174
+}

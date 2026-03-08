@@ -1,7 +1,9 @@
 // @ralph/web — Concurrent dev launcher
 //
-// Starts both the Hono API server (port 5173) and Vite dev server (port 5174)
+// Starts both the Hono API server and Vite dev server
 // with color-coded output prefixes. Handles clean shutdown on Ctrl+C.
+
+import ports from "../../../config/ports.json";
 
 const RESET = "\x1b[0m";
 const CYAN = "\x1b[36m";
@@ -82,8 +84,8 @@ pipeWithPrefix(viteProc.stderr, VITE_PREFIX);
 console.log();
 console.log(`${BOLD}  Ralph Dev Server${RESET}`);
 console.log(`${DIM}  ─────────────────────────────${RESET}`);
-console.log(`  ${CYAN}API${RESET}      http://127.0.0.1:5173`);
-console.log(`  ${MAGENTA}Frontend${RESET} http://localhost:5174`);
+console.log(`  ${CYAN}API${RESET}      http://${ports.serverHost}:${ports.serverPort}`);
+console.log(`  ${MAGENTA}Frontend${RESET} http://localhost:${ports.vitePort}`);
 console.log(`${DIM}  ─────────────────────────────${RESET}`);
 console.log();
 

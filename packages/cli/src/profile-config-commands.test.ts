@@ -18,6 +18,7 @@ import {
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
+import ports from "../../../config/ports.json";
 
 // ─── Fixtures ──────────────────────────────────────────────────────
 
@@ -381,7 +382,7 @@ describe("handleConfigList", () => {
   it("outputs JSON config when --json flag is set", async () => {
     writeTestToolConfig({
       rootDirectory: "/home/test/projects",
-      port: 5173,
+      port: ports.serverPort,
       theme: "dark",
     });
 
@@ -402,7 +403,7 @@ describe("handleConfigList", () => {
     expect(code).toBe(ExitCode.SUCCESS);
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("rootDirectory", "/home/test/projects");
-    expect(parsed).toHaveProperty("port", 5173);
+    expect(parsed).toHaveProperty("port", ports.serverPort);
     expect(parsed).toHaveProperty("theme", "dark");
   });
 
@@ -430,8 +431,8 @@ describe("handleConfigList", () => {
 
     expect(code).toBe(ExitCode.SUCCESS);
     const parsed = JSON.parse(output);
-    // Defaults include rootDirectory (cwd), port 5173, theme system
-    expect(parsed).toHaveProperty("port", 5173);
+    // Defaults include rootDirectory (cwd), port from ports.json, theme system
+    expect(parsed).toHaveProperty("port", ports.serverPort);
     expect(parsed).toHaveProperty("theme", "system");
   });
 });
@@ -452,7 +453,7 @@ describe("handleConfigGet", () => {
   });
 
   it("gets an existing config value", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "light" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "light" });
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);
@@ -511,7 +512,7 @@ describe("handleConfigSet", () => {
   });
 
   it("sets the port (coerces string to number)", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "system" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
 
     const ctx = makeCtx(["port", "8080"]);
     const code = await handleConfigSet(ctx);
@@ -522,14 +523,14 @@ describe("handleConfigSet", () => {
   });
 
   it("returns INVALID_ARGS for invalid port", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "system" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
     const ctx = makeCtx(["port", "not-a-number"]);
     const code = await handleConfigSet(ctx);
     expect(code).toBe(ExitCode.INVALID_ARGS);
   });
 
   it("sets the theme", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "system" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
 
     const ctx = makeCtx(["theme", "dark"]);
     const code = await handleConfigSet(ctx);
@@ -540,14 +541,14 @@ describe("handleConfigSet", () => {
   });
 
   it("returns INVALID_ARGS for invalid theme", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "system" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
     const ctx = makeCtx(["theme", "purple"]);
     const code = await handleConfigSet(ctx);
     expect(code).toBe(ExitCode.INVALID_ARGS);
   });
 
   it("sets rootDirectory (resolves to absolute path)", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "system" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
 
     const ctx = makeCtx(["rootDirectory", "/workspace/projects"]);
     const code = await handleConfigSet(ctx);
@@ -558,7 +559,7 @@ describe("handleConfigSet", () => {
   });
 
   it("outputs JSON with updated config when --json flag is set", async () => {
-    writeTestToolConfig({ rootDirectory: "/home/test", port: 5173, theme: "system" });
+    writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
 
     let output = "";
     const orig = process.stdout.write.bind(process.stdout);

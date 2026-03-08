@@ -11,6 +11,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 import { readToolConfig, resolveRootDirectory } from "@ralph/core";
+import ports from "../../../../config/ports.json";
 
 import { createApp } from "./app.js";
 import { EMBEDDED_ASSETS, getAssetMimeType } from "./embedded-assets.js";
@@ -33,7 +34,7 @@ export interface StartServerOptions {
  */
 export function startServer(options?: StartServerOptions): void {
   const configResult = readToolConfig();
-  const port = options?.port ?? (configResult.ok ? configResult.value.port : 5173);
+  const port = options?.port ?? (configResult.ok ? configResult.value.port : ports.serverPort);
 
   const startedAt = Date.now();
   const app = createApp(startedAt);

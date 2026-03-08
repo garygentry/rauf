@@ -11,6 +11,7 @@
 import * as path from "node:path";
 
 import { readToolConfig, LoopStartOptionsSchema, type LoopEvent } from "@ralph/core";
+import ports from "../../../config/ports.json";
 import { LoopRunner } from "@ralph/loop";
 
 import type { CommandContext } from "./commands.js";
@@ -48,7 +49,7 @@ function getPort(): number {
   const state = readServerState();
   if (state) return state.port;
   const configResult = readToolConfig();
-  return configResult.ok ? configResult.value.port : 5173;
+  return configResult.ok ? configResult.value.port : ports.serverPort;
 }
 
 /** Build an API URL for loop endpoints */
