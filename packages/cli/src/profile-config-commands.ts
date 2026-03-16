@@ -14,6 +14,7 @@ import {
   detectProfile,
   discoverProjects,
   deriveStatus,
+  update,
   ErrorCodes,
   type ProjectProfile,
   type ToolConfig,
@@ -144,6 +145,18 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
     return handleCoreError(writeResult.error, ctx, resolved);
   }
 
+  // Auto-sync RALPH.md with the updated profile
+  const updateResult = update(resolved);
+  if (!updateResult.ok) {
+    // Non-fatal — profile was saved, just warn that RALPH.md wasn't re-rendered
+    if (!ctx.globalFlags.json) {
+      info(
+        `Profile saved but RALPH.md could not be updated: ${updateResult.error.message}`,
+      );
+      info(`Run 'ralph update ${targetPath}' manually to sync.`);
+    }
+  }
+
   if (ctx.globalFlags.json) {
     outputJson(profile);
     return ExitCode.SUCCESS;
@@ -152,6 +165,9 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
   success(
     `Profile updated: ${c.bold(key)} = ${value === "" ? c.dim("(disabled)") : c.cyan(value)}`,
   );
+  if (updateResult.ok) {
+    info("RALPH.md verification commands synced.");
+  }
   return ExitCode.SUCCESS;
 }
 

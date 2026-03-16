@@ -10,6 +10,8 @@ import {
   preflight,
   buildTemplateVars,
   isCommandInPath,
+  RALPH_MD_MANAGED_START,
+  RALPH_MD_MANAGED_END,
   type InstallOptions,
 } from "./installer.js";
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
@@ -481,6 +483,93 @@ describe("update", () => {
 
     expect(result.value.profile).toBeDefined();
     expect(result.value.projectPath).toBe(path.resolve(tmpDir));
+  });
+});
+
+// ─── update — RALPH.md sentinel preservation ──────────────────────
+
+describe("update — RALPH.md sentinel preservation", () => {
+  it("preserves project-specific content below managed section", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+
+    // Add custom content to the project-specific section
+    const ralphMdPath = path.join(tmpDir, ".ralph", "RALPH.md");
+    const original = fs.readFileSync(ralphMdPath, "utf-8");
+    const customContent =
+      original + "\n- Always run database migrations before tests\n- Use factory functions from tests/helpers/\n";
+    fs.writeFileSync(ralphMdPath, customContent);
+
+    // Run update
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+
+    const updated = fs.readFileSync(ralphMdPath, "utf-8");
+    // Custom content should survive
+    expect(updated).toContain("Always run database migrations before tests");
+    expect(updated).toContain("Use factory functions from tests/helpers/");
+    // Managed section should still be present
+    expect(updated).toContain(RALPH_MD_MANAGED_START);
+    expect(updated).toContain(RALPH_MD_MANAGED_END);
+    expect(updated).toContain("pnpm test");
+  });
+
+  it("updates the managed verification commands section", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+
+    // Manually alter the managed section to simulate stale commands
+    const ralphMdPath = path.join(tmpDir, ".ralph", "RALPH.md");
+    let content = fs.readFileSync(ralphMdPath, "utf-8");
+    content = content.replace("pnpm test", "OLD_TEST_COMMAND");
+    fs.writeFileSync(ralphMdPath, content);
+
+    // Run update — should restore correct commands
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const ralphMdAction = result.value.actions.find((a) => a.file === ".ralph/RALPH.md");
+    expect(ralphMdAction?.action).toBe("updated");
+
+    const updated = fs.readFileSync(ralphMdPath, "utf-8");
+    expect(updated).toContain("pnpm test");
+    expect(updated).not.toContain("OLD_TEST_COMMAND");
+  });
+
+  it("handles RALPH.md without managed sentinels (legacy) by full overwrite", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+
+    // Strip sentinels to simulate a legacy file
+    const ralphMdPath = path.join(tmpDir, ".ralph", "RALPH.md");
+    const content = fs.readFileSync(ralphMdPath, "utf-8");
+    const legacy = content
+      .replace(RALPH_MD_MANAGED_START, "")
+      .replace(RALPH_MD_MANAGED_END, "");
+    fs.writeFileSync(ralphMdPath, legacy);
+
+    // Update should fall back to full overwrite
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+
+    const updated = fs.readFileSync(ralphMdPath, "utf-8");
+    // Should have sentinels back from full template render
+    expect(updated).toContain(RALPH_MD_MANAGED_START);
+    expect(updated).toContain(RALPH_MD_MANAGED_END);
+  });
+
+  it("reports skipped when RALPH.md managed section is already up to date", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+
+    // Update with no changes — should report skipped
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const ralphMdAction = result.value.actions.find((a) => a.file === ".ralph/RALPH.md");
+    expect(ralphMdAction?.action).toBe("skipped");
   });
 });
 

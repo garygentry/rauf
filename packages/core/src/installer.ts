@@ -13,7 +13,7 @@ import {
 } from "./schemas.js";
 import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
 import { detectProfile, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
-import { renderTemplate } from "./template.js";
+import { renderTemplate, updateSentinelBlock } from "./template.js";
 import {
   mergeClaudeMd,
   extractRalphBlock,
@@ -42,6 +42,10 @@ const DIR_FILES = {
 
 /** Template used for CLAUDE.md merge — not deployed directly */
 const CLAUDE_ADDON_FILE = "CLAUDE_ADDON.md";
+
+/** Sentinels for the managed block in RALPH.md */
+const RALPH_MD_MANAGED_START = "<!-- ralph:managed:start -->";
+const RALPH_MD_MANAGED_END = "<!-- ralph:managed:end -->";
 
 // ─── Artifact reading ─────────────────────────────────────────────
 
@@ -532,6 +536,21 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
   };
 }
 
+/** Extract the content between managed sentinels from rendered template */
+function extractManagedBlock(rendered: string): string | null {
+  const startIdx = rendered.indexOf(RALPH_MD_MANAGED_START);
+  const endIdx = rendered.indexOf(RALPH_MD_MANAGED_END);
+
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
+
+  const contentStart = startIdx + RALPH_MD_MANAGED_START.length;
+  // Trim leading/trailing newline from the inner content
+  let inner = rendered.slice(contentStart, endIdx);
+  if (inner.startsWith("\n")) inner = inner.slice(1);
+  if (inner.endsWith("\n")) inner = inner.slice(0, -1);
+  return inner;
+}
+
 /** Render RALPH.md from template with profile variables */
 function deployRalphMd(
   ralphDir: string,
@@ -546,31 +565,79 @@ function deployRalphMd(
   const rendered = renderTemplate(contentResult.value, templateVars);
   const existed = fileExists(outputPath);
 
-  // Check if content is the same (for idempotency)
   if (existed) {
+    // Update mode: preserve project-specific content, only replace managed block
+    let current: string;
     try {
-      const current = fs.readFileSync(outputPath, "utf-8");
-      if (current === rendered) {
+      current = fs.readFileSync(outputPath, "utf-8");
+    } catch {
+      // Can't read current — fall through to full write
+      const writeResult = atomicWrite(outputPath, rendered);
+      if (!writeResult.ok) return writeResult;
+      return ok({
+        file: ".ralph/RALPH.md",
+        action: "rendered" as const,
+        detail: "RALPH.md rendered from template",
+      });
+    }
+
+    // Extract just the managed block from the freshly rendered template
+    const newManagedContent = extractManagedBlock(rendered);
+
+    if (newManagedContent !== null && current.includes(RALPH_MD_MANAGED_START)) {
+      // Sentinel-aware update: replace only the managed block
+      const updated = updateSentinelBlock(
+        current,
+        RALPH_MD_MANAGED_START,
+        RALPH_MD_MANAGED_END,
+        newManagedContent,
+      );
+
+      if (updated === current) {
         return ok({
           file: ".ralph/RALPH.md",
           action: "skipped" as const,
           detail: "RALPH.md already up to date",
         });
       }
-    } catch {
-      // Can't read current — proceed with write
+
+      const writeResult = atomicWrite(outputPath, updated);
+      if (!writeResult.ok) return writeResult;
+
+      return ok({
+        file: ".ralph/RALPH.md",
+        action: "updated" as const,
+        detail: "RALPH.md managed section updated, project-specific content preserved",
+      });
     }
+
+    // Legacy file without sentinels or template without sentinels — full overwrite
+    if (current === rendered) {
+      return ok({
+        file: ".ralph/RALPH.md",
+        action: "skipped" as const,
+        detail: "RALPH.md already up to date",
+      });
+    }
+
+    const writeResult = atomicWrite(outputPath, rendered);
+    if (!writeResult.ok) return writeResult;
+
+    return ok({
+      file: ".ralph/RALPH.md",
+      action: "rendered" as const,
+      detail: "RALPH.md re-rendered from template (no managed sentinels found)",
+    });
   }
 
+  // First install: write full rendered template
   const writeResult = atomicWrite(outputPath, rendered);
   if (!writeResult.ok) return writeResult;
 
   return ok({
     file: ".ralph/RALPH.md",
-    action: existed ? ("rendered" as const) : ("rendered" as const),
-    detail: existed
-      ? "RALPH.md re-rendered with profile variables"
-      : "RALPH.md rendered from template",
+    action: "rendered" as const,
+    detail: "RALPH.md rendered from template",
   });
 }
 
@@ -775,7 +842,7 @@ function tryRemoveEmptyDir(dirPath: string): void {
 
 // ─── Exported constants (for testing) ────────────────────────────
 
-export { DOT_RALPH, DIR_FILES, CLAUDE_ADDON_FILE };
+export { DOT_RALPH, DIR_FILES, CLAUDE_ADDON_FILE, RALPH_MD_MANAGED_START, RALPH_MD_MANAGED_END };
 
 // ─── Exported helpers (for testing) ──────────────────────────────
 
