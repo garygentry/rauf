@@ -692,6 +692,9 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   if (r.backlogCleared) {
     parts.push("emptied backlog");
   }
+  if (r.progressArchived) {
+    parts.push("archived progress.md");
+  }
 
   if (parts.length === 0) {
     info("Project was already clean — nothing to reset.");

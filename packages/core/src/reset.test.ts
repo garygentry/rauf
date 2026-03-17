@@ -108,6 +108,7 @@ describe("resetProject", () => {
     expect(result.value.doneCleared).toBe(true);
     expect(result.value.cancelCleared).toBe(true);
     expect(result.value.backlogCleared).toBe(false);
+    expect(result.value.progressArchived).toBe(false);
 
     // Verify backlog state
     const backlog = readBacklogFile();
@@ -156,6 +157,7 @@ describe("resetProject", () => {
     expect(result.value.stalledResetCount).toBe(0);
     expect(result.value.stateCleared).toBe(false);
     expect(result.value.backlogCleared).toBe(false);
+    expect(result.value.progressArchived).toBe(false);
   });
 
   it("returns error when no backlog file exists", () => {
@@ -165,5 +167,53 @@ describe("resetProject", () => {
     if (result.ok) return;
 
     expect(result.error.code).toBe(ErrorCodes.FILE_NOT_FOUND);
+  });
+
+  it("clearBacklog with progress.md — archives it and deploys fresh template", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
+    fs.writeFileSync(progressPath, "# Old learnings\n\nSome accumulated context.");
+
+    const result = resetProject(tmpDir, { clearBacklog: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.progressArchived).toBe(true);
+
+    // Verify archive file exists with old content
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const archivePath = path.join(tmpDir, ".ralph", "archive", `${currentMonth}-progress.md`);
+    expect(fs.existsSync(archivePath)).toBe(true);
+    expect(fs.readFileSync(archivePath, "utf-8")).toBe("# Old learnings\n\nSome accumulated context.");
+
+    // Verify fresh progress.md was deployed (not the old content)
+    expect(fs.existsSync(progressPath)).toBe(true);
+    const freshContent = fs.readFileSync(progressPath, "utf-8");
+    expect(freshContent).not.toContain("Old learnings");
+  });
+
+  it("clearBacklog without progress.md — progressArchived false, no error", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    // No progress.md created
+
+    const result = resetProject(tmpDir, { clearBacklog: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.progressArchived).toBe(false);
+    expect(result.value.backlogCleared).toBe(true);
+  });
+
+  it("no clearBacklog with progress.md — file untouched", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
+    fs.writeFileSync(progressPath, "# Existing learnings");
+
+    const result = resetProject(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.progressArchived).toBe(false);
+    expect(fs.readFileSync(progressPath, "utf-8")).toBe("# Existing learnings");
   });
 });

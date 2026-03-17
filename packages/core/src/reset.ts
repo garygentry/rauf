@@ -10,6 +10,8 @@ import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { sweepBacklog } from "./archive.js";
 import { readBacklog, writeBacklog, resetStalledItems } from "./backlog.js";
 import { clearDoneFile, clearCancelFile } from "./status.js";
+import { atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
+import { deployProgress } from "./installer.js";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -25,6 +27,7 @@ export interface ResetProjectResult {
   doneCleared: boolean;
   cancelCleared: boolean;
   backlogCleared: boolean;
+  progressArchived: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -72,7 +75,31 @@ export function resetProject(
   const cancelResult = clearCancelFile(resolved);
   if (!cancelResult.ok) return cancelResult;
 
-  // 6. Optionally empty backlog items array (preserve project/description)
+  // 6. Archive progress.md when clearing backlog
+  let progressArchived = false;
+  if (options?.clearBacklog) {
+    const ralphDir = path.join(resolved, RALPH_DIR);
+    const progressPath = path.join(ralphDir, "progress.md");
+    if (fileExists(progressPath)) {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const archiveDir = path.join(ralphDir, "archive");
+      const ensureResult = ensureDir(archiveDir);
+      if (!ensureResult.ok) return ensureResult;
+
+      const content = fs.readFileSync(progressPath, "utf-8");
+      const archivePath = path.join(archiveDir, `${currentMonth}-progress.md`);
+      const archiveResult = atomicWrite(archivePath, content);
+      if (!archiveResult.ok) return archiveResult;
+
+      fs.unlinkSync(progressPath);
+      const deployResult = deployProgress(ralphDir);
+      if (!deployResult.ok) return deployResult;
+
+      progressArchived = true;
+    }
+  }
+
+  // 7. Optionally empty backlog items array (preserve project/description)
   let backlogCleared = false;
   if (options?.clearBacklog) {
     const backlogResult = readBacklog(resolved);
@@ -95,5 +122,6 @@ export function resetProject(
     doneCleared: true,
     cancelCleared: true,
     backlogCleared,
+    progressArchived,
   });
 }

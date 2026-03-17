@@ -846,4 +846,4 @@ export { DOT_RALPH, DIR_FILES, CLAUDE_ADDON_FILE, RALPH_MD_MANAGED_START, RALPH_
 
 // ─── Exported helpers (for testing) ──────────────────────────────
 
-export { buildTemplateVars, isCommandInPath, readArtifact };
+export { buildTemplateVars, isCommandInPath, readArtifact, deployProgress };
