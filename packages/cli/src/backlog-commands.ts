@@ -653,13 +653,17 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog reset <path> [--clear] [--yes] [--json]");
+    info(
+      "Usage: ralph backlog reset <path> [--clear] [--keep-progress] [--keep-log] [--yes] [--json]",
+    );
     return ExitCode.INVALID_ARGS;
   }
 
   const resolved = path.resolve(targetPath);
   const yes = extractBoolFlag(ctx.flags, "yes");
   const clear = extractBoolFlag(ctx.flags, "clear");
+  const keepProgress = extractBoolFlag(ctx.flags, "keep-progress");
+  const keepLog = extractBoolFlag(ctx.flags, "keep-log");
 
   if (!yes) {
     error("Resetting project state requires confirmation.");
@@ -667,7 +671,11 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = resetProject(resolved, { clearBacklog: clear });
+  const result = resetProject(resolved, {
+    clearBacklog: clear,
+    keepProgress,
+    keepLog,
+  });
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -694,6 +702,9 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   }
   if (r.progressArchived) {
     parts.push("archived progress.md");
+  }
+  if (r.logArchived) {
+    parts.push("archived ralph.log");
   }
 
   if (parts.length === 0) {

@@ -216,4 +216,88 @@ describe("resetProject", () => {
     expect(result.value.progressArchived).toBe(false);
     expect(fs.readFileSync(progressPath, "utf-8")).toBe("# Existing learnings");
   });
+
+  // ─── Log archiving tests ────────────────────────────────────────
+
+  it("clearBacklog with ralph.log — archives it", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    fs.writeFileSync(logPath, "2026-03-01 some log entry\n2026-03-02 another entry\n");
+
+    const result = resetProject(tmpDir, { clearBacklog: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.logArchived).toBe(true);
+
+    // Verify archive file exists with old content
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const archivePath = path.join(tmpDir, ".ralph", "archive", `${currentMonth}-ralph.log`);
+    expect(fs.existsSync(archivePath)).toBe(true);
+    expect(fs.readFileSync(archivePath, "utf-8")).toContain("some log entry");
+
+    // Verify original log removed (not recreated — appendLog creates on first write)
+    expect(fs.existsSync(logPath)).toBe(false);
+  });
+
+  it("clearBacklog without ralph.log — logArchived false, no error", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+
+    const result = resetProject(tmpDir, { clearBacklog: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.logArchived).toBe(false);
+  });
+
+  it("no clearBacklog with ralph.log — file untouched", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    fs.writeFileSync(logPath, "existing log data");
+
+    const result = resetProject(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.logArchived).toBe(false);
+    expect(fs.readFileSync(logPath, "utf-8")).toBe("existing log data");
+  });
+
+  // ─── Opt-out flag tests ─────────────────────────────────────────
+
+  it("clearBacklog with keepProgress — log archived, progress untouched", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
+    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    fs.writeFileSync(progressPath, "# Keep me");
+    fs.writeFileSync(logPath, "archive me\n");
+
+    const result = resetProject(tmpDir, { clearBacklog: true, keepProgress: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.progressArchived).toBe(false);
+    expect(result.value.logArchived).toBe(true);
+    expect(fs.readFileSync(progressPath, "utf-8")).toBe("# Keep me");
+    expect(fs.existsSync(logPath)).toBe(false);
+  });
+
+  it("clearBacklog with keepLog — progress archived, log untouched", () => {
+    writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
+    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
+    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    fs.writeFileSync(progressPath, "# Archive me");
+    fs.writeFileSync(logPath, "keep me\n");
+
+    const result = resetProject(tmpDir, { clearBacklog: true, keepLog: true });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.progressArchived).toBe(true);
+    expect(result.value.logArchived).toBe(false);
+    expect(fs.existsSync(progressPath)).toBe(true);
+    const freshContent = fs.readFileSync(progressPath, "utf-8");
+    expect(freshContent).not.toContain("Archive me");
+    expect(fs.readFileSync(logPath, "utf-8")).toBe("keep me\n");
+  });
 });

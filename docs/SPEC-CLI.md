@@ -189,6 +189,18 @@ ralph help [command]
 - Without `--month`: delete all archive files and remove the `.ralph/archive/` directory
 - Non-existent months are silently treated as no-op (idempotent)
 
+### ralph backlog reset <path>
+
+- Orchestrates a full project reset for a fresh backlog cycle
+- `--yes`: required for confirmation
+- `--clear`: empty the backlog items array (preserve project/description metadata)
+- `--keep-progress`: when used with `--clear`, preserve `progress.md` instead of archiving it
+- `--keep-log`: when used with `--clear`, preserve `ralph.log` instead of archiving it
+- `--json`: output result object as JSON
+- Without `--clear`: sweeps done items to archive, resets in_progress → pending, clears state.json/DONE/CANCEL markers. `progress.md` and `ralph.log` are untouched.
+- With `--clear`: all of the above, plus empties backlog items array, archives `progress.md` → `.ralph/archive/YYYY-MM-progress.md` (deploys fresh template), archives `ralph.log` → `.ralph/archive/YYYY-MM-ralph.log` (removed, recreated on next loop)
+- Archive naming: `YYYY-MM-progress.md` and `YYYY-MM-ralph.log` in `.ralph/archive/` (same month overwrites previous)
+
 ### ralph backlog list <path>
 
 - Default: human-readable table with columns: ID, Type, Pri, Status, Title

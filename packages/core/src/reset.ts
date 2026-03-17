@@ -17,6 +17,8 @@ import { deployProgress } from "./installer.js";
 
 export interface ResetProjectOptions {
   clearBacklog?: boolean;
+  keepProgress?: boolean;
+  keepLog?: boolean;
 }
 
 export interface ResetProjectResult {
@@ -28,6 +30,7 @@ export interface ResetProjectResult {
   cancelCleared: boolean;
   backlogCleared: boolean;
   progressArchived: boolean;
+  logArchived: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -75,9 +78,9 @@ export function resetProject(
   const cancelResult = clearCancelFile(resolved);
   if (!cancelResult.ok) return cancelResult;
 
-  // 6. Archive progress.md when clearing backlog
+  // 6. Archive progress.md when clearing backlog (unless --keep-progress)
   let progressArchived = false;
-  if (options?.clearBacklog) {
+  if (options?.clearBacklog && !options?.keepProgress) {
     const ralphDir = path.join(resolved, RALPH_DIR);
     const progressPath = path.join(ralphDir, "progress.md");
     if (fileExists(progressPath)) {
@@ -99,7 +102,34 @@ export function resetProject(
     }
   }
 
-  // 7. Optionally empty backlog items array (preserve project/description)
+  // 7. Archive ralph.log when clearing backlog (unless --keep-log)
+  let logArchived = false;
+  if (options?.clearBacklog && !options?.keepLog) {
+    const ralphDir = path.join(resolved, RALPH_DIR);
+    const logPath = path.join(ralphDir, "ralph.log");
+    if (fileExists(logPath)) {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const archiveDir = path.join(ralphDir, "archive");
+      const ensureResult = ensureDir(archiveDir);
+      if (!ensureResult.ok) return ensureResult;
+
+      const archivePath = path.join(archiveDir, `${currentMonth}-ralph.log`);
+      try {
+        fs.renameSync(logPath, archivePath);
+        logArchived = true;
+      } catch (e) {
+        if (e instanceof Error) {
+          return err({
+            code: ErrorCodes.FILE_NOT_FOUND,
+            message: `Failed to archive ralph.log: ${e.message}`,
+            details: { path: logPath },
+          });
+        }
+      }
+    }
+  }
+
+  // 8. Optionally empty backlog items array (preserve project/description)
   let backlogCleared = false;
   if (options?.clearBacklog) {
     const backlogResult = readBacklog(resolved);
@@ -123,5 +153,6 @@ export function resetProject(
     cancelCleared: true,
     backlogCleared,
     progressArchived,
+    logArchived,
   });
 }
