@@ -15,6 +15,7 @@ import {
   listArchiveMonths,
   readArchiveMonth,
   purgeArchive,
+  resetProject,
   ErrorCodes,
   type BacklogItem,
   type BacklogItemType,
@@ -642,6 +643,63 @@ export async function handleBacklogArchiveDispatch(ctx: CommandContext): Promise
       info("Usage: ralph backlog archive <list|view|purge> <path> [options]");
       return ExitCode.INVALID_ARGS;
   }
+}
+
+// ─── handleBacklogReset ──────────────────────────────────────────
+//
+// ralph backlog reset <path> [--clear] [--yes] [--json]
+
+export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog reset <path> [--clear] [--yes] [--json]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const yes = extractBoolFlag(ctx.flags, "yes");
+  const clear = extractBoolFlag(ctx.flags, "clear");
+
+  if (!yes) {
+    error("Resetting project state requires confirmation.");
+    info("Pass --yes to confirm. This will sweep done items, clear loop state, and reset stalled items.");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const result = resetProject(resolved, { clearBacklog: clear });
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx, resolved);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value);
+    return ExitCode.SUCCESS;
+  }
+
+  const r = result.value;
+  const parts: string[] = [];
+
+  if (r.sweptCount > 0) {
+    parts.push(`swept ${r.sweptCount} done item${r.sweptCount === 1 ? "" : "s"} → ${r.sweptMonths.join(", ")}`);
+  }
+  if (r.stalledResetCount > 0) {
+    parts.push(`reset ${r.stalledResetCount} stalled item${r.stalledResetCount === 1 ? "" : "s"} to pending`);
+  }
+  if (r.stateCleared) {
+    parts.push("cleared state.json");
+  }
+  if (r.backlogCleared) {
+    parts.push("emptied backlog");
+  }
+
+  if (parts.length === 0) {
+    info("Project was already clean — nothing to reset.");
+  } else {
+    success(`Reset complete: ${parts.join(", ")}.`);
+  }
+
+  return ExitCode.SUCCESS;
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────

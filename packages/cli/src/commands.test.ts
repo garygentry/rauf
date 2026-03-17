@@ -98,6 +98,7 @@ describe("COMMANDS registry", () => {
       "restore",
       "sweep",
       "archive",
+      "reset",
     ]);
   });
 

@@ -10,6 +10,7 @@ import {
   handleBacklogDelete,
   handleBacklogShow,
   handleBacklogRestore,
+  handleBacklogReset,
 } from "./backlog-commands.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -1058,7 +1059,7 @@ describe("backlog command registry handlers", () => {
 
     const subcommands = backlog!.subcommands!;
     const withHandlers = subcommands.filter((sc) => sc.handler !== undefined);
-    expect(withHandlers).toHaveLength(8);
+    expect(withHandlers).toHaveLength(9);
 
     const names = withHandlers.map((sc) => sc.name);
     expect(names).toContain("list");
@@ -1069,5 +1070,95 @@ describe("backlog command registry handlers", () => {
     expect(names).toContain("restore");
     expect(names).toContain("sweep");
     expect(names).toContain("archive");
+    expect(names).toContain("reset");
+  });
+});
+
+// ─── handleBacklogReset ─────────────────────────────────────────────
+
+describe("handleBacklogReset", () => {
+  it("returns INVALID_ARGS when no path argument", async () => {
+    const code = await handleBacklogReset(makeCtx());
+    expect(code).toBe(ExitCode.INVALID_ARGS);
+  });
+
+  it("returns INVALID_ARGS without --yes (requires confirmation)", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
+
+    const ctx = makeCtx({ args: [projectDir] });
+    const code = await handleBacklogReset(ctx);
+    expect(code).toBe(ExitCode.INVALID_ARGS);
+  });
+
+  it("resets project state with --yes", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
+
+    // Add state.json and DONE marker
+    const ralphDir = path.join(projectDir, ".ralph");
+    fs.writeFileSync(
+      path.join(ralphDir, "state.json"),
+      JSON.stringify({
+        status: "complete",
+        iteration: 3,
+        maxIterations: 5,
+        currentItem: null,
+        lastSignal: "clean",
+        startedAt: "2026-01-15T10:00:00.000Z",
+        updatedAt: "2026-01-15T12:00:00.000Z",
+      }),
+    );
+    fs.writeFileSync(path.join(ralphDir, "DONE"), "complete");
+
+    configureOutput({ noColor: true, quiet: false, json: false });
+    const ctx = makeCtx({
+      args: [projectDir],
+      flags: new Map([["yes", true as string | true]]),
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogReset(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    expect(output.stdout).toContain("Reset complete");
+
+    // state.json should be deleted
+    expect(fs.existsSync(path.join(ralphDir, "state.json"))).toBe(false);
+    // DONE should be deleted
+    expect(fs.existsSync(path.join(ralphDir, "DONE"))).toBe(false);
+  });
+
+  it("--clear empties backlog items", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
+
+    configureOutput({ noColor: true, quiet: false, json: true });
+    const ctx = makeCtx({
+      args: [projectDir],
+      flags: new Map<string, string | true>([
+        ["yes", true],
+        ["clear", true],
+      ]),
+      globalFlags: { json: true, noColor: true, quiet: false, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogReset(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    const parsed = JSON.parse(output.stdout);
+    expect(parsed.backlogCleared).toBe(true);
+
+    // Verify backlog is empty but metadata preserved
+    const backlogRaw = fs.readFileSync(
+      path.join(projectDir, ".ralph", "backlog.json"),
+      "utf-8",
+    );
+    const backlog = JSON.parse(backlogRaw);
+    expect(backlog.items).toHaveLength(0);
+    expect(backlog.project).toBe("test-project");
   });
 });
