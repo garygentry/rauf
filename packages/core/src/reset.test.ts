@@ -64,6 +64,12 @@ function readBacklogFile(): Backlog {
   return JSON.parse(raw) as Backlog;
 }
 
+/** Find a single archive file matching a suffix like "-progress.md" */
+function findArchiveFile(dir: string, suffix: string): string | undefined {
+  if (!fs.existsSync(dir)) return undefined;
+  return fs.readdirSync(dir).find((f) => f.endsWith(suffix));
+}
+
 // ─── Tests ────────────────────────────────────────────────────────
 
 describe("resetProject", () => {
@@ -180,11 +186,12 @@ describe("resetProject", () => {
 
     expect(result.value.progressArchived).toBe(true);
 
-    // Verify archive file exists with old content
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const archivePath = path.join(tmpDir, ".ralph", "archive", `${currentMonth}-progress.md`);
-    expect(fs.existsSync(archivePath)).toBe(true);
-    expect(fs.readFileSync(archivePath, "utf-8")).toBe("# Old learnings\n\nSome accumulated context.");
+    // Verify archive file exists with old content (timestamp-based name)
+    const archiveDir = path.join(tmpDir, ".ralph", "archive");
+    const progressArchive = findArchiveFile(archiveDir, "-progress.md");
+    expect(progressArchive).toBeDefined();
+    expect(progressArchive).toMatch(/^\d{8}-\d{6}-progress\.md$/);
+    expect(fs.readFileSync(path.join(archiveDir, progressArchive!), "utf-8")).toBe("# Old learnings\n\nSome accumulated context.");
 
     // Verify fresh progress.md was deployed (not the old content)
     expect(fs.existsSync(progressPath)).toBe(true);
@@ -230,11 +237,12 @@ describe("resetProject", () => {
 
     expect(result.value.logArchived).toBe(true);
 
-    // Verify archive file exists with old content
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    const archivePath = path.join(tmpDir, ".ralph", "archive", `${currentMonth}-ralph.log`);
-    expect(fs.existsSync(archivePath)).toBe(true);
-    expect(fs.readFileSync(archivePath, "utf-8")).toContain("some log entry");
+    // Verify archive file exists with old content (timestamp-based name)
+    const archiveDir = path.join(tmpDir, ".ralph", "archive");
+    const logArchive = findArchiveFile(archiveDir, "-ralph.log");
+    expect(logArchive).toBeDefined();
+    expect(logArchive).toMatch(/^\d{8}-\d{6}-ralph\.log$/);
+    expect(fs.readFileSync(path.join(archiveDir, logArchive!), "utf-8")).toContain("some log entry");
 
     // Verify original log removed (not recreated — appendLog creates on first write)
     expect(fs.existsSync(logPath)).toBe(false);

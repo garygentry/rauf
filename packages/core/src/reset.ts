@@ -38,6 +38,15 @@ export interface ResetProjectResult {
 const RALPH_DIR = ".ralph";
 const STATE_FILENAME = "state.json";
 
+// ─── Helpers ────────────────────────────────────────────────────
+
+/** Compact, filesystem-safe timestamp: 20260317-143052 */
+function archiveTimestamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 // ─── resetProject ───────────────────────────────────────────────
 
 export function resetProject(
@@ -79,18 +88,18 @@ export function resetProject(
   if (!cancelResult.ok) return cancelResult;
 
   // 6. Archive progress.md when clearing backlog (unless --keep-progress)
+  const ts = archiveTimestamp();
   let progressArchived = false;
   if (options?.clearBacklog && !options?.keepProgress) {
     const ralphDir = path.join(resolved, RALPH_DIR);
     const progressPath = path.join(ralphDir, "progress.md");
     if (fileExists(progressPath)) {
-      const currentMonth = new Date().toISOString().slice(0, 7);
       const archiveDir = path.join(ralphDir, "archive");
       const ensureResult = ensureDir(archiveDir);
       if (!ensureResult.ok) return ensureResult;
 
       const content = fs.readFileSync(progressPath, "utf-8");
-      const archivePath = path.join(archiveDir, `${currentMonth}-progress.md`);
+      const archivePath = path.join(archiveDir, `${ts}-progress.md`);
       const archiveResult = atomicWrite(archivePath, content);
       if (!archiveResult.ok) return archiveResult;
 
@@ -108,12 +117,11 @@ export function resetProject(
     const ralphDir = path.join(resolved, RALPH_DIR);
     const logPath = path.join(ralphDir, "ralph.log");
     if (fileExists(logPath)) {
-      const currentMonth = new Date().toISOString().slice(0, 7);
       const archiveDir = path.join(ralphDir, "archive");
       const ensureResult = ensureDir(archiveDir);
       if (!ensureResult.ok) return ensureResult;
 
-      const archivePath = path.join(archiveDir, `${currentMonth}-ralph.log`);
+      const archivePath = path.join(archiveDir, `${ts}-ralph.log`);
       try {
         fs.renameSync(logPath, archivePath);
         logArchived = true;
