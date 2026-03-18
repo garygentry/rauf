@@ -3,10 +3,6 @@ title: System Architecture
 description: High-level system diagram, data flow, and architectural principles for the ralph manager.
 ---
 
-## System Diagram
-
-![System Architecture](images/architecture.svg)
-
 ## Package Dependency Graph
 
 ```
