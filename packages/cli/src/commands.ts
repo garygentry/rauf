@@ -43,6 +43,7 @@ import {
   handleLoopStop,
   handleLoopFollow,
   handleLoopRun,
+  handleLoopReview,
 } from "./loop-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -124,6 +125,12 @@ export const COMMANDS: CommandDef[] = [
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
       { name: "follow", description: "Follow loop events in real-time", handler: handleLoopFollow },
       { name: "run", description: "Run loop directly in-process", handler: handleLoopRun },
+      {
+        name: "review",
+        description: "Review completed items and create fix items",
+        usage: "ralph loop review [path] [--model MODEL] [--timeout N]",
+        handler: handleLoopReview,
+      },
     ],
   },
   {

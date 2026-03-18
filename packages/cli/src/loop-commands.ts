@@ -349,18 +349,22 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
   const model = extractStringFlag(ctx.flags, "model") ?? undefined;
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
+  const reviewOnly = extractBoolFlag(ctx.flags, "review-only");
+  const review = extractBoolFlag(ctx.flags, "review") || reviewOnly;
 
   const options = LoopStartOptionsSchema.parse({
     maxIterations: iterations,
     maxRetries: retries,
     model,
     sessionTimeoutMinutes: timeout,
+    review,
+    reviewOnly,
   });
 
   info(`Running loop directly for ${c.cyan(path.basename(projectPath))}`);
   info(
     c.dim(
-      `iterations=${options.maxIterations}, retries=${options.maxRetries}, timeout=${options.sessionTimeoutMinutes}m`,
+      `iterations=${options.maxIterations}, retries=${options.maxRetries}, timeout=${options.sessionTimeoutMinutes}m${review ? ", review=on" : ""}${reviewOnly ? " (review-only)" : ""}`,
     ),
   );
 
@@ -385,6 +389,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     "loop_completed",
     "loop_error",
     "loop_cancelled",
+    "review_started",
+    "review_completed",
+    "review_failed",
   ];
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
@@ -407,15 +414,85 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       if (result.cancelled) {
         info("Loop cancelled.");
       } else {
-        success(
-          `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`,
-        );
+        let msg = `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`;
+        if (result.reviewItemsCreated !== undefined && result.reviewItemsCreated > 0) {
+          msg += `, ${result.reviewItemsCreated} review items created`;
+        }
+        if (result.reviewSummary) {
+          msg += `\n  Review: ${result.reviewSummary}`;
+        }
+        success(msg);
       }
     }
 
     return ExitCode.SUCCESS;
   } catch (e) {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
+    return ExitCode.ERROR;
+  } finally {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
+  }
+}
+
+// ─── handleLoopReview ────────────────────────────────────────────────
+
+export async function handleLoopReview(ctx: CommandContext): Promise<number> {
+  const projectPath = resolveProjectPath(ctx);
+
+  const model = extractStringFlag(ctx.flags, "model") ?? undefined;
+  const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
+
+  const options = LoopStartOptionsSchema.parse({
+    maxIterations: 1,
+    maxRetries: 1,
+    model,
+    sessionTimeoutMinutes: timeout,
+    review: true,
+    reviewOnly: true,
+  });
+
+  info(`Running standalone review for ${c.cyan(path.basename(projectPath))}`);
+
+  const runner = new LoopRunner(projectPath, options);
+
+  // Subscribe to review events
+  const eventTypes: LoopEvent["type"][] = [
+    "review_started",
+    "review_completed",
+    "review_failed",
+  ];
+  for (const eventType of eventTypes) {
+    runner.on(eventType, (event: LoopEvent) => {
+      formatAndPrintEvent(event);
+    });
+  }
+
+  // Graceful cancel on Ctrl+C / SIGTERM
+  const onSignal = () => runner.cancel();
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+
+  try {
+    const result = await runner.startReviewOnly();
+
+    if (ctx.globalFlags.json) {
+      outputJson(result);
+    } else {
+      print("");
+      if (result.reviewItemsCreated && result.reviewItemsCreated > 0) {
+        success(`Review created ${result.reviewItemsCreated} items`);
+        if (result.reviewSummary) {
+          info(`Summary: ${result.reviewSummary}`);
+        }
+      } else {
+        success("Review complete — no issues found");
+      }
+    }
+
+    return ExitCode.SUCCESS;
+  } catch (e) {
+    error(`Review failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   } finally {
     process.removeListener("SIGINT", onSignal);
@@ -534,6 +611,27 @@ export function formatAndPrintEvent(event: LoopEvent): void {
 
     case "loop_cancelled":
       print(`${prefix} ${c.yellow("\u25A0")} ${c.yellow("Loop cancelled")}`);
+      break;
+
+    case "review_started":
+      print(
+        `${prefix} ${c.cyan("\u25C6")} ${c.bold("Review pass started")} (${event.completedItemIds.length} items to review)`,
+      );
+      break;
+
+    case "review_completed":
+      if (event.itemsCreated > 0) {
+        print(
+          `${prefix} ${c.yellow("\u25C6")} ${c.yellow("Review found issues")} \u2014 ${event.itemsCreated} fix items created`,
+        );
+        print(`${prefix}   ${c.dim(event.summary)}`);
+      } else {
+        print(`${prefix} ${c.green("\u25C6")} ${c.green("Review passed")} \u2014 no issues found`);
+      }
+      break;
+
+    case "review_failed":
+      print(`${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}`);
       break;
   }
 }
