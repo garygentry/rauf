@@ -31,6 +31,7 @@ export interface LoopResult {
   completedCount: number;
   blockedCount: number;
   cancelled: boolean;
+  gracefulStop?: boolean;
   reviewItemsCreated?: number;
   reviewSummary?: string;
 }
@@ -52,6 +53,7 @@ export class LoopRunner extends TypedEventEmitter {
   private readonly projectPath: string;
   private readonly options: LoopStartOptions;
   private readonly abortController: AbortController;
+  private softCancelled = false;
   private iterationCount = 0;
   private completedCount = 0;
   private blockedCount = 0;
@@ -74,6 +76,11 @@ export class LoopRunner extends TypedEventEmitter {
   /** Trigger graceful cancellation via AbortController signal */
   cancel(): void {
     this.abortController.abort();
+  }
+
+  /** Request graceful stop: finish current iteration, then exit. Does NOT kill the subprocess. */
+  requestGracefulStop(): void {
+    this.softCancelled = true;
   }
 
   /** Run the main loop. Resolves with LoopResult when done. */
@@ -135,6 +142,7 @@ export class LoopRunner extends TypedEventEmitter {
             completedCount: this.completedCount,
             blockedCount: this.blockedCount,
             cancelled: true,
+            gracefulStop: this.softCancelled && !this.abortController.signal.aborted,
           };
         }
 
@@ -662,8 +670,9 @@ export class LoopRunner extends TypedEventEmitter {
 
   // ─── Private helpers ──────────────────────────────────────────────
 
-  /** Check if cancellation has been requested via AbortController or CANCEL file */
+  /** Check if cancellation has been requested via soft cancel, AbortController, or CANCEL file */
   private isCancelled(): boolean {
+    if (this.softCancelled) return true;
     if (this.abortController.signal.aborted) return true;
     return checkCancelRequested(this.projectPath);
   }

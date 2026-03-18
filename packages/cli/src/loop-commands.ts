@@ -399,10 +399,29 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     });
   }
 
-  // Graceful cancel on Ctrl+C / SIGTERM
-  const onSignal = () => runner.cancel();
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
+  // Two-stage cancel: first Ctrl+C = graceful stop, second = force quit
+  let sigintCount = 0;
+
+  const onSigint = () => {
+    sigintCount++;
+    if (sigintCount === 1) {
+      runner.requestGracefulStop();
+      print("");
+      info(
+        c.yellow("Finishing current iteration... ") +
+        c.dim("Press Ctrl+C again to force quit.")
+      );
+    } else {
+      print("");
+      info(c.red("Force quitting..."));
+      runner.cancel();
+    }
+  };
+
+  const onSigterm = () => runner.cancel();
+
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
 
   try {
     const result = await runner.start();
@@ -411,8 +430,10 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       outputJson(result);
     } else {
       print("");
-      if (result.cancelled) {
-        info("Loop cancelled.");
+      if (result.cancelled && !result.gracefulStop) {
+        info("Loop force-cancelled.");
+      } else if (result.gracefulStop) {
+        info("Loop stopped gracefully after completing iteration.");
       } else {
         let msg = `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`;
         if (result.reviewItemsCreated !== undefined && result.reviewItemsCreated > 0) {
@@ -430,8 +451,8 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   } finally {
-    process.removeListener("SIGINT", onSignal);
-    process.removeListener("SIGTERM", onSignal);
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
   }
 }
 
@@ -468,10 +489,29 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     });
   }
 
-  // Graceful cancel on Ctrl+C / SIGTERM
-  const onSignal = () => runner.cancel();
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
+  // Two-stage cancel: first Ctrl+C = graceful stop, second = force quit
+  let sigintCount = 0;
+
+  const onSigint = () => {
+    sigintCount++;
+    if (sigintCount === 1) {
+      runner.requestGracefulStop();
+      print("");
+      info(
+        c.yellow("Finishing current iteration... ") +
+        c.dim("Press Ctrl+C again to force quit.")
+      );
+    } else {
+      print("");
+      info(c.red("Force quitting..."));
+      runner.cancel();
+    }
+  };
+
+  const onSigterm = () => runner.cancel();
+
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
 
   try {
     const result = await runner.startReviewOnly();
@@ -495,8 +535,8 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     error(`Review failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   } finally {
-    process.removeListener("SIGINT", onSignal);
-    process.removeListener("SIGTERM", onSignal);
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
   }
 }
 
