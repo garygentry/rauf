@@ -115,6 +115,91 @@ describe("parseSignal", () => {
     });
   });
 
+  describe("RALPH_REVIEW", () => {
+    it("returns review with valid JSON payload", () => {
+      const payload = JSON.stringify({
+        items: [
+          {
+            type: "bug",
+            priority: 2,
+            title: "Fix: missing validation",
+            description: "The input is not validated",
+            acceptanceCriteria: ["Input validation added"],
+          },
+        ],
+        summary: "Found 1 issue",
+      });
+      const result = parseSignal(`RALPH_REVIEW:${payload}`);
+      expect(result.signal).toBe("review");
+      expect(result.reviewPayload).toBeDefined();
+      expect(result.reviewPayload!.items).toHaveLength(1);
+      expect(result.reviewPayload!.items[0]!.title).toBe("Fix: missing validation");
+      expect(result.reviewPayload!.summary).toBe("Found 1 issue");
+    });
+
+    it("returns review with multiple items", () => {
+      const payload = JSON.stringify({
+        items: [
+          {
+            type: "bug",
+            priority: 1,
+            title: "Fix A",
+            description: "Desc A",
+            acceptanceCriteria: ["AC A"],
+          },
+          {
+            type: "chore",
+            priority: 3,
+            title: "Fix B",
+            description: "Desc B",
+            acceptanceCriteria: ["AC B"],
+          },
+        ],
+        summary: "Found 2 issues",
+      });
+      const result = parseSignal(`RALPH_REVIEW:${payload}`);
+      expect(result.signal).toBe("review");
+      expect(result.reviewPayload!.items).toHaveLength(2);
+    });
+
+    it("returns none for malformed JSON", () => {
+      expect(parseSignal("RALPH_REVIEW:{invalid json}")).toEqual({ signal: "none" });
+    });
+
+    it("returns none for valid JSON but invalid schema (missing required fields)", () => {
+      const payload = JSON.stringify({ items: [], summary: "empty" });
+      // items must have at least 1 item
+      expect(parseSignal(`RALPH_REVIEW:${payload}`)).toEqual({ signal: "none" });
+    });
+
+    it("returns none for valid JSON but missing summary", () => {
+      const payload = JSON.stringify({
+        items: [
+          { type: "bug", priority: 2, title: "Fix", description: "d", acceptanceCriteria: ["ac"] },
+        ],
+      });
+      expect(parseSignal(`RALPH_REVIEW:${payload}`)).toEqual({ signal: "none" });
+    });
+
+    it("returns none for empty items array", () => {
+      const payload = JSON.stringify({ items: [], summary: "none" });
+      expect(parseSignal(`RALPH_REVIEW:${payload}`)).toEqual({ signal: "none" });
+    });
+
+    it("returns review when on last non-empty line of multi-line output", () => {
+      const payload = JSON.stringify({
+        items: [
+          { type: "bug", priority: 2, title: "Fix", description: "d", acceptanceCriteria: ["ac"] },
+        ],
+        summary: "1 issue",
+      });
+      const stdout = `Some review output\nAnalyzing...\nRALPH_REVIEW:${payload}\n`;
+      const result = parseSignal(stdout);
+      expect(result.signal).toBe("review");
+      expect(result.reviewPayload!.items).toHaveLength(1);
+    });
+  });
+
   describe("edge cases", () => {
     it("handles signal with leading/trailing whitespace on the line", () => {
       expect(parseSignal("  RALPH_DONE  ")).toEqual({ signal: "done" });

@@ -3,8 +3,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { BacklogItem, Backlog } from "@ralph/core";
-import { buildPrompt } from "./prompt-builder.js";
+import type { BacklogItem, Backlog, MarkerFile } from "@ralph/core";
+import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 
 const RALPH_DIR = ".ralph";
 
@@ -526,5 +526,138 @@ describe("buildPrompt", () => {
         expect(result.value).toContain("## Progress Log");
       }
     });
+  });
+});
+
+describe("buildReviewPrompt", () => {
+  function setupReviewProject(
+    dir: string,
+    opts: {
+      reviewMd?: string;
+      progressMd?: string | null;
+      markerFile?: boolean;
+    } = {},
+  ): void {
+    const ralphDir = path.join(dir, RALPH_DIR);
+    fs.mkdirSync(ralphDir, { recursive: true });
+
+    if (opts.reviewMd !== undefined) {
+      fs.writeFileSync(path.join(ralphDir, "REVIEW.md"), opts.reviewMd);
+    }
+
+    if (opts.progressMd !== undefined && opts.progressMd !== null) {
+      fs.writeFileSync(path.join(ralphDir, "progress.md"), opts.progressMd);
+    }
+
+    if (opts.markerFile !== false) {
+      const marker: MarkerFile = {
+        ralph: true,
+        version: "1",
+        variant: "backlog-json",
+        installedAt: "2026-01-01T00:00:00Z",
+        installedBy: "test",
+        profile: {
+          stack: "TypeScript",
+          packageManager: "pnpm",
+          monorepo: false,
+          commands: {
+            test: "pnpm test",
+            typecheck: "tsc --noEmit",
+            lint: "eslint .",
+            build: null,
+            format: null,
+          },
+          verify: "pnpm test && pnpm typecheck",
+        },
+        artifactHashes: {},
+        options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
+      };
+      fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+    }
+  }
+
+  it("returns ok with review prompt using embedded template", () => {
+    setupReviewProject(tmpDir);
+    const items = [
+      makeItem({ id: "001", title: "Feature A", status: "done", completedAt: "2026-01-01" }),
+    ];
+
+    const result = buildReviewPrompt(tmpDir, items, "diff --git a/file.ts b/file.ts\n+added line");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("Post-Loop Review Pass");
+      expect(result.value).toContain("pnpm test && pnpm typecheck");
+      expect(result.value).toContain("Feature A");
+      expect(result.value).toContain("+added line");
+    }
+  });
+
+  it("uses local REVIEW.md when it exists", () => {
+    setupReviewProject(tmpDir, {
+      reviewMd:
+        "# Custom Review\n\nReview with {{verifyCommand}}\n\n{{completedItemsDetail}}\n\n{{gitDiff}}",
+    });
+    const items = [
+      makeItem({ id: "001", title: "My Task", status: "done", completedAt: "2026-01-01" }),
+    ];
+
+    const result = buildReviewPrompt(tmpDir, items, "some diff");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("# Custom Review");
+      expect(result.value).toContain("pnpm test && pnpm typecheck");
+      expect(result.value).toContain("My Task");
+      expect(result.value).toContain("some diff");
+    }
+  });
+
+  it("truncates large git diffs", () => {
+    setupReviewProject(tmpDir);
+    const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
+    const largeDiff = "x".repeat(200_000);
+
+    const result = buildReviewPrompt(tmpDir, items, largeDiff);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("[diff truncated at 100KB]");
+      // Should not contain the full 200KB diff
+      expect(result.value.length).toBeLessThan(200_000);
+    }
+  });
+
+  it("includes acceptance criteria for each item", () => {
+    setupReviewProject(tmpDir);
+    const items = [
+      makeItem({
+        id: "001",
+        title: "Feature A",
+        status: "done",
+        completedAt: "2026-01-01",
+        acceptanceCriteria: ["AC one", "AC two"],
+      }),
+    ];
+
+    const result = buildReviewPrompt(tmpDir, items, "");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("AC one");
+      expect(result.value).toContain("AC two");
+    }
+  });
+
+  it("includes progress.md content", () => {
+    setupReviewProject(tmpDir, { progressMd: "Learned that foo is important" });
+    const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
+
+    const result = buildReviewPrompt(tmpDir, items, "");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("Learned that foo is important");
+    }
   });
 });

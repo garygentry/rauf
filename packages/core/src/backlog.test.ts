@@ -708,6 +708,54 @@ describe("addItem", () => {
 
     expect(result.error.code).toBe(ErrorCodes.FILE_NOT_FOUND);
   });
+
+  it("propagates source and reviewBatch fields", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const input: CreateItemInput = {
+      type: "bug",
+      priority: 2,
+      title: "Review fix item",
+      description: "Found during review",
+      acceptanceCriteria: ["Fix applied"],
+      source: "review",
+      reviewBatch: "2026-03-17T12:00:00.000Z",
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.source).toBe("review");
+    expect(result.value.reviewBatch).toBe("2026-03-17T12:00:00.000Z");
+
+    // Verify it persists in the file
+    const backlog = readBacklog(tmpDir);
+    expect(backlog.ok).toBe(true);
+    if (!backlog.ok) return;
+
+    const item = backlog.value.items[0]!;
+    expect(item.source).toBe("review");
+    expect(item.reviewBatch).toBe("2026-03-17T12:00:00.000Z");
+  });
+
+  it("omits source and reviewBatch when not provided", () => {
+    writeBacklogRaw(makeBacklog([]));
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "Normal item",
+      acceptanceCriteria: ["Done"],
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.source).toBeUndefined();
+    expect(result.value.reviewBatch).toBeUndefined();
+  });
 });
 
 // ─── updateItem ──────────────────────────────────────────────────
