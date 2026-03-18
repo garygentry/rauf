@@ -2,6 +2,8 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
 export default defineConfig({
+  site: process.env.SITE,
+  base: process.env.BASE_PATH,
   integrations: [
     starlight({
       title: "Ralph",

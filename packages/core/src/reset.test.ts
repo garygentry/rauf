@@ -166,13 +166,19 @@ describe("resetProject", () => {
     expect(result.value.progressArchived).toBe(false);
   });
 
-  it("returns error when no backlog file exists", () => {
+  it("auto-creates backlog.json when .ralph/ exists but backlog.json missing", () => {
     // No backlog.json written — just the .ralph dir
     const result = resetProject(tmpDir);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
 
-    expect(result.error.code).toBe(ErrorCodes.FILE_NOT_FOUND);
+    expect(result.value.sweptCount).toBe(0);
+    expect(result.value.stalledResetCount).toBe(0);
+
+    // Verify backlog.json was created with empty items
+    const backlog = readBacklogFile();
+    expect(backlog.items).toHaveLength(0);
+    expect(backlog.project).toBe(path.basename(tmpDir));
   });
 
   it("clearBacklog with progress.md — archives it and deploys fresh template", () => {

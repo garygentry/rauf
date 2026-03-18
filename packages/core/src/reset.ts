@@ -8,7 +8,7 @@ import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { sweepBacklog } from "./archive.js";
-import { readBacklog, writeBacklog, resetStalledItems } from "./backlog.js";
+import { readBacklog, writeBacklog, resetStalledItems, ensureBacklog } from "./backlog.js";
 import { clearDoneFile, clearCancelFile } from "./status.js";
 import { atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { deployProgress } from "./installer.js";
@@ -54,6 +54,10 @@ export function resetProject(
   options?: ResetProjectOptions,
 ): Result<ResetProjectResult> {
   const resolved = path.resolve(projectPath);
+
+  // 0. Ensure backlog.json exists (create empty if .ralph/ dir is present)
+  const ensureResult = ensureBacklog(resolved);
+  if (!ensureResult.ok) return ensureResult;
 
   // 1. Sweep all done items to archive (no min-age filter)
   const sweepResult = sweepBacklog(resolved);

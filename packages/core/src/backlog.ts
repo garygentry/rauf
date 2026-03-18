@@ -384,6 +384,39 @@ export function resetStalledItems(projectPath: string): Result<{ resetCount: num
   return ok({ resetCount });
 }
 
+// ─── ensureBacklog ────────────────────────────────────────────────
+//
+// If .ralph/ exists but backlog.json does not, create an empty one.
+// Returns NOT_INSTALLED if .ralph/ itself is missing.
+
+export function ensureBacklog(projectPath: string): Result<void> {
+  const resolved = path.resolve(projectPath);
+  const ralphDir = path.join(resolved, BACKLOG_DIR);
+  const backlogPath = getBacklogPath(projectPath);
+
+  // If backlog already exists, nothing to do
+  if (fileExists(backlogPath)) return ok(undefined);
+
+  // If .ralph/ dir doesn't exist, ralph is genuinely not installed
+  if (!fileExists(ralphDir)) {
+    return err({
+      code: ErrorCodes.NOT_INSTALLED,
+      message: `Ralph is not installed at ${resolved}`,
+    });
+  }
+
+  // .ralph/ exists but backlog.json doesn't — create empty one
+  const projectName = path.basename(resolved);
+
+  const emptyBacklog: Backlog = {
+    project: projectName,
+    description: "",
+    items: [],
+  };
+
+  return writeBacklog(projectPath, emptyBacklog);
+}
+
 // ─── Exported constants (for testing) ────────────────────────────
 
 export { BACKLOG_DIR, BACKLOG_FILENAME, STATE_FILENAME };

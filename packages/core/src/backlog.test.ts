@@ -13,6 +13,7 @@ import {
   restoreFromBackup,
   selectNextItem,
   resetStalledItems,
+  ensureBacklog,
   BACKLOG_DIR,
   BACKLOG_FILENAME,
   STATE_FILENAME,
@@ -1451,5 +1452,60 @@ describe("resetStalledItems", () => {
     if (!backlog.ok) return;
 
     expect(backlog.value.items[0]!.status).toBe("pending");
+  });
+});
+
+// ─── ensureBacklog ──────────────────────────────────────────────
+
+describe("ensureBacklog", () => {
+  it("no-ops when backlog.json already exists", () => {
+    const backlog = makeBacklog([makeItem()]);
+    writeBacklog(tmpDir, backlog);
+
+    const result = ensureBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+
+    // Verify existing backlog unchanged
+    const read = readBacklog(tmpDir);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.value.items).toHaveLength(1);
+    expect(read.value.items[0]!.title).toBe("Test item");
+  });
+
+  it("creates empty backlog.json when .ralph/ exists but backlog.json missing", () => {
+    // .ralph/ dir created by beforeEach, no backlog.json
+    const result = ensureBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+
+    const read = readBacklog(tmpDir);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.value.items).toHaveLength(0);
+    expect(read.value.project).toBe(path.basename(tmpDir));
+  });
+
+  it("uses directory basename as project name", () => {
+    const result = ensureBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+
+    const read = readBacklog(tmpDir);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.value.project).toBe(path.basename(tmpDir));
+    expect(read.value.description).toBe("");
+  });
+
+  it("returns NOT_INSTALLED when .ralph/ dir does not exist", () => {
+    // Use a path without .ralph/ dir
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-no-install-"));
+    try {
+      const result = ensureBacklog(emptyDir);
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe(ErrorCodes.NOT_INSTALLED);
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
   });
 });
