@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Result } from "@ralph/core";
 import { ok, err, ErrorCodes } from "@ralph/core";
 import type { SpawnClaudeResult } from "../claude-process.js";
 import type { UsageLimitResult as CheckerUsageLimitResult } from "../usage-checker.js";
@@ -26,7 +25,7 @@ import { spawnClaude } from "../claude-process.js";
 import { checkUsageLimit } from "../usage-checker.js";
 import { readClaudeOAuthToken } from "@ralph/core";
 import { createClaudeCliProvider } from "./claude-cli.js";
-import { clearProviders, getAvailableProviders, createProvider } from "./registry.js";
+import { getAvailableProviders, createProvider } from "./registry.js";
 
 const mockSpawnClaude = vi.mocked(spawnClaude);
 const mockReadToken = vi.mocked(readClaudeOAuthToken);
