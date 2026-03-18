@@ -44,6 +44,17 @@ interface BacklogItem {
   notes?: string; // Free-text context, links, hints
   estimatedIterations?: number; // Expected iterations to complete
   model?: string; // Per-item model override (e.g., "claude-opus-4-6"). Overrides CLI arg and project default.
+  agentDelegation?: AgentDelegation;
+  specReferences?: string[]; // Paths to spec docs
+  provider?: string; // Per-item LLM provider override
+  source?: "human" | "review"; // Origin: manually created or review-generated
+  reviewBatch?: string; // ISO timestamp grouping review-created items
+}
+
+interface AgentDelegation {
+  recommendedConcurrency?: number; // Min 2
+  strategy?: string;
+  subtasks?: string[];
 }
 ```
 
@@ -119,6 +130,8 @@ interface MarkerOptions {
   sweepMinAgeDays?: number; // Only sweep done items older than N days. 0 = sweep all done items. Default: 0.
   sessionTimeout?: number; // Max minutes per Claude session before kill+retry. Default: 60.
   runtime?: "shell" | "global"; // Loop runtime mode. "shell" = legacy scripts (deprecated), "global" = TypeScript loop runner. Defaults to "shell" when omitted for backward compat.
+  provider?: string; // Default LLM provider for this project
+  providerConfig?: Record<string, unknown>; // Per-provider configuration
 }
 ```
 
@@ -127,6 +140,7 @@ interface MarkerOptions {
 ```typescript
 interface LoopState {
   status:
+    | "idle" // No loop active (initial state)
     | "starting"
     | "running"
     | "paused"
@@ -135,7 +149,8 @@ interface LoopState {
     | "limit_reached"
     | "error"
     | "sleeping_limit" // Sleeping until 5-hour Claude usage window resets
-    | "weekly_limit"; // 7-day weekly Claude usage cap exhausted
+    | "weekly_limit" // 7-day weekly Claude usage cap exhausted
+    | "reviewing"; // Running post-loop review pass
   iteration: number;
   maxIterations: number;
   currentItem: string | null; // Backlog item ID
@@ -151,6 +166,7 @@ interface LoopState {
 
 | Status value     | Meaning                                          |
 | ---------------- | ------------------------------------------------ |
+| `idle`           | No loop active (initial state)                   |
 | `starting`       | Loop initializing                                |
 | `running`        | Actively processing an item                      |
 | `paused`         | Gracefully stopped (CANCEL signal)               |
@@ -160,6 +176,7 @@ interface LoopState {
 | `error`          | Unexpected termination                           |
 | `sleeping_limit` | Sleeping until 5-hour Claude usage window resets |
 | `weekly_limit`   | 7-day weekly Claude usage cap exhausted          |
+| `reviewing`      | Running post-loop review pass                    |
 
 File: `.ralph/state.json` (written by the loop runner, read by status derivation)
 
@@ -170,6 +187,8 @@ interface ToolConfig {
   rootDirectory: string; // Absolute path
   port: number; // Default: 5173
   theme: "light" | "dark" | "system"; // Default: "system"
+  defaultProvider?: string; // Default LLM provider
+  providers?: Record<string, Record<string, unknown>>; // Per-provider configuration
 }
 ```
 
@@ -296,6 +315,9 @@ interface LoopStartOptions {
   maxRetries: number; // Positive integer. Max retries per item on "none" signal before marking blocked.
   model?: string; // Optional model override (e.g., "claude-opus-4-6"). Overridden by per-item BacklogItem.model.
   sessionTimeoutMinutes: number; // Positive integer. Max minutes per Claude session before kill+retry.
+  provider?: string; // Optional LLM provider override.
+  review?: boolean; // Enable post-loop review pass after all items complete.
+  reviewOnly?: boolean; // Review only — create fix items but don't process them (implies review).
 }
 ```
 
@@ -312,15 +334,15 @@ interface LoopEventBase {
 }
 ```
 
-### All 17 Event Types
+### All 20 Event Types
 
 | Type                  | Additional Fields                                             | Emitted When                                      |
 | --------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
 | `loop_started`        | `maxIterations`, `model?`                                     | Loop begins                                       |
 | `iteration_start`     | `iteration`, `maxIterations`                                  | Each iteration starts                             |
 | `item_selected`       | `itemId`, `title`, `priority`                                 | Next item picked from backlog                     |
-| `claude_spawned`      | `itemId`, `model?`, `timeoutMinutes`                          | `claude -p` process launched                      |
-| `claude_exited`       | `itemId`, `exitCode`, `timedOut`, `durationMs`                | `claude -p` process exits                         |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`              | LLM process launched                              |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`    | LLM process exits                                 |
 | `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/none), `reason?` | Exit signal extracted from stdout                 |
 | `item_completed`      | `itemId`, `title`                                             | Item marked done                                  |
 | `item_blocked`        | `itemId`, `reason`                                            | Item marked blocked                               |
@@ -333,6 +355,9 @@ interface LoopEventBase {
 | `loop_completed`      | `completedCount`, `blockedCount`                              | Loop finishes normally                            |
 | `loop_error`          | `error`                                                       | Unexpected error terminates loop                  |
 | `loop_cancelled`      | _(base only)_                                                 | Loop cancelled via AbortController or CANCEL file |
+| `review_started`      | `completedItemIds`                                            | Post-loop review pass begins                      |
+| `review_completed`    | `itemsCreated`, `summary`                                     | Review pass finished                              |
+| `review_failed`       | `reason`                                                      | Review pass failed (non-fatal)                    |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -360,18 +385,20 @@ type LoopEvent =
       priority: number;
     }
   | {
-      type: "claude_spawned";
+      type: "llm_spawned";
       timestamp: string;
       projectPath: string;
       itemId: string;
+      provider: string;
       model?: string;
       timeoutMinutes: number;
     }
   | {
-      type: "claude_exited";
+      type: "llm_exited";
       timestamp: string;
       projectPath: string;
       itemId: string;
+      provider: string;
       exitCode: number;
       timedOut: boolean;
       durationMs: number;
@@ -425,7 +452,54 @@ type LoopEvent =
       blockedCount: number;
     }
   | { type: "loop_error"; timestamp: string; projectPath: string; error: string }
-  | { type: "loop_cancelled"; timestamp: string; projectPath: string };
+  | { type: "loop_cancelled"; timestamp: string; projectPath: string }
+  | {
+      type: "review_started";
+      timestamp: string;
+      projectPath: string;
+      completedItemIds: string[];
+    }
+  | {
+      type: "review_completed";
+      timestamp: string;
+      projectPath: string;
+      itemsCreated: number;
+      summary: string;
+    }
+  | { type: "review_failed"; timestamp: string; projectPath: string; reason: string };
+```
+
+## ReviewPayload / ReviewItem
+
+Parsed from the `RALPH_REVIEW:{json}` signal emitted during a review pass.
+
+```typescript
+interface ReviewItem {
+  type: "bug" | "refactor" | "feature" | "chore";
+  priority: 1 | 2 | 3 | 4;
+  title: string; // Non-empty
+  description: string;
+  acceptanceCriteria: string[]; // Min 1
+}
+
+interface ReviewPayload {
+  items: ReviewItem[]; // Min 1
+  summary: string;
+}
+```
+
+## LoopResult
+
+Returned by `LoopRunner.start()` and `LoopRunner.startReviewOnly()` when the loop finishes.
+
+```typescript
+interface LoopResult {
+  completedCount: number;
+  blockedCount: number;
+  cancelled: boolean;
+  reviewItemsCreated?: number; // Present if review pass created items
+  reviewSummary?: string; // Present if review pass ran
+}
 ```
 
 ## Log Line Patterns (fallback parsing)

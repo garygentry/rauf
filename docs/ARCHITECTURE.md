@@ -48,8 +48,8 @@ Loop runner engine. Orchestrates the autonomous coding loop lifecycle.
 | `runner.ts`         | LoopRunner class — main loop lifecycle, iteration management        |
 | `events.ts`         | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent |
 | `claude-process.ts` | Spawn `claude -p` as child process with timeout and cancellation    |
-| `signal-parser.ts`  | Parse RALPH_DONE/BLOCKED/NEEDS_HUMAN from Claude stdout             |
-| `prompt-builder.ts` | Build the prompt string from RALPH.md, item, backlog, and progress  |
+| `signal-parser.ts`  | Parse RALPH_DONE/BLOCKED/NEEDS_HUMAN/RALPH_REVIEW from Claude stdout |
+| `prompt-builder.ts` | Build the prompt string from RALPH.md, item, backlog, and progress; build review prompts from REVIEW.md |
 | `usage-checker.ts`  | Check Claude API usage limits, interruptible sleep                  |
 | `git-commit.ts`     | Run `git add -A && git commit` after successful iterations          |
 
@@ -60,7 +60,7 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 - Each command is a separate file in `src/commands/`
 - Can call core functions directly (headless) or HTTP API (when server running)
 - `ralph loop run` creates a LoopRunner in-process (no server required)
-- `ralph loop start/stop/follow` route through the server API
+- `ralph loop start/stop/follow/review` route through the server API or run directly
 - Outputs human-readable by default, `--json` for machine-readable
 - Exit codes follow standard (0=success, 1=error, 2=bad args, etc.)
 
@@ -96,7 +96,7 @@ Ralph uses a **server-centric loop management** model. The LoopManager singleton
 LoopManager (singleton in web server)
   ├── Tracks active loops by project path (max one per project)
   ├── Creates LoopRunner instances from packages/loop
-  ├── Subscribes to all 17 LoopEvent types
+  ├── Subscribes to all 20 LoopEvent types
   ├── Fans events out to SSE clients (CLI follow + web frontend)
   ├── Recovers stale loops on server startup (resetStalledItems)
   └── Gracefully cancels all loops on SIGTERM (shutdownAll)
@@ -106,21 +106,24 @@ LoopManager (singleton in web server)
 
 ```
 LoopRunner lifecycle:
-  1. Clear DONE/CANCEL files
-  2. Read .ralph.json marker options (autoSweep, model, etc.)
-  3. Run auto-sweep if enabled
-  4. Pre-loop usage limit preflight (weekly check, 5h check)
-  5. Main loop:
+  1. Capture git baseline commit hash (for review diff)
+  2. Clear DONE/CANCEL files
+  3. Read .ralph.json marker options (autoSweep, model, etc.)
+  4. Run auto-sweep if enabled
+  5. Pre-loop usage limit preflight (weekly check, 5h check)
+  6. Main loop:
      a. Select next eligible item (dependency-aware priority queue)
      b. Resolve model (item.model > options.model > marker.model)
      c. Build prompt (RALPH.md + item + backlog + progress)
      d. Spawn claude -p with timeout
      e. Check stderr for usage limit patterns
-     f. Parse exit signal (DONE/BLOCKED/NEEDS_HUMAN/none)
+     f. Parse exit signal (DONE/BLOCKED/NEEDS_HUMAN/REVIEW/none)
      g. Update item status, write state.json, git commit on DONE
      h. Check usage limits + cancel between iterations
-  6. Write DONE file on all terminal exit paths
-  7. Crash cleanup: try/finally resets in_progress items
+  7. After main loop: if --review enabled, run review pass
+  8. If review creates items and not --review-only, re-enter main loop for fix iterations
+  9. Write DONE file on all terminal exit paths
+  10. Crash cleanup: try/finally resets in_progress items
 ```
 
 ## Data Flow Examples
@@ -162,6 +165,19 @@ User → CLI `ralph loop run ./project`
        → LoopRunner.start()
          → Same lifecycle as server mode
          → Events printed to terminal via formatAndPrintEvent()
+```
+
+### Review Pass Data Flow
+
+```
+Loop completes → runReviewPass()
+  → Read completed items from backlog
+  → git diff baseCommit..HEAD
+  → buildReviewPrompt() (REVIEW.md template)
+  → Spawn Claude with review prompt
+  → Parse RALPH_REVIEW or RALPH_DONE
+  → If issues: addItem() with source="review", reviewBatch=<ISO timestamp>
+  → If !reviewOnly: re-enter main loop for fix iterations
 ```
 
 ### Loop Event Flow

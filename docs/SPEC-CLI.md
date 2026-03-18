@@ -14,10 +14,11 @@ Name: `ralph` (global).
 ```
 ralph <command> [subcommand] [options]
 
-ralph loop start [path] [--iterations N] [--retries N] [--model <m>] [--timeout N]
+ralph loop start [path] [--iterations N] [--retries N] [--model <m>] [--timeout N] [--follow]
 ralph loop stop [path]
 ralph loop follow [path]
-ralph loop run [path] [--iterations N] [--retries N] [--model <m>] [--timeout N]
+ralph loop run [path] [--iterations N] [--retries N] [--model <m>] [--timeout N] [--review] [--review-only]
+ralph loop review [path] [--model <m>] [--timeout N]
 
 ralph server start [--port N] [--root <path>] [--foreground] [--daemon]
 ralph server stop
@@ -45,7 +46,7 @@ ralph backlog archive list <path>
 ralph backlog archive view <path> <month>
 ralph backlog archive purge <path> [--month YYYY-MM] [--yes]
 
-ralph status <path>
+ralph status <path> [--watch] [--interval N]
 ralph log <path> [--tail N] [--follow]
 ralph progress <path>
 
@@ -104,7 +105,8 @@ ralph help [command]
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override (e.g., `claude-opus-4-6`)
 - `--timeout N`: session timeout in minutes (default: 60)
-- Prints follow hint on success
+- `--follow`: stream SSE events inline after starting
+- Prints follow hint on success (unless `--follow` is used)
 - Returns 409 if loop already running for this project
 
 ### ralph loop stop [path]
@@ -124,9 +126,19 @@ ralph help [command]
 
 - Direct mode: creates LoopRunner in-process, no server required
 - Same flags as `ralph loop start`: `--iterations`, `--retries`, `--model`, `--timeout`
+- `--review`: enable post-loop review pass after all items complete
+- `--review-only`: review only, create fix items but don't process them (implies `--review`)
 - Events printed directly to terminal
 - Responds to SIGINT/SIGTERM for graceful cancellation
-- Returns `LoopResult { completedCount, blockedCount, cancelled }` with `--json`
+- Returns `LoopResult { completedCount, blockedCount, cancelled, reviewItemsCreated?, reviewSummary? }` with `--json`
+
+### ralph loop review [path]
+
+- Standalone review of completed backlog items
+- `--model <model>`: model override
+- `--timeout N`: session timeout in minutes (default: 60)
+- Runs `startReviewOnly()`: reads all `done` items, spawns review Claude session, creates fix items with `source: "review"`
+- Outputs review summary or "no issues found"
 
 ### ralph install <path>
 
@@ -198,8 +210,8 @@ ralph help [command]
 - `--keep-log`: when used with `--clear`, preserve `ralph.log` instead of archiving it
 - `--json`: output result object as JSON
 - Without `--clear`: sweeps done items to archive, resets in_progress → pending, clears state.json/DONE/CANCEL markers. `progress.md` and `ralph.log` are untouched.
-- With `--clear`: all of the above, plus empties backlog items array, archives `progress.md` → `.ralph/archive/YYYY-MM-progress.md` (deploys fresh template), archives `ralph.log` → `.ralph/archive/YYYY-MM-ralph.log` (removed, recreated on next loop)
-- Archive naming: `YYYY-MM-progress.md` and `YYYY-MM-ralph.log` in `.ralph/archive/` (same month overwrites previous)
+- With `--clear`: all of the above, plus empties backlog items array, archives `progress.md` → `.ralph/archive/YYYYMMDD-HHmmss-progress.md` (deploys fresh template), archives `ralph.log` → `.ralph/archive/YYYYMMDD-HHmmss-ralph.log` (removed, recreated on next loop)
+- Archive naming: `YYYYMMDD-HHmmss-progress.md` and `YYYYMMDD-HHmmss-ralph.log` in `.ralph/archive/` (timestamp-based, never overwrites)
 
 ### ralph backlog list <path>
 
@@ -212,6 +224,8 @@ ralph help [command]
 
 - Print status summary: loop state, iteration, backlog counts
 - Indicate state source: "via state.json" or "via log parsing (fallback)"
+- `--watch`: continuously refresh status display
+- `--interval N`: refresh interval in seconds (default: 2, requires `--watch`)
 - Machine-friendly exit codes: 0=idle/complete, 1=running, 2=blocked/needs_human, 3=limit_reached
 
 ### ralph log <path>

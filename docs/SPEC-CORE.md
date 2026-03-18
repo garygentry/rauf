@@ -43,7 +43,9 @@ Non-throwing existence check.
 
 All Zod schemas corresponding to types in docs/SCHEMAS.md. Export both schemas and inferred TypeScript types.
 
-Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`, `LoopEventSchema`, `LoopStartOptionsSchema`, `LoopStateEnumSchema`, `RuntimeSchema`.
+Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`, `LoopEventSchema`, `LoopStartOptionsSchema`, `LoopStateEnumSchema`, `RuntimeSchema`, `BacklogItemSourceSchema`, `AgentDelegationSchema`, `ReviewPayloadSchema`, `ReviewItemSchema`.
+
+`LoopStartOptionsSchema` includes `review`, `reviewOnly`, and `provider` optional fields. `BacklogItemSchema` includes `agentDelegation`, `specReferences`, `provider`, `source`, and `reviewBatch` optional fields.
 
 Also exports `LOG_PATTERNS` (regex patterns for Tier 2 log-parsing fallback) and `VALID_STATUS_TRANSITIONS`.
 
@@ -179,9 +181,10 @@ Atomic write with .bak backup.
 4. If `dependsOn` provided, verify all referenced IDs exist
 5. If no `acceptanceCriteria` provided, inject smart default from profile
 6. Construct full BacklogItem with defaults (status="pending", completedAt=null)
-7. Append to items array
-8. Write backlog
-9. Return the new item
+7. `CreateItemInput` also accepts optional `source` ("human" | "review") and `reviewBatch` (ISO timestamp) fields
+8. Append to items array
+9. Write backlog
+10. Return the new item
 
 ### updateItem(projectPath, itemId, updates: UpdateItemInput) → Result<BacklogItem>
 
@@ -294,8 +297,8 @@ Full installation flow for existing projects:
 3. **Create .ralph/ directory**
 
 4. **Deploy artifacts** (§6.2)
-   - Scripts: copy if not exists, compare hash if exists
    - RALPH.md: render from template with profile vars, respect sentinels
+   - REVIEW.md: render from REVIEW.md.tmpl with profile vars
    - backlog.json: copy empty template if not exists, validate if exists
    - progress.md: copy template if not exists
 
@@ -311,19 +314,17 @@ Full installation flow for existing projects:
 
 ### update(projectPath) → Result<InstallationReport>
 
-Re-sync artifacts using three-way hash comparison:
+Re-sync artifacts:
 
-- For each artifact, compare: current file hash vs stored hash vs canonical hash
-- Auto-update unmodified files; prompt-worthy for customized files
 - Re-render RALPH.md managed sections
+- Re-render REVIEW.md (preserves user-customized versions)
 - Update CLAUDE.md ralph section
-- Re-run profile detection, show changes (don't auto-apply)
 - Never touch backlog.json or progress.md
 - Update artifactHashes for updated files
 
 ### uninstall(projectPath, options) → Result<void>
 
-Remove ralph artifacts. Preserve backlog/progress/log per user choice.
+Remove ralph artifacts (including RALPH.md and REVIEW.md). Preserve backlog/progress/log per user choice.
 
 ## Module: greenfield.ts
 
@@ -379,6 +380,28 @@ Moves done backlog items into monthly archive files under `.ralph/archive/YYYY-M
 - If `month` provided: validate, delete that file. Non-existent month returns `ok({ purgedCount: 0 })`.
 - If no `month`: list all months, delete each, attempt `rmdir` on archive dir.
 
+## Module: reset.ts
+
+Orchestrates a full project reset for a fresh backlog cycle.
+
+### resetProject(projectPath, options?: ResetProjectOptions) → Result\<ResetProjectResult\>
+
+Options:
+- `clearBacklog?: boolean` — empty the backlog items array (preserve project/description metadata)
+- `keepProgress?: boolean` — when used with `clearBacklog`, preserve `progress.md` instead of archiving it
+- `keepLog?: boolean` — when used with `clearBacklog`, preserve `ralph.log` instead of archiving it
+
+Steps:
+1. Sweep all done items to archive (no min-age filter)
+2. Reset `in_progress` items → `pending`
+3. Delete `state.json` (swallow ENOENT)
+4. Clear DONE and CANCEL marker files
+5. If `clearBacklog` and not `keepProgress`: archive `progress.md` → `.ralph/archive/YYYYMMDD-HHmmss-progress.md`, deploy fresh template
+6. If `clearBacklog` and not `keepLog`: archive `ralph.log` → `.ralph/archive/YYYYMMDD-HHmmss-ralph.log`
+7. If `clearBacklog`: empty backlog items array (preserve project/description)
+
+Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`) — never overwrites previous archives.
+
 ## File locations summary
 
 | Module writes to | Files                                                          |
@@ -386,7 +409,8 @@ Moves done backlog items into monthly archive files under `.ralph/archive/YYYY-M
 | config.ts        | `.ralph.json`, `~/.ralph/config.json`                          |
 | backlog.ts       | `.ralph/backlog.json`, `.ralph/backlog.json.bak`               |
 | archive.ts       | `.ralph/archive/YYYY-MM.json`                                  |
-| installer.ts     | All `.ralph/` files, scripts, CLAUDE.md, `.ralph.json`         |
+| reset.ts         | `.ralph/archive/YYYYMMDD-HHmmss-*`, `.ralph/state.json`, `.ralph/backlog.json` |
+| installer.ts     | All `.ralph/` files, CLAUDE.md, `.ralph.json`                  |
 | greenfield.ts    | All of installer + directory creation + git init               |
 | status.ts        | `.ralph/state.json`, `.ralph/ralph.log`, `.ralph/DONE`, `.ralph/CANCEL` |
 | discovery.ts     | (read-only)                                                    |

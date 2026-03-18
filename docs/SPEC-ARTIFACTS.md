@@ -15,6 +15,7 @@ artifacts/variants/backlog-json/
 ├── CLAUDE_GREENFIELD.md.tmpl    # Full CLAUDE.md template for new projects
 └── .ralph/
     ├── RALPH.md.tmpl            # Per-iteration agent prompt (template)
+    ├── REVIEW.md.tmpl           # Post-loop review prompt (template)
     ├── backlog.json              # Empty backlog template
     ├── backlog.schema.json       # JSON Schema for backlog.json
     └── progress.md               # Empty progress template
@@ -45,6 +46,7 @@ The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner
    - `RALPH_DONE` → mark item done, commit changes
    - `RALPH_BLOCKED:reason` → mark item blocked, continue to next
    - `RALPH_NEEDS_HUMAN:reason` → pause loop, leave item in_progress
+   - `RALPH_REVIEW:{"items":[...],"summary":"..."}` → review found issues, runner creates fix items
    - No signal → reset item to pending, log warning, continue
    - Claude exits non-zero with usage limit message in stderr → see Usage Limit Handling below
 
@@ -126,6 +128,30 @@ Cancel mechanism:
       4. Return with cancelled=true in LoopResult
   - Item currently in progress is NOT reset — cancel only fires at iteration boundary
 ```
+
+### Review Pass
+
+The loop runner supports a post-loop review pass to catch issues in completed work:
+
+```
+Review lifecycle:
+  - Triggered by: --review flag on ralph loop run, or ralph loop review standalone command
+  - Git baseline captured at loop start; diff computed for review context (baseCommit..HEAD)
+  - Review prompt built from REVIEW.md template (or embedded REVIEW.md.tmpl)
+  - Claude outputs RALPH_DONE (clean) or RALPH_REVIEW:{json} (issues found)
+  - Review items created with source: "review" and reviewBatch: <ISO timestamp>
+  - If not --review-only, loop re-enters to process fix items (no recursive review)
+  - Runner methods: runReviewPass(), startReviewOnly(), buildReviewPrompt()
+```
+
+### REVIEW.md.tmpl — Post-Loop Review Prompt
+
+Template for the review pass sent to Claude after the main loop completes.
+
+- **Template variables:** `verifyCommand`, `completedItemsDetail`, `gitDiff`, `progressContent`
+- **User-customizable:** if `.ralph/REVIEW.md` exists locally, it's used instead of the embedded template
+- **Expected outputs:** `RALPH_DONE` (clean — no issues) or `RALPH_REVIEW:{json}` (issues found, JSON matches `ReviewPayload` schema)
+- **Installed during:** `install()` and re-rendered during `update()`, removed during `uninstall()`
 
 ### Usage Limit Handling
 
