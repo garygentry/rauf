@@ -35,6 +35,8 @@ const DOT_RALPH = ".ralph";
 const DIR_FILES = {
   ralphMd: "RALPH.md",
   ralphMdTemplate: ".ralph/RALPH.md.tmpl",
+  reviewMd: "REVIEW.md",
+  reviewMdTemplate: ".ralph/REVIEW.md.tmpl",
   backlog: ".ralph/backlog.json",
   progress: ".ralph/progress.md",
   backlogSchema: ".ralph/backlog.schema.json",
@@ -249,6 +251,11 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     artifactHashes["RALPH.md"] = ralphMdHash.value;
   }
 
+  // 5b. Render REVIEW.md from template
+  const reviewMdResult = deployReviewMd(ralphDir, templateVars, artifactsDir);
+  if (!reviewMdResult.ok) return reviewMdResult;
+  actions.push(reviewMdResult.value);
+
   // 6. Create backlog.json if missing, validate if exists
   const backlogResult = deployBacklog(
     ralphDir,
@@ -400,6 +407,11 @@ export function update(
   const ralphMdHash = computeHash(ralphMdPath);
   if (ralphMdHash.ok) newHashes["RALPH.md"] = ralphMdHash.value;
 
+  // Re-render REVIEW.md
+  const reviewMdResult = deployReviewMd(path.join(resolved, DOT_RALPH), templateVars, artifactsDir);
+  if (!reviewMdResult.ok) return reviewMdResult;
+  actions.push(reviewMdResult.value);
+
   // Update CLAUDE.md ralph section
   const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
@@ -481,8 +493,9 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   const keepLog = options.keepLog ?? true;
   const removeClaudeMdSection = options.removeClaudeMdSection ?? true;
 
-  // Remove RALPH.md (always)
+  // Remove RALPH.md and REVIEW.md (always)
   safeUnlink(path.join(resolved, DOT_RALPH, "RALPH.md"));
+  safeUnlink(path.join(resolved, DOT_RALPH, "REVIEW.md"));
 
   // Remove backlog.schema.json (tool-managed)
   safeUnlink(path.join(resolved, DOT_RALPH, "backlog.schema.json"));
@@ -638,6 +651,68 @@ function deployRalphMd(
     file: ".ralph/RALPH.md",
     action: "rendered" as const,
     detail: "RALPH.md rendered from template",
+  });
+}
+
+/** Render REVIEW.md from template if missing or update managed sections */
+function deployReviewMd(
+  ralphDir: string,
+  templateVars: Record<string, string | null | undefined>,
+  artifactsDir?: string,
+): Result<InstallAction> {
+  const outputPath = path.join(ralphDir, DIR_FILES.reviewMd);
+
+  const contentResult = readArtifact(DIR_FILES.reviewMdTemplate, artifactsDir);
+  if (!contentResult.ok) {
+    // REVIEW.md template is optional — skip if not found
+    return ok({
+      file: ".ralph/REVIEW.md",
+      action: "skipped" as const,
+      detail: "REVIEW.md template not found, skipping",
+    });
+  }
+
+  const rendered = renderTemplate(contentResult.value, templateVars);
+
+  if (fileExists(outputPath)) {
+    // Preserve user customizations — only overwrite if content matches template exactly
+    let current: string;
+    try {
+      current = fs.readFileSync(outputPath, "utf-8");
+    } catch {
+      const writeResult = atomicWrite(outputPath, rendered);
+      if (!writeResult.ok) return writeResult;
+      return ok({
+        file: ".ralph/REVIEW.md",
+        action: "rendered" as const,
+        detail: "REVIEW.md rendered from template",
+      });
+    }
+
+    if (current === rendered) {
+      return ok({
+        file: ".ralph/REVIEW.md",
+        action: "skipped" as const,
+        detail: "REVIEW.md already up to date",
+      });
+    }
+
+    // User has customized — skip to preserve their changes
+    return ok({
+      file: ".ralph/REVIEW.md",
+      action: "skipped" as const,
+      detail: "REVIEW.md preserved (user-customized)",
+    });
+  }
+
+  // First install: write full rendered template
+  const writeResult = atomicWrite(outputPath, rendered);
+  if (!writeResult.ok) return writeResult;
+
+  return ok({
+    file: ".ralph/REVIEW.md",
+    action: "rendered" as const,
+    detail: "REVIEW.md rendered from template",
   });
 }
 

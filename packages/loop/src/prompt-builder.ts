@@ -1,10 +1,19 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileExists, type BacklogItem, type Backlog, type Result } from "@ralph/core";
+import {
+  fileExists,
+  readMarkerFile,
+  renderTemplate,
+  getEmbeddedArtifact,
+  type BacklogItem,
+  type Backlog,
+  type Result,
+} from "@ralph/core";
 import { ok, err, ErrorCodes } from "@ralph/core";
 
 const RALPH_DIR = ".ralph";
 const RALPH_MD = "RALPH.md";
+const REVIEW_MD = "REVIEW.md";
 const PROGRESS_MD = "progress.md";
 
 /** Summary counts for backlog items by status */
@@ -222,4 +231,75 @@ ${progressContent}
 **IMPORTANT:** You are working on item ${item.id} ONLY. Do NOT modify .ralph/backlog.json or .ralph/state.json — the loop runner manages status. When done, output your exit signal as the LAST line of your response.`);
 
   return ok(sections.join("\n\n\n"));
+}
+
+/** Max size for git diff included in review prompt (~100KB) */
+const MAX_DIFF_SIZE = 100_000;
+
+/**
+ * Builds the review prompt sent to Claude for the post-loop review pass.
+ *
+ * Reads .ralph/REVIEW.md if it exists (user-customizable), otherwise
+ * falls back to the embedded REVIEW.md.tmpl template.
+ *
+ * Template variables: verifyCommand, completedItemsDetail, gitDiff, progressContent
+ */
+export function buildReviewPrompt(
+  projectPath: string,
+  completedItems: BacklogItem[],
+  gitDiff: string,
+): Result<string> {
+  // Read verify command from marker file
+  const markerResult = readMarkerFile(projectPath);
+  const verifyCommand = markerResult.ok
+    ? markerResult.value.profile.verify
+    : "echo 'No verify command configured'";
+
+  // Read progress.md
+  const progressPath = path.join(projectPath, RALPH_DIR, PROGRESS_MD);
+  const progressContent = fileExists(progressPath)
+    ? fs.readFileSync(progressPath, "utf-8")
+    : "No progress log available.";
+
+  // Format completed items detail
+  const completedItemsDetail = completedItems
+    .map((item) => {
+      const criteria = item.acceptanceCriteria.map((c) => `  - ${c}`).join("\n");
+      return `### Item ${item.id}: ${item.title}\n- **Type:** ${item.type}\n- **Description:** ${item.description}\n- **Acceptance Criteria:**\n${criteria}`;
+    })
+    .join("\n\n");
+
+  // Truncate diff if too large
+  const truncatedDiff =
+    gitDiff.length > MAX_DIFF_SIZE
+      ? gitDiff.slice(0, MAX_DIFF_SIZE) + "\n\n... [diff truncated at 100KB] ..."
+      : gitDiff;
+
+  // Try to read user-customizable REVIEW.md first
+  const reviewMdPath = path.join(projectPath, RALPH_DIR, REVIEW_MD);
+  let templateContent: string;
+
+  if (fileExists(reviewMdPath)) {
+    templateContent = fs.readFileSync(reviewMdPath, "utf-8");
+  } else {
+    // Fall back to embedded template
+    try {
+      templateContent = getEmbeddedArtifact(".ralph/REVIEW.md.tmpl");
+    } catch {
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message: "REVIEW.md template not found (neither local nor embedded)",
+      });
+    }
+  }
+
+  // Render template variables
+  const rendered = renderTemplate(templateContent, {
+    verifyCommand,
+    completedItemsDetail,
+    gitDiff: truncatedDiff,
+    progressContent,
+  });
+
+  return ok(rendered);
 }

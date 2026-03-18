@@ -1,8 +1,11 @@
-import type { LoopStartOptions, LoopEvent, LoopState, Backlog } from "@ralph/core";
+import { execFile } from "node:child_process";
+
+import type { LoopStartOptions, LoopEvent, LoopState, Backlog, BacklogItem } from "@ralph/core";
 import {
   readBacklog,
   selectNextItem,
   updateItem,
+  addItem,
   readMarkerFile,
   readClaudeOAuthToken,
   writeLoopState,
@@ -17,7 +20,7 @@ import {
 import { TypedEventEmitter } from "./events.js";
 import { spawnClaude } from "./claude-process.js";
 import { parseSignal } from "./signal-parser.js";
-import { buildPrompt } from "./prompt-builder.js";
+import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
 
@@ -28,7 +31,12 @@ export interface LoopResult {
   completedCount: number;
   blockedCount: number;
   cancelled: boolean;
+  reviewItemsCreated?: number;
+  reviewSummary?: string;
 }
+
+/** Result of a review pass */
+type ReviewPassResult = "clean" | "continue" | "failed";
 
 /** Usage limit patterns detected in stderr (case-insensitive) */
 const USAGE_LIMIT_PATTERNS = [
@@ -52,6 +60,9 @@ export class LoopRunner extends TypedEventEmitter {
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
+  private baseCommitHash: string | null = null;
+  private reviewItemsCreated = 0;
+  private reviewSummary: string | null = null;
 
   constructor(projectPath: string, options: LoopStartOptions) {
     super();
@@ -68,6 +79,9 @@ export class LoopRunner extends TypedEventEmitter {
   /** Run the main loop. Resolves with LoopResult when done. */
   async start(): Promise<LoopResult> {
     this.startedAt = new Date().toISOString();
+
+    // Capture git baseline commit hash for review diff
+    this.baseCommitHash = await this.getHeadCommit();
 
     try {
       // (1) Clear DONE and CANCEL files at startup
@@ -112,7 +126,6 @@ export class LoopRunner extends TypedEventEmitter {
 
       // (5) Main loop
       while (this.iterationCount < this.options.maxIterations) {
-        // Check cancellation at iteration boundary
         if (this.isCancelled()) {
           appendLog(this.projectPath, "Loop cancelled");
           this.emitEvent("loop_cancelled", {});
@@ -125,235 +138,15 @@ export class LoopRunner extends TypedEventEmitter {
           };
         }
 
-        this.iterationCount++;
-        this.emitEvent("iteration_start", {
-          iteration: this.iterationCount,
-          maxIterations: this.options.maxIterations,
-        });
-        appendLog(
-          this.projectPath,
-          `--- Iteration ${this.iterationCount} / ${this.options.maxIterations} ---`,
-        );
-
-        // Select next item
-        const backlogResult = readBacklog(this.projectPath);
-        if (!backlogResult.ok) {
-          appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
-          this.emitEvent("loop_error", { error: backlogResult.error.message });
-          break;
+        const iterResult = await this.runIteration(projectModel);
+        if (iterResult === "break") break;
+        if (iterResult === "exit") {
+          return {
+            completedCount: this.completedCount,
+            blockedCount: this.blockedCount,
+            cancelled: this.isCancelled(),
+          };
         }
-
-        const backlog: Backlog = backlogResult.value;
-        const item = selectNextItem(backlog);
-
-        if (!item) {
-          appendLog(this.projectPath, "No eligible items found, loop complete");
-          break;
-        }
-
-        this.currentItemId = item.id;
-        this.emitEvent("item_selected", {
-          itemId: item.id,
-          title: item.title,
-          priority: item.priority,
-        });
-        appendLog(this.projectPath, `Selected item ${item.id}: ${item.title}`);
-
-        // Mark item as in_progress
-        const markResult = updateItem(this.projectPath, item.id, {
-          status: "in_progress",
-        });
-        if (!markResult.ok) {
-          appendLog(
-            this.projectPath,
-            `Failed to mark item ${item.id} in_progress: ${markResult.error.message}`,
-          );
-          break;
-        }
-        this.writeState("running", item.id);
-
-        // Resolve model: item.model > options.model
-        const resolvedModel = item.model ?? this.options.model ?? projectModel;
-
-        // Build prompt
-        // Re-read backlog since we just updated the item status
-        const freshBacklog = readBacklog(this.projectPath);
-        const promptBacklog = freshBacklog.ok ? freshBacklog.value : backlog;
-        const promptResult = buildPrompt(this.projectPath, item, promptBacklog);
-        if (!promptResult.ok) {
-          appendLog(this.projectPath, `Failed to build prompt: ${promptResult.error.message}`);
-          // Reset item to pending since we couldn't process it
-          updateItem(this.projectPath, item.id, { status: "pending" });
-          this.currentItemId = null;
-          continue;
-        }
-
-        // Spawn claude
-        this.emitEvent("llm_spawned", {
-          itemId: item.id,
-          provider: "claude-cli",
-          model: resolvedModel,
-          timeoutMinutes: this.options.sessionTimeoutMinutes,
-        });
-        appendLog(
-          this.projectPath,
-          `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
-        );
-
-        const claudeResult = await spawnClaude(promptResult.value, {
-          sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
-          model: resolvedModel,
-          signal: this.abortController.signal,
-        });
-
-        if (!claudeResult.ok) {
-          appendLog(this.projectPath, `Failed to spawn claude: ${claudeResult.error.message}`);
-          updateItem(this.projectPath, item.id, { status: "pending" });
-          this.currentItemId = null;
-          this.emitEvent("loop_error", { error: claudeResult.error.message });
-          break;
-        }
-
-        const { exitCode, stdout, stderr, timedOut, durationMs } = claudeResult.value;
-        this.emitEvent("llm_exited", {
-          itemId: item.id,
-          provider: "claude-cli",
-          exitCode,
-          timedOut,
-          durationMs,
-        });
-        appendLog(
-          this.projectPath,
-          `Claude exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
-        );
-
-        // Check stderr for usage limit patterns BEFORE normal signal parsing
-        if (exitCode !== 0 && this.hasUsageLimitInStderr(stderr)) {
-          appendLog(this.projectPath, "Usage limit detected in stderr");
-          // Reset item to pending
-          updateItem(this.projectPath, item.id, { status: "pending" });
-          this.currentItemId = null;
-
-          // Check API for 5h vs 7d
-          const stderrLimitResult = await this.handleStderrUsageLimit();
-          if (stderrLimitResult === "exit") {
-            return {
-              completedCount: this.completedCount,
-              blockedCount: this.blockedCount,
-              cancelled: false,
-            };
-          }
-          // If we get here, we slept through a 5h limit and can continue
-          continue;
-        }
-
-        // Parse signal from stdout
-        const parsed = parseSignal(stdout);
-        this.emitEvent("signal_parsed", {
-          itemId: item.id,
-          signal: parsed.signal,
-          reason: parsed.reason,
-        });
-        appendLog(
-          this.projectPath,
-          `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`,
-        );
-
-        // Handle signal
-        switch (parsed.signal) {
-          case "done": {
-            updateItem(this.projectPath, item.id, { status: "done" });
-            this.completedCount++;
-            this.completedItemIds.push(item.id);
-            this.emitEvent("item_completed", {
-              itemId: item.id,
-              title: item.title,
-            });
-            appendLog(this.projectPath, `Item ${item.id} completed: ${item.title}`);
-            this.writeState("running", null, "clean");
-
-            // Auto-commit
-            const commitResult = await gitCommit(this.projectPath, item.id, item.title);
-            if (commitResult.ok && commitResult.value.commitHash) {
-              appendLog(this.projectPath, `Committed: ${commitResult.value.commitHash}`);
-            }
-            break;
-          }
-
-          case "blocked": {
-            const reason = parsed.reason ?? "No reason provided";
-            updateItem(this.projectPath, item.id, {
-              status: "blocked",
-              blockedReason: reason,
-            });
-            this.blockedCount++;
-            this.blockedItemIds.push(item.id);
-            this.emitEvent("item_blocked", {
-              itemId: item.id,
-              reason,
-            });
-            appendLog(this.projectPath, `Item ${item.id} blocked: ${reason}`);
-            this.writeState("running", null, "blocked");
-            break;
-          }
-
-          case "needs_human": {
-            const reason = parsed.reason ?? "No reason provided";
-            // IMPORTANT: Leave item as in_progress (do NOT reset)
-            // Clear currentItemId so the finally block doesn't reset it to pending
-            this.currentItemId = null;
-            this.emitEvent("needs_human", {
-              itemId: item.id,
-              reason,
-            });
-            appendLog(this.projectPath, `Item ${item.id} needs human input: ${reason}`);
-            this.writeState("paused_human", item.id, "needs_human");
-            writeDoneFile(this.projectPath, `needs_human: ${reason}`);
-            return {
-              completedCount: this.completedCount,
-              blockedCount: this.blockedCount,
-              cancelled: false,
-            };
-          }
-
-          case "none": {
-            // No signal — retry logic
-            const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
-            this.retryCounts.set(item.id, retries);
-
-            if (retries >= this.options.maxRetries) {
-              // Max retries reached — mark as blocked
-              const reason = `No signal after ${retries} attempts`;
-              updateItem(this.projectPath, item.id, {
-                status: "blocked",
-                blockedReason: reason,
-              });
-              this.blockedCount++;
-              this.blockedItemIds.push(item.id);
-              this.emitEvent("item_blocked", {
-                itemId: item.id,
-                reason,
-              });
-              appendLog(this.projectPath, `Item ${item.id} blocked after ${retries} retries`);
-              this.writeState("running", null, "error");
-            } else {
-              // Re-queue: reset to pending for retry
-              updateItem(this.projectPath, item.id, { status: "pending" });
-              this.emitEvent("item_retried", {
-                itemId: item.id,
-                attempt: retries,
-                maxRetries: this.options.maxRetries,
-              });
-              appendLog(
-                this.projectPath,
-                `Item ${item.id} retry ${retries}/${this.options.maxRetries}`,
-              );
-            }
-            break;
-          }
-        }
-
-        this.currentItemId = null;
 
         // Between iterations: check usage limits and cancellation
         if (this.iterationCount < this.options.maxIterations) {
@@ -364,6 +157,27 @@ export class LoopRunner extends TypedEventEmitter {
               blockedCount: this.blockedCount,
               cancelled: this.isCancelled(),
             };
+          }
+        }
+      }
+
+      // Review pass (if enabled and there are completed items)
+      if (this.options.review && this.completedItemIds.length > 0 && !this.isCancelled()) {
+        const reviewResult = await this.runReviewPass();
+
+        if (reviewResult === "continue" && !this.options.reviewOnly) {
+          // Re-enter iteration loop to process fix items (using remaining budget)
+          while (this.iterationCount < this.options.maxIterations) {
+            if (this.isCancelled()) break;
+
+            const iterResult = await this.runIteration();
+            if (iterResult === "break" || iterResult === "exit") break;
+
+            // Between iterations check
+            if (this.iterationCount < this.options.maxIterations) {
+              const betweenResult = await this.checkBetweenIterations();
+              if (betweenResult === "exit") break;
+            }
           }
         }
       }
@@ -395,6 +209,8 @@ export class LoopRunner extends TypedEventEmitter {
         completedCount: this.completedCount,
         blockedCount: this.blockedCount,
         cancelled: false,
+        ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
+        ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
       };
     } catch (e) {
       // Crash cleanup: reset in_progress item to pending
@@ -418,6 +234,430 @@ export class LoopRunner extends TypedEventEmitter {
         this.currentItemId = null;
       }
     }
+  }
+
+  /**
+   * Run a standalone review of already-completed items.
+   * Does not run any fix iterations — just creates review items.
+   */
+  async startReviewOnly(): Promise<LoopResult> {
+    this.startedAt = new Date().toISOString();
+    this.baseCommitHash = await this.getHeadCommit();
+
+    // Read backlog and find all done items
+    const backlogResult = readBacklog(this.projectPath);
+    if (!backlogResult.ok) {
+      appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
+      return { completedCount: 0, blockedCount: 0, cancelled: false };
+    }
+
+    const doneItems = backlogResult.value.items.filter((i) => i.status === "done");
+    if (doneItems.length === 0) {
+      appendLog(this.projectPath, "No completed items to review");
+      return { completedCount: 0, blockedCount: 0, cancelled: false };
+    }
+
+    // Use done item IDs for the review
+    this.completedItemIds = doneItems.map((i) => i.id);
+
+    const reviewResult = await this.runReviewPass();
+
+    return {
+      completedCount: 0,
+      blockedCount: 0,
+      cancelled: false,
+      ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
+      ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
+      ...(reviewResult === "clean" ? {} : {}),
+    };
+  }
+
+  // ─── Iteration logic (extracted from main loop body) ──────────────
+
+  /**
+   * Execute a single iteration of the loop: select item, spawn Claude, handle signal.
+   * Returns "continue" to keep looping, "break" to stop loop, or "exit" to return immediately.
+   */
+  private async runIteration(projectModel?: string): Promise<"continue" | "break" | "exit"> {
+    this.iterationCount++;
+    this.emitEvent("iteration_start", {
+      iteration: this.iterationCount,
+      maxIterations: this.options.maxIterations,
+    });
+    appendLog(
+      this.projectPath,
+      `--- Iteration ${this.iterationCount} / ${this.options.maxIterations} ---`,
+    );
+
+    // Select next item
+    const backlogResult = readBacklog(this.projectPath);
+    if (!backlogResult.ok) {
+      appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
+      this.emitEvent("loop_error", { error: backlogResult.error.message });
+      return "break";
+    }
+
+    const backlog: Backlog = backlogResult.value;
+    const item = selectNextItem(backlog);
+
+    if (!item) {
+      appendLog(this.projectPath, "No eligible items found, loop complete");
+      return "break";
+    }
+
+    this.currentItemId = item.id;
+    this.emitEvent("item_selected", {
+      itemId: item.id,
+      title: item.title,
+      priority: item.priority,
+    });
+    appendLog(this.projectPath, `Selected item ${item.id}: ${item.title}`);
+
+    // Mark item as in_progress
+    const markResult = updateItem(this.projectPath, item.id, {
+      status: "in_progress",
+    });
+    if (!markResult.ok) {
+      appendLog(
+        this.projectPath,
+        `Failed to mark item ${item.id} in_progress: ${markResult.error.message}`,
+      );
+      return "break";
+    }
+    this.writeState("running", item.id);
+
+    // Resolve model: item.model > options.model
+    const resolvedModel = item.model ?? this.options.model ?? projectModel;
+
+    // Build prompt
+    // Re-read backlog since we just updated the item status
+    const freshBacklog = readBacklog(this.projectPath);
+    const promptBacklog = freshBacklog.ok ? freshBacklog.value : backlog;
+    const promptResult = buildPrompt(this.projectPath, item, promptBacklog);
+    if (!promptResult.ok) {
+      appendLog(this.projectPath, `Failed to build prompt: ${promptResult.error.message}`);
+      // Reset item to pending since we couldn't process it
+      updateItem(this.projectPath, item.id, { status: "pending" });
+      this.currentItemId = null;
+      return "continue";
+    }
+
+    // Spawn claude
+    this.emitEvent("llm_spawned", {
+      itemId: item.id,
+      provider: "claude-cli",
+      model: resolvedModel,
+      timeoutMinutes: this.options.sessionTimeoutMinutes,
+    });
+    appendLog(
+      this.projectPath,
+      `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
+    );
+
+    const claudeResult = await spawnClaude(promptResult.value, {
+      sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
+      model: resolvedModel,
+      signal: this.abortController.signal,
+    });
+
+    if (!claudeResult.ok) {
+      appendLog(this.projectPath, `Failed to spawn claude: ${claudeResult.error.message}`);
+      updateItem(this.projectPath, item.id, { status: "pending" });
+      this.currentItemId = null;
+      this.emitEvent("loop_error", { error: claudeResult.error.message });
+      return "break";
+    }
+
+    const { exitCode, stdout, stderr, timedOut, durationMs } = claudeResult.value;
+    this.emitEvent("llm_exited", {
+      itemId: item.id,
+      provider: "claude-cli",
+      exitCode,
+      timedOut,
+      durationMs,
+    });
+    appendLog(
+      this.projectPath,
+      `Claude exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
+    );
+
+    // Check stderr for usage limit patterns BEFORE normal signal parsing
+    if (exitCode !== 0 && this.hasUsageLimitInStderr(stderr)) {
+      appendLog(this.projectPath, "Usage limit detected in stderr");
+      // Reset item to pending
+      updateItem(this.projectPath, item.id, { status: "pending" });
+      this.currentItemId = null;
+
+      // Check API for 5h vs 7d
+      const stderrLimitResult = await this.handleStderrUsageLimit();
+      if (stderrLimitResult === "exit") {
+        return "exit";
+      }
+      // If we get here, we slept through a 5h limit and can continue
+      return "continue";
+    }
+
+    // Parse signal from stdout
+    const parsed = parseSignal(stdout);
+    this.emitEvent("signal_parsed", {
+      itemId: item.id,
+      signal: parsed.signal === "review" ? "done" : parsed.signal,
+      reason: parsed.reason,
+    });
+    appendLog(
+      this.projectPath,
+      `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`,
+    );
+
+    // Handle signal
+    switch (parsed.signal) {
+      case "done": {
+        updateItem(this.projectPath, item.id, { status: "done" });
+        this.completedCount++;
+        this.completedItemIds.push(item.id);
+        this.emitEvent("item_completed", {
+          itemId: item.id,
+          title: item.title,
+        });
+        appendLog(this.projectPath, `Item ${item.id} completed: ${item.title}`);
+        this.writeState("running", null, "clean");
+
+        // Auto-commit
+        const commitResult = await gitCommit(this.projectPath, item.id, item.title);
+        if (commitResult.ok && commitResult.value.commitHash) {
+          appendLog(this.projectPath, `Committed: ${commitResult.value.commitHash}`);
+        }
+        break;
+      }
+
+      case "blocked": {
+        const reason = parsed.reason ?? "No reason provided";
+        updateItem(this.projectPath, item.id, {
+          status: "blocked",
+          blockedReason: reason,
+        });
+        this.blockedCount++;
+        this.blockedItemIds.push(item.id);
+        this.emitEvent("item_blocked", {
+          itemId: item.id,
+          reason,
+        });
+        appendLog(this.projectPath, `Item ${item.id} blocked: ${reason}`);
+        this.writeState("running", null, "blocked");
+        break;
+      }
+
+      case "needs_human": {
+        const reason = parsed.reason ?? "No reason provided";
+        // IMPORTANT: Leave item as in_progress (do NOT reset)
+        // Clear currentItemId so the finally block doesn't reset it to pending
+        this.currentItemId = null;
+        this.emitEvent("needs_human", {
+          itemId: item.id,
+          reason,
+        });
+        appendLog(this.projectPath, `Item ${item.id} needs human input: ${reason}`);
+        this.writeState("paused_human", item.id, "needs_human");
+        writeDoneFile(this.projectPath, `needs_human: ${reason}`);
+        return "exit";
+      }
+
+      case "review":
+      case "none": {
+        // No signal — retry logic
+        const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
+        this.retryCounts.set(item.id, retries);
+
+        if (retries >= this.options.maxRetries) {
+          // Max retries reached — mark as blocked
+          const reason = `No signal after ${retries} attempts`;
+          updateItem(this.projectPath, item.id, {
+            status: "blocked",
+            blockedReason: reason,
+          });
+          this.blockedCount++;
+          this.blockedItemIds.push(item.id);
+          this.emitEvent("item_blocked", {
+            itemId: item.id,
+            reason,
+          });
+          appendLog(this.projectPath, `Item ${item.id} blocked after ${retries} retries`);
+          this.writeState("running", null, "error");
+        } else {
+          // Re-queue: reset to pending for retry
+          updateItem(this.projectPath, item.id, { status: "pending" });
+          this.emitEvent("item_retried", {
+            itemId: item.id,
+            attempt: retries,
+            maxRetries: this.options.maxRetries,
+          });
+          appendLog(
+            this.projectPath,
+            `Item ${item.id} retry ${retries}/${this.options.maxRetries}`,
+          );
+        }
+        break;
+      }
+    }
+
+    this.currentItemId = null;
+    return "continue";
+  }
+
+  // ─── Review pass ──────────────────────────────────────────────────
+
+  /** Run the post-loop review pass. Returns result indicating outcome. */
+  private async runReviewPass(): Promise<ReviewPassResult> {
+    appendLog(this.projectPath, "Starting review pass");
+    this.emitEvent("review_started", {
+      completedItemIds: [...this.completedItemIds],
+    });
+    this.writeState("reviewing", null);
+
+    // Read completed items from backlog
+    const backlogResult = readBacklog(this.projectPath);
+    if (!backlogResult.ok) {
+      const reason = `Failed to read backlog for review: ${backlogResult.error.message}`;
+      appendLog(this.projectPath, reason);
+      this.emitEvent("review_failed", { reason });
+      return "failed";
+    }
+
+    const completedItems = backlogResult.value.items.filter(
+      (i) => this.completedItemIds.includes(i.id) && i.status === "done",
+    );
+
+    if (completedItems.length === 0) {
+      appendLog(this.projectPath, "No completed items to review");
+      this.emitEvent("review_failed", { reason: "No completed items found" });
+      return "failed";
+    }
+
+    // Get git diff
+    const gitDiff = await this.getGitDiff();
+
+    // Build review prompt
+    const promptResult = buildReviewPrompt(this.projectPath, completedItems, gitDiff);
+    if (!promptResult.ok) {
+      const reason = `Failed to build review prompt: ${promptResult.error.message}`;
+      appendLog(this.projectPath, reason);
+      this.emitEvent("review_failed", { reason });
+      return "failed";
+    }
+
+    // Resolve model
+    const markerResult = readMarkerFile(this.projectPath);
+    const projectModel = markerResult.ok ? markerResult.value.options.model : undefined;
+    const resolvedModel = this.options.model ?? projectModel;
+
+    appendLog(this.projectPath, "Spawning claude for review pass");
+
+    // Spawn Claude with review prompt
+    const claudeResult = await spawnClaude(promptResult.value, {
+      sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
+      model: resolvedModel,
+      signal: this.abortController.signal,
+    });
+
+    if (!claudeResult.ok) {
+      const reason = `Failed to spawn claude for review: ${claudeResult.error.message}`;
+      appendLog(this.projectPath, reason);
+      this.emitEvent("review_failed", { reason });
+      return "failed";
+    }
+
+    const { stdout } = claudeResult.value;
+
+    // Parse signal from review output
+    const parsed = parseSignal(stdout);
+
+    if (parsed.signal === "done") {
+      appendLog(this.projectPath, "Review pass: clean — no issues found");
+      this.emitEvent("review_completed", {
+        itemsCreated: 0,
+        summary: "No issues found",
+      });
+      return "clean";
+    }
+
+    if (parsed.signal === "review" && parsed.reviewPayload) {
+      const batch = new Date().toISOString();
+      let created = 0;
+
+      for (const reviewItem of parsed.reviewPayload.items) {
+        const result = addItem(this.projectPath, {
+          type: reviewItem.type,
+          priority: reviewItem.priority,
+          title: reviewItem.title,
+          description: reviewItem.description,
+          acceptanceCriteria: reviewItem.acceptanceCriteria,
+          source: "review",
+          reviewBatch: batch,
+        });
+        if (result.ok) {
+          created++;
+          appendLog(
+            this.projectPath,
+            `Review created item: ${result.value.id} — ${reviewItem.title}`,
+          );
+        }
+      }
+
+      this.reviewItemsCreated = created;
+      this.reviewSummary = parsed.reviewPayload.summary;
+
+      appendLog(
+        this.projectPath,
+        `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
+      );
+      this.emitEvent("review_completed", {
+        itemsCreated: created,
+        summary: parsed.reviewPayload.summary,
+      });
+
+      return created > 0 ? "continue" : "clean";
+    }
+
+    // Other signal or parse failure — non-fatal
+    const reason = `Review returned unexpected signal: ${parsed.signal}`;
+    appendLog(this.projectPath, reason);
+    this.emitEvent("review_failed", { reason });
+    return "failed";
+  }
+
+  // ─── Git helpers ──────────────────────────────────────────────────
+
+  /** Get current HEAD commit hash, or null if not a git repo */
+  private async getHeadCommit(): Promise<string | null> {
+    return new Promise((resolve) => {
+      execFile("git", ["rev-parse", "HEAD"], { cwd: this.projectPath }, (error, stdout) => {
+        if (error) {
+          resolve(null);
+        } else {
+          resolve(stdout.trim());
+        }
+      });
+    });
+  }
+
+  /** Get git diff from base commit to HEAD. Returns empty string if unavailable. */
+  private async getGitDiff(): Promise<string> {
+    if (!this.baseCommitHash) return "";
+
+    return new Promise((resolve) => {
+      execFile(
+        "git",
+        ["diff", `${this.baseCommitHash}..HEAD`],
+        { cwd: this.projectPath, maxBuffer: 1024 * 1024 * 10 },
+        (error, stdout) => {
+          if (error) {
+            resolve("");
+          } else {
+            resolve(stdout);
+          }
+        },
+      );
+    });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────

@@ -72,6 +72,75 @@ Items may also include a \`specReferences\` field listing paths to specification
 `,
   ],
   [
+    ".ralph/REVIEW.md.tmpl",
+    `# Ralph — Post-Loop Review Pass
+
+You are a review agent auditing work completed by an autonomous coding loop. Your job is to verify that completed items genuinely meet their acceptance criteria and that no issues were introduced.
+
+## Verification Commands
+
+Run the full verification pipeline first:
+
+\`\`\`
+{{verifyCommand}}
+\`\`\`
+
+## Completed Items to Review
+
+{{completedItemsDetail}}
+
+## Git Diff of All Changes
+
+\`\`\`diff
+{{gitDiff}}
+\`\`\`
+
+## Progress Log
+
+\`\`\`
+{{progressContent}}
+\`\`\`
+
+## Review Instructions
+
+1. **Run verification commands** above and note any failures
+2. **For each completed item**, check:
+   - All acceptance criteria are genuinely met (not just superficially)
+   - Edge cases are handled
+   - No regressions introduced
+   - Tests cover the new behavior
+   - Code style is consistent with the project
+   - No TODOs or placeholder code left behind
+3. **Look for cross-item issues:**
+   - Integration problems between independently-completed items
+   - Conflicting changes or duplicated logic
+   - Missing imports or broken references
+
+## Output
+
+If you find issues that need fixing, output on a single line:
+
+\`\`\`
+RALPH_REVIEW:{"items":[{"type":"bug","priority":2,"title":"Fix: <short description>","description":"<detailed description of what's wrong and how to fix it>","acceptanceCriteria":["<specific criterion>"]}],"summary":"<1-2 sentence summary of all issues found>"}
+\`\`\`
+
+Each item in the \`items\` array must have:
+- \`type\`: "bug", "refactor", "feature", or "chore"
+- \`priority\`: 1-4 (1=critical, 2=high, 3=medium, 4=low)
+- \`title\`: Short description prefixed with "Fix: " or "Review: "
+- \`description\`: Detailed explanation of the issue and suggested fix
+- \`acceptanceCriteria\`: Array of specific, verifiable criteria
+
+If everything looks good and all checks pass, output:
+
+\`\`\`
+RALPH_DONE
+\`\`\`
+
+**IMPORTANT:** Be thorough but pragmatic. Only create fix items for genuine issues — not style preferences or minor nitpicks. Focus on correctness, test coverage gaps, and integration problems.
+`,
+  ],
+  [
     ".ralph/backlog.json",
     `{
   "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
@@ -203,6 +272,16 @@ Items may also include a \`specReferences\` field listing paths to specification
             }
           },
           "provider": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "human",
+              "review"
+            ]
+          },
+          "reviewBatch": {
             "type": "string"
           }
         },
