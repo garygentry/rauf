@@ -15,3 +15,8 @@ export {
   getAvailableProviders,
   clearProviders,
 } from "./registry.js";
+
+export { createClaudeCliProvider } from "./claude-cli.js";
+
+// Side-effect import: registers claude-cli as the default provider
+import "./claude-cli.js";
