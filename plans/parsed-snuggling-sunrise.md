@@ -1,80 +1,148 @@
-# Plan: Handle missing backlog.json gracefully in backlog commands
+# Plan: Graceful Quit for `ralph loop run`
 
 ## Context
 
-When `backlog.json` doesn't exist but ralph IS installed (`.ralph/` dir exists), commands like `backlog reset --clear` fail with "Ralph is not installed here." This is wrong — the project has ralph installed, it just doesn't have a backlog file yet. The fix should create an empty `backlog.json` on the fly rather than erroring out.
+When running `ralph loop run`, pressing Ctrl+C immediately kills the active claude subprocess via `AbortController.abort()`. This can leave an iteration half-finished (uncommitted changes, partial work). Users need a way to signal "stop after this iteration completes" — letting the current claude session finish its work, commit, and exit cleanly before the loop stops.
 
-## Approach
+## UX Design: Two-stage Ctrl+C
 
-Add a core function `ensureBacklog()` that checks if `.ralph/` exists and creates a default empty `backlog.json` if it's missing. Use this in `resetProject()` and potentially other backlog commands.
+**First Ctrl+C**: Print `"Finishing current iteration... Press Ctrl+C again to force quit."` and set a soft-cancel flag. The running claude subprocess continues uninterrupted. The loop exits at the next iteration boundary.
 
-### Changes
+**Second Ctrl+C**: Hard cancel — kills the subprocess immediately (today's behavior).
 
-**1. `packages/core/src/backlog.ts` — Add `ensureBacklog()` function**
+**SIGTERM**: Always hard cancel (non-interactive, used by system scripts).
+
+This pattern is familiar from docker-compose, webpack-dev-server, etc. No raw mode or keypresses needed — just counting SIGINT signals.
+
+## Changes
+
+### 1. `packages/loop/src/runner.ts` — Add soft cancel support
+
+Add a `softCancelled` boolean field and `requestGracefulStop()` method:
 
 ```typescript
-export function ensureBacklog(projectPath: string): Result<void> {
-  const resolved = path.resolve(projectPath);
-  const ralphDir = path.join(resolved, BACKLOG_DIR);
-  const backlogPath = getBacklogPath(projectPath);
+private softCancelled = false;
 
-  // If backlog already exists, nothing to do
-  if (fileExists(backlogPath)) return ok(undefined);
-
-  // If .ralph/ dir doesn't exist, ralph is genuinely not installed
-  if (!fileExists(ralphDir)) {
-    return err({
-      code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed at ${resolved}`,
-    });
-  }
-
-  // .ralph/ exists but backlog.json doesn't — create empty one
-  // Try to read project name from .ralph.json marker
-  const markerResult = readMarkerFile(projectPath);
-  const projectName = markerResult.ok ? markerResult.value.project : path.basename(resolved);
-
-  const emptyBacklog: Backlog = {
-    project: projectName,
-    description: "",
-    items: [],
-  };
-
-  return writeBacklog(projectPath, emptyBacklog);
+/** Request graceful stop: finish current iteration, then exit. Does NOT kill the subprocess. */
+requestGracefulStop(): void {
+  this.softCancelled = true;
 }
 ```
 
-**2. `packages/core/src/reset.ts` — Call `ensureBacklog()` before sweep/reset**
-
-At the top of `resetProject()`, before step 1 (sweep), add:
+Update `isCancelled()` (line ~666) to check the new flag:
 
 ```typescript
-const ensureResult = ensureBacklog(resolved);
-if (!ensureResult.ok) return ensureResult;
+private isCancelled(): boolean {
+  if (this.softCancelled) return true;
+  if (this.abortController.signal.aborted) return true;
+  return checkCancelRequested(this.projectPath);
+}
 ```
 
-This way `sweepBacklog` and `resetStalledItems` will find a valid (empty) backlog.
+**Why this works**: `isCancelled()` is checked at iteration boundaries (top of while loop, line 129; between iterations, line 858) but NOT during `spawnClaude()`. So the claude process runs to completion, then the loop sees the flag and exits cleanly.
 
-**3. `packages/cli/src/backlog-commands.ts` — Better error differentiation**
+Update `LoopResult` to distinguish graceful vs forced cancel:
 
-Update `handleCoreError` to distinguish `NOT_INSTALLED` from `FILE_NOT_FOUND`:
-- `NOT_INSTALLED` → "Ralph is not installed here. Run: ralph install ..."
-- `FILE_NOT_FOUND` → more specific message about the missing file
+```typescript
+export interface LoopResult {
+  completedCount: number;
+  blockedCount: number;
+  cancelled: boolean;
+  gracefulStop?: boolean;  // true when stopped via soft cancel (iteration completed)
+  reviewItemsCreated?: number;
+  reviewSummary?: string;
+}
+```
 
-### Files to modify
+Update the cancellation return (line ~134) to set `gracefulStop`:
 
-- `packages/core/src/backlog.ts` — add `ensureBacklog()`, export it
-- `packages/core/src/reset.ts` — call `ensureBacklog()` at start of `resetProject()`
-- `packages/core/src/index.ts` — export `ensureBacklog` if not already re-exported
-- `packages/core/src/backlog.test.ts` — add tests for `ensureBacklog()`
-- `packages/core/src/reset.test.ts` — add test for reset with missing backlog.json
+```typescript
+return {
+  completedCount: this.completedCount,
+  blockedCount: this.blockedCount,
+  cancelled: true,
+  gracefulStop: this.softCancelled && !this.abortController.signal.aborted,
+};
+```
 
-### Consideration: Other backlog commands
+### 2. `packages/cli/src/loop-commands.ts` — Two-stage SIGINT handler
 
-The same issue likely affects `backlog list`, `backlog add`, etc. when backlog.json is missing. We should consider whether those should also auto-create. The `reset --clear` case is the most obvious since it's explicitly about starting fresh. For now, scope to `resetProject` only — other commands can be addressed separately if needed.
+Replace the simple signal handler in `handleLoopRun` (lines 402-405):
+
+```typescript
+// Current:
+const onSignal = () => runner.cancel();
+process.on("SIGINT", onSignal);
+process.on("SIGTERM", onSignal);
+```
+
+With:
+
+```typescript
+let sigintCount = 0;
+
+const onSigint = () => {
+  sigintCount++;
+  if (sigintCount === 1) {
+    runner.requestGracefulStop();
+    print("");
+    info(
+      c.yellow("Finishing current iteration... ") +
+      c.dim("Press Ctrl+C again to force quit.")
+    );
+  } else {
+    print("");
+    info(c.red("Force quitting..."));
+    runner.cancel();
+  }
+};
+
+const onSigterm = () => runner.cancel();
+
+process.on("SIGINT", onSigint);
+process.on("SIGTERM", onSigterm);
+```
+
+Update the result display (lines ~414-425):
+
+```typescript
+if (result.cancelled && !result.gracefulStop) {
+  info("Loop force-cancelled.");
+} else if (result.gracefulStop) {
+  info("Loop stopped gracefully after completing iteration.");
+} else {
+  // existing success message
+}
+```
+
+Update the `finally` block to reference the new handler names.
+
+Apply the same two-stage pattern to `handleLoopReview` (lines 471-474) for consistency.
+
+### 3. No new exports needed
+
+`requestGracefulStop()` is a method on `LoopRunner` which is already exported. `LoopResult` is already re-exported from `packages/loop/src/index.ts`.
+
+## Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| Iteration finishes between 1st and 2nd Ctrl+C | Loop exits cleanly at next boundary check — 2nd Ctrl+C is harmless |
+| No iteration running (between iterations) | `isCancelled()` returns true immediately, loop exits |
+| Sleeping for usage limit | Soft cancel alone won't break sleep; 2nd Ctrl+C does hard cancel |
+| Non-TTY stdin (piped) | Works fine — SIGINT still delivered, output may be piped but behavior is correct |
+| JSON mode (`--json`) | `info()` suppressed; result JSON includes `gracefulStop: true` |
+| Review pass running | Soft cancel lets review finish; checked at next boundary |
+
+## Files to Modify
+
+- `packages/loop/src/runner.ts` — `softCancelled` field, `requestGracefulStop()`, update `isCancelled()`, update `LoopResult`
+- `packages/cli/src/loop-commands.ts` — two-stage SIGINT in `handleLoopRun` and `handleLoopReview`, update result display
 
 ## Verification
 
-1. `pnpm test` — all existing tests pass
-2. `pnpm typecheck` — no type errors
-3. Manual test: create a `.ralph/` dir without `backlog.json`, run `ralph backlog reset . --yes --clear` — should succeed and create empty backlog
+1. `pnpm typecheck` — no type errors
+2. `pnpm test` — all existing tests pass
+3. Manual test: run `ralph loop run .`, press Ctrl+C once during an iteration — should see "Finishing current iteration..." message and loop should exit cleanly after iteration completes
+4. Manual test: press Ctrl+C twice quickly — should force quit immediately
+5. Manual test: press Ctrl+C when no iteration is running (e.g., between iterations) — should exit immediately

@@ -18,6 +18,7 @@ import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
 import { c, info, print, error, success, outputJson } from "./formatter.js";
+import { StatusLine } from "./status-line.js";
 import {
   readServerState,
   isProcessAlive,
@@ -140,7 +141,13 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
       if (follow) {
         const eventsUrl = apiUrl(port, id, "events");
         info(c.dim("Following loop events... Press Ctrl+C to stop."));
-        return streamEventsUntilDone(eventsUrl);
+        const statusLine = new StatusLine({
+          isTTY: process.stdout.isTTY ?? false,
+          quiet: ctx.globalFlags.quiet,
+          json: ctx.globalFlags.json,
+          noColor: ctx.globalFlags.noColor,
+        });
+        return streamEventsUntilDone(eventsUrl, statusLine);
       }
 
       if (!ctx.globalFlags.json) {
@@ -229,7 +236,13 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
  * auto-disconnect when a terminal event is received.
  * Returns the exit code.
  */
-async function streamEventsUntilDone(url: string): Promise<number> {
+async function streamEventsUntilDone(
+  url: string,
+  sl?: StatusLine,
+): Promise<number> {
+  let currentItemId = "";
+  let currentItemTitle = "";
+
   return new Promise<number>((resolve) => {
     const controller = new AbortController();
     let resolved = false;
@@ -237,18 +250,54 @@ async function streamEventsUntilDone(url: string): Promise<number> {
     const finish = (code: number) => {
       if (resolved) return;
       resolved = true;
+      sl?.stop();
       controller.abort();
       process.removeListener("SIGINT", stop);
       process.removeListener("SIGTERM", stop);
       resolve(code);
     };
 
-    const stop = () => finish(ExitCode.SUCCESS);
+    const stop = () => {
+      sl?.stop();
+      finish(ExitCode.SUCCESS);
+    };
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
 
     connectSSE(url, controller.signal, (event) => {
+      sl?.pause();
       formatAndPrintEvent(event);
+
+      if (sl) {
+        switch (event.type) {
+          case "item_selected":
+            currentItemId = event.itemId;
+            currentItemTitle = event.title;
+            break;
+          case "llm_spawned":
+            sl.start(`Claude working on #${currentItemId}: ${currentItemTitle}`);
+            break;
+          case "llm_exited":
+            sl.stop();
+            break;
+          case "sleep_start":
+            sl.startCountdown("Rate limited — resumes in", new Date(event.sleepUntil));
+            break;
+          case "sleep_end":
+            sl.stop();
+            break;
+          case "review_started":
+            sl.start("Review pass running");
+            break;
+          case "review_completed":
+          case "review_failed":
+            sl.stop();
+            break;
+          default:
+            sl.resume();
+        }
+      }
+
       if (TERMINAL_EVENT_TYPES.has(event.type)) {
         finish(event.type === "loop_error" ? ExitCode.ERROR : ExitCode.SUCCESS);
       }
@@ -283,7 +332,14 @@ export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
   info(`Following loop events for ${c.cyan(id)}...`);
   info(c.dim("Press Ctrl+C to stop."));
 
-  return streamEventsUntilDone(url);
+  const statusLine = new StatusLine({
+    isTTY: process.stdout.isTTY ?? false,
+    quiet: ctx.globalFlags.quiet,
+    json: ctx.globalFlags.json,
+    noColor: ctx.globalFlags.noColor,
+  });
+
+  return streamEventsUntilDone(url, statusLine);
 }
 
 /** Connect to an SSE endpoint, parse events, and invoke callback for each LoopEvent */
@@ -370,6 +426,17 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
   const runner = new LoopRunner(projectPath, options);
 
+  const statusLine = new StatusLine({
+    isTTY: process.stdout.isTTY ?? false,
+    quiet: ctx.globalFlags.quiet,
+    json: ctx.globalFlags.json,
+    noColor: ctx.globalFlags.noColor,
+  });
+
+  // Track current item for status line messages
+  let currentItemId = "";
+  let currentItemTitle = "";
+
   // Subscribe to all events for terminal output
   const eventTypes: LoopEvent["type"][] = [
     "loop_started",
@@ -395,7 +462,39 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   ];
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
+      statusLine.pause();
       formatAndPrintEvent(event);
+
+      switch (event.type) {
+        case "item_selected":
+          currentItemId = event.itemId;
+          currentItemTitle = event.title;
+          break;
+        case "llm_spawned":
+          statusLine.start(`Claude working on #${currentItemId}: ${currentItemTitle}`);
+          break;
+        case "llm_exited":
+          statusLine.stop();
+          break;
+        case "sleep_start":
+          statusLine.startCountdown(
+            "Rate limited — resumes in",
+            new Date(event.sleepUntil),
+          );
+          break;
+        case "sleep_end":
+          statusLine.stop();
+          break;
+        case "review_started":
+          statusLine.start("Review pass running");
+          break;
+        case "review_completed":
+        case "review_failed":
+          statusLine.stop();
+          break;
+        default:
+          statusLine.resume();
+      }
     });
   }
 
@@ -404,6 +503,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
   const onSigint = () => {
     sigintCount++;
+    statusLine.stop();
     if (sigintCount === 1) {
       runner.requestGracefulStop();
       print("");
@@ -418,7 +518,10 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     }
   };
 
-  const onSigterm = () => runner.cancel();
+  const onSigterm = () => {
+    statusLine.stop();
+    runner.cancel();
+  };
 
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
@@ -451,6 +554,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   } finally {
+    statusLine.stop();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
   }
