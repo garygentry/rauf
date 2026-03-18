@@ -119,6 +119,16 @@
           },
           "provider": {
             "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "human",
+              "review"
+            ]
+          },
+          "reviewBatch": {
+            "type": "string"
           }
         },
         "required": [

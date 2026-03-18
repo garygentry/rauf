@@ -84,6 +84,7 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",
+    reviewing: "RUNNING",
   };
   return mapping[status];
 }

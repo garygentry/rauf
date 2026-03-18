@@ -12,6 +12,7 @@ import {
   type BacklogItem,
   type BacklogItemType,
   type BacklogItemStatus,
+  type BacklogItemSource,
 } from "./schemas.js";
 import { readMarkerFile } from "./config.js";
 
@@ -34,6 +35,8 @@ export interface CreateItemInput {
   estimatedIterations?: number;
   agentDelegation?: AgentDelegation;
   specReferences?: string[];
+  source?: BacklogItemSource;
+  reviewBatch?: string;
 }
 
 export interface UpdateItemInput {
@@ -159,6 +162,8 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
       : {}),
     ...(input.agentDelegation !== undefined ? { agentDelegation: input.agentDelegation } : {}),
     ...(input.specReferences !== undefined ? { specReferences: input.specReferences } : {}),
+    ...(input.source !== undefined ? { source: input.source } : {}),
+    ...(input.reviewBatch !== undefined ? { reviewBatch: input.reviewBatch } : {}),
   };
 
   // 7. Append and write

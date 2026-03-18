@@ -23,6 +23,8 @@ export const AgentDelegationSchema = z.object({
 
 // ─── BacklogItem ───────────────────────────────────────────────────
 
+export const BacklogItemSourceSchema = z.enum(["human", "review"]);
+
 export const BacklogItemSchema = z.object({
   id: BacklogItemIdSchema,
   type: BacklogItemTypeSchema,
@@ -40,6 +42,8 @@ export const BacklogItemSchema = z.object({
   agentDelegation: AgentDelegationSchema.optional(),
   specReferences: z.array(z.string()).optional(),
   provider: z.string().optional(),
+  source: BacklogItemSourceSchema.optional(),
+  reviewBatch: z.string().optional(),
 });
 
 // ─── Backlog ───────────────────────────────────────────────────────
@@ -114,6 +118,7 @@ export const LoopStateStatusSchema = z.enum([
   "error",
   "sleeping_limit",
   "weekly_limit",
+  "reviewing",
 ]);
 
 export const LoopStateSignalSchema = z.enum(["clean", "blocked", "needs_human", "error"]);
@@ -270,6 +275,8 @@ export const LoopStartOptionsSchema = z.object({
   model: z.string().optional(),
   sessionTimeoutMinutes: z.number().int().positive(),
   provider: z.string().optional(),
+  review: z.boolean().optional(),
+  reviewOnly: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
@@ -385,6 +392,22 @@ const LoopCancelledSchema = LoopEventBaseSchema.extend({
   type: z.literal("loop_cancelled"),
 });
 
+const ReviewStartedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("review_started"),
+  completedItemIds: z.array(z.string()),
+});
+
+const ReviewCompletedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("review_completed"),
+  itemsCreated: z.number().int().nonnegative(),
+  summary: z.string(),
+});
+
+const ReviewFailedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("review_failed"),
+  reason: z.string(),
+});
+
 export const LoopEventSchema = z.discriminatedUnion("type", [
   LoopStartedSchema,
   IterationStartSchema,
@@ -403,7 +426,25 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   LoopCompletedSchema,
   LoopErrorSchema,
   LoopCancelledSchema,
+  ReviewStartedSchema,
+  ReviewCompletedSchema,
+  ReviewFailedSchema,
 ]);
+
+// ─── Review Payload (parsed from RALPH_REVIEW signal) ─────────────
+
+export const ReviewItemSchema = z.object({
+  type: BacklogItemTypeSchema,
+  priority: BacklogItemPrioritySchema,
+  title: z.string().min(1),
+  description: z.string(),
+  acceptanceCriteria: z.array(z.string()).min(1),
+});
+
+export const ReviewPayloadSchema = z.object({
+  items: z.array(ReviewItemSchema).min(1),
+  summary: z.string(),
+});
 
 // ─── Inferred Types ────────────────────────────────────────────────
 
@@ -431,5 +472,8 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type RalphError = z.infer<typeof RalphErrorSchema>;
 export type ArchiveMonth = z.infer<typeof ArchiveMonthSchema>;
 export type SweepResult = z.infer<typeof SweepResultSchema>;
+export type BacklogItemSource = z.infer<typeof BacklogItemSourceSchema>;
 export type LoopStartOptions = z.infer<typeof LoopStartOptionsSchema>;
 export type LoopEvent = z.infer<typeof LoopEventSchema>;
+export type ReviewItem = z.infer<typeof ReviewItemSchema>;
+export type ReviewPayload = z.infer<typeof ReviewPayloadSchema>;
