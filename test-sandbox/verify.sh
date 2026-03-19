@@ -104,28 +104,28 @@ run_scenario "stream-done"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "complete"
+assert_state_status "limit_reached"
 
 # 2. stream-blocked: RALPH_BLOCKED marks item blocked
 run_scenario "stream-blocked"
 assert_item_status "001" "blocked"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "complete"
+assert_state_status "limit_reached"
 
 # 3. stream-tools: Multi-tool RALPH_DONE works
 run_scenario "stream-tools"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "complete"
+assert_state_status "limit_reached"
 
 # 4. slow-stream: Slow stream completes
 run_scenario "slow-stream"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "complete"
+assert_state_status "limit_reached"
 
 # 5. stream-needs-human: RALPH_NEEDS_HUMAN leaves in_progress
 run_scenario "stream-needs-human"
