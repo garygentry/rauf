@@ -408,6 +408,26 @@ const ReviewFailedSchema = LoopEventBaseSchema.extend({
   reason: z.string(),
 });
 
+const LlmToolActivitySchema = LoopEventBaseSchema.extend({
+  type: z.literal("llm_tool_activity"),
+  itemId: z.string(),
+  toolName: z.string(),
+  phase: z.enum(["start", "end"]),
+});
+
+const LlmTokenUpdateSchema = LoopEventBaseSchema.extend({
+  type: z.literal("llm_token_update"),
+  itemId: z.string(),
+  inputTokens: z.number().nonnegative(),
+  outputTokens: z.number().nonnegative(),
+});
+
+const LlmStuckWarningSchema = LoopEventBaseSchema.extend({
+  type: z.literal("llm_stuck_warning"),
+  itemId: z.string(),
+  silentMs: z.number().nonnegative(),
+});
+
 export const LoopEventSchema = z.discriminatedUnion("type", [
   LoopStartedSchema,
   IterationStartSchema,
@@ -429,6 +449,9 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   ReviewStartedSchema,
   ReviewCompletedSchema,
   ReviewFailedSchema,
+  LlmToolActivitySchema,
+  LlmTokenUpdateSchema,
+  LlmStuckWarningSchema,
 ]);
 
 // ─── Review Payload (parsed from RALPH_REVIEW signal) ─────────────
@@ -444,6 +467,22 @@ export const ReviewItemSchema = z.object({
 export const ReviewPayloadSchema = z.object({
   items: z.array(ReviewItemSchema).min(1),
   summary: z.string(),
+});
+
+// ─── IterationStatus (.ralph/iteration-status.json) ───────────────
+
+export const IterationStatusSchema = z.object({
+  itemId: z.string(),
+  startedAt: z.string(),
+  updatedAt: z.string(),
+  currentTool: z.string().nullable(),
+  recentTools: z.array(z.string()).max(10),
+  tokens: z.object({
+    input: z.number().nonnegative(),
+    output: z.number().nonnegative(),
+  }),
+  lastActivityAt: z.string(),
+  stuckWarning: z.boolean(),
 });
 
 // ─── Inferred Types ────────────────────────────────────────────────
@@ -477,3 +516,4 @@ export type LoopStartOptions = z.infer<typeof LoopStartOptionsSchema>;
 export type LoopEvent = z.infer<typeof LoopEventSchema>;
 export type ReviewItem = z.infer<typeof ReviewItemSchema>;
 export type ReviewPayload = z.infer<typeof ReviewPayloadSchema>;
+export type IterationStatus = z.infer<typeof IterationStatusSchema>;

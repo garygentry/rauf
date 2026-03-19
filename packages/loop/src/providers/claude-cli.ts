@@ -15,14 +15,16 @@ class ClaudeCliProvider implements LLMProvider {
       sessionTimeoutMinutes: options.timeoutMinutes,
       model: options.model,
       signal: options.signal,
+      outputFormat: options.outputFormat,
+      onStreamEvent: options.onStreamEvent,
     });
 
     if (!result.ok) {
       return result;
     }
 
-    const { exitCode, stdout, stderr, timedOut, durationMs } = result.value;
-    return ok({ stdout, stderr, exitCode, timedOut, durationMs });
+    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } = result.value;
+    return ok({ stdout, stderr, exitCode, timedOut, durationMs, reconstructedText });
   }
 
   validateCredentials(): Result<void> {

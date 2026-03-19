@@ -4,12 +4,16 @@ import type { ChildProcess } from "node:child_process";
 import type { Result } from "@ralph/core";
 import { ok, err, ErrorCodes } from "@ralph/core";
 
+import { StreamParser, type ClaudeStreamEvent } from "./stream-parser.js";
+
 const GRACE_PERIOD_MS = 30_000; // 30s between SIGTERM and SIGKILL
 
 export interface SpawnClaudeOptions {
   sessionTimeoutMinutes: number;
   model?: string;
   signal?: AbortSignal;
+  outputFormat?: "text" | "stream-json";
+  onStreamEvent?: (event: ClaudeStreamEvent) => void;
 }
 
 export interface SpawnClaudeResult {
@@ -18,6 +22,7 @@ export interface SpawnClaudeResult {
   stderr: string;
   timedOut: boolean;
   durationMs: number;
+  reconstructedText?: string;
 }
 
 /**
@@ -42,8 +47,13 @@ function killTree(proc: ChildProcess, signal: NodeJS.Signals): void {
 /**
  * Spawns `claude -p` as a child process with the prompt piped via stdin.
  *
- * Always passes `--dangerously-skip-permissions` and `--output-format text`
- * flags (required for headless autonomous operation).
+ * Always passes `--dangerously-skip-permissions` flag (required for headless
+ * autonomous operation).
+ *
+ * When `outputFormat` is `"stream-json"`, pipes stdout through a line splitter
+ * into StreamParser and fires `onStreamEvent` callbacks in real time. The
+ * `reconstructedText` field on the result contains the same text that
+ * `--output-format text` would have produced.
  *
  * Implements configurable timeout: SIGTERM → 30s grace → SIGKILL.
  * Supports external cancellation via AbortController signal.
@@ -52,7 +62,12 @@ export async function spawnClaude(
   prompt: string,
   options: SpawnClaudeOptions,
 ): Promise<Result<SpawnClaudeResult>> {
-  const args = ["-p", "--dangerously-skip-permissions", "--output-format", "text"];
+  const format = options.outputFormat ?? "text";
+  const args = ["-p", "--dangerously-skip-permissions", "--output-format", format];
+
+  if (format === "stream-json") {
+    args.push("--verbose");
+  }
 
   if (options.model) {
     args.push("--model", options.model);
@@ -84,20 +99,47 @@ export async function spawnClaude(
       grace?: ReturnType<typeof setTimeout>;
     } = {};
 
+    // Stream-json mode: line splitter + parser
+    let parser: StreamParser | undefined;
+    let lineBuf = "";
+
+    if (format === "stream-json") {
+      parser = new StreamParser((event) => {
+        if (options.onStreamEvent) {
+          try {
+            options.onStreamEvent(event);
+          } catch {
+            // Stream parse callbacks must never crash the loop
+          }
+        }
+      });
+    }
+
     function finish(exitCode: number) {
       if (resolved) return;
       resolved = true;
       cleanup();
+
+      // Flush any remaining partial line in stream-json mode
+      if (parser && lineBuf.trim()) {
+        parser.feed(lineBuf);
+        lineBuf = "";
+      }
+
       const durationMs = Date.now() - startTime;
-      resolve(
-        ok({
-          exitCode,
-          stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
-          stderr: Buffer.concat(stderrChunks).toString("utf-8"),
-          timedOut,
-          durationMs,
-        }),
-      );
+      const result: SpawnClaudeResult = {
+        exitCode,
+        stdout: Buffer.concat(stdoutChunks).toString("utf-8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf-8"),
+        timedOut,
+        durationMs,
+      };
+
+      if (parser) {
+        result.reconstructedText = parser.getReconstructedText();
+      }
+
+      resolve(ok(result));
     }
 
     function cleanup() {
@@ -134,10 +176,22 @@ export async function spawnClaude(
       );
     });
 
-    // Capture stdout and stderr
+    // Capture stdout (and feed to parser in stream-json mode)
     proc.stdout!.on("data", (chunk: Buffer) => {
       stdoutChunks.push(chunk);
+
+      if (parser) {
+        lineBuf += chunk.toString("utf-8");
+        const lines = lineBuf.split("\n");
+        lineBuf = lines.pop()!; // keep incomplete trailing line
+        for (const line of lines) {
+          if (line.trim()) {
+            parser.feed(line);
+          }
+        }
+      }
     });
+
     proc.stderr!.on("data", (chunk: Buffer) => {
       stderrChunks.push(chunk);
     });

@@ -1,0 +1,26 @@
+{
+  "ralph": true,
+  "version": "0.1.0",
+  "variant": "backlog-json",
+  "installedAt": "2026-03-19T00:00:00.000Z",
+  "installedBy": "test-sandbox",
+  "profile": {
+    "stack": "node-typescript",
+    "packageManager": "pnpm",
+    "monorepo": false,
+    "commands": {
+      "test": "echo test-pass",
+      "typecheck": "echo typecheck-pass",
+      "lint": "echo lint-pass",
+      "format": null,
+      "build": null
+    },
+    "verify": "echo all-pass"
+  },
+  "artifactHashes": {},
+  "options": {
+    "ignoreInTool": false,
+    "gitignoreScripts": false,
+    "maxIterations": 5
+  }
+}

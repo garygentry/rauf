@@ -44,6 +44,7 @@ import {
   handleLoopFollow,
   handleLoopRun,
   handleLoopReview,
+  handleLoopWatch,
 } from "./loop-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -130,6 +131,12 @@ export const COMMANDS: CommandDef[] = [
         description: "Review completed items and create fix items",
         usage: "ralph loop review [path] [--model MODEL] [--timeout N]",
         handler: handleLoopReview,
+      },
+      {
+        name: "watch",
+        description: "Watch live iteration status (tool activity, tokens)",
+        usage: "ralph loop watch [path] [--json]",
+        handler: handleLoopWatch,
       },
     ],
   },

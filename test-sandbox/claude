@@ -1,0 +1,4 @@
+#!/bin/bash
+SCENARIO="${MOCK_CLAUDE_SCENARIO:-stream-done}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec bash "$SCRIPT_DIR/scenarios/${SCENARIO}.sh" "$@"

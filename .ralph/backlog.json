@@ -73,8 +73,8 @@
         "Unit tests with mocked checkUsageLimit verify checkUsage result mapping",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-18T00:00:00.000Z",
       "dependsOn": [
         "002"
       ],
@@ -106,7 +106,7 @@
         "001",
         "003"
       ],
-      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §4.4 for the before/after code comparison and §4.5 for the complete mapping table. This is the most critical refactor — the runner is the heart of the loop. The key invariant is that behavior with claude-cli provider must be IDENTICAL to current behavior (NFR-1). Stderr usage limit detection pattern matching stays in the runner (it reads result.stderr regardless of provider).",
+      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §4.4 for the before/after code comparison and §4.5 for the complete mapping table. This is the most critical refactor — the runner is the heart of the loop. The key invariant is that behavior with claude-cli provider must be IDENTICAL to current behavior (NFR-1). Stderr usage limit detection pattern matching stays in the runner (it reads result.stderr regardless of provider). Event name changes (llm_spawned/llm_exited emission) already done via item 005. Remaining work: replace spawnClaude() with provider.execute(), add provider DI to constructor, add validateCredentials()/dispose() calls, refactor tests from writeMockClaude() to mock LLMProvider.",
       "estimatedIterations": 2
     },
     {
@@ -125,8 +125,8 @@
         "No remaining string literals 'claude_spawned' or 'claude_exited' anywhere in the codebase (grep verification)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-18T00:00:00.000Z",
       "dependsOn": [
         "001"
       ],
@@ -155,6 +155,7 @@
         "Registered in provider registry as 'generic-cli'",
         "Unit tests with mock binary (simple script echoing RALPH_DONE) verify all three prompt delivery modes",
         "Unit tests verify template variable substitution in args",
+        "Integration test: run a loop iteration with generic-cli provider using a simple echo script that outputs RALPH_DONE, verify signal is captured and iteration completes successfully",
         "pnpm test && pnpm typecheck passes"
       ],
       "status": "pending",
@@ -215,7 +216,7 @@
       "dependsOn": [
         "004"
       ],
-      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §7.2 for the full list of file renames and §8 Phase 2 tasks. Use `git mv` for the renames to preserve history. After renaming, regenerate embedded-artifacts.ts using `bun run scripts/generate-embedded-artifacts.ts` (or equivalent). The content of the addon/greenfield files is already generic — only the filenames are Claude-branded."
+      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §7.2 for the full list of file renames and §8 Phase 2 tasks. Use `git mv` for the renames to preserve history. After renaming, regenerate embedded-artifacts.ts using `bun run scripts/generate-embedded-artifacts.ts` (or equivalent). The content of the addon/greenfield files is already generic — only the filenames are Claude-branded. Prompt builder already uses generic 'Task tool' language (lines 105, 124, 137 of prompt-builder.ts). Remaining work is file renames (git mv) and reference updates in installer.ts + embedded-artifacts.ts only."
     },
     {
       "id": "009",
@@ -239,7 +240,7 @@
       "dependsOn": [
         "005"
       ],
-      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §6.3 for the schema definition. This event type enables live progress streaming from SDK providers (FR-10). CLI providers won't emit this event — it's only used by claude-sdk and future SDK adapters. The CLI formatter should handle it gracefully but can be minimal for now."
+      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §6.3 for the schema definition. This event type enables live progress streaming from SDK providers (FR-10). CLI providers won't emit this event — it's only used by claude-sdk and future SDK adapters. The CLI formatter should handle it gracefully but can be minimal for now. Pure additive schema change — no breaking risk. Only consumed by SDK providers (item 010+). Could be implemented alongside item 010 if preferred."
     },
     {
       "id": "010",
@@ -297,7 +298,7 @@
       "dependsOn": [
         "002"
       ],
-      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §5.3. The codex CLI flags may need research at implementation time — the spec marks them as TBD. Focus on getting the structure right; exact flags can be refined based on codex documentation. The key requirement is that the provider follows the LLMProvider interface and the signal protocol works via RALPH.md prompt instructions."
+      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §5.3. The codex CLI flags may need research at implementation time — the spec marks them as TBD. Focus on getting the structure right; exact flags can be refined based on codex documentation. The key requirement is that the provider follows the LLMProvider interface and the signal protocol works via RALPH.md prompt instructions. CLI flags are TBD and require research at implementation time. Evaluate whether this should be a standalone provider or a generic-cli configuration preset — if no custom logic is needed beyond binary+args, prefer generic-cli preset."
     },
     {
       "id": "012",
@@ -323,7 +324,7 @@
       "dependsOn": [
         "002"
       ],
-      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §5.4. Similar to the Codex provider — the exact flags may need research at implementation time. The --permissive-open flag is mentioned in the spec as needed for headless operation. Google credential detection may check for GOOGLE_AI_STUDIO_KEY env var first, then fall back to checking if gcloud auth is configured."
+      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §5.4. Similar to the Codex provider — the exact flags may need research at implementation time. The --permissive-open flag is mentioned in the spec as needed for headless operation. Google credential detection may check for GOOGLE_AI_STUDIO_KEY env var first, then fall back to checking if gcloud auth is configured. CLI flags are TBD and require research at implementation time. Evaluate whether this should be a standalone provider or a generic-cli configuration preset — if no custom logic is needed beyond binary+args, prefer generic-cli preset."
     },
     {
       "id": "013",
@@ -347,11 +348,9 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": [
-        "007",
-        "011",
-        "012"
+        "007"
       ],
-      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §6.1 for the resolution order (item.provider is highest priority) and §8 Phase 4 tasks. This was originally listed as out of scope in §2.3 but was included in Phase 4 of the implementation plan. The caching is important — creating a new provider instance per iteration would be wasteful, especially for SDK providers that maintain connections."
+      "notes": "Reference docs/SPEC-LLM-AGNOSTIC.md §6.1 for the resolution order (item.provider is highest priority) and §8 Phase 4 tasks. This was originally listed as out of scope in §2.3 but was included in Phase 4 of the implementation plan. The caching is important — creating a new provider instance per iteration would be wasteful, especially for SDK providers that maintain connections. Dependencies relaxed: items 011/012 are nice-to-have for testing but not logically required — routing works with any two registered providers (e.g., claude-cli + generic-cli)."
     },
     {
       "id": "014",

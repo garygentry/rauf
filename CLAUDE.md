@@ -62,6 +62,18 @@ pnpm lint             # ESLint
 pnpm format:check     # Prettier check
 ```
 
+## Test Sandbox
+
+`test-sandbox/` provides a self-contained ralph project with mock Claude scripts for testing the loop runner without API access.
+
+```bash
+bash test-sandbox/run.sh                  # Default scenario (stream-done)
+bash test-sandbox/run.sh stream-blocked   # Specific scenario
+bash test-sandbox/verify.sh               # All scenarios with assertions
+```
+
+When modifying `packages/loop/` or loop CLI commands, use the sandbox to verify changes. See the `test-ralph-loop` skill for detailed guidance.
+
 ## Dev Environment Setup
 
 ### Prerequisites

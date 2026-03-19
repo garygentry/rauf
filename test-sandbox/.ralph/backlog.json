@@ -1,0 +1,36 @@
+{
+  "project": "test-sandbox",
+  "description": "Integration test sandbox for ralph loop runner",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add farewell function",
+      "description": "Add a farewell(name) function to src/index.ts that returns 'Goodbye, {name}!'",
+      "acceptanceCriteria": [
+        "farewell function exists in src/index.ts",
+        "Returns formatted farewell string",
+        "Verification command passes (echo all-pass)"
+      ],
+      "status": "done",
+      "completedAt": "2026-03-19T01:06:12.836Z"
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add JSDoc comments",
+      "description": "Add JSDoc comments to all exported functions in src/index.ts",
+      "acceptanceCriteria": [
+        "All exported functions have JSDoc comments",
+        "Verification command passes (echo all-pass)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [
+        "001"
+      ]
+    }
+  ]
+}

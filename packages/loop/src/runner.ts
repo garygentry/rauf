@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 
-import type { LoopStartOptions, LoopEvent, LoopState, Backlog, BacklogItem } from "@ralph/core";
+import type { LoopStartOptions, LoopEvent, LoopState, Backlog, BacklogItem, IterationStatus } from "@ralph/core";
 import {
   readBacklog,
   selectNextItem,
@@ -15,10 +15,13 @@ import {
   checkCancelRequested,
   clearCancelFile,
   sweepBacklog,
+  writeIterationStatus,
+  clearIterationStatus,
 } from "@ralph/core";
 
 import { TypedEventEmitter } from "./events.js";
 import { spawnClaude } from "./claude-process.js";
+import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
@@ -38,6 +41,15 @@ export interface LoopResult {
 
 /** Result of a review pass */
 type ReviewPassResult = "clean" | "continue" | "failed";
+
+/** How long without activity before we emit a stuck warning */
+const STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+/** How often to check for stuckness */
+const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
+
+/** Minimum interval between token_update event emissions */
+const TOKEN_EVENT_THROTTLE_MS = 5_000;
 
 /** Usage limit patterns detected in stderr (case-insensitive) */
 const USAGE_LIMIT_PATTERNS = [
@@ -350,7 +362,7 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    // Spawn claude
+    // Spawn claude with streaming
     this.emitEvent("llm_spawned", {
       itemId: item.id,
       provider: "claude-cli",
@@ -362,11 +374,104 @@ export class LoopRunner extends TypedEventEmitter {
       `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
     );
 
+    // Set up iteration status tracking
+    let lastActivityAt = new Date().toISOString();
+    let currentTool: string | null = null;
+    const recentTools: string[] = [];
+    let latestInputTokens = 0;
+    let latestOutputTokens = 0;
+    let lastTokenEventAt = 0;
+    let stuckWarning = false;
+
+    const iterStatus: IterationStatus = {
+      itemId: item.id,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      currentTool: null,
+      recentTools: [],
+      tokens: { input: 0, output: 0 },
+      lastActivityAt,
+      stuckWarning: false,
+    };
+    writeIterationStatus(this.projectPath, iterStatus, true);
+
+    // Stuck detection interval
+    const stuckTimer = setInterval(() => {
+      const silentMs = Date.now() - new Date(lastActivityAt).getTime();
+      if (silentMs >= STUCK_THRESHOLD_MS && !stuckWarning) {
+        stuckWarning = true;
+        this.emitEvent("llm_stuck_warning", { itemId: item.id, silentMs });
+        iterStatus.stuckWarning = true;
+        iterStatus.updatedAt = new Date().toISOString();
+        writeIterationStatus(this.projectPath, iterStatus);
+      }
+    }, STUCK_CHECK_INTERVAL_MS);
+
+    const onStreamEvent = (event: ClaudeStreamEvent): void => {
+      lastActivityAt = new Date().toISOString();
+      stuckWarning = false;
+
+      try {
+        switch (event.type) {
+          case "tool_start": {
+            currentTool = event.toolName;
+            recentTools.push(event.toolName);
+            if (recentTools.length > 10) recentTools.shift();
+            this.emitEvent("llm_tool_activity", {
+              itemId: item.id,
+              toolName: event.toolName,
+              phase: "start",
+            });
+            break;
+          }
+          case "tool_end": {
+            currentTool = null;
+            this.emitEvent("llm_tool_activity", {
+              itemId: item.id,
+              toolName: "unknown",
+              phase: "end",
+            });
+            break;
+          }
+          case "token_update": {
+            latestInputTokens = event.inputTokens;
+            latestOutputTokens = event.outputTokens;
+            const now = Date.now();
+            if (now - lastTokenEventAt >= TOKEN_EVENT_THROTTLE_MS) {
+              lastTokenEventAt = now;
+              this.emitEvent("llm_token_update", {
+                itemId: item.id,
+                inputTokens: event.inputTokens,
+                outputTokens: event.outputTokens,
+              });
+            }
+            break;
+          }
+        }
+
+        // Update iteration status file
+        iterStatus.currentTool = currentTool;
+        iterStatus.recentTools = [...recentTools];
+        iterStatus.tokens = { input: latestInputTokens, output: latestOutputTokens };
+        iterStatus.lastActivityAt = lastActivityAt;
+        iterStatus.stuckWarning = stuckWarning;
+        iterStatus.updatedAt = new Date().toISOString();
+        writeIterationStatus(this.projectPath, iterStatus);
+      } catch {
+        // Stream event handling must never crash the loop
+      }
+    };
+
     const claudeResult = await spawnClaude(promptResult.value, {
       sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
       model: resolvedModel,
       signal: this.abortController.signal,
+      outputFormat: "stream-json",
+      onStreamEvent,
     });
+
+    clearInterval(stuckTimer);
+    clearIterationStatus(this.projectPath);
 
     if (!claudeResult.ok) {
       appendLog(this.projectPath, `Failed to spawn claude: ${claudeResult.error.message}`);
@@ -376,7 +481,7 @@ export class LoopRunner extends TypedEventEmitter {
       return "break";
     }
 
-    const { exitCode, stdout, stderr, timedOut, durationMs } = claudeResult.value;
+    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } = claudeResult.value;
     this.emitEvent("llm_exited", {
       itemId: item.id,
       provider: "claude-cli",
@@ -405,8 +510,9 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    // Parse signal from stdout
-    const parsed = parseSignal(stdout);
+    // Parse signal — prefer reconstructed text from stream-json, fall back to raw stdout
+    const signalText = reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
+    const parsed = parseSignal(signalText);
     this.emitEvent("signal_parsed", {
       itemId: item.id,
       signal: parsed.signal === "review" ? "done" : parsed.signal,

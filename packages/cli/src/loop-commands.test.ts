@@ -84,7 +84,7 @@ describe("loop command registration", () => {
     const loop = findCommand("loop")!;
     expect(loop.subcommands).toBeDefined();
     const subNames = loop.subcommands!.map((s) => s.name);
-    expect(subNames).toEqual(["start", "stop", "follow", "run"]);
+    expect(subNames).toEqual(["start", "stop", "follow", "run", "review", "watch"]);
   });
 
   it("all subcommands have handlers", () => {

@@ -32,6 +32,7 @@ export class StatusLine {
   private frames: readonly string[];
   private frameIndex = 0;
   private message = "";
+  private detail: string | null = null;
   private startedAt = 0;
   private countdownUntil: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -72,13 +73,20 @@ export class StatusLine {
     this.message = message;
   }
 
+  /** Set or clear the detail line below the spinner. */
+  setDetail(detail: string | null): void {
+    if (!this.enabled || !this.timer) return;
+    this.detail = detail;
+  }
+
   /** Stop animation, clear the line. */
   stop(): void {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      this.clearLine();
+      this.clearLines();
     }
+    this.detail = null;
     this.paused = false;
   }
 
@@ -86,7 +94,7 @@ export class StatusLine {
   pause(): void {
     if (!this.enabled || !this.timer) return;
     this.paused = true;
-    this.clearLine();
+    this.clearLines();
   }
 
   /** Restore the status line after a pause. */
@@ -111,7 +119,12 @@ export class StatusLine {
     const spinner = this.frames[this.frameIndex]!;
     const timerText = this.computeTimer();
     const line = `${spinner} ${this.message}  [${timerText}]`;
-    process.stdout.write(`\r\x1b[K${line}`);
+    if (this.detail) {
+      // Write main line + detail line, then move cursor back up
+      process.stdout.write(`\r\x1b[K${line}\n\r\x1b[K  ${this.detail}\x1b[1A`);
+    } else {
+      process.stdout.write(`\r\x1b[K${line}`);
+    }
   }
 
   private computeTimer(): string {
@@ -122,7 +135,13 @@ export class StatusLine {
     return formatElapsed(Date.now() - this.startedAt);
   }
 
-  private clearLine(): void {
-    process.stdout.write("\r\x1b[K");
+  /** Clear main line and detail line (if present) */
+  private clearLines(): void {
+    if (this.detail !== null) {
+      // Clear current line, move down, clear detail line, move back up
+      process.stdout.write("\r\x1b[K\n\r\x1b[K\x1b[1A");
+    } else {
+      process.stdout.write("\r\x1b[K");
+    }
   }
 }

@@ -1,5 +1,6 @@
 import type { Result } from "@ralph/core";
 import type { ParsedSignal } from "../signal-parser.js";
+import type { ClaudeStreamEvent } from "../stream-parser.js";
 
 /** Uniquely identifies a provider */
 export type ProviderId = string;
@@ -37,6 +38,10 @@ export interface ExecuteOptions {
   signal?: AbortSignal;
   /** Callback for streaming progress (SDK providers only) */
   onProgress?: ProgressCallback;
+  /** Output format for CLI providers */
+  outputFormat?: "text" | "stream-json";
+  /** Callback for real-time stream events (CLI providers with stream-json) */
+  onStreamEvent?: (event: ClaudeStreamEvent) => void;
 }
 
 export interface ExecutionResult {
@@ -54,6 +59,8 @@ export interface ExecutionResult {
   parsedSignal?: ParsedSignal;
   /** Streaming events collected during execution (SDK providers) */
   progressEvents?: ProviderProgressEvent[];
+  /** Reconstructed text output (set when outputFormat is stream-json) */
+  reconstructedText?: string;
 }
 
 export interface ProviderProgressEvent {

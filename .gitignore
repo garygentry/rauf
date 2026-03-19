@@ -13,6 +13,14 @@ ralph-bin
 .worktrees/
 .playwright-mcp/
 
+# Test sandbox transient files
+test-sandbox/.ralph/ralph.log
+test-sandbox/.ralph/state.json
+test-sandbox/.ralph/DONE
+test-sandbox/.ralph/CANCEL
+test-sandbox/.ralph/iteration-status.json
+test-sandbox/.ralph/backlog.json.bak
+
 # Astro/Starlight generated (recreated by scripts/setup-docs.sh and astro dev/build)
 packages/docs/.astro/
 packages/docs/src/content/docs/

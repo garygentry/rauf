@@ -8,9 +8,10 @@
 //   follow → SSE stream from server, format events for terminal
 //   run    → direct mode, creates LoopRunner in-process (no server)
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { readToolConfig, LoopStartOptionsSchema, type LoopEvent } from "@ralph/core";
+import { readToolConfig, LoopStartOptionsSchema, readIterationStatus, type LoopEvent, type IterationStatus } from "@ralph/core";
 import ports from "../../../config/ports.json";
 import { LoopRunner } from "@ralph/loop";
 
@@ -433,9 +434,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     noColor: ctx.globalFlags.noColor,
   });
 
-  // Track current item for status line messages
+  // Track current item and tool state for status line
   let currentItemId = "";
   let currentItemTitle = "";
+  let currentToolName: string | null = null;
+  let tokenSummary = "";
 
   // Subscribe to all events for terminal output
   const eventTypes: LoopEvent["type"][] = [
@@ -459,9 +462,49 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     "review_started",
     "review_completed",
     "review_failed",
+    "llm_tool_activity",
+    "llm_token_update",
+    "llm_stuck_warning",
   ];
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
+      // For streaming events, update the detail line without pausing
+      switch (event.type) {
+        case "llm_tool_activity": {
+          if (event.phase === "start") {
+            currentToolName = event.toolName;
+            const detail = tokenSummary
+              ? `\u2192 ${event.toolName}  (${tokenSummary})`
+              : `\u2192 ${event.toolName}`;
+            statusLine.setDetail(detail);
+          } else {
+            currentToolName = null;
+            if (tokenSummary) {
+              statusLine.setDetail(`(${tokenSummary})`);
+            } else {
+              statusLine.setDetail(null);
+            }
+          }
+          return;
+        }
+        case "llm_token_update": {
+          const inK = (event.inputTokens / 1000).toFixed(1);
+          const outK = (event.outputTokens / 1000).toFixed(1);
+          tokenSummary = `${inK}k in / ${outK}k out`;
+          if (currentToolName) {
+            statusLine.setDetail(`\u2192 ${currentToolName}  (${tokenSummary})`);
+          } else {
+            statusLine.setDetail(`(${tokenSummary})`);
+          }
+          return;
+        }
+        case "llm_stuck_warning": {
+          const mins = Math.round(event.silentMs / 60000);
+          statusLine.setDetail(`\x1b[33m\u26A0 No activity for ${mins}m\x1b[0m`);
+          return;
+        }
+      }
+
       statusLine.pause();
       formatAndPrintEvent(event);
 
@@ -469,12 +512,16 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         case "item_selected":
           currentItemId = event.itemId;
           currentItemTitle = event.title;
+          currentToolName = null;
+          tokenSummary = "";
           break;
         case "llm_spawned":
           statusLine.start(`Claude working on #${currentItemId}: ${currentItemTitle}`);
           break;
         case "llm_exited":
           statusLine.stop();
+          currentToolName = null;
+          tokenSummary = "";
           break;
         case "sleep_start":
           statusLine.startCountdown(
@@ -778,6 +825,116 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       print(`${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}`);
       break;
   }
+}
+
+// ─── handleLoopWatch ─────────────────────────────────────────────
+
+export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
+  const projectPath = resolveProjectPath(ctx);
+  const jsonOutput = ctx.globalFlags.json;
+  const statusFile = path.resolve(projectPath, ".ralph", "iteration-status.json");
+
+  // Initial read
+  const initial = readIterationStatus(projectPath);
+  if (!initial) {
+    if (jsonOutput) {
+      outputJson({ status: "no_iteration" });
+    } else {
+      info("No active iteration. Waiting for iteration-status.json...");
+    }
+  } else {
+    renderWatchOutput(initial, jsonOutput);
+  }
+
+  return new Promise<number>((resolve) => {
+    let resolved = false;
+    let watcher: fs.FSWatcher | undefined;
+
+    const finish = (code: number) => {
+      if (resolved) return;
+      resolved = true;
+      watcher?.close();
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+      resolve(code);
+    };
+
+    const onSignal = () => finish(ExitCode.SUCCESS);
+    process.on("SIGINT", onSignal);
+    process.on("SIGTERM", onSignal);
+
+    const ralphDir = path.resolve(projectPath, ".ralph");
+
+    try {
+      watcher = fs.watch(ralphDir, (eventType, filename) => {
+        if (filename !== "iteration-status.json") return;
+
+        const status = readIterationStatus(projectPath);
+        if (status) {
+          renderWatchOutput(status, jsonOutput);
+        } else {
+          // File was deleted — iteration ended
+          if (jsonOutput) {
+            outputJson({ status: "iteration_ended" });
+          } else {
+            print("");
+            info("Iteration ended (status file removed).");
+          }
+          finish(ExitCode.SUCCESS);
+        }
+      });
+
+      watcher.on("error", () => {
+        error("Watch error on .ralph directory");
+        finish(ExitCode.ERROR);
+      });
+    } catch (e) {
+      error(`Cannot watch directory: ${e instanceof Error ? e.message : String(e)}`);
+      finish(ExitCode.ERROR);
+    }
+  });
+}
+
+function renderWatchOutput(status: IterationStatus, json: boolean): void {
+  if (json) {
+    outputJson(status);
+    return;
+  }
+
+  const elapsed = formatElapsedWatch(status.startedAt);
+  const lastAgo = formatAgo(status.lastActivityAt);
+  const inK = (status.tokens.input / 1000).toFixed(1);
+  const outK = (status.tokens.output / 1000).toFixed(1);
+  const toolLine = status.currentTool
+    ? `${c.cyan("\u2192")} ${status.currentTool}`
+    : c.dim("(idle)");
+  const stuckLine = status.stuckWarning ? `  ${c.yellow("\u26A0 Possibly stuck")}` : "";
+
+  // Clear screen and render
+  process.stdout.write("\x1b[2J\x1b[H");
+  print(`${c.bold("Item")} #${status.itemId}`);
+  print(`${c.bold("Phase:")} tool_use ${toolLine}${stuckLine}`);
+  print(`${c.bold("Tokens:")} ${c.cyan(`${inK}k`)} in / ${c.cyan(`${outK}k`)} out`);
+  print(`${c.bold("Active for")} ${elapsed} | ${c.bold("Last activity:")} ${lastAgo}`);
+  if (status.recentTools.length > 0) {
+    print(`${c.bold("Recent:")} ${c.dim(status.recentTools.join(", "))}`);
+  }
+}
+
+function formatElapsedWatch(isoTimestamp: string): string {
+  const ms = Date.now() - new Date(isoTimestamp).getTime();
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  if (totalSec < 60) return `${totalSec}s`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}m ${s}s`;
+}
+
+function formatAgo(isoTimestamp: string): string {
+  const ms = Date.now() - new Date(isoTimestamp).getTime();
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}s ago`;
+  return `${Math.floor(sec / 60)}m ago`;
 }
 
 /** Format ISO timestamp to HH:MM:SS */

@@ -18,3 +18,4 @@ export * from "./installer.js";
 export * from "./greenfield.js";
 export * from "./reset.js";
 export * from "./embedded-artifacts.js";
+export * from "./iteration-status.js";
