@@ -512,6 +512,7 @@ export class LoopRunner extends TypedEventEmitter {
 
     // Parse signal — prefer reconstructed text from stream-json, fall back to raw stdout
     const signalText = reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
+    appendLog(this.projectPath, `DEBUG signalText=${JSON.stringify(signalText?.slice(-200))}, reconstructedText=${JSON.stringify(reconstructedText?.slice(-200))}, stdout len=${stdout.length}`);
     const parsed = parseSignal(signalText);
     this.emitEvent("signal_parsed", {
       itemId: item.id,
