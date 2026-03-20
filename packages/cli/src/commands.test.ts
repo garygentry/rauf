@@ -99,6 +99,7 @@ describe("COMMANDS registry", () => {
       "sweep",
       "archive",
       "reset",
+      "unblock",
     ]);
   });
 

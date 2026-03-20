@@ -7,6 +7,7 @@ import {
   BacklogSchema,
   LoopStateSchema,
   VALID_STATUS_TRANSITIONS,
+  normalizeBacklogItems,
   type AgentDelegation,
   type Backlog,
   type BacklogItem,
@@ -69,7 +70,7 @@ function getStatePath(projectPath: string): string {
 // Read and validate .ralph/backlog.json.
 
 export function readBacklog(projectPath: string): Result<Backlog> {
-  return readJsonFile(getBacklogPath(projectPath), BacklogSchema);
+  return readJsonFile(getBacklogPath(projectPath), BacklogSchema, normalizeBacklogItems);
 }
 
 // ─── writeBacklog ────────────────────────────────────────────────
@@ -106,7 +107,9 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
 
   const backlog = backlogResult.value;
 
-  // 2. Compute next ID: max(existing) + 1, zero-pad to 3 digits
+  // 2. Compute next numeric ID: max(existing) + 1, zero-pad to 3 digits.
+  // Non-numeric IDs (e.g. "notif-001") are ignored — parseInt returns NaN
+  // which loses the > comparison, so max stays at its current value.
   const maxId = backlog.items.reduce((max, item) => {
     const num = parseInt(item.id, 10);
     return num > max ? num : max;
@@ -415,6 +418,66 @@ export function ensureBacklog(projectPath: string): Result<void> {
   };
 
   return writeBacklog(projectPath, emptyBacklog);
+}
+
+// ─── unblockItems ─────────────────────────────────────────────────
+//
+// Transition blocked items back to pending and clear blockedReason.
+// If itemId provided, unblock just that item; otherwise unblock all.
+
+export function unblockItems(
+  projectPath: string,
+  itemId?: string,
+): Result<{ unblockedCount: number; unblockedIds: string[] }> {
+  const backlogResult = readBacklog(projectPath);
+  if (!backlogResult.ok) return backlogResult;
+
+  const backlog = backlogResult.value;
+
+  if (itemId !== undefined) {
+    // Single item mode
+    const item = backlog.items.find((i) => i.id === itemId);
+    if (!item) {
+      return err({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message: `Item not found: ${itemId}`,
+        details: { itemId },
+      });
+    }
+    if (item.status !== "blocked") {
+      return err({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message: `Item ${itemId} is not blocked (status: ${item.status})`,
+        details: { itemId, currentStatus: item.status },
+      });
+    }
+    item.status = "pending";
+    delete item.blockedReason;
+
+    const writeResult = writeBacklog(projectPath, backlog);
+    if (!writeResult.ok) return writeResult;
+
+    return ok({ unblockedCount: 1, unblockedIds: [itemId] });
+  }
+
+  // All blocked items mode
+  const blockedItems = backlog.items.filter((i) => i.status === "blocked");
+  if (blockedItems.length === 0) {
+    return ok({ unblockedCount: 0, unblockedIds: [] });
+  }
+
+  for (const item of blockedItems) {
+    item.status = "pending";
+    delete item.blockedReason;
+  }
+
+  const writeResult = writeBacklog(projectPath, backlog);
+  if (!writeResult.ok) return writeResult;
+
+  return ok({
+    unblockedCount: blockedItems.length,
+    unblockedIds: blockedItems.map((i) => i.id),
+  });
 }
 
 // ─── Exported constants (for testing) ────────────────────────────

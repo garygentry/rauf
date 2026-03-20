@@ -16,6 +16,7 @@ import {
   readArchiveMonth,
   purgeArchive,
   resetProject,
+  unblockItems,
   ErrorCodes,
   type BacklogItem,
   type BacklogItemType,
@@ -713,6 +714,41 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     success(`Reset complete: ${parts.join(", ")}.`);
   }
 
+  return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogUnblock ─────────────────────────────────────────
+//
+// ralph backlog unblock <path> [id]
+
+export async function handleBacklogUnblock(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: ralph backlog unblock <path> [id]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const itemId = ctx.args[1] ?? undefined;
+
+  const result = unblockItems(resolved, itemId);
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx, resolved);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value);
+    return ExitCode.SUCCESS;
+  }
+
+  if (result.value.unblockedCount === 0) {
+    info("No blocked items found.");
+  } else {
+    success(
+      `Unblocked ${result.value.unblockedCount} item${result.value.unblockedCount === 1 ? "" : "s"}: ${result.value.unblockedIds.join(", ")}`,
+    );
+  }
   return ExitCode.SUCCESS;
 }
 

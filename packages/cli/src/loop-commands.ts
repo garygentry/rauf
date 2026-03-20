@@ -11,7 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { readToolConfig, LoopStartOptionsSchema, readIterationStatus, type LoopEvent, type IterationStatus } from "@ralph/core";
+import { readToolConfig, LoopStartOptionsSchema, readIterationStatus, type LoopEvent, type IterationStatus, deriveStatus, readLogTail, watchLog, unblockItems } from "@ralph/core";
 import ports from "../../../config/ports.json";
 import { LoopRunner } from "@ralph/loop";
 
@@ -102,6 +102,14 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
   const follow = extractBoolFlag(ctx.flags, "follow");
+  const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
+
+  if (retryBlocked) {
+    const ubResult = unblockItems(projectPath);
+    if (ubResult.ok && ubResult.value.unblockedCount > 0) {
+      info(`Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`);
+    }
+  }
 
   // Auto-start server if not running
   const running = await ensureServerRunning(ctx);
@@ -315,32 +323,135 @@ async function streamEventsUntilDone(
   });
 }
 
+// ─── followDirectMode ───────────────────────────────────────────────
+
+/** Terminal states that indicate the loop is no longer active */
+const TERMINAL_LOOP_STATES: ReadonlySet<string> = new Set([
+  "IDLE",
+  "COMPLETE",
+  "ERROR",
+  "PAUSED",
+  "PAUSED_HUMAN",
+  "LIMIT_REACHED",
+  "WEEKLY_LIMIT",
+]);
+
+const DIRECT_MODE_POLL_MS = 2000;
+
+/**
+ * Follow loop output in direct mode by tailing .ralph/ralph.log
+ * and polling deriveStatus() to detect when the loop stops.
+ */
+async function followDirectMode(projectPath: string): Promise<number> {
+  const id = projectId(projectPath);
+
+  // Check if a loop is currently active
+  const statusResult = deriveStatus(projectPath);
+  if (!statusResult.ok) {
+    error(`Failed to read project status: ${statusResult.error.message}`);
+    return ExitCode.ERROR;
+  }
+
+  const { loopState } = statusResult.value;
+  if (loopState !== "RUNNING" && loopState !== "SLEEPING_LIMIT") {
+    error(`No active loop for ${c.cyan(id)} (state: ${loopState}).`);
+    info(`Start a loop with ${c.cyan("ralph loop run .")} or ${c.cyan("ralph loop start .")}`);
+    return ExitCode.ERROR;
+  }
+
+  // Print recent log lines for context
+  const tailResult = readLogTail(projectPath, 20);
+  if (tailResult.ok && tailResult.value.length > 0) {
+    info(c.dim("─── recent log ───"));
+    for (const line of tailResult.value) {
+      print(c.dim(line));
+    }
+    info(c.dim("─── live tail ────"));
+  }
+
+  info(`Following loop output for ${c.cyan(id)}...`);
+  info(c.dim("Press Ctrl+C to stop."));
+
+  return new Promise<number>((resolve) => {
+    let resolved = false;
+    let stopWatcher: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let watcherActive = false;
+
+    const finish = (code: number) => {
+      if (resolved) return;
+      resolved = true;
+      if (pollTimer) clearInterval(pollTimer);
+      if (stopWatcher) stopWatcher();
+      process.removeListener("SIGINT", onSignal);
+      process.removeListener("SIGTERM", onSignal);
+      resolve(code);
+    };
+
+    const onSignal = () => finish(ExitCode.SUCCESS);
+    process.on("SIGINT", onSignal);
+    process.on("SIGTERM", onSignal);
+
+    // Try to start watching the log file
+    const tryStartWatcher = () => {
+      if (watcherActive) return;
+      try {
+        stopWatcher = watchLog(projectPath, (lines) => {
+          for (const line of lines) {
+            print(line);
+          }
+        });
+        watcherActive = true;
+      } catch {
+        // Log file doesn't exist yet — will retry on next poll
+      }
+    };
+
+    tryStartWatcher();
+
+    // Poll deriveStatus to detect terminal states
+    pollTimer = setInterval(() => {
+      // Retry watcher setup if it hasn't started yet
+      if (!watcherActive) tryStartWatcher();
+
+      const result = deriveStatus(projectPath);
+      if (!result.ok) return;
+
+      if (TERMINAL_LOOP_STATES.has(result.value.loopState)) {
+        print("");
+        info(`Loop ended (${result.value.loopState}).`);
+        finish(result.value.loopState === "ERROR" ? ExitCode.ERROR : ExitCode.SUCCESS);
+      }
+    }, DIRECT_MODE_POLL_MS);
+  });
+}
+
 // ─── handleLoopFollow ───────────────────────────────────────────────
 
 export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
-  const port = getPort();
 
-  if (!isServerRunning()) {
-    error("Server is not running.");
-    info(`Start a loop with ${c.cyan("ralph loop start")} first.`);
-    return ExitCode.ERROR;
+  // Server mode: existing SSE streaming behavior
+  if (isServerRunning()) {
+    const port = getPort();
+    const url = apiUrl(port, id, "events");
+
+    info(`Following loop events for ${c.cyan(id)}...`);
+    info(c.dim("Press Ctrl+C to stop."));
+
+    const statusLine = new StatusLine({
+      isTTY: process.stdout.isTTY ?? false,
+      quiet: ctx.globalFlags.quiet,
+      json: ctx.globalFlags.json,
+      noColor: ctx.globalFlags.noColor,
+    });
+
+    return streamEventsUntilDone(url, statusLine);
   }
 
-  const url = apiUrl(port, id, "events");
-
-  info(`Following loop events for ${c.cyan(id)}...`);
-  info(c.dim("Press Ctrl+C to stop."));
-
-  const statusLine = new StatusLine({
-    isTTY: process.stdout.isTTY ?? false,
-    quiet: ctx.globalFlags.quiet,
-    json: ctx.globalFlags.json,
-    noColor: ctx.globalFlags.noColor,
-  });
-
-  return streamEventsUntilDone(url, statusLine);
+  // Direct mode: tail ralph.log
+  return followDirectMode(projectPath);
 }
 
 /** Connect to an SSE endpoint, parse events, and invoke callback for each LoopEvent */
@@ -408,6 +519,14 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
   const reviewOnly = extractBoolFlag(ctx.flags, "review-only");
   const review = extractBoolFlag(ctx.flags, "review") || reviewOnly;
+  const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
+
+  if (retryBlocked) {
+    const ubResult = unblockItems(projectPath);
+    if (ubResult.ok && ubResult.value.unblockedCount > 0) {
+      info(`Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`);
+    }
+  }
 
   const options = LoopStartOptionsSchema.parse({
     maxIterations: iterations,
@@ -593,6 +712,13 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
           msg += `\n  Review: ${result.reviewSummary}`;
         }
         success(msg);
+
+        if (result.blockedCount > 0) {
+          print("");
+          info("To retry blocked items:");
+          info(`  ${c.cyan("ralph backlog unblock .")}     ${c.dim("# then re-run")}`);
+          info(`  ${c.cyan("ralph loop run . --retry-blocked")}  ${c.dim("# or in one step")}`);
+        }
       }
     }
 
@@ -794,6 +920,9 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       print(
         `${prefix} ${c.green("\u25A0")} ${c.green("Loop completed")} \u2014 ${event.completedCount} done, ${event.blockedCount} blocked`,
       );
+      if (event.blockedCount > 0) {
+        print(`${prefix}   ${c.dim("Retry:")} ${c.cyan("ralph backlog unblock .")} ${c.dim("or")} ${c.cyan("ralph loop run . --retry-blocked")}`);
+      }
       break;
 
     case "loop_error":

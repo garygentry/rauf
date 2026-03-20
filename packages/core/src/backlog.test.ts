@@ -14,6 +14,7 @@ import {
   selectNextItem,
   resetStalledItems,
   ensureBacklog,
+  unblockItems,
   BACKLOG_DIR,
   BACKLOG_FILENAME,
   STATE_FILENAME,
@@ -200,6 +201,90 @@ describe("readBacklog", () => {
 
     expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
   });
+
+  it("accepts items with non-numeric IDs", () => {
+    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        project: "test",
+        description: "test",
+        items: [
+          {
+            id: "notif-001",
+            type: "feature",
+            priority: 1,
+            title: "Add notifications",
+            description: "Notification system",
+            acceptanceCriteria: ["Tests pass"],
+            status: "pending",
+            completedAt: null,
+          },
+        ],
+      }),
+    );
+
+    const result = readBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items[0]!.id).toBe("notif-001");
+  });
+
+  it("accepts items without completedAt field", () => {
+    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        project: "test",
+        description: "test",
+        items: [
+          {
+            id: "001",
+            type: "feature",
+            priority: 1,
+            title: "Missing completedAt",
+            description: "No completedAt field",
+            acceptanceCriteria: ["Tests pass"],
+            status: "pending",
+          },
+        ],
+      }),
+    );
+
+    const result = readBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items[0]!.completedAt).toBeUndefined();
+  });
+
+  it("normalizes dependencies field to dependsOn", () => {
+    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        project: "test",
+        description: "test",
+        items: [
+          {
+            id: "001",
+            type: "feature",
+            priority: 1,
+            title: "Has dependencies alias",
+            description: "Uses dependencies instead of dependsOn",
+            acceptanceCriteria: ["Tests pass"],
+            status: "pending",
+            completedAt: null,
+            dependencies: ["002", "003"],
+          },
+        ],
+      }),
+    );
+
+    const result = readBacklog(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items[0]!.dependsOn).toEqual(["002", "003"]);
+  });
 });
 
 // ─── writeBacklog ────────────────────────────────────────────────
@@ -362,6 +447,53 @@ describe("addItem", () => {
     if (!result.ok) return;
 
     expect(result.value.id).toBe("1000");
+  });
+
+  it("generates numeric ID when existing IDs are non-numeric", () => {
+    writeBacklogRaw(
+      makeBacklog([
+        makeItem({ id: "notif-001" }),
+        makeItem({ id: "auth-setup" }),
+      ]),
+    );
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "After non-numeric IDs",
+      acceptanceCriteria: ["Done"],
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Non-numeric IDs are ignored by parseInt, so max stays 0 → next is "001"
+    expect(result.value.id).toBe("001");
+  });
+
+  it("generates correct ID with mixed numeric and non-numeric IDs", () => {
+    writeBacklogRaw(
+      makeBacklog([
+        makeItem({ id: "notif-001" }),
+        makeItem({ id: "005" }),
+        makeItem({ id: "auth-setup" }),
+      ]),
+    );
+
+    const input: CreateItemInput = {
+      type: "feature",
+      priority: 1,
+      title: "After mixed IDs",
+      acceptanceCriteria: ["Done"],
+    };
+
+    const result = addItem(tmpDir, input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Only "005" is numeric, so max is 5 → next is "006"
+    expect(result.value.id).toBe("006");
   });
 
   it("sets status=pending and completedAt=null", () => {
@@ -1507,5 +1639,93 @@ describe("ensureBacklog", () => {
     } finally {
       fs.rmSync(emptyDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ─── unblockItems ────────────────────────────────────────────────
+
+describe("unblockItems", () => {
+  it("unblocks a single blocked item (blocked → pending, blockedReason cleared)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "blocked", blockedReason: "signal detection failed" }),
+    ]);
+    writeBacklog(tmpDir, backlog);
+
+    const result = unblockItems(tmpDir, "001");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.unblockedCount).toBe(1);
+    expect(result.value.unblockedIds).toEqual(["001"]);
+
+    const readResult = readBacklog(tmpDir);
+    expect(readResult.ok).toBe(true);
+    if (!readResult.ok) return;
+    const item = readResult.value.items[0]!;
+    expect(item.status).toBe("pending");
+    expect(item.blockedReason).toBeUndefined();
+  });
+
+  it("unblocks all blocked items", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "blocked", blockedReason: "reason 1" }),
+      makeItem({ id: "002", status: "pending", title: "Not blocked" }),
+      makeItem({ id: "003", status: "blocked", blockedReason: "reason 2" }),
+    ]);
+    writeBacklog(tmpDir, backlog);
+
+    const result = unblockItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.unblockedCount).toBe(2);
+    expect(result.value.unblockedIds).toEqual(["001", "003"]);
+
+    const readResult = readBacklog(tmpDir);
+    expect(readResult.ok).toBe(true);
+    if (!readResult.ok) return;
+    expect(readResult.value.items[0]!.status).toBe("pending");
+    expect(readResult.value.items[0]!.blockedReason).toBeUndefined();
+    expect(readResult.value.items[1]!.status).toBe("pending");
+    expect(readResult.value.items[2]!.status).toBe("pending");
+    expect(readResult.value.items[2]!.blockedReason).toBeUndefined();
+  });
+
+  it("errors on non-blocked item", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "pending" }),
+    ]);
+    writeBacklog(tmpDir, backlog);
+
+    const result = unblockItems(tmpDir, "001");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(result.error.message).toContain("not blocked");
+  });
+
+  it("errors on non-existent item", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "blocked" }),
+    ]);
+    writeBacklog(tmpDir, backlog);
+
+    const result = unblockItems(tmpDir, "999");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(result.error.message).toContain("not found");
+  });
+
+  it("returns success with count 0 when no blocked items exist", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "pending" }),
+      makeItem({ id: "002", status: "done", completedAt: new Date().toISOString() }),
+    ]);
+    writeBacklog(tmpDir, backlog);
+
+    const result = unblockItems(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.unblockedCount).toBe(0);
+    expect(result.value.unblockedIds).toEqual([]);
   });
 });

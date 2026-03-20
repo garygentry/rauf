@@ -19,6 +19,7 @@ import {
   handleBacklogSweep,
   handleBacklogArchiveDispatch,
   handleBacklogReset,
+  handleBacklogUnblock,
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import {
@@ -189,6 +190,11 @@ export const COMMANDS: CommandDef[] = [
         name: "reset",
         description: "Reset project state for a fresh backlog cycle",
         handler: handleBacklogReset,
+      },
+      {
+        name: "unblock",
+        description: "Unblock items for retry",
+        handler: handleBacklogUnblock,
       },
     ],
   },
