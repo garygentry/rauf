@@ -9,7 +9,12 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { readBacklog, writeBacklog } from "./backlog.js";
-import { ArchiveMonthSchema, type ArchiveMonth, type SweepResult } from "./schemas.js";
+import {
+  ArchiveMonthSchema,
+  normalizeBacklogItems,
+  type ArchiveMonth,
+  type SweepResult,
+} from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -88,7 +93,7 @@ export function sweepBacklog(
     // Merge with existing archive if present
     let existing: ArchiveMonth = { month, items: [] };
     if (fileExists(archivePath)) {
-      const existingResult = readJsonFile(archivePath, ArchiveMonthSchema);
+      const existingResult = readJsonFile(archivePath, ArchiveMonthSchema, normalizeBacklogItems);
       if (!existingResult.ok) return existingResult;
       existing = existingResult.value;
     }
@@ -151,7 +156,7 @@ export function readArchiveMonth(projectPath: string, month: string): Result<Arc
   }
 
   const archivePath = getArchiveFilePath(projectPath, month);
-  return readJsonFile(archivePath, ArchiveMonthSchema);
+  return readJsonFile(archivePath, ArchiveMonthSchema, normalizeBacklogItems);
 }
 
 // ─── purgeArchive ─────────────────────────────────────────────────

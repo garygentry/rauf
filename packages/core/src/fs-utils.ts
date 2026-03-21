@@ -47,7 +47,11 @@ export function atomicWrite(filePath: string, content: string): Result<void> {
 // Read a JSON file and validate against a Zod schema.
 // Returns structured errors for missing file, bad JSON, and validation failures.
 
-export function readJsonFile<T>(filePath: string, schema: z.ZodType<T>): Result<T> {
+export function readJsonFile<T>(
+  filePath: string,
+  schema: z.ZodType<T>,
+  preprocess?: (data: unknown) => unknown,
+): Result<T> {
   const resolved = path.resolve(filePath);
 
   // Read file
@@ -75,6 +79,11 @@ export function readJsonFile<T>(filePath: string, schema: z.ZodType<T>): Result<
       message: `Invalid JSON in ${resolved}: ${e instanceof Error ? e.message : String(e)}`,
       details: { path: resolved },
     });
+  }
+
+  // Preprocess if provided
+  if (preprocess) {
+    parsed = preprocess(parsed);
   }
 
   // Validate against schema

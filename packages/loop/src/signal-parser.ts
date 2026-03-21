@@ -11,7 +11,10 @@ export interface ParsedSignal {
 }
 
 /**
- * Scans Claude's stdout for exit signals on the last non-empty line.
+ * Scans Claude's stdout for exit signals, searching backwards from the end.
+ *
+ * Claude may output text after the signal (e.g., commit messages, summaries),
+ * so we scan all lines from the end looking for the first signal match.
  *
  * Recognizes:
  * - RALPH_DONE → { signal: 'done' }
@@ -22,27 +25,35 @@ export interface ParsedSignal {
  * Returns { signal: 'none' } if no recognized signal found.
  */
 export function parseSignal(stdout: string): ParsedSignal {
-  const lastLine = getLastNonEmptyLine(stdout);
-  if (!lastLine) {
-    return { signal: "none" };
+  const lines = stdout.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i]!.trim();
+    if (!trimmed) continue;
+
+    const result = matchSignal(trimmed);
+    if (result) return result;
   }
 
-  if (lastLine === "RALPH_DONE") {
+  return { signal: "none" };
+}
+
+function matchSignal(line: string): ParsedSignal | null {
+  if (line === "RALPH_DONE") {
     return { signal: "done" };
   }
 
-  if (lastLine.startsWith("RALPH_BLOCKED:")) {
-    const reason = lastLine.slice("RALPH_BLOCKED:".length);
+  if (line.startsWith("RALPH_BLOCKED:")) {
+    const reason = line.slice("RALPH_BLOCKED:".length);
     return { signal: "blocked", reason };
   }
 
-  if (lastLine.startsWith("RALPH_NEEDS_HUMAN:")) {
-    const reason = lastLine.slice("RALPH_NEEDS_HUMAN:".length);
+  if (line.startsWith("RALPH_NEEDS_HUMAN:")) {
+    const reason = line.slice("RALPH_NEEDS_HUMAN:".length);
     return { signal: "needs_human", reason };
   }
 
-  if (lastLine.startsWith("RALPH_REVIEW:")) {
-    const jsonStr = lastLine.slice("RALPH_REVIEW:".length);
+  if (line.startsWith("RALPH_REVIEW:")) {
+    const jsonStr = line.slice("RALPH_REVIEW:".length);
     try {
       const parsed = JSON.parse(jsonStr);
       const result = ReviewPayloadSchema.safeParse(parsed);
@@ -50,21 +61,9 @@ export function parseSignal(stdout: string): ParsedSignal {
         return { signal: "review", reviewPayload: result.data };
       }
     } catch {
-      // Malformed JSON — fall through to none
-    }
-    return { signal: "none" };
-  }
-
-  return { signal: "none" };
-}
-
-function getLastNonEmptyLine(text: string): string | undefined {
-  const lines = text.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const trimmed = lines[i]!.trim();
-    if (trimmed.length > 0) {
-      return trimmed;
+      // Malformed JSON — not a valid review signal
     }
   }
-  return undefined;
+
+  return null;
 }

@@ -141,7 +141,7 @@ export function resetProject(
     }
   }
 
-  // 8. Optionally empty backlog items array (preserve project/description)
+  // 8. Optionally clear backlog (empty items, reset project/description)
   let backlogCleared = false;
   if (options?.clearBacklog) {
     const backlogResult = readBacklog(resolved);
@@ -150,6 +150,8 @@ export function resetProject(
     const backlog = backlogResult.value;
     const writeResult = writeBacklog(resolved, {
       ...backlog,
+      project: '',
+      description: '',
       items: [],
     });
     if (!writeResult.ok) return writeResult;

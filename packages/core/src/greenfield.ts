@@ -11,6 +11,7 @@ import { writeMarkerFile, readMarkerFile } from "./config.js";
 import { addItem, type CreateItemInput } from "./backlog.js";
 import {
   BacklogSchema,
+  normalizeBacklogItems,
   type InstallationReport,
   type InstallAction,
   type ProjectProfile,
@@ -429,8 +430,8 @@ function parseJsonSeed(content: string, filePath: string): Result<CreateItemInpu
     });
   }
 
-  // Try parsing as full Backlog schema
-  const backlogResult = BacklogSchema.safeParse(parsed);
+  // Try parsing as full Backlog schema (normalize dependencies→dependsOn first)
+  const backlogResult = BacklogSchema.safeParse(normalizeBacklogItems(parsed));
   if (backlogResult.success) {
     return ok(backlogItemsToInputs(backlogResult.data.items));
   }

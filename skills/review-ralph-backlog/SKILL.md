@@ -164,11 +164,12 @@ Check each item is right-sized for a single loop iteration:
 
 Check schema conformance:
 - All required fields present on every item
-- IDs are sequential zero-padded strings with no gaps (unless gaps are from done items)
+- IDs are sequential zero-padded strings with no gaps (unless gaps are from done items). Non-numeric IDs (e.g. `"notif-001"`) are tolerated but numeric IDs are preferred.
 - `type` is one of the valid enum values
 - `priority` is 1-4
 - `status` is a valid value
-- `completedAt` is null for pending/blocked items, ISO date for done items
+- `completedAt` is present and set to `null` for pending/blocked items, ISO date for done items. Flag items where `completedAt` is missing entirely.
+- Field naming: use `dependsOn` (not `dependencies`). Flag any items using the wrong field name — ralph can normalize this at read time, but the canonical name should be used.
 - `dependsOn` contains only valid item IDs
 - Project-level `project` and `description` fields are present and meaningful
 

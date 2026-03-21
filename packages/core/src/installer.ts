@@ -5,6 +5,7 @@ import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { atomicWrite, computeHash, fileExists, ensureDir, readJsonFile } from "./fs-utils.js";
 import {
   BacklogSchema,
+  normalizeBacklogItems,
   type MarkerFile,
   type InstallAction,
   type InstallationReport,
@@ -727,7 +728,7 @@ function deployBacklog(
 
   if (fileExists(backlogPath)) {
     // Validate existing backlog
-    const validateResult = readJsonFile(backlogPath, BacklogSchema);
+    const validateResult = readJsonFile(backlogPath, BacklogSchema, normalizeBacklogItems);
     if (!validateResult.ok) {
       return ok({
         file: ".ralph/backlog.json",

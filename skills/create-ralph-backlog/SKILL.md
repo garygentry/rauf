@@ -311,6 +311,19 @@ When adding a feature to messy code, create a refactor item first (clean up the 
 ### The test-alongside pattern
 Don't create separate "write tests for X" items. Include testing in the acceptance criteria of the implementation item. The agent should write tests as part of implementing the feature, not as an afterthought.
 
+## Schema Validation
+
+The ralph schema enforces these machine-parseable constraints. Violating them will cause backlog validation errors:
+
+- **IDs** should be zero-padded sequential digits (`"001"`, `"002"`). Any non-empty string is accepted, but numeric IDs are strongly preferred for consistent ordering.
+- **`completedAt`** must be present and set to `null` for new items (omitting it is tolerated but not recommended).
+- **`dependsOn`** is the correct field name for dependency references. Do NOT use `dependencies` — while ralph can normalize this alias at read time, using the canonical field name avoids confusion.
+- **`status`** must be `"pending"` on all new items.
+- **`type`** must be one of: `feature`, `bug`, `refactor`, `chore`.
+- **`priority`** must be an integer 1-4.
+
+After writing the backlog, validate the generated JSON by reading it back and checking the structure. If the project has a `backlog.schema.json`, validate against it.
+
 ## Checklist Before Finalizing
 
 - [ ] Every item has specific, verifiable acceptance criteria (not vague statements)

@@ -101,9 +101,9 @@ describe("parseSignal", () => {
       expect(parseSignal(stdout)).toEqual({ signal: "none" });
     });
 
-    it("returns none when signal-like text is not on last line", () => {
+    it("returns done when RALPH_DONE is followed by non-signal text", () => {
       const stdout = "RALPH_DONE\nSome other output after";
-      expect(parseSignal(stdout)).toEqual({ signal: "none" });
+      expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
 
     it("returns none for partial signal match", () => {
@@ -197,6 +197,57 @@ describe("parseSignal", () => {
       const result = parseSignal(stdout);
       expect(result.signal).toBe("review");
       expect(result.reviewPayload!.items).toHaveLength(1);
+    });
+  });
+
+  describe("signal followed by trailing text (multi-turn)", () => {
+    it("finds RALPH_DONE when followed by commit message", () => {
+      const stdout = [
+        "Reading backlog...",
+        "Implementing changes...",
+        "All verification passes.",
+        "",
+        "RALPH_DONE",
+        "",
+        "Committed as [ralph] 001: Scaffold packages/ai",
+      ].join("\n");
+      expect(parseSignal(stdout)).toEqual({ signal: "done" });
+    });
+
+    it("finds RALPH_BLOCKED when followed by summary text", () => {
+      const stdout = [
+        "Analyzing task...",
+        "RALPH_BLOCKED:missing API key configuration",
+        "I was unable to complete the task because the API key is not set.",
+      ].join("\n");
+      expect(parseSignal(stdout)).toEqual({
+        signal: "blocked",
+        reason: "missing API key configuration",
+      });
+    });
+
+    it("finds RALPH_NEEDS_HUMAN when followed by explanation", () => {
+      const stdout = [
+        "Found the issue.",
+        "RALPH_NEEDS_HUMAN:design decision needed",
+        "Please decide between option A and option B.",
+      ].join("\n");
+      expect(parseSignal(stdout)).toEqual({
+        signal: "needs_human",
+        reason: "design decision needed",
+      });
+    });
+
+    it("finds signal among many trailing lines", () => {
+      const stdout = [
+        "Working...",
+        "RALPH_DONE",
+        "Successfully committed.",
+        "Updated progress.md",
+        "Cleaning up temporary files.",
+        "",
+      ].join("\n");
+      expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
   });
 

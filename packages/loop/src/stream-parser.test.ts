@@ -182,4 +182,162 @@ describe("StreamParser", () => {
       parser.feed(JSON.stringify({ type: "message_stop" })),
     ).toThrow("callback boom");
   });
+
+  // ── Claude CLI format tests ────────────────────────────────────
+
+  describe("CLI stream-json format", () => {
+    it("extracts text from assistant event", () => {
+      const parser = new StreamParser(() => {});
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Hello world!\n\nRALPH_DONE" }],
+            usage: { input_tokens: 5000, output_tokens: 100 },
+          },
+        }),
+      );
+
+      expect(parser.getReconstructedText()).toBe("Hello world!\n\nRALPH_DONE");
+    });
+
+    it("extracts tool use from assistant event", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "text", text: "Let me read that." },
+              { type: "tool_use", name: "Read", id: "t1", input: {} },
+              { type: "tool_use", name: "Edit", id: "t2", input: {} },
+            ],
+            usage: { input_tokens: 100, output_tokens: 50 },
+          },
+        }),
+      ]);
+
+      const toolStarts = events.filter((e) => e.type === "tool_start");
+      expect(toolStarts).toHaveLength(2);
+      expect(toolStarts[0]).toEqual({ type: "tool_start", toolName: "Read", blockIndex: 1 });
+      expect(toolStarts[1]).toEqual({ type: "tool_start", toolName: "Edit", blockIndex: 2 });
+    });
+
+    it("extracts tokens from assistant event", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "hi" }],
+            usage: { input_tokens: 2000, output_tokens: 50 },
+          },
+        }),
+      ]);
+
+      const tokenUpdates = events.filter((e) => e.type === "token_update");
+      expect(tokenUpdates).toHaveLength(1);
+      expect(tokenUpdates[0]).toEqual({
+        type: "token_update",
+        inputTokens: 2000,
+        outputTokens: 50,
+      });
+    });
+
+    it("extracts text from result event as fallback", () => {
+      const parser = new StreamParser(() => {});
+      // No assistant event first — result provides the text
+      parser.feed(
+        JSON.stringify({
+          type: "result",
+          result: "RALPH_DONE",
+          usage: { input_tokens: 1000, output_tokens: 20 },
+        }),
+      );
+
+      expect(parser.getReconstructedText()).toBe("RALPH_DONE");
+    });
+
+    it("does not overwrite text from assistant events with result", () => {
+      const parser = new StreamParser(() => {});
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Detailed work...\n\nRALPH_DONE" }],
+            usage: { input_tokens: 100, output_tokens: 50 },
+          },
+        }),
+      );
+      parser.feed(
+        JSON.stringify({
+          type: "result",
+          result: "RALPH_DONE",
+          usage: { input_tokens: 100, output_tokens: 50 },
+        }),
+      );
+
+      // Should keep the more detailed text from assistant, not the truncated result
+      expect(parser.getReconstructedText()).toBe("Detailed work...\n\nRALPH_DONE");
+    });
+
+    it("emits message_stop from result event", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "result",
+          result: "done",
+          usage: { input_tokens: 100, output_tokens: 10 },
+        }),
+      ]);
+
+      expect(events.some((e) => e.type === "message_stop")).toBe(true);
+    });
+
+    it("handles realistic CLI multi-turn stream", () => {
+      const events: ClaudeStreamEvent[] = [];
+      const parser = new StreamParser((e) => events.push(e));
+
+      // System init event (ignored)
+      parser.feed(JSON.stringify({ type: "system", subtype: "init" }));
+
+      // Assistant turn with tool use
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "text", text: "Let me scaffold the package." },
+              { type: "tool_use", name: "Write", id: "t1", input: {} },
+            ],
+            usage: { input_tokens: 25000, output_tokens: 200 },
+          },
+        }),
+      );
+
+      // Final assistant turn with signal
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "\n\nRALPH_DONE" }],
+            usage: { input_tokens: 25000, output_tokens: 250 },
+          },
+        }),
+      );
+
+      // Result event
+      parser.feed(
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "RALPH_DONE",
+          usage: { input_tokens: 25000, output_tokens: 250 },
+        }),
+      );
+
+      expect(parser.getReconstructedText()).toBe("Let me scaffold the package.\n\nRALPH_DONE");
+
+      const toolStarts = events.filter((e) => e.type === "tool_start");
+      expect(toolStarts).toHaveLength(1);
+      expect(toolStarts[0]).toEqual({ type: "tool_start", toolName: "Write", blockIndex: 1 });
+    });
+  });
 });

@@ -522,6 +522,11 @@ export class LoopRunner extends TypedEventEmitter {
       this.projectPath,
       `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`,
     );
+    if (parsed.signal === "none") {
+      const textSource = reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
+      const preview = signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText;
+      appendLog(this.projectPath, `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`);
+    }
 
     // Handle signal
     switch (parsed.signal) {

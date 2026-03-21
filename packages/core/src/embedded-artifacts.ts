@@ -170,7 +170,7 @@ RALPH_DONE
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^\\\\d{3,}$",
+            "minLength": 1,
             "description": "Zero-padded sequential ID (e.g. '001', '042'). Never reused."
           },
           "type": {
@@ -292,8 +292,7 @@ RALPH_DONE
           "title",
           "description",
           "acceptanceCriteria",
-          "status",
-          "completedAt"
+          "status"
         ],
         "additionalProperties": false
       },

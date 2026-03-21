@@ -138,8 +138,8 @@ describe("handleLoopFollow", () => {
       expect(code).toBe(ExitCode.ERROR);
     });
 
-    expect(output.stderr).toContain("Server is not running");
-    expect(output.stdout).toContain("ralph loop start");
+    expect(output.stderr).toContain("No active loop");
+    expect(output.stdout).toContain("ralph loop run");
   });
 });
 

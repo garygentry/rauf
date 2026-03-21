@@ -25,6 +25,7 @@ import {
   apiSuccessSchema,
   LoopEventSchema,
   LoopStartOptionsSchema,
+  normalizeBacklogItems,
 } from "./schemas.js";
 import { z } from "zod";
 
@@ -88,15 +89,16 @@ describe("BacklogItemIdSchema", () => {
     expect(BacklogItemIdSchema.parse("0001")).toBe("0001");
   });
 
-  it("rejects non-digit strings", () => {
-    expect(() => BacklogItemIdSchema.parse("abc")).toThrow();
-    expect(() => BacklogItemIdSchema.parse("1a2")).toThrow();
-    expect(() => BacklogItemIdSchema.parse("")).toThrow();
+  it("accepts alphanumeric IDs with prefixes", () => {
+    expect(BacklogItemIdSchema.parse("notif-001")).toBe("notif-001");
+    expect(BacklogItemIdSchema.parse("auth-setup")).toBe("auth-setup");
+    expect(BacklogItemIdSchema.parse("1a2")).toBe("1a2");
+    expect(BacklogItemIdSchema.parse("01")).toBe("01");
+    expect(BacklogItemIdSchema.parse("1")).toBe("1");
   });
 
-  it("rejects IDs shorter than 3 digits", () => {
-    expect(() => BacklogItemIdSchema.parse("01")).toThrow();
-    expect(() => BacklogItemIdSchema.parse("1")).toThrow();
+  it("rejects empty strings", () => {
+    expect(() => BacklogItemIdSchema.parse("")).toThrow();
   });
 });
 
@@ -189,8 +191,30 @@ describe("BacklogItemSchema", () => {
     expect(() => BacklogItemSchema.parse({ ...validBacklogItem, status: "archived" })).toThrow();
   });
 
-  it("rejects invalid id format", () => {
-    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, id: "1" })).toThrow();
+  it("rejects empty id", () => {
+    expect(() => BacklogItemSchema.parse({ ...validBacklogItem, id: "" })).toThrow();
+  });
+
+  it("accepts alphanumeric ids", () => {
+    const result = BacklogItemSchema.parse({ ...validBacklogItem, id: "notif-001" });
+    expect(result.id).toBe("notif-001");
+  });
+
+  it("accepts item without completedAt (optional)", () => {
+    const { completedAt: _, ...itemWithoutCompletedAt } = validBacklogItem;
+    const result = BacklogItemSchema.parse(itemWithoutCompletedAt);
+    expect(result.completedAt).toBeUndefined();
+  });
+
+  it("strips unknown fields like dependencies (normalization happens at read time)", () => {
+    const result = BacklogItemSchema.parse({
+      ...validBacklogItem,
+      dependencies: ["002", "003"],
+    });
+    // dependencies is not in the schema — Zod strips it.
+    // Normalization to dependsOn happens in readBacklog/normalizeBacklogItems.
+    expect(result.dependsOn).toBeUndefined();
+    expect((result as Record<string, unknown>)["dependencies"]).toBeUndefined();
   });
 
   it("accepts completedAt as ISO string or null", () => {
@@ -366,6 +390,44 @@ describe("BacklogSchema", () => {
 
   it("rejects missing project field", () => {
     expect(() => BacklogSchema.parse({ description: "test", items: [] })).toThrow();
+  });
+});
+
+// ─── normalizeBacklogItems ────────────────────────────────────────
+
+describe("normalizeBacklogItems", () => {
+  it("renames dependencies to dependsOn on items", () => {
+    const input = {
+      project: "test",
+      description: "test",
+      items: [
+        { id: "001", dependencies: ["002"] },
+        { id: "002" },
+      ],
+    };
+    const result = normalizeBacklogItems(input) as Record<string, unknown>;
+    const items = result.items as Record<string, unknown>[];
+    expect(items[0]!.dependsOn).toEqual(["002"]);
+    expect(items[0]!.dependencies).toBeUndefined();
+    expect(items[1]!.dependsOn).toBeUndefined();
+  });
+
+  it("does not overwrite existing dependsOn", () => {
+    const input = {
+      project: "test",
+      description: "test",
+      items: [{ id: "001", dependsOn: ["003"], dependencies: ["002"] }],
+    };
+    const result = normalizeBacklogItems(input) as Record<string, unknown>;
+    const items = result.items as Record<string, unknown>[];
+    // dependsOn already exists, so dependencies is left alone
+    expect(items[0]!.dependsOn).toEqual(["003"]);
+  });
+
+  it("passes through non-object values unchanged", () => {
+    expect(normalizeBacklogItems(null)).toBeNull();
+    expect(normalizeBacklogItems("string")).toBe("string");
+    expect(normalizeBacklogItems(42)).toBe(42);
   });
 });
 
@@ -907,6 +969,25 @@ describe("LOG_PATTERNS", () => {
 
   it("needsHuman matches item needs human input format", () => {
     const match = "Item 005 needs human input: Design review needed".match(
+      LOG_PATTERNS.needsHuman,
+    );
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("Design review needed");
+  });
+
+  it("done matches alphanumeric item IDs", () => {
+    const match = "Item notif-001 completed: Add notifications".match(LOG_PATTERNS.done);
+    expect(match).not.toBeNull();
+  });
+
+  it("blocked matches alphanumeric item IDs", () => {
+    const match = "Item auth-setup blocked: Missing API key".match(LOG_PATTERNS.blocked);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("Missing API key");
+  });
+
+  it("needsHuman matches alphanumeric item IDs", () => {
+    const match = "Item ui-review needs human input: Design review needed".match(
       LOG_PATTERNS.needsHuman,
     );
     expect(match).not.toBeNull();

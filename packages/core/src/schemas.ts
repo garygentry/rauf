@@ -8,10 +8,8 @@ export const BacklogItemStatusSchema = z.enum(["pending", "in_progress", "done",
 
 export const BacklogItemPrioritySchema = z.number().int().min(1).max(4) as z.ZodType<1 | 2 | 3 | 4>;
 
-/** Zero-padded sequential ID: "001", "002", etc. */
-export const BacklogItemIdSchema = z.string().regex(/^\d{3,}$/, {
-  message: "ID must be zero-padded digits (e.g. '001')",
-});
+/** Item ID: recommended format is zero-padded digits ("001"), but any non-empty string is accepted. */
+export const BacklogItemIdSchema = z.string().min(1, "ID must be non-empty");
 
 // ─── AgentDelegation ──────────────────────────────────────────────
 
@@ -33,7 +31,7 @@ export const BacklogItemSchema = z.object({
   description: z.string(),
   acceptanceCriteria: z.array(z.string()),
   status: BacklogItemStatusSchema,
-  completedAt: z.string().nullable(),
+  completedAt: z.string().nullable().optional(),
   blockedReason: z.string().optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
@@ -53,6 +51,29 @@ export const BacklogSchema = z.object({
   description: z.string(),
   items: z.array(BacklogItemSchema),
 });
+
+/** Normalize `dependencies` → `dependsOn` on each item in a raw backlog object. */
+export function normalizeBacklogItems(data: unknown): unknown {
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const obj = data as Record<string, unknown>;
+    if (Array.isArray(obj.items)) {
+      return {
+        ...obj,
+        items: obj.items.map((item: unknown) => {
+          if (item && typeof item === "object" && !Array.isArray(item)) {
+            const rec = item as Record<string, unknown>;
+            if ("dependencies" in rec && !("dependsOn" in rec)) {
+              const { dependencies, ...rest } = rec;
+              return { ...rest, dependsOn: dependencies };
+            }
+          }
+          return item;
+        }),
+      };
+    }
+  }
+  return data;
+}
 
 // ─── ProfileCommands ───────────────────────────────────────────────
 
@@ -238,9 +259,9 @@ export const RalphErrorSchema = z.object({
 export const LOG_PATTERNS = {
   loopStart: /Loop started \(maxIterations=(\d+)\)/,
   iteration: /--- Iteration (\d+) \/ (\d+) ---/,
-  done: /Item \d{3,} completed: .+/,
-  blocked: /Item \d{3,} blocked: (.+)/,
-  needsHuman: /Item \d{3,} needs human input: (.+)/,
+  done: /Item \S+ completed: .+/,
+  blocked: /Item \S+ blocked: (.+)/,
+  needsHuman: /Item \S+ needs human input: (.+)/,
   complete: /Loop completed/,
   limitReached: /Max iterations reached \((\d+)\)/,
   timestamp: /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/,

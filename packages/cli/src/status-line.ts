@@ -118,13 +118,39 @@ export class StatusLine {
   private render(): void {
     const spinner = this.frames[this.frameIndex]!;
     const timerText = this.computeTimer();
-    const line = `${spinner} ${this.message}  [${timerText}]`;
+    const cols = process.stdout.columns ?? 80;
+    const raw = `${spinner} ${this.message}  [${timerText}]`;
+    const line = this.truncate(raw, cols);
     if (this.detail) {
+      const detailLine = this.truncate(`  ${this.detail}`, cols);
       // Write main line + detail line, then move cursor back up
-      process.stdout.write(`\r\x1b[K${line}\n\r\x1b[K  ${this.detail}\x1b[1A`);
+      process.stdout.write(`\r\x1b[K${line}\n\r\x1b[K${detailLine}\x1b[1A`);
     } else {
       process.stdout.write(`\r\x1b[K${line}`);
     }
+  }
+
+  /** Truncate text to fit terminal width, accounting for ANSI codes */
+  private truncate(text: string, maxWidth: number): string {
+    const visible = text.replace(/\x1b\[[0-9;]*m/g, "");
+    if (visible.length <= maxWidth) return text;
+    let visibleCount = 0;
+    let cutIndex = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === "\x1b") {
+        const end = text.indexOf("m", i);
+        if (end !== -1) {
+          i = end;
+          continue;
+        }
+      }
+      visibleCount++;
+      if (visibleCount >= maxWidth - 1) {
+        cutIndex = i + 1;
+        break;
+      }
+    }
+    return text.slice(0, cutIndex) + "…";
   }
 
   private computeTimer(): string {
