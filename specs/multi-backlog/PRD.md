@@ -50,7 +50,7 @@ This feature introduces the concept of a **backlog root** — a self-contained d
   - Notes: For a backlog root at `specs/auth/`, state lives at `specs/auth/.ralph/`.
 - REQ-STATE-02: When the backlog root directory is itself named `.ralph/` (the default root case), state files coexist alongside `backlog.json` in the same directory — no nested `.ralph/.ralph/`.
   - Priority: P0
-  - Notes: This is auto-detected by checking if the backlog root directory name is `.ralph/`.
+  - Notes: Implementation guidance — detection mechanism (e.g., checking if the backlog root directory name is `.ralph/`) is determined at tech-spec time.
 - REQ-STATE-03: The state directory must be created automatically when a loop first runs against a backlog root, if it does not already exist.
   - Priority: P0
 - REQ-STATE-04: `backlog.json` may live either inside the `.ralph/` state directory or directly in the backlog root directory (outside `.ralph/`). Both locations must be supported.
@@ -69,13 +69,15 @@ This feature introduces the concept of a **backlog root** — a self-contained d
   - Priority: P0
 - REQ-CLI-04: The resolved backlog root path must be validated as existing within the project root directory (the directory containing `.ralph.json`). Paths that resolve outside the project root must be rejected with a clear error.
   - Priority: P0
-  - Notes: Uses `path.resolve()` + `startsWith()` check, consistent with existing path sandboxing.
+  - Notes: Implementation guidance — validation approach (e.g., `path.resolve()` + `startsWith()`) is consistent with existing path sandboxing conventions in CLAUDE.md.
+- REQ-CLI-05: When the web server is running and `--backlog` is specified, the CLI must pass the backlog root path to the server API. The server must route loop management operations (start, stop, follow) and backlog CRUD operations to the specified root.
+  - Priority: P0
 
 ### 3.4 Status Display
 
 - REQ-STATUS-01: `ralph status` (without `--backlog`) must show the status of the default root AND list any other backlog roots that have a non-idle `state.json`.
   - Priority: P0
-  - Notes: Active roots are discovered by scanning for `state.json` files in known locations. For MVP, this means scanning the project for `**/backlog.json` files that have a sibling or child `.ralph/state.json` with non-idle status.
+  - Notes: Active roots may be discovered via filesystem scan or a lightweight index (see OQ-02). The mechanism is determined at tech-spec time.
 - REQ-STATUS-02: `ralph status --backlog <dir>` must show detailed status for that specific backlog root only.
   - Priority: P1
 - REQ-STATUS-03: The status output must clearly identify which backlog root each status block refers to, using the relative path from the project root.
@@ -98,7 +100,7 @@ This feature introduces the concept of a **backlog root** — a self-contained d
 
 - REQ-INST-01: When running a loop, ralph must look for `RALPH.md` in the backlog root's state directory first. If not found, fall back to the project-level `.ralph/RALPH.md`.
   - Priority: P1
-  - Notes: Practically, RALPH.md will be project-wide for most projects. Per-root override is for edge cases.
+  - Notes: Practically, RALPH.md will be project-wide for most projects. Per-root override is for edge cases. When falling back to the project-level RALPH.md, the loop runner must provide the active backlog root path as context to the agent (e.g., via system prompt). The RALPH.md content is not path-rewritten. This ensures the agent knows which state directory to operate on, even when using project-wide instructions. See REQ-ARCH-03.
 - REQ-INST-02: The same fallback logic applies to `REVIEW.md`.
   - Priority: P1
 - REQ-INST-03: `progress.md` is always per-backlog-root (no fallback). Each root accumulates its own learnings.
@@ -108,7 +110,7 @@ This feature introduces the concept of a **backlog root** — a self-contained d
 
 - REQ-ARCH-01: Path resolution for all state files (state.json, ralph.log, progress.md, lock file, DONE, CANCEL, iteration-status.json, archive/) must be derived from a single "backlog root" parameter, not hardcoded to `.ralph/`.
   - Priority: P0
-  - Notes: The existing `getBacklogPath()`, `getStatePath()`, etc. helpers in core must be refactored to accept a backlog root path parameter.
+  - Notes: Implementation guidance — existing path-resolution helpers in core (e.g., `getBacklogPath()`, `getStatePath()`) are candidates for refactoring to accept a backlog root parameter. Specific function signatures are determined at tech-spec time.
 - REQ-ARCH-02: The `packages/core` package must remain the single source of path resolution logic. CLI, web, and loop packages must not independently construct state file paths.
   - Priority: P0
 - REQ-ARCH-03: The loop runner must receive the backlog root path as a configuration parameter and pass it through to all core function calls.
@@ -146,6 +148,13 @@ This feature introduces the concept of a **backlog root** — a self-contained d
 - REQ-REL-03: Atomic write guarantees (write .tmp then rename, .bak backups) must apply to all state files in any backlog root, not just the default.
   - Priority: P0
 
+### 4.5 Scalability
+
+- REQ-SCALE-01: The multi-backlog model must not degrade core loop execution performance regardless of the number of backlog roots in the project. Status scanning performance targets are defined in REQ-PERF-01.
+  - Priority: P2
+
+Note: Accessibility requirements are not applicable (CLI tool with no graphical interface).
+
 ## 5. Constraints
 
 - **Existing `.ralph/` convention:** The project-level `.ralph/` directory and `.ralph.json` marker file are established conventions. The multi-backlog model must coexist with these — `.ralph.json` remains the project marker, and `.ralph/` remains the default backlog root.
@@ -164,7 +173,7 @@ The following are explicitly **not** part of this feature:
 - **Web app multi-root support:** The web dashboard showing multiple backlog roots, multi-root status, or root-scoped views. This is a follow-up feature (P1).
 - **Git worktree auto-creation:** Automatically creating git worktrees for parallel feature development. This is a follow-up (P1).
 - **Parallel loop execution:** Running multiple loops simultaneously against different backlog roots in the same project. This is a follow-up (P1), gated on worktree support.
-- **Auto-discovery of backlog roots:** Scanning the project for `**/backlog.json` to find all roots automatically. MVP uses explicit paths only (except for status display which scans for active roots).
+- **Auto-discovery of backlog roots for loop execution:** Ralph will not automatically select which backlog root to operate on. Users must specify roots explicitly via `--backlog`. (Status display performs a limited scan for active roots per REQ-STATUS-01; this is not general-purpose discovery.)
 - **Migration CLI command:** No `ralph migrate` command. Migration is handled via a guide document and agent prompt (see below).
 
 ## 7. Migration
@@ -195,5 +204,6 @@ Existing projects using `.ralph/backlog.json` with the current single-backlog mo
 
 | Priority | Requirements |
 |----------|-------------|
-| P0 | REQ-ROOT-01–04, REQ-STATE-01–03, REQ-CLI-01–04, REQ-STATUS-01, REQ-STATUS-03, REQ-LOCK-01–03, REQ-LOCK-05, REQ-INST-03, REQ-ARCH-01–03, REQ-SEC-01, REQ-OBS-01–02, REQ-REL-01, REQ-REL-03, REQ-PERF-02 |
+| P0 | REQ-ROOT-01–04, REQ-STATE-01–03, REQ-CLI-01–05, REQ-STATUS-01, REQ-STATUS-03, REQ-LOCK-01–03, REQ-LOCK-05, REQ-INST-03, REQ-ARCH-01–03, REQ-SEC-01, REQ-OBS-01–02, REQ-REL-01, REQ-REL-03, REQ-PERF-02 |
 | P1 | REQ-STATE-04, REQ-STATUS-02, REQ-LOCK-04, REQ-INST-01–02, REQ-PERF-01, REQ-SEC-02, REQ-REL-02 |
+| P2 | REQ-SCALE-01 |

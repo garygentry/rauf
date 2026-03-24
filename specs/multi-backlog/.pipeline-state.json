@@ -1,7 +1,9 @@
 {
   "feature": "multi-backlog",
   "pipelineStatus": "active",
-  "currentStage": "forge-2-tech",
+  "createdAt": "2026-03-24T00:00:00Z",
+  "updatedAt": "2026-03-24T00:00:00Z",
+  "currentStage": "forge-verify-prd",
   "stages": {
     "forge-1-prd": {
       "status": "complete",
@@ -10,6 +12,14 @@
       "completedAt": "2026-03-24T00:00:00Z",
       "commitHash": "6d21296",
       "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": "specs/multi-backlog/VERIFY-prd-2026-03-24.md",
+      "findingsCount": 5,
+      "verifiedAt": "2026-03-24T00:00:00Z",
+      "fixedAt": "2026-03-24T00:00:00Z",
+      "commitHash": null
     },
     "forge-2-tech": {
       "status": "pending",
