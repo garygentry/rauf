@@ -8,7 +8,7 @@
       "version": 1,
       "artifacts": ["specs/multi-backlog/PRD.md"],
       "completedAt": "2026-03-24T00:00:00Z",
-      "commitHash": null,
+      "commitHash": "6d21296",
       "basedOnVersions": {}
     },
     "forge-2-tech": {
