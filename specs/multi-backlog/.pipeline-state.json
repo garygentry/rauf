@@ -37,7 +37,7 @@
       "findingsCount": 7,
       "verifiedAt": "2026-03-24T12:00:00Z",
       "fixedAt": "2026-03-24T12:00:00Z",
-      "commitHash": null
+      "commitHash": "c9af3a7"
     },
     "forge-3-specs": {
       "status": "pending",
