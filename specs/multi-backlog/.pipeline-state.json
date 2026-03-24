@@ -1,0 +1,48 @@
+{
+  "feature": "multi-backlog",
+  "pipelineStatus": "active",
+  "currentStage": "forge-2-tech",
+  "stages": {
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/multi-backlog/PRD.md"],
+      "completedAt": "2026-03-24T00:00:00Z",
+      "commitHash": null,
+      "basedOnVersions": {}
+    },
+    "forge-2-tech": {
+      "status": "pending",
+      "version": 0,
+      "artifacts": [],
+      "completedAt": null,
+      "commitHash": null,
+      "basedOnVersions": {}
+    },
+    "forge-3-specs": {
+      "status": "pending",
+      "version": 0,
+      "artifacts": [],
+      "completedAt": null,
+      "commitHash": null,
+      "basedOnVersions": {}
+    },
+    "forge-4-backlog": {
+      "status": "pending",
+      "version": 0,
+      "artifacts": [],
+      "completedAt": null,
+      "commitHash": null,
+      "basedOnVersions": {}
+    },
+    "forge-5-docs": {
+      "status": "pending",
+      "version": 0,
+      "artifacts": [],
+      "completedAt": null,
+      "commitHash": null,
+      "basedOnVersions": {}
+    }
+  },
+  "notes": ""
+}
