@@ -22,11 +22,11 @@
       "commitHash": "e4d3054"
     },
     "forge-2-tech": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "artifacts": ["specs/multi-backlog/tech-spec.md"],
-      "completedAt": null,
-      "commitHash": null,
+      "completedAt": "2026-03-24T00:00:00Z",
+      "commitHash": "c2e63fb",
       "basedOnVersions": {
         "forge-1-prd": 1
       }
