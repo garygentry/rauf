@@ -204,14 +204,16 @@ export interface ActiveRoot {
   currentItem: string | null;
 }
 
-export function scanActiveRoots(projectPath: string): Promise<ActiveRoot[]>;
+export function scanActiveRoots(projectPath: string): ActiveRoot[];
 ```
 
-**Scan algorithm:**
+**Synchronous scan algorithm** (using `fs.readdirSync`/`fs.readFileSync`, consistent with existing core conventions):
 1. Recursively walk `projectPath` for files named `state.json` inside `.ralph/` directories
 2. Skip: `node_modules`, `.git`, `dist`, `build`, `coverage`
 3. For each `state.json`: parse, check `status !== "idle"`, extract backlog root from parent path
 4. Also check for `.loop.lock` files — a lock without a state.json still indicates activity
+
+This function lives in `status.ts` (the natural home, since it already handles status derivation).
 
 ### 3.6 Prompt Builder Backlog Root Context (REQ-INST-01, REQ-ARCH-03)
 
@@ -247,7 +249,9 @@ No UI changes. The web dashboard multi-root views are explicitly out of scope (P
 1. `{stateDir}/RALPH.md` — per-root override
 2. `{projectPath}/.ralph/RALPH.md` — project-level fallback
 
-Same for `REVIEW.md`. Returns `null` if neither exists (RALPH.md is required; REVIEW.md is optional).
+Same for `REVIEW.md`. Returns `null` if neither exists (REVIEW.md is optional).
+
+If neither per-root nor project-level RALPH.md exists, `resolveInstructionPaths()` returns `ralphMd: null`. The loop runner treats a null `ralphMd` as a startup error and returns a `FILE_NOT_FOUND` Result, consistent with current behavior where missing RALPH.md prevents loop execution.
 
 `progress.md` has no fallback — always per-root at `{stateDir}/progress.md` (REQ-INST-03).
 
@@ -298,9 +302,9 @@ export function readBacklog(paths: BacklogPaths): Result<Backlog>;
 export function writeBacklog(paths: BacklogPaths, backlog: Backlog): Result<void>;
 export function addItem(paths: BacklogPaths, input: CreateItemInput): Result<BacklogItem>;
 export function updateItem(paths: BacklogPaths, id: string, updates: UpdateItemInput): Result<BacklogItem>;
-export function deleteItem(paths: BacklogPaths, id: string): Result<BacklogItem>;
+export function deleteItem(paths: BacklogPaths, id: string): Result<void>;
 export function restoreFromBackup(paths: BacklogPaths): Result<Backlog>;
-export function resetStalledItems(paths: BacklogPaths): Result<number>;
+export function resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }>;
 export function ensureBacklog(paths: BacklogPaths): Result<Backlog>;
 export function unblockItems(paths: BacklogPaths, itemId?: string): Result<number>;
 
@@ -313,11 +317,12 @@ export function writeDoneFile(paths: BacklogPaths, content: string): Result<void
 export function clearDoneFile(paths: BacklogPaths): Result<void>;
 export function checkCancelRequested(paths: BacklogPaths): boolean;
 export function clearCancelFile(paths: BacklogPaths): Result<void>;
+export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => void): () => void;
 
 // iteration-status.ts
-export function writeIterationStatus(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<void>;
-export function readIterationStatus(paths: BacklogPaths): Result<IterationStatus | null>;
-export function clearIterationStatus(paths: BacklogPaths): Result<void>;
+export function writeIterationStatus(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<boolean>;
+export function readIterationStatus(paths: BacklogPaths): IterationStatus | null;
+export function clearIterationStatus(paths: BacklogPaths): void;
 
 // archive.ts
 export function sweepBacklog(paths: BacklogPaths, options?: SweepOptions): Result<SweepResult>;
@@ -328,6 +333,8 @@ export function purgeArchive(paths: BacklogPaths): Result<void>;
 // reset.ts
 export function resetProject(paths: BacklogPaths, options?: ResetOptions): Result<void>;
 ```
+
+> **Note:** Signature changes are limited to replacing the `projectPath: string` parameter with `paths: BacklogPaths`. Return types are preserved to avoid breaking existing callers. Functions that do not currently accept `projectPath` (e.g., `selectNextItem(backlog: Backlog)`) are unchanged — they operate on in-memory data and need no path parameter.
 
 ### 5.2 Lock Module Functions
 
@@ -377,14 +384,27 @@ const paths = resolveBacklogPaths(projectPath, backlogRoot);
 ### 5.4 Web API Endpoints
 
 ```
-POST /:id/loop/start    body: { ...options, backlogRoot?: string }
-POST /:id/loop/stop     body: { backlogRoot?: string }
-GET  /:id/status        ?backlog=specs/auth
-GET  /:id/backlog       ?backlog=specs/auth
-POST /:id/backlog       body: { ...item, backlogRoot?: string }
+POST   /:id/loop/start          body: { ...options, backlogRoot?: string }
+POST   /:id/loop/stop           body: { backlogRoot?: string }
+GET    /:id/status              ?backlog=specs/auth
+GET    /:id/backlog             ?backlog=specs/auth
+GET    /:id/backlog/:itemId     ?backlog=specs/auth
+POST   /:id/backlog             body: { ...item, backlogRoot?: string }
+PUT    /:id/backlog/:itemId     body: { ...updates, backlogRoot?: string }
+DELETE /:id/backlog/:itemId     ?backlog=specs/auth
 ```
 
-The `backlog` query parameter is a relative path (same as CLI `--backlog`). The server resolves it against the project path with the same sandboxing validation.
+The `backlog` query parameter is a relative path (same as CLI `--backlog`). The server resolves it against the project path with the same sandboxing validation. For mutation endpoints (`POST`, `PUT`), the backlog root is passed in the request body as `backlogRoot`. For read/delete endpoints (`GET`, `DELETE`), it is passed as the `backlog` query parameter.
+
+### 5.5 Migration Strategy
+
+All signature changes in section 5.1 are source-breaking. The recommended implementation order is:
+
+1. **Create `backlog-root.ts` and `lock.ts`** with all new types and functions — no existing code changes yet
+2. **Update core modules one at a time** to accept `BacklogPaths`, adding thin adapter functions at each callsite that construct `BacklogPaths` from `projectPath`
+3. **Update `LoopRunner` and CLI/web callers** to construct `BacklogPaths` at the entry point and thread it through, removing the adapter shims
+
+Each step should map to a separate backlog item to keep changes reviewable.
 
 ## 6. Integration Points
 
@@ -397,7 +417,7 @@ The `backlog` query parameter is a relative path (same as CLI `--backlog`). The 
 ### 6.2 `packages/core/src/status.ts` → `backlog-root.ts`
 
 - **Current:** Imports `readBacklog` from `./backlog.js`; uses internal constants
-- **After:** Imports `BacklogPaths`, `ActiveRoot`, and `scanActiveRoots`. `deriveStatus()` uses `paths.state`, `paths.log`, `paths.done`, `paths.cancel`. New `scanActiveRoots()` is added here (or in `backlog-root.ts` — either works, but status.ts is the natural home since it already handles status derivation).
+- **After:** Imports `BacklogPaths`, `ActiveRoot`, and `scanActiveRoots`. `deriveStatus()` uses `paths.state`, `paths.log`, `paths.done`, `paths.cancel`. New `scanActiveRoots()` is added here in `status.ts` (the natural home since it already handles status derivation).
 - **Data flow:** `deriveStatus(paths)` reads `paths.state` → `paths.log` → `paths.done` in that priority order
 
 ### 6.3 `packages/loop/src/runner.ts` → `@ralph/core` (backlog-root, lock)
