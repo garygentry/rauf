@@ -4,7 +4,7 @@
   "backlogDir": null,
   "gitCommitAfterStage": true,
   "commitPrefix": "forge",
-  "stack": null,
-  "typeCheckCommand": null,
-  "testCommand": null
+  "stack": "typescript",
+  "typeCheckCommand": "pnpm typecheck",
+  "testCommand": "pnpm test"
 }
