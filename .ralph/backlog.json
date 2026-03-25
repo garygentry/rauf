@@ -49,7 +49,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Read spec 02-backlog-root-resolution.md completely — it has exact implementation logic for each function. Use existing utilities: fileExists at packages/core/src/fs-utils.ts:163, validatePath at packages/core/src/fs-utils.ts:136, ensureDir at packages/core/src/fs-utils.ts:176. The test helper uses real temp directories (fs.mkdtempSync), not mocks.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -78,7 +80,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Read spec 03-lock-file-management.md completely — it has exact implementation logic including the /proc/{pid}/stat parsing algorithm. Use process.pid for 'live PID' tests and 999999999 for 'dead PID' tests. The lock file path comes from paths.lock (set by resolveBacklogPaths). Use createMultiRootProject from test-helpers.ts (import via relative path '../test-helpers.js', NOT from barrel). The relative path in LOCK_CONFLICT error messages uses path.relative(paths.projectPath, paths.root).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -103,7 +107,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002"],
+      "dependsOn": [
+        "002"
+      ],
       "notes": "Read spec 04-core-module-refactor.md section 2 completely. The ensureBacklog function has a special case for the NOT_INSTALLED check — for the default root, check if .ralph/ dir exists; for non-default roots, NOT_INSTALLED doesn't apply. Be careful with addItem's call to readMarkerFile — it still needs paths.projectPath, not paths.root. Also update any internal calls between functions (e.g., resetStalledItems calls readBacklog and updateItem).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -130,7 +136,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002"],
+      "dependsOn": [
+        "002"
+      ],
       "notes": "Read spec 04-core-module-refactor.md sections 3.1 through 3.6 completely. The scanActiveRoots function is the most complex new function — follow the exact algorithm in section 3.5. Import SCAN_SKIP_DIRS from ./backlog-root.js. The LoopStateEnum type is imported from ./schemas.js. Don't recurse into .ralph directories during the scan walk.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -155,13 +163,13 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "004", "005"],
+      "dependsOn": [
+        "002",
+        "004",
+        "005"
+      ],
       "notes": "Read spec 04-core-module-refactor.md sections 4, 5, and 6. These three modules follow the same mechanical transformation pattern as backlog.ts and status.ts. The reset.ts module calls deployProgress — verify its current signature in packages/core/src/installer.ts before changing the call. The throttle key change in iteration-status.ts is subtle but important for multi-root correctness.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/04-core-module-refactor.md",
-        "specs/multi-backlog/07-testing-strategy.md"
-      ],
       "agentDelegation": {
         "recommendedConcurrency": 3,
         "strategy": "Split by module. Each subagent handles one module's refactor and its test updates independently.",
@@ -170,7 +178,11 @@
           "Refactor packages/core/src/archive.ts: add BacklogPaths import, delete ARCHIVE_SUBDIR/getArchiveDir/getArchiveFilePath, change all function first params to paths: BacklogPaths, replace path construction with paths.archive and inline path.join, update internal readBacklog/writeBacklog calls. Update packages/core/src/archive.test.ts to use BacklogPaths and add a non-default root test.",
           "Refactor packages/core/src/reset.ts: add BacklogPaths import, delete RALPH_DIR/STATE_FILENAME, change resetProject first param to paths: BacklogPaths, update all internal core calls to use paths, update deployProgress call to use paths.stateDir. Update packages/core/src/reset.test.ts to use BacklogPaths and add a non-default root test."
         ]
-      }
+      },
+      "specReferences": [
+        "specs/multi-backlog/04-core-module-refactor.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
     },
     {
       "id": "007",
@@ -209,7 +221,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["007"],
+      "dependsOn": [
+        "007"
+      ],
       "notes": "The generation script reads all files under artifacts/ and embeds them as string literals in a TypeScript file. This is an existing build step. If the script path is different, check scripts/ directory. The generated file should be committed alongside the template changes.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -236,7 +250,13 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "003", "004", "005", "006"],
+      "dependsOn": [
+        "002",
+        "003",
+        "004",
+        "005",
+        "006"
+      ],
       "notes": "Read spec 05-loop-runner-integration.md sections 1-2 completely. This is a large but mechanical change — every core function call in runner.ts changes from projectPath to this.paths. The key architectural change is the static factory pattern (create instead of constructor). The event emission still uses this.projectPath for project identification — don't change that. The LoopRunner currently stores this.projectPath — keep it alongside this.paths.",
       "estimatedIterations": 2,
       "specReferences": [
@@ -262,7 +282,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "008", "009"],
+      "dependsOn": [
+        "002",
+        "008",
+        "009"
+      ],
       "notes": "Read spec 05-loop-runner-integration.md sections 3.1-3.6 completely. The 'Active Backlog Root' section is the key new feature here — it tells the agent which backlog root is active at runtime, compensating for the path-agnostic templates. This section is ALWAYS injected, even for the default root. Use path.relative(paths.projectPath, ...) for all displayed paths. The getEmbeddedArtifact function is used for the REVIEW.md fallback.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -289,7 +313,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["009"],
+      "dependsOn": [
+        "009"
+      ],
       "notes": "Read spec 06-cli-web-integration.md sections 2.1-2.3 completely. The resolution pattern is the same 3-line preamble for every command. The --force flag is only relevant for loop run (direct mode). Use extractStringFlag and extractBoolFlag — check existing CLI code for the exact utility names. Error messages should show relative paths (path.relative(process.cwd(), absolutePath)).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -315,12 +341,13 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["004", "005", "006"],
+      "dependsOn": [
+        "004",
+        "005",
+        "006"
+      ],
       "notes": "Read spec 06-cli-web-integration.md sections 2.4-2.8 completely. The status command has the most complex logic — it shows the default root first, then scans for active non-default roots. Use chalk (imported as c) for colored output. The backlog commands are all mechanical — same 3-line preamble pattern. Check which file contains handleProgress and handleLog — they may be in status-commands.ts or their own files.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
-      ],
       "agentDelegation": {
         "recommendedConcurrency": 2,
         "strategy": "Split by command file. One subagent handles backlog-commands.ts, the other handles status-commands.ts and related handlers.",
@@ -328,7 +355,10 @@
           "Update packages/cli/src/backlog-commands.ts: add resolveBacklogRoot/resolveBacklogPaths imports from @ralph/core. Add the 3-line --backlog resolution preamble to every handler: handleBacklogList, handleBacklogAdd, handleBacklogEdit, handleBacklogDelete, handleBacklogShow, handleBacklogRestore, handleBacklogSweep, handleBacklogReset, handleBacklogUnblock. Replace all readBacklog(resolved)/writeBacklog(resolved,...) calls with readBacklog(paths)/writeBacklog(paths,...) pattern.",
           "Update packages/cli/src/status-commands.ts (and any file containing handleProgress, handleLog, handleReset): add scanActiveRoots import. Update handleStatus for --backlog flag: specific root when flag present, default root + scanActiveRoots listing when absent. Update handleProgress to use paths.progress, handleLog to use readLogTail(paths, lines), handleReset to use resetProject(paths, options). Fix any inline .ralph/progress.md path references."
         ]
-      }
+      },
+      "specReferences": [
+        "specs/multi-backlog/06-cli-web-integration.md"
+      ]
     },
     {
       "id": "013",
@@ -348,7 +378,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["009", "011"],
+      "dependsOn": [
+        "009",
+        "011"
+      ],
       "notes": "Read spec 06-cli-web-integration.md section 3 completely. The web changes are intentionally minimal — no UI changes (out of scope per PRD). The LoopManager re-keying is the most important change: it enables multiple loops on different roots within the same project (future feature, but the data structure needs to support it now). Import resolveBacklogRoot from @ralph/core for path validation in routes.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -370,7 +403,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011"],
+      "dependsOn": [
+        "011"
+      ],
       "notes": "Read spec 07-testing-strategy.md section 4.2. The test-sandbox uses mock Claude scripts (not real API calls). Look at existing test-sandbox/scenarios/ for the pattern. The backlog items should be trivially completable by the mock scripts.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -393,7 +428,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011", "012", "013", "014"],
+      "dependsOn": [
+        "011",
+        "012",
+        "013",
+        "014"
+      ],
       "notes": "This is the final verification item. If tests fail, fix them in this iteration rather than creating new backlog items. The test-sandbox may not work if the ralph binary hasn't been rebuilt — run pnpm build first if needed.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -414,7 +454,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["006"],
+      "dependsOn": [
+        "006"
+      ],
       "notes": "PRD section 7 requires this deliverable. The default root layout is unchanged, so migration is only needed for projects that want to use non-default backlog roots.",
       "estimatedIterations": 1,
       "specReferences": [
