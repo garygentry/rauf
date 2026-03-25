@@ -556,7 +556,12 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     ),
   );
 
-  const runner = new LoopRunner(projectPath, options);
+  const runnerResult = LoopRunner.create(projectPath, options);
+  if (!runnerResult.ok) {
+    error(runnerResult.error.message);
+    return 1;
+  }
+  const runner = runnerResult.value;
 
   const statusLine = new StatusLine({
     isTTY: process.stdout.isTTY ?? false,
@@ -760,7 +765,12 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
 
   info(`Running standalone review for ${c.cyan(path.basename(projectPath))}`);
 
-  const runner = new LoopRunner(projectPath, options);
+  const runnerResult = LoopRunner.create(projectPath, options);
+  if (!runnerResult.ok) {
+    error(runnerResult.error.message);
+    return 1;
+  }
+  const runner = runnerResult.value;
 
   // Subscribe to review events
   const eventTypes: LoopEvent["type"][] = ["review_started", "review_completed", "review_failed"];

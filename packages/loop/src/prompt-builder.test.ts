@@ -3,10 +3,26 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { BacklogItem, Backlog, MarkerFile } from "@ralph/core";
+import type { BacklogItem, Backlog, MarkerFile, BacklogPaths, InstructionPaths } from "@ralph/core";
+import { defaultBacklogPaths } from "@ralph/core";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 
 const RALPH_DIR = ".ralph";
+
+/** Build BacklogPaths for the default .ralph root in a test dir */
+function testPaths(tmpDir: string): BacklogPaths {
+  return defaultBacklogPaths(tmpDir);
+}
+
+/** Build InstructionPaths for the default .ralph root in a test dir */
+function testInstructionPaths(tmpDir: string): InstructionPaths {
+  const ralphMd = path.join(tmpDir, RALPH_DIR, "RALPH.md");
+  const reviewMd = path.join(tmpDir, RALPH_DIR, "REVIEW.md");
+  return {
+    ralphMd: fs.existsSync(ralphMd) ? ralphMd : null,
+    reviewMd: fs.existsSync(reviewMd) ? reviewMd : null,
+  };
+}
 
 function createTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "prompt-builder-test-"));
@@ -81,7 +97,7 @@ describe("buildPrompt", () => {
       const item = makeItem();
       const backlog = makeBacklog();
 
-      const result = buildPrompt(tmpDir, item, backlog);
+      const result = buildPrompt(testPaths(tmpDir), testInstructionPaths(tmpDir), item, backlog);
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -94,7 +110,12 @@ describe("buildPrompt", () => {
       const ralphContent = "## Verification Commands\n\nRun pnpm test && pnpm typecheck";
       setupProject(tmpDir, { ralphMd: ralphContent });
 
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -107,7 +128,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ id: "042", title: "Special Task" });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -128,7 +154,12 @@ describe("buildPrompt", () => {
         acceptanceCriteria: ["Tests pass", "Types check", "Lint clean"],
       });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -143,7 +174,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ dependsOn: ["001", "003"] });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -157,7 +193,12 @@ describe("buildPrompt", () => {
       const item = makeItem();
       delete (item as Record<string, unknown>).dependsOn;
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -169,7 +210,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ notes: "Check the API docs first" });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -182,7 +228,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem();
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -196,7 +247,12 @@ describe("buildPrompt", () => {
         specReferences: ["docs/SPEC-CORE.md", "docs/ARCHITECTURE.md"],
       });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -210,7 +266,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem();
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -222,7 +283,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ id: "007" });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -236,7 +302,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ id: "012", title: "Build the widget" });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -258,7 +329,12 @@ describe("buildPrompt", () => {
       ];
       const backlog = makeBacklog(items);
 
-      const result = buildPrompt(tmpDir, items[3]!, backlog);
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        items[3]!,
+        backlog,
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -278,7 +354,12 @@ describe("buildPrompt", () => {
       ];
       const backlog = makeBacklog(items);
 
-      const result = buildPrompt(tmpDir, items[2]!, backlog);
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        items[2]!,
+        backlog,
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -296,7 +377,12 @@ describe("buildPrompt", () => {
       ];
       const backlog = makeBacklog(items);
 
-      const result = buildPrompt(tmpDir, items[1]!, backlog);
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        items[1]!,
+        backlog,
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -314,7 +400,12 @@ describe("buildPrompt", () => {
         progressMd: progressContent,
       });
 
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -329,7 +420,12 @@ describe("buildPrompt", () => {
         progressMd: null,
       });
 
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -343,7 +439,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ estimatedIterations: 3 });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -356,7 +457,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ estimatedIterations: 1 });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -368,7 +474,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem();
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -386,7 +497,12 @@ describe("buildPrompt", () => {
         },
       });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -408,7 +524,12 @@ describe("buildPrompt", () => {
         },
       });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -425,7 +546,12 @@ describe("buildPrompt", () => {
       // Create .ralph dir but no RALPH.md
       fs.mkdirSync(path.join(tmpDir, RALPH_DIR), { recursive: true });
 
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -435,7 +561,12 @@ describe("buildPrompt", () => {
     });
 
     it("returns err when .ralph directory does not exist", () => {
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -451,7 +582,12 @@ describe("buildPrompt", () => {
         progressMd: "Some progress",
       });
 
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -473,7 +609,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const backlog = makeBacklog();
 
-      const result = buildPrompt(tmpDir, makeItem(), backlog);
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        backlog,
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -489,7 +630,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const backlog: Backlog = { project: "empty", description: "empty project", items: [] };
 
-      const result = buildPrompt(tmpDir, makeItem(), backlog);
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        backlog,
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -504,7 +650,12 @@ describe("buildPrompt", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ acceptanceCriteria: [] });
 
-      const result = buildPrompt(tmpDir, item, makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -518,7 +669,12 @@ describe("buildPrompt", () => {
         progressMd: "",
       });
 
-      const result = buildPrompt(tmpDir, makeItem(), makeBacklog());
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
 
       expect(result.ok).toBe(true);
       if (result.ok) {
@@ -582,7 +738,12 @@ describe("buildReviewPrompt", () => {
       makeItem({ id: "001", title: "Feature A", status: "done", completedAt: "2026-01-01" }),
     ];
 
-    const result = buildReviewPrompt(tmpDir, items, "diff --git a/file.ts b/file.ts\n+added line");
+    const result = buildReviewPrompt(
+      testPaths(tmpDir),
+      testInstructionPaths(tmpDir),
+      items,
+      "diff --git a/file.ts b/file.ts\n+added line",
+    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -602,7 +763,12 @@ describe("buildReviewPrompt", () => {
       makeItem({ id: "001", title: "My Task", status: "done", completedAt: "2026-01-01" }),
     ];
 
-    const result = buildReviewPrompt(tmpDir, items, "some diff");
+    const result = buildReviewPrompt(
+      testPaths(tmpDir),
+      testInstructionPaths(tmpDir),
+      items,
+      "some diff",
+    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -618,7 +784,12 @@ describe("buildReviewPrompt", () => {
     const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
     const largeDiff = "x".repeat(200_000);
 
-    const result = buildReviewPrompt(tmpDir, items, largeDiff);
+    const result = buildReviewPrompt(
+      testPaths(tmpDir),
+      testInstructionPaths(tmpDir),
+      items,
+      largeDiff,
+    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -640,7 +811,7 @@ describe("buildReviewPrompt", () => {
       }),
     ];
 
-    const result = buildReviewPrompt(tmpDir, items, "");
+    const result = buildReviewPrompt(testPaths(tmpDir), testInstructionPaths(tmpDir), items, "");
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -653,7 +824,7 @@ describe("buildReviewPrompt", () => {
     setupReviewProject(tmpDir, { progressMd: "Learned that foo is important" });
     const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
 
-    const result = buildReviewPrompt(tmpDir, items, "");
+    const result = buildReviewPrompt(testPaths(tmpDir), testInstructionPaths(tmpDir), items, "");
 
     expect(result.ok).toBe(true);
     if (result.ok) {

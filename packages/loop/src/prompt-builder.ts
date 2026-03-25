@@ -7,6 +7,8 @@ import {
   getEmbeddedArtifact,
   type BacklogItem,
   type Backlog,
+  type BacklogPaths,
+  type InstructionPaths,
   type Result,
 } from "@ralph/core";
 import { ok, err, ErrorCodes } from "@ralph/core";
@@ -148,10 +150,12 @@ function formatEstimatedIterationsHint(item: BacklogItem): string {
  * Returns Result err if RALPH.md is missing (required for the prompt).
  */
 export function buildPrompt(
-  projectPath: string,
+  paths: BacklogPaths,
+  instructionPaths: InstructionPaths,
   item: BacklogItem,
   backlog: Backlog,
 ): Result<string> {
+  const projectPath = paths.projectPath;
   const ralphMdPath = path.join(projectPath, RALPH_DIR, RALPH_MD);
 
   if (!fileExists(ralphMdPath)) {
@@ -245,10 +249,12 @@ const MAX_DIFF_SIZE = 100_000;
  * Template variables: verifyCommand, completedItemsDetail, gitDiff, progressContent
  */
 export function buildReviewPrompt(
-  projectPath: string,
+  paths: BacklogPaths,
+  instructionPaths: InstructionPaths,
   completedItems: BacklogItem[],
   gitDiff: string,
 ): Result<string> {
+  const projectPath = paths.projectPath;
   // Read verify command from marker file
   const markerResult = readMarkerFile(projectPath);
   const verifyCommand = markerResult.ok

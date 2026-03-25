@@ -106,6 +106,18 @@ const DEFAULT_OPTIONS: LoopStartOptions = {
   sessionTimeoutMinutes: 5,
 };
 
+/** Create a LoopRunner via the static factory, throwing on failure */
+function createRunner(
+  projectPath: string,
+  options: LoopStartOptions,
+): InstanceType<typeof LoopRunner> {
+  const result = LoopRunner.create(projectPath, options);
+  if (!result.ok) {
+    throw new Error(`Failed to create LoopRunner: ${result.error.message}`);
+  }
+  return result.value;
+}
+
 function pendingItem(
   id: string,
   title: string,
@@ -147,7 +159,7 @@ describe("LoopRunner", () => {
   describe("constructor and class structure", () => {
     it("extends TypedEventEmitter", () => {
       setupProject(tmpDir, []);
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       expect(runner).toBeInstanceOf(LoopRunner);
       expect(typeof runner.on).toBe("function");
       expect(typeof runner.emit).toBe("function");
@@ -155,13 +167,14 @@ describe("LoopRunner", () => {
     });
 
     it("has cancel() method", () => {
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      setupProject(tmpDir, []);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       expect(typeof runner.cancel).toBe("function");
     });
 
     it("has start() method returning Promise", () => {
       setupProject(tmpDir, []);
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       expect(typeof runner.start).toBe("function");
     });
   });
@@ -175,7 +188,7 @@ describe("LoopRunner", () => {
 
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       // DONE should be written again with summary (loop complete), but
@@ -196,7 +209,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("loop_started", (e) => events.push(e));
       await runner.start();
 
@@ -212,7 +225,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "Some output"\necho "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("item_selected", (e) => events.push(e));
       runner.on("item_completed", (e) => events.push(e));
       runner.on("loop_completed", (e) => events.push(e));
@@ -245,7 +258,7 @@ describe("LoopRunner", () => {
       setupProject(tmpDir, [pendingItem("001", "First task"), pendingItem("002", "Second task")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       expect(result.completedCount).toBe(2);
@@ -256,7 +269,7 @@ describe("LoopRunner", () => {
       setupProject(tmpDir, [pendingItem("001", "Only task")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       expect(result.completedCount).toBe(1);
@@ -268,7 +281,7 @@ describe("LoopRunner", () => {
       setupProject(tmpDir, [pendingItem("001", "Task one")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       const doneContent = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
@@ -285,7 +298,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "RALPH_BLOCKED:Missing dependency"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("item_blocked", (e) => events.push(e));
 
       const result = await runner.start();
@@ -311,7 +324,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "RALPH_NEEDS_HUMAN:Need API key"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("needs_human", (e) => events.push(e));
 
       const result = await runner.start();
@@ -346,7 +359,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "random output"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, { ...DEFAULT_OPTIONS, maxRetries: 2 });
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxRetries: 2 });
       runner.on("item_retried", (e) => events.push(e));
       runner.on("item_blocked", (e) => events.push(e));
 
@@ -370,7 +383,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "$@" >&2\necho "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         model: "claude-sonnet-4-6",
       });
@@ -390,7 +403,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "$@" >&2\necho "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         model: "claude-sonnet-4-6",
       });
@@ -417,7 +430,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         maxIterations: 2,
       });
@@ -445,7 +458,7 @@ describe("LoopRunner", () => {
       writeMockClaude(binDir, "exec sleep 999");
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("loop_cancelled", (e) => events.push(e));
 
       // Cancel after a brief delay (while first claude is running)
@@ -470,7 +483,7 @@ describe("LoopRunner", () => {
 echo "RALPH_DONE"`,
       );
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       // First item completed, then cancel detected at next iteration boundary
@@ -486,7 +499,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "Claude AI Usage Limit reached" >&2\nexit 1');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         maxIterations: 1,
       });
@@ -512,7 +525,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "rate limit exceeded" >&2\nexit 1');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         maxIterations: 1,
       });
@@ -531,7 +544,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "Too Many Requests" >&2\nexit 1');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         maxIterations: 1,
       });
@@ -551,7 +564,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "usage limit warning" >&2\necho "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("usage_limit_hit", (e) => events.push(e));
       runner.on("item_completed", (e) => events.push(e));
 
@@ -572,7 +585,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       // state.json should exist with terminal state
@@ -588,7 +601,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Log test task")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       const logContent = fs.readFileSync(path.join(tmpDir, ".ralph", "ralph.log"), "utf-8");
@@ -607,7 +620,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
       const eventTypes: string[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
 
       // Subscribe to all event types we expect
       runner.on("loop_started", () => eventTypes.push("loop_started"));
@@ -636,7 +649,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("loop_started", (e) => events.push(e));
 
       await runner.start();
@@ -653,7 +666,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
@@ -663,7 +676,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       writeMockClaude(binDir, 'sleep 1\necho "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       setTimeout(() => runner.cancel(), 100);
       await runner.start();
 
@@ -676,7 +689,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         maxIterations: 1,
       });
@@ -691,7 +704,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       writeMockClaude(binDir, 'echo "RALPH_NEEDS_HUMAN:Need decision"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
@@ -710,7 +723,7 @@ echo "RALPH_DONE"`,
 
       // Test the try/finally by checking the reset logic works for the
       // "no items" path — verify state.json shows complete
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       // After normal completion, currentItemId should be null (cleaned up)
@@ -728,7 +741,7 @@ echo "RALPH_DONE"`,
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       runner.on("item_selected", (e) => events.push(e));
 
       await runner.start();
@@ -747,7 +760,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Commit test")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       // Check log for commit message
@@ -762,7 +775,7 @@ echo "RALPH_DONE"`,
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       expect(result).toEqual({
@@ -786,7 +799,7 @@ else
 fi`,
       );
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       expect(result.completedCount).toBe(1);
@@ -801,7 +814,7 @@ fi`,
       writeMockClaude(binDir, 'echo "RALPH_DONE"');
 
       const events: LoopEvent[] = [];
-      const runner = new LoopRunner(tmpDir, {
+      const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
         sessionTimeoutMinutes: 42,
       });
@@ -821,7 +834,7 @@ fi`,
     it("completes immediately with no items", async () => {
       setupProject(tmpDir, []);
 
-      const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       expect(result.completedCount).toBe(0);

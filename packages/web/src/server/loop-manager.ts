@@ -75,7 +75,11 @@ export class LoopManager {
       return { ok: false, error: "Loop already running for this project" };
     }
 
-    const runner = new LoopRunner(projectPath, options);
+    const runnerResult = LoopRunner.create(projectPath, options);
+    if (!runnerResult.ok) {
+      return { ok: false, error: runnerResult.error.message };
+    }
+    const runner = runnerResult.value;
 
     // Subscribe to all event types and fan out to listeners
     for (const eventType of LOOP_EVENT_TYPES) {

@@ -36,7 +36,13 @@ function setupProject(tmpDir: string, items: Backlog["items"]) {
       stack: "node-typescript",
       packageManager: "pnpm",
       monorepo: false,
-      commands: { test: "pnpm test", typecheck: "pnpm typecheck", lint: "pnpm lint", format: null, build: null },
+      commands: {
+        test: "pnpm test",
+        typecheck: "pnpm typecheck",
+        lint: "pnpm lint",
+        format: null,
+        build: null,
+      },
       verify: "pnpm test && pnpm typecheck && pnpm lint",
     },
     artifactHashes: {},
@@ -79,6 +85,18 @@ const DEFAULT_OPTIONS: LoopStartOptions = {
   sessionTimeoutMinutes: 5,
 };
 
+/** Create a LoopRunner via the static factory, throwing on failure */
+function createRunner(
+  projectPath: string,
+  options: LoopStartOptions,
+): InstanceType<typeof LoopRunner> {
+  const result = LoopRunner.create(projectPath, options);
+  if (!result.ok) {
+    throw new Error(`Failed to create LoopRunner: ${result.error.message}`);
+  }
+  return result.value;
+}
+
 /**
  * Write a mock `claude` bash script that emits valid NDJSON
  * matching Claude CLI `--output-format stream-json`.
@@ -110,9 +128,7 @@ function writeMockClaudeNDJSON(
   const sleep = sleepBetweenLines ? `sleep ${sleepBetweenLines}` : "";
 
   // message_start with input_tokens
-  lines.push(
-    `echo '{"type":"message_start","message":{"usage":{"input_tokens":${inputTokens}}}}'`,
-  );
+  lines.push(`echo '{"type":"message_start","message":{"usage":{"input_tokens":${inputTokens}}}}'`);
   if (sleep) lines.push(sleep);
 
   let blockIndex = 0;
@@ -179,7 +195,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     writeMockClaudeNDJSON(binDir, { textChunks: ["RALPH_DONE"] });
 
     const events: LoopEvent[] = [];
-    const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+    const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("signal_parsed", (e) => events.push(e));
     runner.on("item_completed", (e) => events.push(e));
 
@@ -203,16 +219,20 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     });
 
     const events: LoopEvent[] = [];
-    const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+    const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("llm_tool_activity", (e) => events.push(e));
 
     await runner.start();
 
     const startEvents = events.filter(
-      (e) => e.type === "llm_tool_activity" && (e as Extract<LoopEvent, { type: "llm_tool_activity" }>).phase === "start",
+      (e) =>
+        e.type === "llm_tool_activity" &&
+        (e as Extract<LoopEvent, { type: "llm_tool_activity" }>).phase === "start",
     );
     const endEvents = events.filter(
-      (e) => e.type === "llm_tool_activity" && (e as Extract<LoopEvent, { type: "llm_tool_activity" }>).phase === "end",
+      (e) =>
+        e.type === "llm_tool_activity" &&
+        (e as Extract<LoopEvent, { type: "llm_tool_activity" }>).phase === "end",
     );
 
     expect(startEvents).toHaveLength(3);
@@ -233,7 +253,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     });
 
     const events: LoopEvent[] = [];
-    const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+    const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("llm_token_update", (e) => events.push(e));
 
     await runner.start();
@@ -252,7 +272,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     });
 
     let midRunStatus: ReturnType<typeof readIterationStatus> = null;
-    const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+    const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("llm_tool_activity", () => {
       if (!midRunStatus) {
         midRunStatus = readIterationStatus(defaultBacklogPaths(tmpDir));
@@ -276,7 +296,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     });
 
     const events: LoopEvent[] = [];
-    const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+    const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("item_blocked", (e) => events.push(e));
 
     const result = await runner.start();
@@ -296,7 +316,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
       textChunks: ["Let me ", "work.\\n\\n", "RALPH_DONE"],
     });
 
-    const result = await new LoopRunner(tmpDir, DEFAULT_OPTIONS).start();
+    const result = await createRunner(tmpDir, DEFAULT_OPTIONS).start();
 
     expect(result.completedCount).toBe(1);
   });
@@ -326,7 +346,7 @@ exit 0
     fs.writeFileSync(binPath, script, { mode: 0o755 });
 
     const events: LoopEvent[] = [];
-    const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
+    const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("llm_tool_activity", (e) => events.push(e));
     runner.on("item_completed", (e) => events.push(e));
 
@@ -341,16 +361,17 @@ exit 0
         (e as Extract<LoopEvent, { type: "llm_tool_activity" }>).phase === "start",
     );
     expect(toolStarts).toHaveLength(2);
-    expect(
-      (toolStarts[0] as Extract<LoopEvent, { type: "llm_tool_activity" }>).toolName,
-    ).toBe("Read");
-    expect(
-      (toolStarts[1] as Extract<LoopEvent, { type: "llm_tool_activity" }>).toolName,
-    ).toBe("Edit");
+    expect((toolStarts[0] as Extract<LoopEvent, { type: "llm_tool_activity" }>).toolName).toBe(
+      "Read",
+    );
+    expect((toolStarts[1] as Extract<LoopEvent, { type: "llm_tool_activity" }>).toolName).toBe(
+      "Edit",
+    );
 
     // Completion event came after tools
     const completedIdx = events.findIndex((e) => e.type === "item_completed");
-    const lastToolIdx = events.length - 1 - [...events].reverse().findIndex((e) => e.type === "llm_tool_activity");
+    const lastToolIdx =
+      events.length - 1 - [...events].reverse().findIndex((e) => e.type === "llm_tool_activity");
     expect(completedIdx).toBeGreaterThan(lastToolIdx);
   });
 });
