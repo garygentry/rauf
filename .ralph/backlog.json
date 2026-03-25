@@ -47,8 +47,8 @@
         "pnpm typecheck passes",
         "pnpm test packages/core/src/backlog-root.test.ts passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T05:22:52.912Z",
       "dependsOn": [
         "001"
       ],
