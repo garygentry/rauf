@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@ralph/core";
 
@@ -6,6 +8,7 @@ import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
 import { formatAndPrintEvent } from "./loop-commands.js";
+import { SERVER_STATE_FILE } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -104,8 +107,29 @@ describe("loop command registration", () => {
 });
 
 describe("handleLoopStop", () => {
+  let savedState: string | null = null;
+
   beforeEach(() => {
     configureOutput({ noColor: true, quiet: false, json: false });
+    // Back up and remove server state so isServerRunning() returns false
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    try {
+      fs.unlinkSync(SERVER_STATE_FILE);
+    } catch {
+      /* ok */
+    }
+  });
+
+  afterEach(() => {
+    // Restore server state
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
   });
 
   it("errors with helpful message when server not running", async () => {
@@ -118,17 +142,34 @@ describe("handleLoopStop", () => {
       expect(code).toBe(ExitCode.ERROR);
     });
 
-    // When no server is running, we get "Server is not running".
-    // When a server IS running but the project has no loop, we get "No active loop".
-    const stderrHasExpectedError =
-      output.stderr.includes("Server is not running") || output.stderr.includes("No active loop");
-    expect(stderrHasExpectedError).toBe(true);
+    expect(output.stderr).toContain("Server is not running");
   });
 });
 
 describe("handleLoopFollow", () => {
+  let savedState: string | null = null;
+
   beforeEach(() => {
     configureOutput({ noColor: true, quiet: false, json: false });
+    // Back up and remove server state so isServerRunning() returns false
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    try {
+      fs.unlinkSync(SERVER_STATE_FILE);
+    } catch {
+      /* ok */
+    }
+  });
+
+  afterEach(() => {
+    // Restore server state
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
   });
 
   it("errors when server not running", async () => {
@@ -141,7 +182,7 @@ describe("handleLoopFollow", () => {
       expect(code).toBe(ExitCode.ERROR);
     });
 
-    // When .ralph/ directory doesn't exist, resolveBacklogPaths fails before reaching status check
+    // With no server running, direct mode is used → resolveBacklogPaths fails for /tmp/some-project
     expect(output.stderr).toContain("not found");
   });
 });
