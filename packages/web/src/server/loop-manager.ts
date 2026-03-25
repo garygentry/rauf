@@ -9,6 +9,8 @@
 // This is the bridge between the @ralph/loop runner module and the
 // HTTP layer (Hono routes + SSE).
 
+import * as path from "node:path";
+
 import type { LoopEvent, LoopStartOptions } from "@ralph/core";
 import { discoverProjects, resetStalledItems, defaultBacklogPaths } from "@ralph/core";
 import { LoopRunner } from "@ralph/loop";
@@ -52,17 +54,22 @@ const MAX_BUFFER_SIZE = 100;
 // ─── LoopManager ─────────────────────────────────────────────────
 
 export class LoopManager {
-  /** Active loops keyed by resolved project path */
+  /** Active loops keyed by resolved backlog root path */
   private activeLoops = new Map<string, ActiveLoop>();
 
-  /** Event listeners keyed by project path */
+  /** Event listeners keyed by backlog root path */
   private listeners = new Map<string, Set<LoopEventListener>>();
 
-  /** Buffered events keyed by project path (ring buffer, max MAX_BUFFER_SIZE) */
+  /** Buffered events keyed by backlog root path (ring buffer, max MAX_BUFFER_SIZE) */
   private eventBuffers = new Map<string, LoopEvent[]>();
 
   /** Pending buffer cleanup timers */
   private bufferCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Resolve the map key from projectPath + optional backlogRoot */
+  private resolveKey(projectPath: string, backlogRoot?: string): string {
+    return backlogRoot ?? path.join(projectPath, ".ralph");
+  }
 
   /**
    * Start a loop for a project. Returns an error string if already running.
@@ -71,8 +78,10 @@ export class LoopManager {
     projectPath: string,
     options: LoopStartOptions,
   ): { ok: true } | { ok: false; error: string } {
-    if (this.activeLoops.has(projectPath)) {
-      return { ok: false, error: "Loop already running for this project" };
+    const key = this.resolveKey(projectPath, options.backlogRoot);
+
+    if (this.activeLoops.has(key)) {
+      return { ok: false, error: "Loop already running for this backlog root" };
     }
 
     const runnerResult = LoopRunner.create(projectPath, options);
@@ -84,33 +93,34 @@ export class LoopManager {
     // Subscribe to all event types and fan out to listeners
     for (const eventType of LOOP_EVENT_TYPES) {
       runner.on(eventType, (event: LoopEvent) => {
-        this.fanOut(projectPath, event);
+        this.fanOut(key, event);
       });
     }
 
     // Start the loop and track the promise
     const promise = runner.start().then(
       (result) => {
-        this.activeLoops.delete(projectPath);
-        this.deferBufferCleanup(projectPath);
+        this.activeLoops.delete(key);
+        this.deferBufferCleanup(key);
         return result;
       },
       (error) => {
-        this.activeLoops.delete(projectPath);
-        this.deferBufferCleanup(projectPath);
+        this.activeLoops.delete(key);
+        this.deferBufferCleanup(key);
         throw error;
       },
     );
 
-    this.activeLoops.set(projectPath, { runner, projectPath, promise });
+    this.activeLoops.set(key, { runner, projectPath, promise });
     return { ok: true };
   }
 
   /**
    * Stop a running loop for a project. Returns false if no loop is active.
    */
-  stopLoop(projectPath: string): boolean {
-    const active = this.activeLoops.get(projectPath);
+  stopLoop(projectPath: string, backlogRoot?: string): boolean {
+    const key = this.resolveKey(projectPath, backlogRoot);
+    const active = this.activeLoops.get(key);
     if (!active) return false;
     active.runner.cancel();
     return true;
@@ -119,9 +129,11 @@ export class LoopManager {
   /**
    * Subscribe to LoopEvents for a project. Returns an unsubscribe function.
    */
-  subscribe(projectPath: string, listener: LoopEventListener): () => void {
+  subscribe(projectPath: string, listener: LoopEventListener, backlogRoot?: string): () => void {
+    const key = this.resolveKey(projectPath, backlogRoot);
+
     // Replay buffered events to the new subscriber
-    const buffer = this.eventBuffers.get(projectPath);
+    const buffer = this.eventBuffers.get(key);
     if (buffer) {
       for (const event of buffer) {
         try {
@@ -132,17 +144,17 @@ export class LoopManager {
       }
     }
 
-    let set = this.listeners.get(projectPath);
+    let set = this.listeners.get(key);
     if (!set) {
       set = new Set();
-      this.listeners.set(projectPath, set);
+      this.listeners.set(key, set);
     }
     set.add(listener);
 
     return () => {
       set!.delete(listener);
       if (set!.size === 0) {
-        this.listeners.delete(projectPath);
+        this.listeners.delete(key);
       }
     };
   }
@@ -150,8 +162,9 @@ export class LoopManager {
   /**
    * Check if a loop is active for a project.
    */
-  isRunning(projectPath: string): boolean {
-    return this.activeLoops.has(projectPath);
+  isRunning(projectPath: string, backlogRoot?: string): boolean {
+    const key = this.resolveKey(projectPath, backlogRoot);
+    return this.activeLoops.has(key);
   }
 
   /**
@@ -190,11 +203,11 @@ export class LoopManager {
 
   // ─── Private ───────────────────────────────────────────────────
 
-  private fanOut(projectPath: string, event: LoopEvent): void {
+  private fanOut(key: string, event: LoopEvent): void {
     // Buffer the event (ring buffer)
-    this.bufferEvent(projectPath, event);
+    this.bufferEvent(key, event);
 
-    const set = this.listeners.get(projectPath);
+    const set = this.listeners.get(key);
     if (!set) return;
     for (const listener of set) {
       try {
@@ -205,23 +218,23 @@ export class LoopManager {
     }
   }
 
-  private deferBufferCleanup(projectPath: string): void {
-    // Cancel any existing timer for this path
-    const existing = this.bufferCleanupTimers.get(projectPath);
+  private deferBufferCleanup(key: string): void {
+    // Cancel any existing timer for this key
+    const existing = this.bufferCleanupTimers.get(key);
     if (existing) clearTimeout(existing);
 
     const timer = setTimeout(() => {
-      this.eventBuffers.delete(projectPath);
-      this.bufferCleanupTimers.delete(projectPath);
+      this.eventBuffers.delete(key);
+      this.bufferCleanupTimers.delete(key);
     }, 30_000);
-    this.bufferCleanupTimers.set(projectPath, timer);
+    this.bufferCleanupTimers.set(key, timer);
   }
 
-  private bufferEvent(projectPath: string, event: LoopEvent): void {
-    let buffer = this.eventBuffers.get(projectPath);
+  private bufferEvent(key: string, event: LoopEvent): void {
+    let buffer = this.eventBuffers.get(key);
     if (!buffer) {
       buffer = [];
-      this.eventBuffers.set(projectPath, buffer);
+      this.eventBuffers.set(key, buffer);
     }
     buffer.push(event);
     if (buffer.length > MAX_BUFFER_SIZE) {

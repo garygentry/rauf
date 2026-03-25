@@ -15,6 +15,7 @@ import {
   LoopStartOptionsSchema,
   readToolConfig,
   resolveRootDirectory,
+  resolveBacklogRoot,
   validatePath,
 } from "@ralph/core";
 
@@ -30,6 +31,13 @@ const StartLoopBodySchema = z
     maxRetries: z.number().int().positive().optional(),
     model: z.string().optional(),
     sessionTimeoutMinutes: z.number().int().positive().optional(),
+    backlogRoot: z.string().optional(),
+  })
+  .optional();
+
+const StopLoopBodySchema = z
+  .object({
+    backlogRoot: z.string().optional(),
   })
   .optional();
 
@@ -90,11 +98,23 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     }
 
     const body = parseResult.data ?? {};
+
+    // Resolve backlog root from body (relative path → absolute)
+    let backlogRoot: string | undefined;
+    if (body.backlogRoot) {
+      const rootResult = resolveBacklogRoot(projectPath, body.backlogRoot);
+      if (!rootResult.ok) {
+        return c.json(errorResponse(rootResult.error.code, rootResult.error.message), 400);
+      }
+      backlogRoot = rootResult.value;
+    }
+
     const options = LoopStartOptionsSchema.parse({
       maxIterations: body.maxIterations ?? DEFAULT_MAX_ITERATIONS,
       maxRetries: body.maxRetries ?? DEFAULT_MAX_RETRIES,
       model: body.model,
       sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,
+      backlogRoot,
     });
 
     const manager = getLoopManager();
@@ -109,7 +129,7 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
 
   // ── POST /:id/loop/stop ───────────────────────────────────────
 
-  router.post("/:id/loop/stop", (c) => {
+  router.post("/:id/loop/stop", async (c) => {
     const id = c.req.param("id");
     const projectPath = resolveProjectPath(id);
     if (!projectPath) {
@@ -120,8 +140,22 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
+    const raw = await c.req.json().catch(() => ({}));
+    const parseResult = StopLoopBodySchema.safeParse(raw);
+    const body = parseResult.success ? (parseResult.data ?? {}) : {};
+
+    // Resolve backlog root if specified
+    let resolvedRoot: string | undefined;
+    if (body.backlogRoot) {
+      const rootResult = resolveBacklogRoot(projectPath, body.backlogRoot);
+      if (!rootResult.ok) {
+        return c.json(errorResponse(rootResult.error.code, rootResult.error.message), 400);
+      }
+      resolvedRoot = rootResult.value;
+    }
+
     const manager = getLoopManager();
-    const stopped = manager.stopLoop(projectPath);
+    const stopped = manager.stopLoop(projectPath, resolvedRoot);
 
     if (!stopped) {
       return c.json(errorResponse("NOT_FOUND", "No active loop for this project"), 404);
@@ -160,11 +194,21 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       await stream.writeSSE({ data: new Date().toISOString(), event: "heartbeat" });
 
       // Subscribe to loop events for this project
+      const backlogParam = c.req.query("backlog");
+      let resolvedBacklogRoot: string | undefined;
+      if (backlogParam) {
+        const rootResult = resolveBacklogRoot(projectPath, backlogParam);
+        if (rootResult.ok) resolvedBacklogRoot = rootResult.value;
+      }
       const manager = getLoopManager();
-      const unsubscribe = manager.subscribe(projectPath, (event) => {
-        if (stream.aborted || stream.closed) return;
-        stream.writeSSE({ data: JSON.stringify(event), event: "loop_event" }).catch(() => {});
-      });
+      const unsubscribe = manager.subscribe(
+        projectPath,
+        (event) => {
+          if (stream.aborted || stream.closed) return;
+          stream.writeSSE({ data: JSON.stringify(event), event: "loop_event" }).catch(() => {});
+        },
+        resolvedBacklogRoot,
+      );
       cleanups.push(unsubscribe);
 
       // Heartbeat every 15s

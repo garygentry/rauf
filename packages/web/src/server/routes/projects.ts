@@ -26,6 +26,8 @@ import {
   readMarkerFile,
   readToolConfig,
   resolveRootDirectory,
+  resolveBacklogRoot,
+  resolveBacklogPaths,
   validatePath,
   readBacklog,
   addItem,
@@ -42,6 +44,7 @@ import {
   BacklogItemStatusSchema,
   BacklogItemPrioritySchema,
   AgentDelegationSchema,
+  type BacklogPaths,
   type InstallOptions,
   type UninstallOptions,
   type InitOptions,
@@ -57,6 +60,7 @@ import { resolveProjectPath as resolveProjectPathShared } from "../resolve-proje
 
 const SweepBodySchema = z.object({
   minAgeDays: z.number().int().nonnegative().optional(),
+  backlogRoot: z.string().optional(),
 });
 
 const CreateItemBodySchema = z.object({
@@ -156,6 +160,28 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     const rootDir = getRootDirectory();
     const pathResult = validatePath(projectPath, [rootDir]);
     return pathResult.ok ? null : pathResult.error.code;
+  }
+
+  /**
+   * Resolve BacklogPaths from an optional backlog query/body parameter.
+   * Returns defaultBacklogPaths when no param is provided.
+   */
+  function resolveBacklogPathsFromParam(
+    projectPath: string,
+    backlogParam: string | undefined,
+  ): { ok: true; paths: BacklogPaths } | { ok: false; code: string; message: string } {
+    if (!backlogParam) {
+      return { ok: true, paths: defaultBacklogPaths(projectPath) };
+    }
+    const rootResult = resolveBacklogRoot(projectPath, backlogParam);
+    if (!rootResult.ok) {
+      return { ok: false, code: rootResult.error.code, message: rootResult.error.message };
+    }
+    const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+    if (!pathsResult.ok) {
+      return { ok: false, code: pathsResult.error.code, message: pathsResult.error.message };
+    }
+    return { ok: true, paths: pathsResult.value };
   }
 
   // ── GET /api/projects ─────────────────────────────────────────
@@ -421,7 +447,13 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const backlogResult = readBacklog(resolved.paths);
     if (!backlogResult.ok) {
       const status = backlogResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
       return c.json(errorResponse(backlogResult.error.code, backlogResult.error.message), status);
@@ -465,7 +497,20 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = restoreFromBackup(defaultBacklogPaths(projectPath));
+    const raw = await c.req.json().catch(() => ({}));
+    const backlogRoot =
+      typeof raw === "object" && raw !== null
+        ? (raw as Record<string, unknown>).backlogRoot
+        : undefined;
+    const resolved = resolveBacklogPathsFromParam(
+      projectPath,
+      typeof backlogRoot === "string" ? backlogRoot : undefined,
+    );
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = restoreFromBackup(resolved.paths);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -502,7 +547,12 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       );
     }
 
-    const result = sweepBacklog(defaultBacklogPaths(projectPath), { minAgeDays: parseResult.data.minAgeDays });
+    const resolved = resolveBacklogPathsFromParam(projectPath, parseResult.data.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = sweepBacklog(resolved.paths, { minAgeDays: parseResult.data.minAgeDays });
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -529,13 +579,19 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const monthsResult = listArchiveMonths(defaultBacklogPaths(projectPath));
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const monthsResult = listArchiveMonths(resolved.paths);
     if (!monthsResult.ok) {
       return c.json(errorResponse(monthsResult.error.code, monthsResult.error.message), 500);
     }
 
     const months = monthsResult.value.map((month) => {
-      const archiveResult = readArchiveMonth(defaultBacklogPaths(projectPath), month);
+      const archiveResult = readArchiveMonth(resolved.paths, month);
       return { month, count: archiveResult.ok ? archiveResult.value.items.length : 0 };
     });
 
@@ -558,7 +614,13 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = readArchiveMonth(defaultBacklogPaths(projectPath), month);
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = readArchiveMonth(resolved.paths, month);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -574,7 +636,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   //
   // Purge a specific archive month.
 
-  router.delete("/:id/archive/:month", (c) => {
+  router.delete("/:id/archive/:month", async (c) => {
     const id = c.req.param("id");
     const month = c.req.param("month");
     const projectPath = resolveProjectPath(id);
@@ -586,7 +648,20 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = purgeArchive(defaultBacklogPaths(projectPath), month);
+    const raw = await c.req.json().catch(() => ({}));
+    const backlogRoot =
+      typeof raw === "object" && raw !== null
+        ? (raw as Record<string, unknown>).backlogRoot
+        : undefined;
+    const resolved = resolveBacklogPathsFromParam(
+      projectPath,
+      typeof backlogRoot === "string" ? backlogRoot : undefined,
+    );
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = purgeArchive(resolved.paths, month);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -628,7 +703,19 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
 
     const input: CreateItemInput = parseResult.data;
 
-    const result = addItem(defaultBacklogPaths(projectPath), input);
+    const backlogRoot =
+      typeof raw === "object" && raw !== null
+        ? (raw as Record<string, unknown>).backlogRoot
+        : undefined;
+    const resolved = resolveBacklogPathsFromParam(
+      projectPath,
+      typeof backlogRoot === "string" ? backlogRoot : undefined,
+    );
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = addItem(resolved.paths, input);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -654,7 +741,13 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const backlogResult = readBacklog(resolved.paths);
     if (!backlogResult.ok) {
       const status = backlogResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
       return c.json(errorResponse(backlogResult.error.code, backlogResult.error.message), status);
@@ -699,7 +792,19 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
 
     const updates: UpdateItemInput = parseResult.data;
 
-    const result = updateItem(defaultBacklogPaths(projectPath), itemId, updates);
+    const backlogRoot =
+      typeof raw === "object" && raw !== null
+        ? (raw as Record<string, unknown>).backlogRoot
+        : undefined;
+    const resolved = resolveBacklogPathsFromParam(
+      projectPath,
+      typeof backlogRoot === "string" ? backlogRoot : undefined,
+    );
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = updateItem(resolved.paths, itemId, updates);
     if (!result.ok) {
       const status =
         result.error.code === ErrorCodes.FILE_NOT_FOUND
@@ -720,7 +825,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   //
   // Delete a backlog item. Blocked for in_progress items when loop is active.
 
-  router.delete("/:id/backlog/:itemId", (c) => {
+  router.delete("/:id/backlog/:itemId", async (c) => {
     const id = c.req.param("id");
     const itemId = c.req.param("itemId");
     const projectPath = resolveProjectPath(id);
@@ -732,7 +837,20 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = deleteItem(defaultBacklogPaths(projectPath), itemId);
+    const raw = await c.req.json().catch(() => ({}));
+    const backlogRoot =
+      typeof raw === "object" && raw !== null
+        ? (raw as Record<string, unknown>).backlogRoot
+        : undefined;
+    const resolved = resolveBacklogPathsFromParam(
+      projectPath,
+      typeof backlogRoot === "string" ? backlogRoot : undefined,
+    );
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = deleteItem(resolved.paths, itemId);
     if (!result.ok) {
       const status =
         result.error.code === ErrorCodes.CONFLICT

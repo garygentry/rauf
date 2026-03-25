@@ -8,7 +8,6 @@
 // All routes are read-only (GET), so no CSRF header required.
 
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -20,16 +19,16 @@ import {
   validatePath,
   readToolConfig,
   resolveRootDirectory,
+  resolveBacklogRoot,
+  resolveBacklogPaths,
   defaultBacklogPaths,
+  type BacklogPaths,
 } from "@ralph/core";
 
 import { errorResponse } from "../app.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 
 // ─── Constants ────────────────────────────────────────────────────
-
-const RALPH_DIR = ".ralph";
-const PROGRESS_FILENAME = "progress.md";
 
 /** How often to emit a heartbeat event (ms) */
 const SSE_HEARTBEAT_MS = 30_000;
@@ -68,6 +67,25 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
     return pathResult.ok ? null : pathResult.error.code;
   }
 
+  /** Resolve BacklogPaths from an optional backlog query parameter. */
+  function resolveBacklogPathsFromParam(
+    projectPath: string,
+    backlogParam: string | undefined,
+  ): { ok: true; paths: BacklogPaths } | { ok: false; code: string; message: string } {
+    if (!backlogParam) {
+      return { ok: true, paths: defaultBacklogPaths(projectPath) };
+    }
+    const rootResult = resolveBacklogRoot(projectPath, backlogParam);
+    if (!rootResult.ok) {
+      return { ok: false, code: rootResult.error.code, message: rootResult.error.message };
+    }
+    const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+    if (!pathsResult.ok) {
+      return { ok: false, code: pathsResult.error.code, message: pathsResult.error.message };
+    }
+    return { ok: true, paths: pathsResult.value };
+  }
+
   // ── GET /:id/status ───────────────────────────────────────────
   //
   // Returns DerivedStatus for the project. Uses two-tier derivation:
@@ -85,7 +103,13 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = deriveStatus(defaultBacklogPaths(projectPath));
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = deriveStatus(resolved.paths);
     if (!result.ok) {
       return c.json(
         errorResponse(result.error.code, result.error.message, result.error.details),
@@ -118,6 +142,13 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
     return streamSSE(c, async (stream) => {
       // abortPromise resolves when the client disconnects.
       // Hono calls stream.onAbort() when responseReadable.cancel() fires
@@ -133,7 +164,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       // ── Initial events ──────────────────────────────────────
 
       // 1. Send last 50 log lines immediately on connect
-      const logResult = readLogTail(defaultBacklogPaths(projectPath), 50);
+      const logResult = readLogTail(paths, 50);
       if (logResult.ok && logResult.value.length > 0) {
         await stream
           .writeSSE({ data: JSON.stringify(logResult.value), event: "log" })
@@ -141,7 +172,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       }
 
       // 2. Send current derived status on connect
-      const statusResult = deriveStatus(defaultBacklogPaths(projectPath));
+      const statusResult = deriveStatus(paths);
       let lastStatusJson = "";
       if (statusResult.ok) {
         lastStatusJson = JSON.stringify(statusResult.value);
@@ -154,7 +185,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       // If the log file doesn't exist yet, fs.watch throws — catch and skip.
 
       try {
-        const stopLog = watchLog(defaultBacklogPaths(projectPath), (newLines) => {
+        const stopLog = watchLog(paths, (newLines) => {
           if (stream.aborted || stream.closed) return;
           stream.writeSSE({ data: JSON.stringify(newLines), event: "log" }).catch(() => {});
         });
@@ -169,7 +200,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
 
       const statusPoll = setInterval(() => {
         if (stream.aborted || stream.closed) return;
-        const newStatusResult = deriveStatus(defaultBacklogPaths(projectPath));
+        const newStatusResult = deriveStatus(paths);
         if (newStatusResult.ok) {
           const json = JSON.stringify(newStatusResult.value);
           if (json !== lastStatusJson) {
@@ -219,11 +250,17 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
     const tailParam = c.req.query("tail");
     const tail = tailParam !== undefined ? parseInt(tailParam, 10) : 50;
     const lines = isNaN(tail) || tail <= 0 ? 50 : tail;
 
-    const result = readLogTail(defaultBacklogPaths(projectPath), lines);
+    const result = readLogTail(resolved.paths, lines);
     if (!result.ok) {
       return c.json(
         errorResponse(result.error.code, result.error.message, result.error.details),
@@ -249,7 +286,13 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const progressPath = path.join(path.resolve(projectPath), RALPH_DIR, PROGRESS_FILENAME);
+    const backlogParam = c.req.query("backlog");
+    const resolved = resolveBacklogPathsFromParam(projectPath, backlogParam);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const progressPath = resolved.paths.progress;
     try {
       const content = fs.readFileSync(progressPath, "utf-8");
       return c.json({ data: content });

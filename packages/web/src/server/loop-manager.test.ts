@@ -399,16 +399,17 @@ describe("LoopManager", () => {
         buf.push({ ...baseEvent, iteration: i + 1 });
       }
 
-      // Set the buffer directly for testing
+      // Set the buffer directly for testing — key is backlog root (projectPath + .ralph)
+      const bufferKey = path.join("/test-project", ".ralph");
       (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> }).eventBuffers.set(
-        "/test-project",
+        bufferKey,
         buf.slice(),
       );
 
       // Verify buffer has 150
       expect(
         (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> }).eventBuffers.get(
-          "/test-project",
+          bufferKey,
         )!.length,
       ).toBe(150);
 
@@ -474,14 +475,15 @@ describe("LoopManager", () => {
         }, 50);
       });
 
-      // Buffer should exist immediately after completion
+      // Buffer should exist immediately after completion — key is backlog root
+      const bufferKey = path.join(projectPath, ".ralph");
       const buffers = (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> })
         .eventBuffers;
-      expect(buffers.has(projectPath)).toBe(true);
+      expect(buffers.has(bufferKey)).toBe(true);
 
       // After shutdownAll, buffers should be cleared
       await manager.shutdownAll();
-      expect(buffers.has(projectPath)).toBe(false);
+      expect(buffers.has(bufferKey)).toBe(false);
     });
   });
 });
