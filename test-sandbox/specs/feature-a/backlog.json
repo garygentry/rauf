@@ -8,12 +8,9 @@
       "priority": 1,
       "title": "Create greeting file",
       "description": "Create a file called greeting.txt with 'Hello, world!'",
-      "acceptanceCriteria": [
-        "greeting.txt exists",
-        "Verification command passes (echo all-pass)"
-      ],
-      "status": "done",
-      "completedAt": "2026-03-25T07:06:21.148Z"
+      "acceptanceCriteria": ["greeting.txt exists", "Verification command passes (echo all-pass)"],
+      "status": "pending",
+      "completedAt": null
     }
   ]
 }

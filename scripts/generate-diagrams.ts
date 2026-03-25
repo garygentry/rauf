@@ -100,7 +100,8 @@ const boxes: Box[] = [
   {
     id: "core",
     label: "packages/core",
-    sublabel: "discovery \u00b7 installer \u00b7 backlog \u00b7 status \u00b7 config \u00b7 profile \u00b7 template",
+    sublabel:
+      "discovery \u00b7 installer \u00b7 backlog \u00b7 status \u00b7 config \u00b7 profile \u00b7 template",
     x: 40,
     y: 210,
     w: 560,

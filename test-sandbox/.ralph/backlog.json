@@ -13,8 +13,8 @@
         "Returns formatted farewell string",
         "Verification command passes (echo all-pass)"
       ],
-      "status": "pending",
-      "completedAt": null
+      "status": "done",
+      "completedAt": "2026-03-25T07:13:37.584Z"
     },
     {
       "id": "002",
@@ -28,7 +28,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"]
+      "dependsOn": [
+        "001"
+      ]
     }
   ]
 }

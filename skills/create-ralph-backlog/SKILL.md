@@ -55,6 +55,7 @@ The backlog.json file has this structure:
 ```
 
 ### Required fields
+
 - `id` — Zero-padded sequential string: "001", "002", etc. Never reused.
 - `type` — One of: `feature`, `bug`, `refactor`, `chore`
 - `priority` — Integer 1-4 (1 = highest, 4 = lowest)
@@ -65,6 +66,7 @@ The backlog.json file has this structure:
 - `completedAt` — Always `null` for new items
 
 ### Optional fields
+
 - `dependsOn` — Array of item IDs that must be `done` first
 - `notes` — Free-text hints, context, gotchas for the agent
 - `estimatedIterations` — How many loop cycles this might take (default: 1)
@@ -78,17 +80,20 @@ The backlog.json file has this structure:
 The ralph loop processes ONE item per iteration. Each item should be:
 
 ### Right-sized
+
 - **Completable in a single loop iteration** (typically 5-15 minutes of agent work)
 - A good item touches 1-5 files. If you're describing changes across 10+ files, split it up
 - If you find yourself writing "and then also..." in a description, that's two items
 - Exception: items with `agentDelegation` can be larger because sub-agents handle parallel work
 
 ### Ordered by dependency, then priority
+
 - Items that other items depend on come first (lower ID numbers)
 - Within the same dependency tier, order by priority (1 before 4)
 - The loop's item selector respects `dependsOn` — it won't pick an item whose dependencies aren't `done`
 
 ### Independent where possible
+
 - Minimize dependencies between items. The fewer `dependsOn` entries, the more flexibility the loop has
 - Items that CAN run in parallel SHOULD be independent (no shared `dependsOn` chains)
 - Group related changes that MUST be atomic into a single item rather than splitting with dependencies
@@ -97,27 +102,28 @@ The ralph loop processes ONE item per iteration. Each item should be:
 
 ### `type` — Categorizing work
 
-| Type | Use when... | Examples |
-|------|-------------|----------|
-| `feature` | Adding new functionality that didn't exist before | New API endpoint, new UI component, new module |
-| `bug` | Fixing something that's broken or behaving incorrectly | Fix crash on empty input, correct calculation error |
-| `refactor` | Restructuring existing code without changing behavior | Extract module, rename across codebase, reorganize files |
-| `chore` | Non-functional work: docs, config, CI, dependencies | Update docs, add CI pipeline, bump dependencies |
+| Type       | Use when...                                            | Examples                                                 |
+| ---------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| `feature`  | Adding new functionality that didn't exist before      | New API endpoint, new UI component, new module           |
+| `bug`      | Fixing something that's broken or behaving incorrectly | Fix crash on empty input, correct calculation error      |
+| `refactor` | Restructuring existing code without changing behavior  | Extract module, rename across codebase, reorganize files |
+| `chore`    | Non-functional work: docs, config, CI, dependencies    | Update docs, add CI pipeline, bump dependencies          |
 
 ### `priority` — What matters most
 
-| Priority | Meaning | Use when... |
-|----------|---------|-------------|
-| 1 | Critical | Foundational work everything depends on; blocking issues |
-| 2 | High | Core features needed for the milestone; important fixes |
-| 3 | Medium | Nice-to-have features; non-critical improvements |
-| 4 | Low | Polish, cleanup, documentation; do last |
+| Priority | Meaning  | Use when...                                              |
+| -------- | -------- | -------------------------------------------------------- |
+| 1        | Critical | Foundational work everything depends on; blocking issues |
+| 2        | High     | Core features needed for the milestone; important fixes  |
+| 3        | Medium   | Nice-to-have features; non-critical improvements         |
+| 4        | Low      | Polish, cleanup, documentation; do last                  |
 
 **Guideline:** In a typical backlog, most items should be priority 1-2. If everything is priority 1, you haven't differentiated enough. If most things are priority 3-4, reconsider whether they're needed at all.
 
 ### `title` — Imperative, concise
 
 Write titles as imperative commands, like commit message subjects:
+
 - "Add user authentication endpoint" (not "User authentication" or "Adding auth")
 - "Fix race condition in queue processor" (not "Queue processor bug")
 - "Rename ClaudeProcess to LlmProcess across codebase" (not "Renaming stuff")
@@ -129,6 +135,7 @@ Keep titles under 80 characters. The title should be meaningful enough that some
 The description is the most important field. The autonomous agent reads this to understand what to implement. Write it as if briefing a skilled developer who has access to the codebase but no other context.
 
 **Include:**
+
 - What to create, modify, or fix — be specific about files and functions
 - The approach: which patterns to follow, which existing code to reference
 - What NOT to do: boundaries, things to leave alone, common mistakes to avoid
@@ -137,24 +144,28 @@ The description is the most important field. The autonomous agent reads this to 
 **Structure for different types:**
 
 For **features**, describe:
+
 - What files to create or modify
 - The interface/API surface (function signatures, endpoints, component props)
 - How it integrates with existing code
 - Edge cases to handle
 
 For **bugs**, describe:
+
 - The current incorrect behavior
 - The expected correct behavior
 - The root cause (if known)
 - The fix approach
 
 For **refactors**, describe:
+
 - What's being restructured and why
 - The before/after code organization
 - What must NOT change (external behavior, API contracts)
 - Migration steps if relevant
 
 For **chores**, describe:
+
 - Exactly what needs updating
 - The target state
 - Any validation to perform
@@ -164,11 +175,13 @@ For **chores**, describe:
 Each criterion should be a **verifiable statement** that the agent can check. The loop won't mark an item as done unless all criteria pass.
 
 **Good criteria are:**
+
 - Objectively verifiable (can be checked by running a command, reading code, or testing behavior)
 - Specific (names exact functions, files, behaviors)
 - Independent (each one checks one thing)
 
 **Examples of good acceptance criteria:**
+
 ```json
 [
   "UserService.create() returns Result<User, ValidationError>",
@@ -180,10 +193,12 @@ Each criterion should be a **verifiable statement** that the agent can check. Th
 ```
 
 **Always include a verification criterion** as the last item:
+
 - For code changes: `"pnpm test && pnpm typecheck passes"` (or whatever the project's verify command is)
 - For config/docs: `"No TypeScript errors introduced"` or similar
 
 **Anti-patterns to avoid:**
+
 - "Works correctly" — too vague, not verifiable
 - "Code is clean" — subjective
 - "Handles edge cases" — which ones? List them
@@ -192,11 +207,13 @@ Each criterion should be a **verifiable statement** that the agent can check. Th
 ### `dependsOn` — Execution order constraints
 
 Only add dependencies when there's a genuine technical reason:
+
 - Item B imports types defined in item A → B depends on A
 - Item B modifies a function that item A creates → B depends on A
 - Item B runs tests that require infrastructure from item A → B depends on A
 
 Do NOT add dependencies for:
+
 - Logical ordering preference ("it makes sense to do this first")
 - Risk reduction ("let's see if this works before doing that")
 - Items that touch different parts of the codebase independently
@@ -204,6 +221,7 @@ Do NOT add dependencies for:
 ### `notes` — Agent hints and context
 
 Use notes for information that doesn't fit in the description:
+
 - References to external docs or spec sections
 - Known gotchas or tricky parts ("The parser uses 1-based indexing, not 0-based")
 - Architecture decisions that explain WHY ("We use atomic writes here because the loop runner may crash mid-write")
@@ -213,6 +231,7 @@ Use notes for information that doesn't fit in the description:
 ### `estimatedIterations` — Multi-iteration work
 
 Most items should take 1 iteration (the default). Set `estimatedIterations` to 2+ only when:
+
 - The item involves substantial implementation AND testing that realistically needs multiple passes
 - The scope is intentionally large because splitting would lose atomicity
 - The agent will likely need to iterate on getting tests/types right
@@ -238,17 +257,20 @@ Use `agentDelegation` when a task has clearly independent subtasks that can run 
 ```
 
 **When to use agentDelegation:**
+
 - Multiple files need similar but independent changes (e.g., adding the same field to 5 different components)
 - Multiple new modules need creating with no cross-dependencies (e.g., multiple provider adapters)
 - A broad refactor touches many files but each file change is independent
 
 **When NOT to use it:**
+
 - The subtasks have ordering dependencies (use separate items with `dependsOn` instead)
 - The changes are tightly coupled (one sub-agent's output affects another's input)
 - There's only 2 subtasks with very small scope (overhead of delegation exceeds benefit)
 
 **Writing good subtask descriptions:**
 Each subtask string must be self-contained — the sub-agent gets ONLY this string plus access to the codebase. Include:
+
 - Exactly which file(s) to create or modify
 - What interface/pattern to follow (reference existing code)
 - Whether to write tests (and where to put them)
@@ -264,6 +286,7 @@ List file paths (relative to project root) of spec documents the agent should re
 ```
 
 Use this when:
+
 - The item implements a specific section of a spec
 - There's architectural context the agent needs that isn't in the description
 - The description references design decisions documented elsewhere
@@ -271,6 +294,7 @@ Use this when:
 ### `model` — Right-sizing the intelligence
 
 Use `model` to assign appropriate AI capability to each task:
+
 - Complex architectural work, novel implementations → `"claude-opus-4-6"` (or omit for default)
 - Straightforward mechanical changes, well-specified tasks → `"claude-sonnet-4-6"`
 - Simple chores, docs updates → `"claude-haiku-4-5-20251001"`
@@ -278,9 +302,11 @@ Use `model` to assign appropriate AI capability to each task:
 ## Backlog-Level Fields
 
 ### `project`
+
 The human-readable project name. Use the actual project name, not a path.
 
 ### `description`
+
 A brief description of what this backlog represents — the milestone, initiative, or goal. This gives the agent context for understanding how individual items fit together.
 
 Example: "LLM-agnostic execution architecture — decouple loop runner from Claude Code, support multiple providers via adapter pattern"
@@ -288,6 +314,7 @@ Example: "LLM-agnostic execution architecture — decouple loop runner from Clau
 ## Output
 
 Write the complete backlog.json to `.ralph/backlog.json` in the target project directory. The file must:
+
 1. Be valid JSON
 2. Conform to the schema above
 3. Have all items in `"pending"` status with `"completedAt": null`
@@ -300,15 +327,19 @@ After writing, validate by reading back and checking the structure. If the proje
 ## Common Patterns
 
 ### The foundation-first pattern
+
 For greenfield work, start with schema/types (priority 1), then core implementation (priority 1-2), then integration/UI (priority 2), then polish/docs (priority 3-4). Each layer depends on the one before it.
 
 ### The parallel providers pattern
+
 When implementing multiple similar adapters/implementations of an interface, create the interface first (item 001), then multiple independent items (002, 003, 004) that all `dependsOn: ["001"]` but not each other. Use `agentDelegation` if they can fit in one item.
 
 ### The refactor-then-extend pattern
+
 When adding a feature to messy code, create a refactor item first (clean up the module, extract interfaces) and then the feature item depends on it. This gives the agent a clean surface to work with.
 
 ### The test-alongside pattern
+
 Don't create separate "write tests for X" items. Include testing in the acceptance criteria of the implementation item. The agent should write tests as part of implementing the feature, not as an afterthought.
 
 ## Schema Validation
@@ -340,6 +371,7 @@ After writing the backlog, validate the generated JSON by reading it back and ch
 ## Interaction with the User
 
 After drafting the backlog, present a summary to the user:
+
 1. Total items, broken down by type and priority
 2. The dependency graph (which items block which)
 3. Items with `agentDelegation` and their parallelism strategy

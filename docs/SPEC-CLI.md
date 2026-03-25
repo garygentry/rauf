@@ -17,85 +17,85 @@ A quick-reference summary of all ralph commands organized by group. Click a grou
 
 ### [loop](#loop) — Run and manage the autonomous coding loop
 
-| Command | Description |
-| ------- | ----------- |
-| [loop start](#ralph-loop-start-path) | Start a loop via the server API (auto-starts server if needed) |
-| [loop stop](#ralph-loop-stop-path) | Stop a running loop gracefully |
-| [loop follow](#ralph-loop-follow-path) | Stream live events from a running loop |
-| [loop run](#ralph-loop-run-path) | Run a loop directly in-process (no server required) |
-| [loop review](#ralph-loop-review-path) | Run a standalone review pass over completed backlog items |
+| Command                                | Description                                                    |
+| -------------------------------------- | -------------------------------------------------------------- |
+| [loop start](#ralph-loop-start-path)   | Start a loop via the server API (auto-starts server if needed) |
+| [loop stop](#ralph-loop-stop-path)     | Stop a running loop gracefully                                 |
+| [loop follow](#ralph-loop-follow-path) | Stream live events from a running loop                         |
+| [loop run](#ralph-loop-run-path)       | Run a loop directly in-process (no server required)            |
+| [loop review](#ralph-loop-review-path) | Run a standalone review pass over completed backlog items      |
 
 ### [server](#server) — Manage the ralph web server
 
-| Command | Description |
-| ------- | ----------- |
-| [server start](#ralph-server-start) | Start the web server (foreground or daemon) |
-| [server stop](#ralph-server-stop) | Stop the running server |
-| [server restart](#ralph-server-restart) | Stop and restart the server |
-| [server status](#ralph-server-status) | Show server PID, port, and uptime |
-| [server logs](#ralph-server-logs) | Tail the server log file |
+| Command                                 | Description                                 |
+| --------------------------------------- | ------------------------------------------- |
+| [server start](#ralph-server-start)     | Start the web server (foreground or daemon) |
+| [server stop](#ralph-server-stop)       | Stop the running server                     |
+| [server restart](#ralph-server-restart) | Stop and restart the server                 |
+| [server status](#ralph-server-status)   | Show server PID, port, and uptime           |
+| [server logs](#ralph-server-logs)       | Tail the server log file                    |
 
 ### [backlog](#backlog) — Manage the project task backlog
 
-| Command | Description |
-| ------- | ----------- |
-| [backlog list](#ralph-backlog-list-path) | List backlog items (filterable by status/type) |
-| [backlog add](#ralph-backlog-add-path) | Add a new backlog item |
-| [backlog show](#ralph-backlog-show-path-id) | Show details for a single backlog item |
-| [backlog edit](#ralph-backlog-edit-path-id) | Edit fields on an existing backlog item |
-| [backlog delete](#ralph-backlog-delete-path-id) | Delete a backlog item |
-| [backlog restore](#ralph-backlog-restore-path) | Restore backlog from the `.bak` backup file |
-| [backlog sweep](#ralph-backlog-sweep-path) | Archive completed (`done`) items |
-| [backlog reset](#ralph-backlog-reset-path) | Reset project state for a fresh backlog cycle |
-| [backlog archive list](#ralph-backlog-archive-list-path) | List archive months with item counts |
-| [backlog archive view](#ralph-backlog-archive-view-path-month) | View archived items for a given month |
-| [backlog archive purge](#ralph-backlog-archive-purge-path) | Delete archive files |
+| Command                                                        | Description                                    |
+| -------------------------------------------------------------- | ---------------------------------------------- |
+| [backlog list](#ralph-backlog-list-path)                       | List backlog items (filterable by status/type) |
+| [backlog add](#ralph-backlog-add-path)                         | Add a new backlog item                         |
+| [backlog show](#ralph-backlog-show-path-id)                    | Show details for a single backlog item         |
+| [backlog edit](#ralph-backlog-edit-path-id)                    | Edit fields on an existing backlog item        |
+| [backlog delete](#ralph-backlog-delete-path-id)                | Delete a backlog item                          |
+| [backlog restore](#ralph-backlog-restore-path)                 | Restore backlog from the `.bak` backup file    |
+| [backlog sweep](#ralph-backlog-sweep-path)                     | Archive completed (`done`) items               |
+| [backlog reset](#ralph-backlog-reset-path)                     | Reset project state for a fresh backlog cycle  |
+| [backlog archive list](#ralph-backlog-archive-list-path)       | List archive months with item counts           |
+| [backlog archive view](#ralph-backlog-archive-view-path-month) | View archived items for a given month          |
+| [backlog archive purge](#ralph-backlog-archive-purge-path)     | Delete archive files                           |
 
 ### [projects](#projects) — Discover and inspect ralph-enabled projects
 
-| Command | Description |
-| ------- | ----------- |
-| [projects list](#ralph-projects-list) | Discover and list all ralph-enabled projects under root |
-| [projects status](#ralph-projects-status) | Show loop state and backlog summary for all projects |
+| Command                                   | Description                                             |
+| ----------------------------------------- | ------------------------------------------------------- |
+| [projects list](#ralph-projects-list)     | Discover and list all ralph-enabled projects under root |
+| [projects status](#ralph-projects-status) | Show loop state and backlog summary for all projects    |
 
 ### [install / update / uninstall / init](#installation) — Install and manage ralph in a project
 
-| Command | Description |
-| ------- | ----------- |
-| [install](#ralph-install-path) | Install ralph artifacts into an existing project |
-| [update](#ralph-update-path) | Update ralph artifacts in an existing installation |
-| [uninstall](#ralph-uninstall-path) | Remove ralph from a project |
-| [init](#ralph-init-path) | Scaffold a brand new ralph-managed project from scratch |
+| Command                            | Description                                             |
+| ---------------------------------- | ------------------------------------------------------- |
+| [install](#ralph-install-path)     | Install ralph artifacts into an existing project        |
+| [update](#ralph-update-path)       | Update ralph artifacts in an existing installation      |
+| [uninstall](#ralph-uninstall-path) | Remove ralph from a project                             |
+| [init](#ralph-init-path)           | Scaffold a brand new ralph-managed project from scratch |
 
 ### [status / log / progress](#monitoring) — Monitor a project
 
-| Command | Description |
-| ------- | ----------- |
-| [status](#ralph-status-path) | Show loop state and backlog summary for a project |
-| [log](#ralph-log-path) | Tail the ralph loop log file |
+| Command                          | Description                                           |
+| -------------------------------- | ----------------------------------------------------- |
+| [status](#ralph-status-path)     | Show loop state and backlog summary for a project     |
+| [log](#ralph-log-path)           | Tail the ralph loop log file                          |
 | [progress](#ralph-progress-path) | Display the project's `progress.md` accumulation file |
 
 ### [profile](#profile) — Manage per-project tech stack profile
 
-| Command | Description |
-| ------- | ----------- |
-| [profile show](#ralph-profile-show-path) | Show the current profile for a project |
-| [profile detect](#ralph-profile-detect-path) | Re-run auto-detection (read-only, does not write) |
+| Command                                          | Description                                        |
+| ------------------------------------------------ | -------------------------------------------------- |
+| [profile show](#ralph-profile-show-path)         | Show the current profile for a project             |
+| [profile detect](#ralph-profile-detect-path)     | Re-run auto-detection (read-only, does not write)  |
 | [profile set](#ralph-profile-set-path-key-value) | Update a single profile field and re-sync RALPH.md |
 
 ### [config](#config) — Manage global tool configuration
 
-| Command | Description |
-| ------- | ----------- |
-| [config get](#ralph-config-get-key) | Get a single global config value |
+| Command                                   | Description                      |
+| ----------------------------------------- | -------------------------------- |
+| [config get](#ralph-config-get-key)       | Get a single global config value |
 | [config set](#ralph-config-set-key-value) | Set a single global config value |
-| [config list](#ralph-config-list) | List all global config values |
+| [config list](#ralph-config-list)         | List all global config values    |
 
 ### [version / help](#utilities) — Utilities
 
-| Command | Description |
-| ------- | ----------- |
-| [version](#ralph-version) | Print the ralph version |
+| Command                     | Description             |
+| --------------------------- | ----------------------- |
+| [version](#ralph-version)   | Print the ralph version |
 | [help](#ralph-help-command) | Show help for a command |
 
 ---
@@ -414,12 +414,12 @@ Show a status summary for the project at `[path]`.
 
 **Machine-friendly exit codes for `ralph status`:**
 
-| Code | Loop State |
-| ---- | ---------- |
+| Code | Loop State                                      |
+| ---- | ----------------------------------------------- |
 | 0    | IDLE, COMPLETE, PAUSED, ERROR, or NOT_INSTALLED |
-| 1    | RUNNING |
-| 2    | PAUSED_HUMAN (needs human input) |
-| 3    | LIMIT_REACHED |
+| 1    | RUNNING                                         |
+| 2    | PAUSED_HUMAN (needs human input)                |
+| 3    | LIMIT_REACHED                                   |
 
 ### ralph log [path]
 

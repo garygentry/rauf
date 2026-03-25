@@ -1,14 +1,7 @@
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 
-import type {
-  LoopStartOptions,
-  LoopEvent,
-  LoopState,
-  Backlog,
-  BacklogItem,
-  IterationStatus,
-} from "@ralph/core";
+import type { LoopStartOptions, LoopEvent, LoopState, Backlog, IterationStatus } from "@ralph/core";
 import {
   readBacklog,
   selectNextItem,

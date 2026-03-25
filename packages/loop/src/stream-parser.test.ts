@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { StreamParser, type ClaudeStreamEvent } from "./stream-parser.js";
 
 function collectEvents(lines: string[]): ClaudeStreamEvent[] {
@@ -23,9 +23,7 @@ describe("StreamParser", () => {
         message: { usage: { input_tokens: 1500 } },
       }),
     ]);
-    expect(events).toEqual([
-      { type: "token_update", inputTokens: 1500, outputTokens: 0 },
-    ]);
+    expect(events).toEqual([{ type: "token_update", inputTokens: 1500, outputTokens: 0 }]);
   });
 
   it("emits tool_start and tool_end for tool_use blocks", () => {
@@ -178,9 +176,7 @@ describe("StreamParser", () => {
       throw new Error("callback boom");
     });
     // Should not throw
-    expect(() =>
-      parser.feed(JSON.stringify({ type: "message_stop" })),
-    ).toThrow("callback boom");
+    expect(() => parser.feed(JSON.stringify({ type: "message_stop" }))).toThrow("callback boom");
   });
 
   // ── Claude CLI format tests ────────────────────────────────────

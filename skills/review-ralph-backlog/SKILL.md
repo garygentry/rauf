@@ -53,6 +53,7 @@ The backlog.json file has this structure:
 ```
 
 ### Required fields
+
 - `id` — Zero-padded sequential string: "001", "002", etc.
 - `type` — One of: `feature`, `bug`, `refactor`, `chore`
 - `priority` — Integer 1-4 (1 = highest)
@@ -63,6 +64,7 @@ The backlog.json file has this structure:
 - `completedAt` — ISO date string or `null`
 
 ### Optional fields
+
 - `dependsOn` — Array of item IDs that must be `done` first
 - `notes` — Free-text hints and context
 - `estimatedIterations` — Expected loop cycles (default: 1)
@@ -76,6 +78,7 @@ The backlog.json file has this structure:
 **Items you may modify:** `pending`, `blocked`
 
 **Items you must NOT modify:** `done`, `in_progress`
+
 - Review these for informational purposes only (e.g., noting that a done item's approach may affect pending items)
 - Include them in the coverage map but never propose changes to their content
 
@@ -102,6 +105,7 @@ Be thorough — read the reference documents section by section and ensure every
 ### 2. Gaps
 
 For each GAP or Partial entry in the coverage map, propose a new backlog item with full JSON. New items must:
+
 - Continue the ID sequence from the highest existing ID
 - Have `"status": "pending"` and `"completedAt": null`
 - Include proper `dependsOn` references to existing items where relevant
@@ -110,6 +114,7 @@ For each GAP or Partial entry in the coverage map, propose a new backlog item wi
 ### 3. Accuracy
 
 For each existing item, compare its description and acceptance criteria against what the reference documents actually say. Flag:
+
 - **Misinterpretations** — the item describes something different from the spec
 - **Outdated references** — the item references spec sections that have changed
 - **Missing constraints** — the spec has requirements the item doesn't capture
@@ -122,23 +127,27 @@ For each existing item, compare its description and acceptance criteria against 
 Check each item for:
 
 **Description quality:**
+
 - Sufficient detail for an agent with no context to implement (features should generally be 100+ characters)
 - Specifies files to create/modify
 - References patterns to follow in existing code
 - Includes edge cases and boundaries
 
 **Acceptance criteria quality:**
+
 - Each criterion is objectively verifiable
 - Criteria are specific (name exact functions, files, behaviors)
 - Each criterion tests one thing
 - A verification command is the last criterion (e.g., `"pnpm test && pnpm typecheck passes"`)
 
 **Title quality:**
+
 - Imperative mood ("Add X", not "Adding X" or "X feature")
 - Under 80 characters
 - Meaningful without reading the description
 
 **specReferences usage:**
+
 - Items implementing spec-defined behavior should have `specReferences` pointing to the relevant docs
 - Referenced files must actually exist in the project
 - References should be specific enough to be useful (prefer `docs/SPEC-CORE.md` over a generic `docs/` if the item only needs one spec)
@@ -146,6 +155,7 @@ Check each item for:
 ### 5. Dependencies
 
 Validate the dependency graph:
+
 - **No circular dependencies** — trace every dependency chain to confirm it terminates
 - **No phantom dependencies** — every ID in `dependsOn` must exist in the backlog
 - **Not over-constrained** — items that touch different parts of the codebase independently shouldn't be chained
@@ -155,6 +165,7 @@ Validate the dependency graph:
 ### 6. Sizing
 
 Check each item is right-sized for a single loop iteration:
+
 - **Too large** — touches 10+ files, has 15+ acceptance criteria, description is 500+ words, or combines multiple logical changes ("and then also...")
 - **Too small** — trivial one-line changes that could be folded into an adjacent item
 - **agentDelegation opportunities** — items with clearly independent subtasks that could benefit from parallel execution but don't use `agentDelegation`
@@ -163,6 +174,7 @@ Check each item is right-sized for a single loop iteration:
 ### 7. Structural
 
 Check schema conformance:
+
 - All required fields present on every item
 - IDs are sequential zero-padded strings with no gaps (unless gaps are from done items). Non-numeric IDs (e.g. `"notif-001"`) are tolerated but numeric IDs are preferred.
 - `type` is one of the valid enum values
@@ -177,19 +189,19 @@ Check schema conformance:
 
 Flag these with severity levels:
 
-| Anti-Pattern | Severity | Description |
-|---|---|---|
-| God item | CRITICAL | 15+ acceptance criteria or 10+ files touched — must be split |
-| Missing verification | CRITICAL | No verification command in acceptance criteria |
-| Vague description | IMPORTANT | Description under 100 chars for a feature item |
-| Priority inflation | IMPORTANT | More than 60% of items are priority 1 |
-| Phantom dependency | CRITICAL | `dependsOn` references a non-existent item ID |
-| Circular dependency | CRITICAL | Dependency chain forms a cycle |
-| Wrong type | INFO | Item classified as wrong type (e.g., a feature called a chore) |
-| Orphan item | INFO | Item that nothing depends on AND doesn't depend on anything (may be fine, but worth noting) |
-| Stale blocked | IMPORTANT | Blocked item whose blocker has been resolved (dependency is now done) |
-| Over-constrained | IMPORTANT | Items chained by `dependsOn` that could run independently |
-| Under-constrained | IMPORTANT | Item uses types/functions from another item but doesn't depend on it |
+| Anti-Pattern         | Severity  | Description                                                                                 |
+| -------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| God item             | CRITICAL  | 15+ acceptance criteria or 10+ files touched — must be split                                |
+| Missing verification | CRITICAL  | No verification command in acceptance criteria                                              |
+| Vague description    | IMPORTANT | Description under 100 chars for a feature item                                              |
+| Priority inflation   | IMPORTANT | More than 60% of items are priority 1                                                       |
+| Phantom dependency   | CRITICAL  | `dependsOn` references a non-existent item ID                                               |
+| Circular dependency  | CRITICAL  | Dependency chain forms a cycle                                                              |
+| Wrong type           | INFO      | Item classified as wrong type (e.g., a feature called a chore)                              |
+| Orphan item          | INFO      | Item that nothing depends on AND doesn't depend on anything (may be fine, but worth noting) |
+| Stale blocked        | IMPORTANT | Blocked item whose blocker has been resolved (dependency is now done)                       |
+| Over-constrained     | IMPORTANT | Items chained by `dependsOn` that could run independently                                   |
+| Under-constrained    | IMPORTANT | Item uses types/functions from another item but doesn't depend on it                        |
 
 ## Report Format
 

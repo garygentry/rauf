@@ -190,9 +190,7 @@
       "dependsOn": [],
       "notes": "Read spec 05-loop-runner-integration.md section 4 completely for exact before/after wording. These template changes are safe because: (1) existing installations only use the default root, (2) the prompt-builder injects the actual paths at runtime. Be careful not to change the meaning of the instructions — only the path references.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md"
-      ]
+      "specReferences": ["specs/multi-backlog/05-loop-runner-integration.md"]
     },
     {
       "id": "008",
@@ -212,9 +210,7 @@
       "dependsOn": ["007"],
       "notes": "The generation script reads all files under artifacts/ and embeds them as string literals in a TypeScript file. This is an existing build step. If the script path is different, check scripts/ directory. The generated file should be committed alongside the template changes.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md"
-      ]
+      "specReferences": ["specs/multi-backlog/05-loop-runner-integration.md"]
     },
     {
       "id": "009",
@@ -239,9 +235,7 @@
       "dependsOn": ["002", "003", "004", "005", "006"],
       "notes": "Read spec 05-loop-runner-integration.md sections 1-2 completely. This is a large but mechanical change — every core function call in runner.ts changes from projectPath to this.paths. The key architectural change is the static factory pattern (create instead of constructor). The event emission still uses this.projectPath for project identification — don't change that. The LoopRunner currently stores this.projectPath — keep it alongside this.paths.",
       "estimatedIterations": 2,
-      "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md"
-      ]
+      "specReferences": ["specs/multi-backlog/05-loop-runner-integration.md"]
     },
     {
       "id": "010",
@@ -292,9 +286,7 @@
       "dependsOn": ["009"],
       "notes": "Read spec 06-cli-web-integration.md sections 2.1-2.3 completely. The resolution pattern is the same 3-line preamble for every command. The --force flag is only relevant for loop run (direct mode). Use extractStringFlag and extractBoolFlag — check existing CLI code for the exact utility names. Error messages should show relative paths (path.relative(process.cwd(), absolutePath)).",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
-      ]
+      "specReferences": ["specs/multi-backlog/06-cli-web-integration.md"]
     },
     {
       "id": "012",
@@ -318,9 +310,7 @@
       "dependsOn": ["004", "005", "006"],
       "notes": "Read spec 06-cli-web-integration.md sections 2.4-2.8 completely. The status command has the most complex logic — it shows the default root first, then scans for active non-default roots. Use chalk (imported as c) for colored output. The backlog commands are all mechanical — same 3-line preamble pattern. Check which file contains handleProgress and handleLog — they may be in status-commands.ts or their own files.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
-      ],
+      "specReferences": ["specs/multi-backlog/06-cli-web-integration.md"],
       "agentDelegation": {
         "recommendedConcurrency": 2,
         "strategy": "Split by command file. One subagent handles backlog-commands.ts, the other handles status-commands.ts and related handlers.",
@@ -351,9 +341,7 @@
       "dependsOn": ["009", "011"],
       "notes": "Read spec 06-cli-web-integration.md section 3 completely. The web changes are intentionally minimal — no UI changes (out of scope per PRD). The LoopManager re-keying is the most important change: it enables multiple loops on different roots within the same project (future feature, but the data structure needs to support it now). Import resolveBacklogRoot from @ralph/core for path validation in routes.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
-      ]
+      "specReferences": ["specs/multi-backlog/06-cli-web-integration.md"]
     },
     {
       "id": "014",
@@ -373,9 +361,7 @@
       "dependsOn": ["011"],
       "notes": "Read spec 07-testing-strategy.md section 4.2. The test-sandbox uses mock Claude scripts (not real API calls). Look at existing test-sandbox/scenarios/ for the pattern. The backlog items should be trivially completable by the mock scripts.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/07-testing-strategy.md"
-      ]
+      "specReferences": ["specs/multi-backlog/07-testing-strategy.md"]
     },
     {
       "id": "015",
@@ -396,9 +382,7 @@
       "dependsOn": ["011", "012", "013", "014"],
       "notes": "This is the final verification item. If tests fail, fix them in this iteration rather than creating new backlog items. The test-sandbox may not work if the ralph binary hasn't been rebuilt — run pnpm build first if needed.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/07-testing-strategy.md"
-      ]
+      "specReferences": ["specs/multi-backlog/07-testing-strategy.md"]
     },
     {
       "id": "016",
@@ -417,9 +401,7 @@
       "dependsOn": ["006"],
       "notes": "PRD section 7 requires this deliverable. The default root layout is unchanged, so migration is only needed for projects that want to use non-default backlog roots.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/PRD.md"
-      ]
+      "specReferences": ["specs/multi-backlog/PRD.md"]
     }
   ]
 }

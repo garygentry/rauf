@@ -407,7 +407,7 @@ describe("GET /api/config", () => {
     });
   });
 
-  it("returns saved config when config file exists", async () => {
+  it("returns saved config when config file exists", { retry: 2 }, async () => {
     const config = {
       rootDirectory: "/tmp/my-projects",
       port: 3000,

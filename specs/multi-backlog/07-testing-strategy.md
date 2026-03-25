@@ -4,14 +4,14 @@ Test approach, shared helpers, unit and integration test scenarios, and test-san
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-ROOT-01–04 | Backlog root concept | 3.1 backlog-root.test.ts |
+| REQ ID          | Requirement                | Section                  |
+| --------------- | -------------------------- | ------------------------ |
+| REQ-ROOT-01–04  | Backlog root concept       | 3.1 backlog-root.test.ts |
 | REQ-STATE-01–04 | State directory resolution | 3.1 backlog-root.test.ts |
-| REQ-LOCK-01–05 | Lock file mechanism | 3.2 lock.test.ts |
-| REQ-CLI-01–04 | --backlog flag | 4. Integration Tests |
-| REQ-STATUS-01 | Active root scanning | 3.3 status.test.ts |
-| REQ-REL-01–03 | Reliability requirements | 3.1, 3.2, 3.4 |
+| REQ-LOCK-01–05  | Lock file mechanism        | 3.2 lock.test.ts         |
+| REQ-CLI-01–04   | --backlog flag             | 4. Integration Tests     |
+| REQ-STATUS-01   | Active root scanning       | 3.3 status.test.ts       |
+| REQ-REL-01–03   | Reliability requirements   | 3.1, 3.2, 3.4            |
 
 ## 1. Framework and Conventions
 
@@ -70,9 +70,9 @@ interface MultiRootProject {
  * @param options - Root configurations (default root is always created)
  * @returns Project path and cleanup function
  */
-export function createMultiRootProject(
-  options?: { roots?: BacklogRootConfig[] },
-): MultiRootProject {
+export function createMultiRootProject(options?: {
+  roots?: BacklogRootConfig[];
+}): MultiRootProject {
   const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-test-"));
 
   // Create .ralph.json marker
@@ -99,10 +99,11 @@ export function createMultiRootProject(
   // Create default root (.ralph/) with empty backlog and RALPH.md
   const defaultDir = path.join(projectPath, ".ralph");
   fs.mkdirSync(defaultDir, { recursive: true });
-  writeBacklogFile(
-    path.join(defaultDir, "backlog.json"),
-    { project: "test", description: "", items: [] },
-  );
+  writeBacklogFile(path.join(defaultDir, "backlog.json"), {
+    project: "test",
+    description: "",
+    items: [],
+  });
   fs.writeFileSync(path.join(defaultDir, "RALPH.md"), "# Default RALPH.md\n");
 
   // Create additional roots
@@ -113,9 +114,7 @@ export function createMultiRootProject(
     fs.mkdirSync(rootDir, { recursive: true });
 
     // Determine state dir
-    const stateDir = path.basename(rootDir) === ".ralph"
-      ? rootDir
-      : path.join(rootDir, ".ralph");
+    const stateDir = path.basename(rootDir) === ".ralph" ? rootDir : path.join(rootDir, ".ralph");
     fs.mkdirSync(stateDir, { recursive: true });
 
     // Write backlog.json
@@ -124,9 +123,10 @@ export function createMultiRootProject(
       description: root.backlog?.description ?? "",
       items: root.backlog?.items ?? [],
     };
-    const backlogLocation = (root.backlogInRoot ?? true)
-      ? path.join(rootDir, "backlog.json")
-      : path.join(stateDir, "backlog.json");
+    const backlogLocation =
+      (root.backlogInRoot ?? true)
+        ? path.join(rootDir, "backlog.json")
+        : path.join(stateDir, "backlog.json");
     writeBacklogFile(backlogLocation, backlogContent);
 
     // Write state.json if provided
@@ -144,10 +144,7 @@ export function createMultiRootProject(
         error: null,
         ...root.state,
       };
-      fs.writeFileSync(
-        path.join(stateDir, "state.json"),
-        JSON.stringify(stateContent, null, 2),
-      );
+      fs.writeFileSync(path.join(stateDir, "state.json"), JSON.stringify(stateContent, null, 2));
     }
 
     // Write instruction files if requested
@@ -176,64 +173,65 @@ function writeBacklogFile(filePath: string, backlog: Backlog): void {
 
 **File:** `packages/core/src/backlog-root.test.ts`
 
-| Test Case | Expected |
-|-----------|----------|
-| `resolveBacklogRoot` — no flag → returns `.ralph` default | `{projectPath}/.ralph` |
-| `resolveBacklogRoot` — `"specs/auth"` → correct absolute path | `{projectPath}/specs/auth` |
-| `resolveBacklogRoot` — `"../../outside"` → PATH_VIOLATION | error with PATH_VIOLATION code |
-| `resolveBacklogRoot` — empty string → returns `.ralph` default | `{projectPath}/.ralph` |
-| `resolveStateDir` — `.ralph` basename → same directory | No nesting |
-| `resolveStateDir` — `specs/auth` → `specs/auth/.ralph` | Subdirectory created |
-| `resolveBacklogPaths` — backlog.json in root dir | `paths.backlog` points to root/backlog.json |
-| `resolveBacklogPaths` — backlog.json in stateDir only | `paths.backlog` points to stateDir/backlog.json |
-| `resolveBacklogPaths` — no backlog.json → FILE_NOT_FOUND | Error returned |
-| `resolveBacklogPaths` — root dir doesn't exist → FILE_NOT_FOUND | Error returned |
-| `resolveBacklogPaths` — all path fields are absolute | Every field starts with `/` |
-| `resolveInstructionPaths` — RALPH.md in per-root stateDir | Uses per-root path |
-| `resolveInstructionPaths` — RALPH.md only at project level | Falls back to project `.ralph/` |
-| `resolveInstructionPaths` — RALPH.md missing everywhere | Returns `null` |
-| `resolveInstructionPaths` — default root (no fallback needed) | Uses `.ralph/RALPH.md` directly |
-| `ensureStateDir` — creates directory with parents | Directory exists after call |
-| `ensureStateDir` — existing directory → no-op | Returns ok |
+| Test Case                                                       | Expected                                        |
+| --------------------------------------------------------------- | ----------------------------------------------- |
+| `resolveBacklogRoot` — no flag → returns `.ralph` default       | `{projectPath}/.ralph`                          |
+| `resolveBacklogRoot` — `"specs/auth"` → correct absolute path   | `{projectPath}/specs/auth`                      |
+| `resolveBacklogRoot` — `"../../outside"` → PATH_VIOLATION       | error with PATH_VIOLATION code                  |
+| `resolveBacklogRoot` — empty string → returns `.ralph` default  | `{projectPath}/.ralph`                          |
+| `resolveStateDir` — `.ralph` basename → same directory          | No nesting                                      |
+| `resolveStateDir` — `specs/auth` → `specs/auth/.ralph`          | Subdirectory created                            |
+| `resolveBacklogPaths` — backlog.json in root dir                | `paths.backlog` points to root/backlog.json     |
+| `resolveBacklogPaths` — backlog.json in stateDir only           | `paths.backlog` points to stateDir/backlog.json |
+| `resolveBacklogPaths` — no backlog.json → FILE_NOT_FOUND        | Error returned                                  |
+| `resolveBacklogPaths` — root dir doesn't exist → FILE_NOT_FOUND | Error returned                                  |
+| `resolveBacklogPaths` — all path fields are absolute            | Every field starts with `/`                     |
+| `resolveInstructionPaths` — RALPH.md in per-root stateDir       | Uses per-root path                              |
+| `resolveInstructionPaths` — RALPH.md only at project level      | Falls back to project `.ralph/`                 |
+| `resolveInstructionPaths` — RALPH.md missing everywhere         | Returns `null`                                  |
+| `resolveInstructionPaths` — default root (no fallback needed)   | Uses `.ralph/RALPH.md` directly                 |
+| `ensureStateDir` — creates directory with parents               | Directory exists after call                     |
+| `ensureStateDir` — existing directory → no-op                   | Returns ok                                      |
 
 ### 3.2 `lock.test.ts`
 
 **File:** `packages/core/src/lock.test.ts`
 
-| Test Case | Expected |
-|-----------|----------|
-| `acquireLock` — fresh state dir | Creates .loop.lock with pid/startedAt/processStartTime |
-| `acquireLock` — already locked by current (live) PID | Returns LOCK_CONFLICT |
-| `acquireLock` — locked by dead PID | Removes stale lock, acquires new one |
-| `acquireLock` — corrupt lock file | Treats as stale, acquires |
-| `releaseLock` — lock exists | Removes file |
-| `releaseLock` — no lock file | Returns ok (idempotent) |
-| `checkLock` — no lock file | `{ locked: false }` |
-| `checkLock` — live PID | `{ locked: true, stale: false }` |
-| `checkLock` — dead PID | `{ locked: true, stale: true }` |
-| `checkLock` — corrupt file | `{ locked: true, stale: true }` |
-| `forceClearLock` — any lock state | File removed |
-| Lock file JSON is valid | Parses against LockFileContentSchema |
+| Test Case                                            | Expected                                               |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| `acquireLock` — fresh state dir                      | Creates .loop.lock with pid/startedAt/processStartTime |
+| `acquireLock` — already locked by current (live) PID | Returns LOCK_CONFLICT                                  |
+| `acquireLock` — locked by dead PID                   | Removes stale lock, acquires new one                   |
+| `acquireLock` — corrupt lock file                    | Treats as stale, acquires                              |
+| `releaseLock` — lock exists                          | Removes file                                           |
+| `releaseLock` — no lock file                         | Returns ok (idempotent)                                |
+| `checkLock` — no lock file                           | `{ locked: false }`                                    |
+| `checkLock` — live PID                               | `{ locked: true, stale: false }`                       |
+| `checkLock` — dead PID                               | `{ locked: true, stale: true }`                        |
+| `checkLock` — corrupt file                           | `{ locked: true, stale: true }`                        |
+| `forceClearLock` — any lock state                    | File removed                                           |
+| Lock file JSON is valid                              | Parses against LockFileContentSchema                   |
 
 **Testing PID liveness:** Use `process.pid` (current process, always alive) and PID `999999999` (almost certainly dead) for reliable tests.
 
 ### 3.3 `status.test.ts` — `scanActiveRoots` Tests
 
-| Test Case | Expected |
-|-----------|----------|
-| Project with no active roots | Returns empty array |
-| Project with 1 active root (running) + 2 idle | Returns 1 root |
-| Project with 3 active roots | Returns all 3, sorted by relativePath |
-| Scan skips `node_modules/` | No roots from node_modules |
-| Scan skips `.git/` | No roots from .git |
-| Missing/corrupt state.json | Skipped gracefully, no error |
-| Root with `.loop.lock` but no state.json | Detected as active |
+| Test Case                                     | Expected                              |
+| --------------------------------------------- | ------------------------------------- |
+| Project with no active roots                  | Returns empty array                   |
+| Project with 1 active root (running) + 2 idle | Returns 1 root                        |
+| Project with 3 active roots                   | Returns all 3, sorted by relativePath |
+| Scan skips `node_modules/`                    | No roots from node_modules            |
+| Scan skips `.git/`                            | No roots from .git                    |
+| Missing/corrupt state.json                    | Skipped gracefully, no error          |
+| Root with `.loop.lock` but no state.json      | Detected as active                    |
 
 ### 3.4 Existing Test Updates
 
 All existing tests for `backlog.ts`, `status.ts`, `iteration-status.ts`, `archive.ts`, and `reset.ts` must be updated:
 
 **Pattern:**
+
 ```typescript
 // Before (many existing tests):
 const result = readBacklog(projectPath);
@@ -246,6 +244,7 @@ const result = readBacklog(paths.value);
 ```
 
 **Simplification:** Use `createMultiRootProject()` from `test-helpers.ts` for setup:
+
 ```typescript
 import { createMultiRootProject } from "./test-helpers.js";
 
@@ -265,9 +264,14 @@ afterEach(() => {
 ```typescript
 it("operates on non-default root", () => {
   const project = createMultiRootProject({
-    roots: [{ path: "specs/auth", backlog: { project: "auth", description: "Auth feature", items: [] } }],
+    roots: [
+      { path: "specs/auth", backlog: { project: "auth", description: "Auth feature", items: [] } },
+    ],
   });
-  const paths = resolveBacklogPaths(project.projectPath, path.join(project.projectPath, "specs/auth"));
+  const paths = resolveBacklogPaths(
+    project.projectPath,
+    path.join(project.projectPath, "specs/auth"),
+  );
   expect(paths.ok).toBe(true);
   // ... test against this root ...
   project.cleanup();
@@ -276,15 +280,15 @@ it("operates on non-default root", () => {
 
 ### 3.5 `prompt-builder.test.ts` Updates
 
-| Test Case | Expected |
-|-----------|----------|
-| RALPH.md from per-root stateDir | Uses per-root content |
-| RALPH.md fallback to project-level | Uses project-level content |
-| Missing RALPH.md → error | FILE_NOT_FOUND returned |
-| progress.md always from stateDir | No fallback to project-level |
-| "Active Backlog Root" section in prompt | Contains root relative path |
-| Review prompt uses per-root REVIEW.md | Per-root takes precedence |
-| Review prompt falls back to embedded template | When no REVIEW.md exists |
+| Test Case                                     | Expected                     |
+| --------------------------------------------- | ---------------------------- |
+| RALPH.md from per-root stateDir               | Uses per-root content        |
+| RALPH.md fallback to project-level            | Uses project-level content   |
+| Missing RALPH.md → error                      | FILE_NOT_FOUND returned      |
+| progress.md always from stateDir              | No fallback to project-level |
+| "Active Backlog Root" section in prompt       | Contains root relative path  |
+| Review prompt uses per-root REVIEW.md         | Per-root takes precedence    |
+| Review prompt falls back to embedded template | When no REVIEW.md exists     |
 
 ## 4. Integration Tests
 
@@ -292,15 +296,15 @@ it("operates on non-default root", () => {
 
 These test the full CLI flow from flag parsing through core execution:
 
-| Test Case | Command | Expected |
-|-----------|---------|----------|
-| Default backlog root | `ralph backlog list .` | Lists items from `.ralph/backlog.json` |
-| Custom backlog root | `ralph backlog list . --backlog specs/auth` | Lists items from `specs/auth/backlog.json` |
-| Invalid backlog root | `ralph backlog list . --backlog ../../outside` | PATH_VIOLATION error |
-| Lock conflict | Two `ralph loop run . --backlog specs/auth` | Second returns error |
-| Force override | `ralph loop run . --backlog specs/auth --force` | Clears lock, proceeds |
-| Status all roots | `ralph status .` | Shows default + active non-default |
-| Status specific root | `ralph status . --backlog specs/auth` | Shows only that root |
+| Test Case            | Command                                         | Expected                                   |
+| -------------------- | ----------------------------------------------- | ------------------------------------------ |
+| Default backlog root | `ralph backlog list .`                          | Lists items from `.ralph/backlog.json`     |
+| Custom backlog root  | `ralph backlog list . --backlog specs/auth`     | Lists items from `specs/auth/backlog.json` |
+| Invalid backlog root | `ralph backlog list . --backlog ../../outside`  | PATH_VIOLATION error                       |
+| Lock conflict        | Two `ralph loop run . --backlog specs/auth`     | Second returns error                       |
+| Force override       | `ralph loop run . --backlog specs/auth --force` | Clears lock, proceeds                      |
+| Status all roots     | `ralph status .`                                | Shows default + active non-default         |
+| Status specific root | `ralph status . --backlog specs/auth`           | Shows only that root                       |
 
 ### 4.2 Test-Sandbox Updates
 
@@ -322,13 +326,13 @@ Add a scenario that runs against a non-default backlog root:
 
 ## 5. Coverage Targets
 
-| Module | Target | Notes |
-|--------|--------|-------|
-| `backlog-root.ts` | 95%+ | All paths are critical |
-| `lock.ts` | 90%+ | PID recycling detection may be hard to test on non-Linux |
-| `status.ts` (scanActiveRoots) | 85%+ | Filesystem walking edge cases |
-| Updated modules (backlog, archive, etc.) | Maintain existing coverage | Just signature changes |
-| prompt-builder.ts | 85%+ | Fallback logic is critical |
+| Module                                   | Target                     | Notes                                                    |
+| ---------------------------------------- | -------------------------- | -------------------------------------------------------- |
+| `backlog-root.ts`                        | 95%+                       | All paths are critical                                   |
+| `lock.ts`                                | 90%+                       | PID recycling detection may be hard to test on non-Linux |
+| `status.ts` (scanActiveRoots)            | 85%+                       | Filesystem walking edge cases                            |
+| Updated modules (backlog, archive, etc.) | Maintain existing coverage | Just signature changes                                   |
+| prompt-builder.ts                        | 85%+                       | Fallback logic is critical                               |
 
 ## Dependencies
 

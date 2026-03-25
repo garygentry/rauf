@@ -17,10 +17,7 @@ const VITE_PREFIX = `${MAGENTA}[vite]${RESET} `;
 /**
  * Read lines from a ReadableStream and write them to stdout with a prefix.
  */
-async function pipeWithPrefix(
-  stream: ReadableStream<Uint8Array>,
-  prefix: string,
-): Promise<void> {
+async function pipeWithPrefix(stream: ReadableStream<Uint8Array>, prefix: string): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

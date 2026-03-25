@@ -132,6 +132,7 @@ export class StatusLine {
 
   /** Truncate text to fit terminal width, accounting for ANSI codes */
   private truncate(text: string, maxWidth: number): string {
+    // eslint-disable-next-line no-control-regex
     const visible = text.replace(/\x1b\[[0-9;]*m/g, "");
     if (visible.length <= maxWidth) return text;
     let visibleCount = 0;

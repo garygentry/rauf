@@ -42,9 +42,9 @@ interface MultiRootProject {
  * @param options - Root configurations (default root is always created)
  * @returns Project path and cleanup function
  */
-export function createMultiRootProject(
-  options?: { roots?: BacklogRootConfig[] },
-): MultiRootProject {
+export function createMultiRootProject(options?: {
+  roots?: BacklogRootConfig[];
+}): MultiRootProject {
   const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-test-"));
 
   // Create .ralph.json marker
@@ -71,10 +71,11 @@ export function createMultiRootProject(
   // Create default root (.ralph/) with empty backlog and RALPH.md
   const defaultDir = path.join(projectPath, ".ralph");
   fs.mkdirSync(defaultDir, { recursive: true });
-  writeBacklogFile(
-    path.join(defaultDir, "backlog.json"),
-    { project: "test", description: "", items: [] },
-  );
+  writeBacklogFile(path.join(defaultDir, "backlog.json"), {
+    project: "test",
+    description: "",
+    items: [],
+  });
   fs.writeFileSync(path.join(defaultDir, "RALPH.md"), "# Default RALPH.md\n");
 
   // Create additional roots
@@ -85,9 +86,7 @@ export function createMultiRootProject(
     fs.mkdirSync(rootDir, { recursive: true });
 
     // Determine state dir
-    const stateDir = path.basename(rootDir) === ".ralph"
-      ? rootDir
-      : path.join(rootDir, ".ralph");
+    const stateDir = path.basename(rootDir) === ".ralph" ? rootDir : path.join(rootDir, ".ralph");
     fs.mkdirSync(stateDir, { recursive: true });
 
     // Write backlog.json
@@ -96,9 +95,10 @@ export function createMultiRootProject(
       description: root.backlog?.description ?? "",
       items: root.backlog?.items ?? [],
     };
-    const backlogLocation = (root.backlogInRoot ?? true)
-      ? path.join(rootDir, "backlog.json")
-      : path.join(stateDir, "backlog.json");
+    const backlogLocation =
+      (root.backlogInRoot ?? true)
+        ? path.join(rootDir, "backlog.json")
+        : path.join(stateDir, "backlog.json");
     writeBacklogFile(backlogLocation, backlogContent);
 
     // Write state.json if provided
@@ -116,10 +116,7 @@ export function createMultiRootProject(
         error: null,
         ...root.state,
       };
-      fs.writeFileSync(
-        path.join(stateDir, "state.json"),
-        JSON.stringify(stateContent, null, 2),
-      );
+      fs.writeFileSync(path.join(stateDir, "state.json"), JSON.stringify(stateContent, null, 2));
     }
 
     // Write instruction files if requested

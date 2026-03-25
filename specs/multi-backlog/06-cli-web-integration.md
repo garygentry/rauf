@@ -4,17 +4,17 @@ Adding the `--backlog` flag to all CLI commands and updating web API routes to a
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-CLI-01 | All commands accept --backlog flag | 2. CLI Changes |
-| REQ-CLI-02 | --backlog accepts directory path | 2.1 Resolution Pattern |
-| REQ-CLI-03 | Default to .ralph/ when --backlog omitted | 2.1 Resolution Pattern |
-| REQ-CLI-04 | Validate backlog root within project root | 2.1 Resolution Pattern |
-| REQ-CLI-05 | CLI passes backlog root to server API | 3. Web API Changes |
-| REQ-STATUS-01 | Status shows all active roots when no --backlog | 2.4 handleStatus |
-| REQ-STATUS-02 | Status --backlog shows specific root | 2.4 handleStatus |
-| REQ-STATUS-03 | Status identifies which root each block refers to | 2.4 handleStatus |
-| REQ-LOCK-04 | --force flag overrides active lock | 2.2 handleLoopRun |
+| REQ ID        | Requirement                                       | Section                |
+| ------------- | ------------------------------------------------- | ---------------------- |
+| REQ-CLI-01    | All commands accept --backlog flag                | 2. CLI Changes         |
+| REQ-CLI-02    | --backlog accepts directory path                  | 2.1 Resolution Pattern |
+| REQ-CLI-03    | Default to .ralph/ when --backlog omitted         | 2.1 Resolution Pattern |
+| REQ-CLI-04    | Validate backlog root within project root         | 2.1 Resolution Pattern |
+| REQ-CLI-05    | CLI passes backlog root to server API             | 3. Web API Changes     |
+| REQ-STATUS-01 | Status shows all active roots when no --backlog   | 2.4 handleStatus       |
+| REQ-STATUS-02 | Status --backlog shows specific root              | 2.4 handleStatus       |
+| REQ-STATUS-03 | Status identifies which root each block refers to | 2.4 handleStatus       |
+| REQ-LOCK-04   | --force flag overrides active lock                | 2.2 handleLoopRun      |
 
 ## 1. New Import in CLI Commands
 
@@ -25,6 +25,7 @@ import { resolveBacklogRoot, resolveBacklogPaths, type BacklogPaths } from "@ral
 ```
 
 `status-commands.ts` additionally imports:
+
 ```typescript
 import { scanActiveRoots } from "@ralph/core";
 ```
@@ -112,6 +113,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 These commands route through the web server API. The `--backlog` flag is extracted and passed in the request body or query parameter:
 
 **`handleLoopStart`:**
+
 ```typescript
 const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
@@ -126,6 +128,7 @@ const body = {
 ```
 
 **`handleLoopStop`:**
+
 ```typescript
 const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
@@ -134,13 +137,12 @@ const body = { backlogRoot: backlogFlag ?? undefined };
 ```
 
 **`handleLoopFollow`:**
+
 ```typescript
 const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
 // If server mode: append to SSE URL as query param
-const url = backlogFlag
-  ? `${eventsUrl}?backlog=${encodeURIComponent(backlogFlag)}`
-  : eventsUrl;
+const url = backlogFlag ? `${eventsUrl}?backlog=${encodeURIComponent(backlogFlag)}` : eventsUrl;
 
 // If direct mode: resolve paths and use paths.log for watchLog
 ```
@@ -272,25 +274,25 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
 
 ### 2.9 Affected Commands Summary
 
-| Command | `--backlog` | `--force` |
-|---------|:-----------:|:---------:|
-| `ralph loop run` | Yes | Yes (new) |
-| `ralph loop start` | Yes | No |
-| `ralph loop stop` | Yes | No |
-| `ralph loop follow` | Yes | No |
-| `ralph loop review` | Yes | No |
-| `ralph backlog list` | Yes | No |
-| `ralph backlog add` | Yes | No |
-| `ralph backlog edit` | Yes | No |
-| `ralph backlog delete` | Yes | No |
-| `ralph backlog show` | Yes | No |
-| `ralph backlog restore` | Yes | No |
-| `ralph backlog sweep` | Yes | No |
-| `ralph backlog unblock` | Yes | No |
-| `ralph status` | Yes | No |
-| `ralph reset` | Yes | No |
-| `ralph log` | Yes | No |
-| `ralph progress` | Yes | No |
+| Command                 | `--backlog` | `--force` |
+| ----------------------- | :---------: | :-------: |
+| `ralph loop run`        |     Yes     | Yes (new) |
+| `ralph loop start`      |     Yes     |    No     |
+| `ralph loop stop`       |     Yes     |    No     |
+| `ralph loop follow`     |     Yes     |    No     |
+| `ralph loop review`     |     Yes     |    No     |
+| `ralph backlog list`    |     Yes     |    No     |
+| `ralph backlog add`     |     Yes     |    No     |
+| `ralph backlog edit`    |     Yes     |    No     |
+| `ralph backlog delete`  |     Yes     |    No     |
+| `ralph backlog show`    |     Yes     |    No     |
+| `ralph backlog restore` |     Yes     |    No     |
+| `ralph backlog sweep`   |     Yes     |    No     |
+| `ralph backlog unblock` |     Yes     |    No     |
+| `ralph status`          |     Yes     |    No     |
+| `ralph reset`           |     Yes     |    No     |
+| `ralph log`             |     Yes     |    No     |
+| `ralph progress`        |     Yes     |    No     |
 
 ## 3. Web API Changes (REQ-CLI-05)
 
@@ -312,6 +314,7 @@ const StartLoopBodySchema = z
 ```
 
 In the start handler:
+
 ```typescript
 router.post("/:id/loop/start", async (c) => {
   const body = await c.req.json().catch(() => undefined);
@@ -342,15 +345,14 @@ router.post("/:id/loop/start", async (c) => {
 ```
 
 **Stop loop:**
+
 ```typescript
 router.post("/:id/loop/stop", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const backlogRoot = body?.backlogRoot;
 
   // If backlogRoot specified, resolve and pass to manager
-  const resolvedRoot = backlogRoot
-    ? resolveBacklogRoot(projectPath, backlogRoot)
-    : undefined;
+  const resolvedRoot = backlogRoot ? resolveBacklogRoot(projectPath, backlogRoot) : undefined;
 
   const stopped = manager.stopLoop(projectPath, resolvedRoot?.value);
   // ...
@@ -358,6 +360,7 @@ router.post("/:id/loop/stop", async (c) => {
 ```
 
 **Status and backlog routes — accept `backlog` query parameter:**
+
 ```typescript
 // GET /:id/status?backlog=specs/auth
 router.get("/:id/status", async (c) => {

@@ -21,12 +21,7 @@
           },
           "type": {
             "type": "string",
-            "enum": [
-              "bug",
-              "refactor",
-              "feature",
-              "chore"
-            ],
+            "enum": ["bug", "refactor", "feature", "chore"],
             "description": "Work category"
           },
           "priority": {
@@ -53,19 +48,11 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "pending",
-              "in_progress",
-              "done",
-              "blocked"
-            ],
+            "enum": ["pending", "in_progress", "done", "blocked"],
             "description": "Current lifecycle state"
           },
           "completedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "ISO 8601 timestamp set when status becomes 'done'"
           },
           "blockedReason": {
@@ -136,11 +123,7 @@
       "description": "Ordered list of backlog items"
     }
   },
-  "required": [
-    "project",
-    "description",
-    "items"
-  ],
+  "required": ["project", "description", "items"],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",

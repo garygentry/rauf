@@ -4,23 +4,24 @@ The `lock.ts` module — prevents concurrent loop execution on the same backlog 
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-LOCK-01 | Lock file in state directory | 2.1 acquireLock |
-| REQ-LOCK-02 | Lock contains PID and timestamp | 2.1 acquireLock |
-| REQ-LOCK-03 | Stale lock detection via PID liveness | 2.3 checkLock, 3. Stale Detection |
-| REQ-LOCK-04 | --force flag overrides active lock | 2.4 forceClearLock |
-| REQ-LOCK-05 | Lock cleaned up on loop termination | 2.2 releaseLock |
-| REQ-REL-02 | PID recycling detection | 3. Stale Detection |
-| REQ-PERF-02 | Lock operations under 50ms | 4. Performance |
-| REQ-SEC-02 | Lock file permissions match state files | 2.1 acquireLock |
-| REQ-OBS-02 | Lock conflict error includes PID and start time | 2.1 acquireLock |
+| REQ ID      | Requirement                                     | Section                           |
+| ----------- | ----------------------------------------------- | --------------------------------- |
+| REQ-LOCK-01 | Lock file in state directory                    | 2.1 acquireLock                   |
+| REQ-LOCK-02 | Lock contains PID and timestamp                 | 2.1 acquireLock                   |
+| REQ-LOCK-03 | Stale lock detection via PID liveness           | 2.3 checkLock, 3. Stale Detection |
+| REQ-LOCK-04 | --force flag overrides active lock              | 2.4 forceClearLock                |
+| REQ-LOCK-05 | Lock cleaned up on loop termination             | 2.2 releaseLock                   |
+| REQ-REL-02  | PID recycling detection                         | 3. Stale Detection                |
+| REQ-PERF-02 | Lock operations under 50ms                      | 4. Performance                    |
+| REQ-SEC-02  | Lock file permissions match state files         | 2.1 acquireLock                   |
+| REQ-OBS-02  | Lock conflict error includes PID and start time | 2.1 acquireLock                   |
 
 ## 1. Module Overview
 
 **File:** `packages/core/src/lock.ts`
 
 **Imports:**
+
 ```typescript
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -75,6 +76,7 @@ export function acquireLock(paths: BacklogPaths): Result<void>;
 6. Return `ok(undefined)`
 
 **Error shape (LOCK_CONFLICT):**
+
 ```typescript
 {
   code: "LOCK_CONFLICT",

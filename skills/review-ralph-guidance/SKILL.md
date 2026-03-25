@@ -53,6 +53,7 @@ This is the most important step. For each non-empty command in the managed secti
 If a command is empty in the managed section, confirm it's also absent from the full verify chain.
 
 Record results:
+
 - **Pass** — command runs and exits 0 (or exits non-zero with expected test failures, not "command not found")
 - **Fail** — command not found, wrong framework, crashes, or exits non-zero unexpectedly
 - **Missing** — command is empty but should exist (e.g., project has TypeScript but no typecheck command)
@@ -62,12 +63,14 @@ Record results:
 If any commands are wrong:
 
 **If `ralph` CLI is available:**
+
 ```bash
 ralph profile set . <key> <value>   # Updates .ralph.json AND auto-syncs RALPH.md
 ```
 
 **If `ralph` CLI is not available:**
 Edit both files to keep them in sync:
+
 1. Edit `.ralph.json` — update `profile.commands.<key>` and recalculate `profile.verify` (the `&&`-joined chain of all non-null commands)
 2. Edit `.ralph/RALPH.md` — update the corresponding entries in the managed section between `<!-- ralph:managed:start -->` and `<!-- ralph:managed:end -->`
 
@@ -99,14 +102,14 @@ For each issue, explain what's wrong and propose the fix. Apply fixes only after
 
 ## Common Issues
 
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| Loop fails every iteration on verification | Wrong test/build commands in RALPH.md | Fix commands via `ralph profile set` or edit both .ralph.json + RALPH.md |
-| Loop produces code that violates project patterns | Empty project-specific instructions in RALPH.md | Add key conventions and constraints to project-specific section |
-| `ralph profile set` didn't take effect | RALPH.md not synced after profile change | Run `ralph update` or edit RALPH.md managed section to match |
-| Workflow step 6 has stale verify command | Step 6 is outside managed sentinels | Edit step 6 directly to match current verify command |
-| Sentinel sections corrupted | Manual editing broke the HTML comment markers | Restore sentinel markers exactly |
-| Commands use wrong package manager | Profile detection picked wrong manager | Fix via `ralph profile set . packageManager <correct>` or edit .ralph.json |
+| Symptom                                           | Likely cause                                    | Fix                                                                        |
+| ------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| Loop fails every iteration on verification        | Wrong test/build commands in RALPH.md           | Fix commands via `ralph profile set` or edit both .ralph.json + RALPH.md   |
+| Loop produces code that violates project patterns | Empty project-specific instructions in RALPH.md | Add key conventions and constraints to project-specific section            |
+| `ralph profile set` didn't take effect            | RALPH.md not synced after profile change        | Run `ralph update` or edit RALPH.md managed section to match               |
+| Workflow step 6 has stale verify command          | Step 6 is outside managed sentinels             | Edit step 6 directly to match current verify command                       |
+| Sentinel sections corrupted                       | Manual editing broke the HTML comment markers   | Restore sentinel markers exactly                                           |
+| Commands use wrong package manager                | Profile detection picked wrong manager          | Fix via `ralph profile set . packageManager <correct>` or edit .ralph.json |
 
 ## Important: What NOT to change
 

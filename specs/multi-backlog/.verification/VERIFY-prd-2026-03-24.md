@@ -1,10 +1,12 @@
 # Verification Report: multi-backlog (prd)
+
 Date: 2026-03-24
 Pipeline Stage: forge-2-tech (pending)
 Artifacts Reviewed: specs/multi-backlog/PRD.md, specs/multi-backlog/.pipeline-state.json
 Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 
 ## Summary
+
 - Total findings: 5
 - Gaps: 2
 - Inconsistencies: 1
@@ -14,6 +16,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 ## Findings
 
 ### V-001: Implementation details leak into requirements
+
 - **Severity:** improvement
 - **Location:** PRD.md, sections 3.2, 3.3, 3.7
 - **Issue:** Several requirements prescribe specific implementation approaches rather than stating what the system must do. REQ-STATE-02 specifies the detection mechanism ("auto-detected by checking if the backlog root directory name is `.ralph/`"). REQ-CLI-04 prescribes `path.resolve()` + `startsWith()` as the validation method. REQ-ARCH-01 names specific helper functions (`getBacklogPath()`, `getStatePath()`) to be refactored. While these provide useful context, they belong in the tech spec rather than the PRD.
@@ -22,6 +25,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 - **Checklist:** CHECK-P09
 
 ### V-002: Web API behavior for multi-backlog not addressed
+
 - **Severity:** gap
 - **Location:** PRD.md, section 3.3 (REQ-CLI-01) and section 6 (Out of Scope)
 - **Issue:** REQ-CLI-01 lists `loop start`, `loop stop`, and `loop follow` as affected commands. Per CLAUDE.md and the project architecture, these commands route through the web server (Hono API) when the server is running. The PRD declares "Web app multi-root support" as out of scope in section 6, but does not clarify how the CLI-to-server path handles `--backlog`. If the web API endpoints do not accept a backlog root parameter, the CLI commands that proxy through the server will silently break or default to the wrong root. The PRD needs to either: (a) explicitly state that the web API must accept a backlog root parameter for loop management endpoints (making it minimally in-scope), or (b) clarify that `loop start`/`stop`/`follow` only work in direct mode (no server) when `--backlog` is used, with a clear error if the server is running.
@@ -30,6 +34,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 - **Checklist:** CHECK-P14
 
 ### V-003: Status scanning contradicts out-of-scope auto-discovery
+
 - **Severity:** inconsistency
 - **Location:** PRD.md, section 3.4 (REQ-STATUS-01) vs section 6 (Out of Scope, bullet 7)
 - **Issue:** REQ-STATUS-01 states: "Active roots are discovered by scanning for `state.json` files in known locations. For MVP, this means scanning the project for `**/backlog.json` files that have a sibling or child `.ralph/state.json` with non-idle status." Section 6, bullet 7 states: "Auto-discovery of backlog roots: Scanning the project for `**/backlog.json` to find all roots automatically. MVP uses explicit paths only (except for status display which scans for active roots)." The parenthetical exception technically reconciles these, but the wording is confusing — section 6 says "auto-discovery is out of scope" then immediately carves out an exception that IS auto-discovery. Additionally, OQ-02 asks whether this should be a filesystem scan or an index file, meaning the approach is still undecided, yet REQ-STATUS-01 describes a specific scanning approach as if decided.
@@ -38,6 +43,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 - **Checklist:** CHECK-P15
 
 ### V-004: RALPH.md fallback path semantics underspecified
+
 - **Severity:** gap
 - **Location:** PRD.md, section 3.6 (REQ-INST-01, REQ-INST-02)
 - **Issue:** REQ-INST-01 specifies that RALPH.md is looked up in the backlog root's state directory first, falling back to project-level `.ralph/RALPH.md`. However, the project-level RALPH.md typically contains instructions that reference `.ralph/backlog.json` and `.ralph/state.json` by path. When the loop is running against a non-default root (e.g., `specs/auth/`), the project-level RALPH.md's file path references become incorrect — the loop should be reading `specs/auth/.ralph/state.json`, not `.ralph/state.json`. The PRD does not address whether the loop runner should rewrite or contextualize instruction file paths, or whether the project-level RALPH.md must be written to use relative references, or whether a per-root RALPH.md is effectively required for non-default roots.
@@ -46,6 +52,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 - **Checklist:** CHECK-P14
 
 ### V-005: Missing Accessibility and Scalability NFR subsections from template
+
 - **Severity:** improvement
 - **Location:** PRD.md, section 4
 - **Issue:** The PRD template specifies subsections for Accessibility (4.4) and Scalability (4.5). The PRD omits both, replacing them with Reliability (4.4). For a CLI tool, Accessibility is not applicable. Scalability is partially addressed by REQ-PERF-01 (20 backlog roots), but there is no explicit discussion of what happens beyond that limit (e.g., monorepos with 50+ features, or deeply nested directory structures slowing down scans). The Reliability section (4.4) is a valuable addition not in the template.
@@ -56,6 +63,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 ## Fix Execution Plan
 
 ### User Decisions Required
+
 1. **V-002 (Web API behavior):** ✅ RESOLVED — User chose: pass `--backlog` to the web API. The server must accept and route the backlog root parameter for loop management and backlog CRUD operations.
 
 ### Execution Steps
@@ -63,6 +71,7 @@ Checks Executed: 15 of 15 (11 pass, 4 fail, 0 not-applicable)
 Apply these steps in order. Each step is self-contained — a fresh agent can execute it without prior context beyond this document.
 
 #### Step 1: Clarify implementation notes vs requirements
+
 - **Files:** `specs/multi-backlog/PRD.md`
 - **Addresses:** V-001
 - **Checklist:** CHECK-P09
@@ -71,6 +80,7 @@ Apply these steps in order. Each step is self-contained — a fresh agent can ex
 - **Rationale:** Separating requirements from implementation guidance prevents the tech spec from being over-constrained and keeps the PRD focused on "what" not "how."
 
 #### Step 2: Add web API interaction requirement or scope clarification
+
 - **Files:** `specs/multi-backlog/PRD.md`
 - **Addresses:** V-002
 - **Checklist:** CHECK-P14
@@ -79,6 +89,7 @@ Apply these steps in order. Each step is self-contained — a fresh agent can ex
 - **Rationale:** This is a functional gap that could cause silent failures in server mode if not addressed before tech spec.
 
 #### Step 3: Reconcile status scanning with out-of-scope auto-discovery
+
 - **Files:** `specs/multi-backlog/PRD.md`
 - **Addresses:** V-003
 - **Checklist:** CHECK-P15
@@ -87,6 +98,7 @@ Apply these steps in order. Each step is self-contained — a fresh agent can ex
 - **Rationale:** Removes contradictory language between the out-of-scope section and the requirements, and avoids prematurely committing to an implementation approach that OQ-02 is meant to resolve.
 
 #### Step 4: Clarify RALPH.md fallback path semantics
+
 - **Files:** `specs/multi-backlog/PRD.md`
 - **Addresses:** V-004
 - **Checklist:** CHECK-P14
@@ -95,6 +107,7 @@ Apply these steps in order. Each step is self-contained — a fresh agent can ex
 - **Rationale:** Without this clarification, the tech spec may not account for the mismatch between project-level instruction paths and non-default backlog roots, leading to agent confusion at runtime.
 
 #### Step 5: Add Scalability subsection and Accessibility note
+
 - **Files:** `specs/multi-backlog/PRD.md`
 - **Addresses:** V-005
 - **Checklist:** CHECK-P01, CHECK-P11

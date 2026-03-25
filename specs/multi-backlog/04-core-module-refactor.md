@@ -4,15 +4,15 @@ Signature changes to existing core modules: `backlog.ts`, `status.ts`, `iteratio
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-ARCH-01 | Path resolution from single backlog root param | All sections |
-| REQ-ARCH-02 | Core is single source of path resolution | All sections |
-| REQ-ROOT-02 | Each root has isolated runtime state | All sections |
-| REQ-STATUS-01 | Show all active backlog roots | 3. status.ts — scanActiveRoots |
+| REQ ID        | Requirement                                       | Section                        |
+| ------------- | ------------------------------------------------- | ------------------------------ |
+| REQ-ARCH-01   | Path resolution from single backlog root param    | All sections                   |
+| REQ-ARCH-02   | Core is single source of path resolution          | All sections                   |
+| REQ-ROOT-02   | Each root has isolated runtime state              | All sections                   |
+| REQ-STATUS-01 | Show all active backlog roots                     | 3. status.ts — scanActiveRoots |
 | REQ-STATUS-03 | Status identifies which root each block refers to | 3. status.ts — scanActiveRoots |
-| REQ-PERF-01 | Status scan under 500ms for 20 roots | 3. status.ts — scanActiveRoots |
-| REQ-OBS-01 | Log records which backlog root is active | 3. status.ts — appendLog |
+| REQ-PERF-01   | Status scan under 500ms for 20 roots              | 3. status.ts — scanActiveRoots |
+| REQ-OBS-01    | Log records which backlog root is active          | 3. status.ts — appendLog       |
 
 ## 1. Refactor Pattern
 
@@ -49,23 +49,24 @@ import type { BacklogPaths } from "./backlog-root.js";
 
 ### 2.3 Signature Changes
 
-| Function | Before | After |
-|----------|--------|-------|
-| `readBacklog` | `(projectPath: string): Result<Backlog>` | `(paths: BacklogPaths): Result<Backlog>` |
-| `writeBacklog` | `(projectPath: string, backlog: Backlog): Result<void>` | `(paths: BacklogPaths, backlog: Backlog): Result<void>` |
-| `addItem` | `(projectPath: string, input: CreateItemInput): Result<BacklogItem>` | `(paths: BacklogPaths, input: CreateItemInput): Result<BacklogItem>` |
-| `updateItem` | `(projectPath: string, itemId: string, updates: UpdateItemInput): Result<BacklogItem>` | `(paths: BacklogPaths, itemId: string, updates: UpdateItemInput): Result<BacklogItem>` |
-| `deleteItem` | `(projectPath: string, itemId: string): Result<void>` | `(paths: BacklogPaths, itemId: string): Result<void>` |
-| `restoreFromBackup` | `(projectPath: string): Result<void>` | `(paths: BacklogPaths): Result<void>` |
-| `resetStalledItems` | `(projectPath: string): Result<{ resetCount: number }>` | `(paths: BacklogPaths): Result<{ resetCount: number }>` |
-| `ensureBacklog` | `(projectPath: string): Result<void>` | `(paths: BacklogPaths): Result<void>` |
-| `unblockItems` | `(projectPath: string, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>` | `(paths: BacklogPaths, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>` |
+| Function            | Before                                                                                               | After                                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `readBacklog`       | `(projectPath: string): Result<Backlog>`                                                             | `(paths: BacklogPaths): Result<Backlog>`                                                             |
+| `writeBacklog`      | `(projectPath: string, backlog: Backlog): Result<void>`                                              | `(paths: BacklogPaths, backlog: Backlog): Result<void>`                                              |
+| `addItem`           | `(projectPath: string, input: CreateItemInput): Result<BacklogItem>`                                 | `(paths: BacklogPaths, input: CreateItemInput): Result<BacklogItem>`                                 |
+| `updateItem`        | `(projectPath: string, itemId: string, updates: UpdateItemInput): Result<BacklogItem>`               | `(paths: BacklogPaths, itemId: string, updates: UpdateItemInput): Result<BacklogItem>`               |
+| `deleteItem`        | `(projectPath: string, itemId: string): Result<void>`                                                | `(paths: BacklogPaths, itemId: string): Result<void>`                                                |
+| `restoreFromBackup` | `(projectPath: string): Result<void>`                                                                | `(paths: BacklogPaths): Result<void>`                                                                |
+| `resetStalledItems` | `(projectPath: string): Result<{ resetCount: number }>`                                              | `(paths: BacklogPaths): Result<{ resetCount: number }>`                                              |
+| `ensureBacklog`     | `(projectPath: string): Result<void>`                                                                | `(paths: BacklogPaths): Result<void>`                                                                |
+| `unblockItems`      | `(projectPath: string, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>` | `(paths: BacklogPaths, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>` |
 
 **Unchanged:** `selectNextItem(backlog: Backlog)`, `validateStatusTransition(current, target)`
 
 ### 2.4 Key Internal Changes
 
 **`readBacklog`:**
+
 ```typescript
 // Before:
 return readJsonFile(getBacklogPath(projectPath), BacklogSchema, normalizeBacklogItems);
@@ -75,6 +76,7 @@ return readJsonFile(paths.backlog, BacklogSchema, normalizeBacklogItems);
 ```
 
 **`writeBacklog`:**
+
 ```typescript
 // Before:
 return atomicWrite(getBacklogPath(projectPath), content);
@@ -84,6 +86,7 @@ return atomicWrite(paths.backlog, content);
 ```
 
 **`deleteItem` — state.json check:**
+
 ```typescript
 // Before:
 const statePath = getStatePath(projectPath);
@@ -95,6 +98,7 @@ const stateResult = readJsonFile(paths.state, LoopStateSchema);
 
 **`addItem` — smart default criteria:**
 The `addItem` function currently calls `readMarkerFile(projectPath)` for the verify command. This call uses `projectPath` (the project root, not backlog root) and should continue to do so — the marker file is always at project level. Access `paths.projectPath`:
+
 ```typescript
 // Before:
 const markerResult = readMarkerFile(projectPath);
@@ -105,6 +109,7 @@ const markerResult = readMarkerFile(paths.projectPath);
 
 **`ensureBacklog`:**
 The current implementation checks if `.ralph/` directory exists. With multi-backlog, it should check if the state directory exists:
+
 ```typescript
 // Before:
 const ralphDir = path.join(resolved, BACKLOG_DIR);
@@ -127,6 +132,7 @@ return ok(undefined);
 ```
 
 **`restoreFromBackup`:**
+
 ```typescript
 // Before:
 const backlogPath = getBacklogPath(projectPath);
@@ -139,6 +145,7 @@ const bakPath = `${paths.backlog}.bak`;
 
 **Internal calls between functions:**
 Functions like `addItem`, `resetStalledItems`, and `unblockItems` call `readBacklog` and `writeBacklog` internally. These calls change from `readBacklog(projectPath)` to `readBacklog(paths)`:
+
 ```typescript
 // resetStalledItems — before:
 const backlogResult = readBacklog(projectPath);
@@ -182,21 +189,22 @@ import type { BacklogPaths } from "./backlog-root.js";
 
 ### 3.3 Signature Changes
 
-| Function | Before | After |
-|----------|--------|-------|
-| `deriveStatus` | `(projectPath: string): Result<DerivedStatus>` | `(paths: BacklogPaths): Result<DerivedStatus>` |
-| `readLogTail` | `(projectPath: string, lines?: number): Result<string[]>` | `(paths: BacklogPaths, lines?: number): Result<string[]>` |
-| `watchLog` | `(projectPath: string, callback: ...): () => void` | `(paths: BacklogPaths, callback: ...): () => void` |
-| `writeLoopState` | `(projectPath: string, state: ...): Result<void>` | `(paths: BacklogPaths, state: ...): Result<void>` |
-| `appendLog` | `(projectPath: string, message: string): Result<void>` | `(paths: BacklogPaths, message: string): Result<void>` |
-| `writeDoneFile` | `(projectPath: string, content: string): Result<void>` | `(paths: BacklogPaths, content: string): Result<void>` |
-| `clearDoneFile` | `(projectPath: string): Result<void>` | `(paths: BacklogPaths): Result<void>` |
-| `checkCancelRequested` | `(projectPath: string): boolean` | `(paths: BacklogPaths): boolean` |
-| `clearCancelFile` | `(projectPath: string): Result<boolean>` | `(paths: BacklogPaths): Result<boolean>` |
+| Function               | Before                                                    | After                                                     |
+| ---------------------- | --------------------------------------------------------- | --------------------------------------------------------- |
+| `deriveStatus`         | `(projectPath: string): Result<DerivedStatus>`            | `(paths: BacklogPaths): Result<DerivedStatus>`            |
+| `readLogTail`          | `(projectPath: string, lines?: number): Result<string[]>` | `(paths: BacklogPaths, lines?: number): Result<string[]>` |
+| `watchLog`             | `(projectPath: string, callback: ...): () => void`        | `(paths: BacklogPaths, callback: ...): () => void`        |
+| `writeLoopState`       | `(projectPath: string, state: ...): Result<void>`         | `(paths: BacklogPaths, state: ...): Result<void>`         |
+| `appendLog`            | `(projectPath: string, message: string): Result<void>`    | `(paths: BacklogPaths, message: string): Result<void>`    |
+| `writeDoneFile`        | `(projectPath: string, content: string): Result<void>`    | `(paths: BacklogPaths, content: string): Result<void>`    |
+| `clearDoneFile`        | `(projectPath: string): Result<void>`                     | `(paths: BacklogPaths): Result<void>`                     |
+| `checkCancelRequested` | `(projectPath: string): boolean`                          | `(paths: BacklogPaths): boolean`                          |
+| `clearCancelFile`      | `(projectPath: string): Result<boolean>`                  | `(paths: BacklogPaths): Result<boolean>`                  |
 
 ### 3.4 Key Internal Changes
 
 All path construction becomes direct field access:
+
 ```typescript
 // Before:
 const statePath = getStatePath(projectPath);
@@ -208,6 +216,7 @@ const logPath = paths.log;
 ```
 
 **`computeBacklogSummary`** (private function):
+
 ```typescript
 // Before:
 function computeBacklogSummary(projectPath: string): BacklogSummary {
@@ -220,6 +229,7 @@ function computeBacklogSummary(paths: BacklogPaths): BacklogSummary {
 
 **`deriveStatus` — NOT_INSTALLED check:**
 The current code checks `fileExists(ralphDir)`. With multi-backlog, the check changes to whether the state directory exists. For the default root, the state dir IS `.ralph/`, so the behavior is preserved. For non-default roots, `NOT_INSTALLED` doesn't apply (the root was explicitly specified):
+
 ```typescript
 // Before:
 const ralphDir = path.join(resolved, RALPH_DIR);
@@ -267,6 +277,7 @@ export function scanActiveRoots(projectPath: string): Result<ActiveRoot[]>;
 6. Return `ok(results)`
 
 **Implementation approach — synchronous recursive walk:**
+
 ```typescript
 function walkForStateFiles(dir: string, projectPath: string, results: ActiveRoot[]): void {
   let entries: fs.Dirent[];
@@ -319,11 +330,11 @@ function statusPath(projectPath: string): string { ... }
 
 ### 4.2 Signature Changes
 
-| Function | Before | After |
-|----------|--------|-------|
+| Function               | Before                                                                             | After                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `writeIterationStatus` | `(projectPath: string, status: IterationStatus, force?: boolean): Result<boolean>` | `(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<boolean>` |
-| `readIterationStatus` | `(projectPath: string): IterationStatus \| null` | `(paths: BacklogPaths): IterationStatus \| null` |
-| `clearIterationStatus` | `(projectPath: string): void` | `(paths: BacklogPaths): void` |
+| `readIterationStatus`  | `(projectPath: string): IterationStatus \| null`                                   | `(paths: BacklogPaths): IterationStatus \| null`                                   |
+| `clearIterationStatus` | `(projectPath: string): void`                                                      | `(paths: BacklogPaths): void`                                                      |
 
 ### 4.3 Key Internal Changes
 
@@ -334,7 +345,7 @@ lastWriteAt.set(projectPath, now);
 
 // After:
 const result = atomicWrite(paths.iterationStatus, content);
-lastWriteAt.set(paths.iterationStatus, now);  // Key by path, not projectPath
+lastWriteAt.set(paths.iterationStatus, now); // Key by path, not projectPath
 ```
 
 **Throttle key change:** The `lastWriteAt` map was keyed by `projectPath`. With multi-backlog, multiple roots per project need independent throttling. Key by `paths.iterationStatus` (the full file path) instead.
@@ -355,12 +366,12 @@ function getArchiveFilePath(projectPath: string, month: string): string { ... }
 
 ### 5.2 Signature Changes
 
-| Function | Before | After |
-|----------|--------|-------|
-| `sweepBacklog` | `(projectPath: string, options?): Result<SweepResult>` | `(paths: BacklogPaths, options?): Result<SweepResult>` |
-| `listArchiveMonths` | `(projectPath: string): Result<string[]>` | `(paths: BacklogPaths): Result<string[]>` |
-| `readArchiveMonth` | `(projectPath: string, month: string): Result<ArchiveMonth>` | `(paths: BacklogPaths, month: string): Result<ArchiveMonth>` |
-| `purgeArchive` | `(projectPath: string, month?: string): Result<...>` | `(paths: BacklogPaths, month?: string): Result<...>` |
+| Function            | Before                                                       | After                                                        |
+| ------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `sweepBacklog`      | `(projectPath: string, options?): Result<SweepResult>`       | `(paths: BacklogPaths, options?): Result<SweepResult>`       |
+| `listArchiveMonths` | `(projectPath: string): Result<string[]>`                    | `(paths: BacklogPaths): Result<string[]>`                    |
+| `readArchiveMonth`  | `(projectPath: string, month: string): Result<ArchiveMonth>` | `(paths: BacklogPaths, month: string): Result<ArchiveMonth>` |
+| `purgeArchive`      | `(projectPath: string, month?: string): Result<...>`         | `(paths: BacklogPaths, month?: string): Result<...>`         |
 
 ### 5.3 Key Internal Changes
 
@@ -378,7 +389,7 @@ const backlogResult = readBacklog(paths);
 writeBacklog(paths, { ...backlog, items: toKeep });
 ```
 
-The archive file path helper becomes a simple inline `path.join(paths.archive, \`${month}.json\`)` since the archive directory is already resolved in `BacklogPaths`.
+The archive file path helper becomes a simple inline `path.join(paths.archive, \`${month}.json\`)`since the archive directory is already resolved in`BacklogPaths`.
 
 ## 6. `reset.ts`
 
@@ -394,8 +405,8 @@ const STATE_FILENAME = "state.json";
 
 ### 6.2 Signature Change
 
-| Function | Before | After |
-|----------|--------|-------|
+| Function       | Before                                                                             | After                                                                              |
+| -------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `resetProject` | `(projectPath: string, options?: ResetProjectOptions): Result<ResetProjectResult>` | `(paths: BacklogPaths, options?: ResetProjectOptions): Result<ResetProjectResult>` |
 
 ### 6.3 Key Internal Changes
@@ -421,6 +432,7 @@ const progressPath = paths.progress;
 ```
 
 **Progress archiving:**
+
 ```typescript
 // Before:
 const ralphDir = path.join(resolved, RALPH_DIR);
@@ -432,6 +444,7 @@ const archiveDir = paths.archive;
 
 **`deployProgress` call:**
 The current code calls `deployProgress(ralphDir)` after archiving progress.md. This function is from `installer.ts` and creates a fresh `progress.md` from a template. With multi-backlog, it should use the state directory:
+
 ```typescript
 // Before:
 const deployResult = deployProgress(ralphDir);

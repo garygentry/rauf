@@ -6,22 +6,22 @@ A portable reference for building a full-stack web application using this archit
 
 ## 1. Stack Overview
 
-| Layer | Technology | Version | Role |
-|-------|-----------|---------|------|
-| Runtime | **Bun** | ^1.2.0 | Server runtime, build scripts, single-binary compilation |
-| Package manager | **pnpm** | workspace | Monorepo workspace management |
-| Server framework | **Hono** | ^4.7.0 | Lightweight HTTP server with middleware and routing |
-| Frontend framework | **React** | ^19.0.0 | UI rendering (with `react-dom`) |
-| Routing | **TanStack Router** | ^1.100.0 | Type-safe client-side routing |
-| Data fetching | **TanStack Query** | ^5.65.0 | Server state management, caching, mutations |
-| Styling | **Tailwind CSS** | ^4.0.0 | Utility-first CSS (v4, Vite plugin, `@theme` blocks) |
-| Validation | **Zod** | ^3.24.0 | Runtime schema validation for API inputs |
-| Markdown | **react-markdown** + **remark-gfm** | ^9.0.0 / ^4.0.0 | Render markdown content with GFM support |
-| Build tool | **Vite** | ^6.1.0 | Dev server with HMR + production SPA bundler |
-| TypeScript | **typescript** | ^5.7.0 | Strict type checking, JSX transform |
-| Testing | **Vitest** | ^3.0.0 | Test runner, colocated test files |
-| Linting | **ESLint** | ^9.0.0 | Code quality |
-| Formatting | **Prettier** | (workspace root) | Consistent code formatting |
+| Layer              | Technology                          | Version          | Role                                                     |
+| ------------------ | ----------------------------------- | ---------------- | -------------------------------------------------------- |
+| Runtime            | **Bun**                             | ^1.2.0           | Server runtime, build scripts, single-binary compilation |
+| Package manager    | **pnpm**                            | workspace        | Monorepo workspace management                            |
+| Server framework   | **Hono**                            | ^4.7.0           | Lightweight HTTP server with middleware and routing      |
+| Frontend framework | **React**                           | ^19.0.0          | UI rendering (with `react-dom`)                          |
+| Routing            | **TanStack Router**                 | ^1.100.0         | Type-safe client-side routing                            |
+| Data fetching      | **TanStack Query**                  | ^5.65.0          | Server state management, caching, mutations              |
+| Styling            | **Tailwind CSS**                    | ^4.0.0           | Utility-first CSS (v4, Vite plugin, `@theme` blocks)     |
+| Validation         | **Zod**                             | ^3.24.0          | Runtime schema validation for API inputs                 |
+| Markdown           | **react-markdown** + **remark-gfm** | ^9.0.0 / ^4.0.0  | Render markdown content with GFM support                 |
+| Build tool         | **Vite**                            | ^6.1.0           | Dev server with HMR + production SPA bundler             |
+| TypeScript         | **typescript**                      | ^5.7.0           | Strict type checking, JSX transform                      |
+| Testing            | **Vitest**                          | ^3.0.0           | Test runner, colocated test files                        |
+| Linting            | **ESLint**                          | ^9.0.0           | Code quality                                             |
+| Formatting         | **Prettier**                        | (workspace root) | Consistent code formatting                               |
 
 ---
 
@@ -83,11 +83,11 @@ The web package extends a base `tsconfig.json` and adds DOM + JSX support:
     "outDir": "dist",
     "rootDir": "src",
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist", "build"],
-  "references": [{ "path": "../core" }]
+  "references": [{ "path": "../core" }],
 }
 ```
 
@@ -109,8 +109,8 @@ The base config enforces strict TypeScript:
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "types": ["bun-types"]
-  }
+    "types": ["bun-types"],
+  },
 }
 ```
 
@@ -169,7 +169,11 @@ pipeWithPrefix(apiProc.stdout, "[api]  ");
 pipeWithPrefix(viteProc.stdout, "[vite] ");
 
 // Clean shutdown
-process.on("SIGINT", () => { apiProc.kill(); viteProc.kill(); process.exit(0); });
+process.on("SIGINT", () => {
+  apiProc.kill();
+  viteProc.kill();
+  process.exit(0);
+});
 ```
 
 ### Production Build Pipeline
@@ -180,12 +184,12 @@ The build script chains four steps:
 vite build && bun run scripts/generate-embedded-assets.ts && prettier --write src/server/embedded-assets.ts && tsc
 ```
 
-| Step | Command | Output |
-|------|---------|--------|
-| 1. Bundle SPA | `vite build` | `build/` — `index.html` + `assets/*.js` + `assets/*.css` |
-| 2. Embed assets | `bun run scripts/generate-embedded-assets.ts` | `src/server/embedded-assets.ts` |
-| 3. Format | `prettier --write` | Clean up generated file |
-| 4. Compile server | `tsc` | `dist/` — compiled server + type declarations |
+| Step              | Command                                       | Output                                                   |
+| ----------------- | --------------------------------------------- | -------------------------------------------------------- |
+| 1. Bundle SPA     | `vite build`                                  | `build/` — `index.html` + `assets/*.js` + `assets/*.css` |
+| 2. Embed assets   | `bun run scripts/generate-embedded-assets.ts` | `src/server/embedded-assets.ts`                          |
+| 3. Format         | `prettier --write`                            | Clean up generated file                                  |
+| 4. Compile server | `tsc`                                         | `dist/` — compiled server + type declarations            |
 
 ### Embedded Assets Pattern
 
@@ -319,7 +323,7 @@ app.get("/*", (c) => {
     return c.body(content, 200, {
       "Content-Type": getAssetMimeType(assetPath),
       "Cache-Control": assetPath.startsWith("assets/")
-        ? "public, max-age=31536000, immutable"  // Hashed filenames → immutable cache
+        ? "public, max-age=31536000, immutable" // Hashed filenames → immutable cache
         : "no-cache",
     });
   }
@@ -341,7 +345,7 @@ app.get("/*", (c) => {
 
 ```ts
 Bun.serve({
-  hostname: "127.0.0.1",  // Localhost only — no external network access
+  hostname: "127.0.0.1", // Localhost only — no external network access
   port: 5173,
   fetch: app.fetch,
 });
@@ -394,8 +398,11 @@ The theme provider wraps everything so any component (including router-rendered 
 ```tsx
 // src/client/router.tsx
 import {
-  createRootRoute, createRoute, createRouter,
-  redirect, Outlet,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  redirect,
+  Outlet,
 } from "@tanstack/react-router";
 
 // Root route wraps all pages in the shell layout
@@ -468,8 +475,8 @@ import { QueryClient } from "@tanstack/react-query";
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,  // Data considered fresh for 30 seconds
-      retry: 1,            // Retry failed requests once
+      staleTime: 30_000, // Data considered fresh for 30 seconds
+      retry: 1, // Retry failed requests once
     },
   },
 });
@@ -485,7 +492,7 @@ export async function apiFetch(url: string, options?: RequestInit): Promise<Resp
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
-      "X-Request": "true",   // CSRF header — always injected
+      "X-Request": "true", // CSRF header — always injected
     },
   });
 }
@@ -499,14 +506,18 @@ export async function apiFetchJson<T>(url: string, options?: RequestInit): Promi
     throw new Error(message);
   }
   const body = (await res.json()) as { data: T };
-  return body.data;  // Unwrap the envelope
+  return body.data; // Unwrap the envelope
 }
 ```
 
 ### Query Pattern (reads)
 
 ```tsx
-const { data: items, isLoading, error } = useQuery({
+const {
+  data: items,
+  isLoading,
+  error,
+} = useQuery({
   queryKey: ["items", projectId],
   queryFn: () => apiFetchJson<Item[]>(`/api/projects/${encodeURIComponent(projectId)}/items`),
 });
@@ -559,7 +570,9 @@ router.get("/:id/log/stream", (c) => {
   return streamSSE(c, async (stream) => {
     // Set up abort detection
     let abortResolve: (() => void) | undefined;
-    const abortPromise = new Promise<void>((r) => { abortResolve = r; });
+    const abortPromise = new Promise<void>((r) => {
+      abortResolve = r;
+    });
     stream.onAbort(() => abortResolve?.());
 
     const cleanups: Array<() => void> = [];
@@ -610,11 +623,11 @@ router.get("/:id/log/stream", (c) => {
 
 **Event types:**
 
-| Event | Payload | Frequency |
-|-------|---------|-----------|
-| `data` | JSON array of new entries | On connect (initial batch) + on file change |
-| `status` | JSON status object | On connect + when changed (polled every 5s) |
-| `heartbeat` | ISO timestamp | Every 30s |
+| Event       | Payload                   | Frequency                                   |
+| ----------- | ------------------------- | ------------------------------------------- |
+| `data`      | JSON array of new entries | On connect (initial batch) + on file change |
+| `status`    | JSON status object        | On connect + when changed (polled every 5s) |
+| `heartbeat` | ISO timestamp             | Every 30s                                   |
 
 ### Client Side (React + EventSource)
 
@@ -631,7 +644,7 @@ useEffect(() => {
     try {
       const newEntries = JSON.parse((e as MessageEvent<string>).data) as string[];
       if (!Array.isArray(newEntries)) return;
-      setEntries((prev) => [...prev, ...newEntries].slice(-50));  // Keep last 50
+      setEntries((prev) => [...prev, ...newEntries].slice(-50)); // Keep last 50
     } catch {
       // Ignore parse errors
     }
@@ -641,7 +654,9 @@ useEffect(() => {
     try {
       const status = JSON.parse((e as MessageEvent<string>).data);
       setStatus(status);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   return () => {
@@ -701,7 +716,10 @@ Dark mode overrides CSS custom properties. The `data-theme` attribute on `<html>
 body {
   background-color: var(--color-surface);
   color: var(--color-text);
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 ```
@@ -712,8 +730,8 @@ body {
 type Theme = "light" | "dark" | "system";
 
 interface ThemeContextValue {
-  theme: Theme;                        // User's explicit choice
-  resolvedTheme: "light" | "dark";     // Actual applied theme
+  theme: Theme; // User's explicit choice
+  resolvedTheme: "light" | "dark"; // Actual applied theme
   setTheme: (theme: Theme) => void;
 }
 
@@ -769,8 +787,8 @@ Components use inline `style` props with CSS custom properties for state-driven 
 <span
   className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
   style={{
-    backgroundColor: config.bgColor,    // e.g., "rgba(22, 163, 74, 0.15)"
-    color: config.textColor,             // e.g., "#16a34a"
+    backgroundColor: config.bgColor, // e.g., "rgba(22, 163, 74, 0.15)"
+    color: config.textColor, // e.g., "#16a34a"
   }}
 >
   {config.label}
@@ -787,8 +805,16 @@ A custom `.prose` class styles `react-markdown` output using CSS custom properti
   font-size: 0.875rem;
   line-height: 1.7;
 }
-.prose h1 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; }
-.prose h2 { font-size: 1.1rem; font-weight: 600; border-bottom: 1px solid var(--color-border); }
+.prose h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 1rem 0 0.5rem;
+}
+.prose h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-border);
+}
 .prose code {
   font-family: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
   background-color: var(--color-surface);
@@ -796,10 +822,22 @@ A custom `.prose` class styles `react-markdown` output using CSS custom properti
   border: 1px solid var(--color-border);
   border-radius: 3px;
 }
-.prose pre { /* block code */ }
-.prose a { color: #2563eb; text-decoration: underline; }
-.prose table { border-collapse: collapse; width: 100%; }
-.prose th, .prose td { border: 1px solid var(--color-border); padding: 0.3rem 0.65rem; }
+.prose pre {
+  /* block code */
+}
+.prose a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.prose table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.3rem 0.65rem;
+}
 ```
 
 ---
@@ -817,10 +855,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main
-        className="flex-1 overflow-y-auto"
-        style={{ backgroundColor: "var(--color-surface)" }}
-      >
+      <main className="flex-1 overflow-y-auto" style={{ backgroundColor: "var(--color-surface)" }}>
         {children}
       </main>
     </div>
@@ -835,14 +870,14 @@ Badges are driven by a config record that maps a status/type string to display p
 ```tsx
 interface BadgeConfig {
   label: string;
-  bgColor: string;   // rgba for subtle backgrounds
-  textColor: string;  // hex for readable text
+  bgColor: string; // rgba for subtle backgrounds
+  textColor: string; // hex for readable text
 }
 
 const STATUS_BADGE: Record<string, BadgeConfig> = {
-  idle:    { label: "Idle",    bgColor: "rgba(107, 114, 128, 0.12)", textColor: "#6b7280" },
-  running: { label: "Running", bgColor: "rgba(22, 163, 74, 0.15)",  textColor: "#16a34a" },
-  error:   { label: "Error",   bgColor: "rgba(220, 38, 38, 0.12)",  textColor: "#dc2626" },
+  idle: { label: "Idle", bgColor: "rgba(107, 114, 128, 0.12)", textColor: "#6b7280" },
+  running: { label: "Running", bgColor: "rgba(22, 163, 74, 0.15)", textColor: "#16a34a" },
+  error: { label: "Error", bgColor: "rgba(220, 38, 38, 0.12)", textColor: "#dc2626" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -878,7 +913,9 @@ Forms use plain React `useState` — no form libraries (React Hook Form, Formik,
 
 ```tsx
 function FilterSelect({
-  value, onChange, options,
+  value,
+  onChange,
+  options,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -896,7 +933,9 @@ function FilterSelect({
       }}
     >
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>{opt.label}</option>
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
       ))}
     </select>
   );
@@ -998,7 +1037,7 @@ function validateProjectPath(projectPath: string): string | null {
 
 ```ts
 Bun.serve({
-  hostname: "127.0.0.1",  // NOT 0.0.0.0
+  hostname: "127.0.0.1", // NOT 0.0.0.0
   port,
   fetch: app.fetch,
 });

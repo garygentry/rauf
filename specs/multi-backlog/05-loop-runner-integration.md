@@ -4,25 +4,27 @@ Changes to `packages/loop/` — the `LoopRunner` class and `prompt-builder.ts` �
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-ARCH-03 | Loop runner receives backlog root as config param | 2. LoopRunner Changes |
-| REQ-LOCK-01 | Lock file created before loop starts | 2.2 start() |
-| REQ-LOCK-05 | Lock cleaned up on termination | 2.2 start() |
-| REQ-INST-01 | RALPH.md per-root then project-level fallback | 3. prompt-builder.ts |
-| REQ-INST-02 | REVIEW.md per-root then project-level fallback | 3. prompt-builder.ts |
-| REQ-INST-03 | progress.md always per-root | 3. prompt-builder.ts |
-| REQ-OBS-01 | Log records which backlog root is active | 2.2 start() |
-| REQ-STATE-03 | State dir auto-created on first run | 2.2 start() |
-| REQ-TMPL-01 | Templates use generic path wording | 4. Artifact Template Updates |
+| REQ ID       | Requirement                                       | Section                      |
+| ------------ | ------------------------------------------------- | ---------------------------- |
+| REQ-ARCH-03  | Loop runner receives backlog root as config param | 2. LoopRunner Changes        |
+| REQ-LOCK-01  | Lock file created before loop starts              | 2.2 start()                  |
+| REQ-LOCK-05  | Lock cleaned up on termination                    | 2.2 start()                  |
+| REQ-INST-01  | RALPH.md per-root then project-level fallback     | 3. prompt-builder.ts         |
+| REQ-INST-02  | REVIEW.md per-root then project-level fallback    | 3. prompt-builder.ts         |
+| REQ-INST-03  | progress.md always per-root                       | 3. prompt-builder.ts         |
+| REQ-OBS-01   | Log records which backlog root is active          | 2.2 start()                  |
+| REQ-STATE-03 | State dir auto-created on first run               | 2.2 start()                  |
+| REQ-TMPL-01  | Templates use generic path wording                | 4. Artifact Template Updates |
 
 ## 1. Module Overview
 
 **Files modified:**
+
 - `packages/loop/src/runner.ts` — LoopRunner class
 - `packages/loop/src/prompt-builder.ts` — buildPrompt and buildReviewPrompt functions
 
 **New imports added to runner.ts:**
+
 ```typescript
 import {
   // existing imports unchanged...
@@ -158,9 +160,10 @@ clearIterationStatus(this.projectPath)  → clearIterationStatus(this.paths)
 ```
 
 **Unchanged calls** — these use `projectPath` (project root, not backlog root):
+
 ```typescript
-readMarkerFile(this.projectPath)        // .ralph.json is always at project root
-readClaudeOAuthToken()                  // global credential, no path
+readMarkerFile(this.projectPath); // .ralph.json is always at project root
+readClaudeOAuthToken(); // global credential, no path
 ```
 
 ### 2.4 `buildPrompt` Call Change
@@ -180,7 +183,12 @@ const promptResult = buildPrompt(this.paths, this.instructionPaths, item, backlo
 const reviewPromptResult = buildReviewPrompt(this.projectPath, completedItems, diff);
 
 // After:
-const reviewPromptResult = buildReviewPrompt(this.paths, this.instructionPaths, completedItems, diff);
+const reviewPromptResult = buildReviewPrompt(
+  this.paths,
+  this.instructionPaths,
+  completedItems,
+  diff,
+);
 ```
 
 ### 2.6 `writeState` Helper
@@ -239,6 +247,7 @@ export function buildPrompt(
 ### 3.4 `buildPrompt` Internal Changes
 
 **RALPH.md reading:**
+
 ```typescript
 // Before:
 const ralphMdPath = path.join(projectPath, RALPH_DIR, RALPH_MD);
@@ -256,13 +265,16 @@ const ralphMdContent = fs.readFileSync(instructionPaths.ralphMd, "utf-8");
 ```
 
 **progress.md reading (REQ-INST-03 — always per-root):**
+
 ```typescript
 // Before:
 const progressPath = path.join(projectPath, RALPH_DIR, PROGRESS_MD);
 const progressContent = fileExists(progressPath) ? fs.readFileSync(progressPath, "utf-8") : null;
 
 // After:
-const progressContent = fileExists(paths.progress) ? fs.readFileSync(paths.progress, "utf-8") : null;
+const progressContent = fileExists(paths.progress)
+  ? fs.readFileSync(paths.progress, "utf-8")
+  : null;
 ```
 
 **New section: Active Backlog Root context (REQ-ARCH-03):**
@@ -285,14 +297,15 @@ Do NOT modify files outside this state directory.`);
 ```
 
 **"Do NOT modify" reminder update:**
+
 ```typescript
 // Before:
-`Do NOT modify .ralph/backlog.json or .ralph/state.json`
+`Do NOT modify .ralph/backlog.json or .ralph/state.json`;
 
 // After:
 const relBacklog = path.relative(paths.projectPath, paths.backlog);
 const relState = path.relative(paths.projectPath, paths.state);
-`Do NOT modify ${relBacklog} or ${relState} — the loop runner manages status.`
+`Do NOT modify ${relBacklog} or ${relState} — the loop runner manages status.`;
 ```
 
 ### 3.5 `buildReviewPrompt` Signature Change
@@ -317,6 +330,7 @@ export function buildReviewPrompt(
 ### 3.6 `buildReviewPrompt` Internal Changes
 
 **Verify command — still from project-level marker file:**
+
 ```typescript
 // Before:
 const markerResult = readMarkerFile(projectPath);
@@ -326,6 +340,7 @@ const markerResult = readMarkerFile(paths.projectPath);
 ```
 
 **progress.md:**
+
 ```typescript
 // Before:
 const progressPath = path.join(projectPath, RALPH_DIR, PROGRESS_MD);
@@ -337,6 +352,7 @@ const progressContent = fileExists(paths.progress)
 ```
 
 **REVIEW.md fallback (REQ-INST-02):**
+
 ```typescript
 // Before:
 const reviewMdPath = path.join(projectPath, RALPH_DIR, REVIEW_MD);
@@ -357,11 +373,11 @@ The installed RALPH.md and CLAUDE.md files contain hardcoded `.ralph/backlog.jso
 
 ### 4.1 Files to Modify
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `RALPH.md.tmpl` | `artifacts/variants/backlog-json/.ralph/RALPH.md.tmpl` | Per-iteration instructions for the loop agent |
-| `CLAUDE_ADDON.md` | `artifacts/variants/backlog-json/CLAUDE_ADDON.md` | Ralph section merged into project CLAUDE.md |
-| `CLAUDE_GREENFIELD.md.tmpl` | `artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl` | Full CLAUDE.md for new projects |
+| File                        | Location                                                    | Purpose                                       |
+| --------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| `RALPH.md.tmpl`             | `artifacts/variants/backlog-json/.ralph/RALPH.md.tmpl`      | Per-iteration instructions for the loop agent |
+| `CLAUDE_ADDON.md`           | `artifacts/variants/backlog-json/CLAUDE_ADDON.md`           | Ralph section merged into project CLAUDE.md   |
+| `CLAUDE_GREENFIELD.md.tmpl` | `artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl` | Full CLAUDE.md for new projects               |
 
 ### 4.2 RALPH.md.tmpl Changes
 
@@ -375,6 +391,7 @@ Replace all hardcoded `.ralph/` path references with generic wording:
 3. Read `.ralph/progress.md` for context from previous iterations
 
 ## Rules (BEFORE)
+
 - Do NOT modify `.ralph/backlog.json` status — the loop runner manages it
 - Do NOT modify `.ralph/state.json` — the loop runner manages it
 - DO read `.ralph/progress.md` for accumulated learnings
@@ -392,6 +409,7 @@ Replace with:
 3. Read `progress.md` for context from previous iterations
 
 ## Rules (AFTER)
+
 - Do NOT modify `backlog.json` — the loop runner manages status
 - Do NOT modify `state.json` — the loop runner manages state
 - DO read `progress.md` for accumulated learnings
@@ -406,9 +424,11 @@ Same pattern — replace hardcoded `.ralph/` paths:
 
 ```markdown
 ## Autonomous Loop (Ralph) (BEFORE)
+
 1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
 2. Read `.ralph/backlog.json` — find the current `in_progress` item
-...
+   ...
+
 - Do not modify `.ralph/backlog.json` — the loop runner manages status
 - Do not modify `.ralph/state.json` — the loop runner manages state
 - Read `.ralph/progress.md` for accumulated project learnings
@@ -419,9 +439,11 @@ Replace with:
 
 ```markdown
 ## Autonomous Loop (Ralph) (AFTER)
+
 1. Read `RALPH.md` for detailed per-iteration instructions
 2. Read the backlog — find the current `in_progress` item
-...
+   ...
+
 - Do not modify `backlog.json` — the loop runner manages status
 - Do not modify `state.json` — the loop runner manages state
 - Read `progress.md` for accumulated project learnings

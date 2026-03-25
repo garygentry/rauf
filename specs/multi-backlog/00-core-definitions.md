@@ -4,21 +4,21 @@ Shared types, error codes, and constants for the multi-backlog feature. Every ot
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-ROOT-01 | Backlog root is a directory containing backlog.json | 1.1 BacklogPaths |
-| REQ-ROOT-02 | Each root has isolated runtime state files | 1.1 BacklogPaths |
-| REQ-STATE-01 | State files in .ralph/ subdirectory within root | 1.1 BacklogPaths |
-| REQ-STATE-02 | No .ralph/.ralph/ nesting for default root | 1.1 BacklogPaths |
-| REQ-STATE-04 | backlog.json inside or outside .ralph/ state dir | 1.1 BacklogPaths |
-| REQ-INST-01 | RALPH.md fallback resolution | 1.2 InstructionPaths |
-| REQ-INST-02 | REVIEW.md fallback resolution | 1.2 InstructionPaths |
-| REQ-LOCK-01 | Lock file in state directory | 1.3 LockFileContent |
-| REQ-LOCK-02 | Lock contains PID and timestamp | 1.3 LockFileContent |
-| REQ-LOCK-03 | Stale lock detection | 1.4 LockStatus |
-| REQ-REL-02 | PID recycling detection | 1.3 LockFileContent |
-| REQ-STATUS-01 | Active root discovery | 1.5 ActiveRoot |
-| REQ-OBS-02 | Lock conflict includes PID and start time | 2.1 LOCK_CONFLICT |
+| REQ ID        | Requirement                                         | Section              |
+| ------------- | --------------------------------------------------- | -------------------- |
+| REQ-ROOT-01   | Backlog root is a directory containing backlog.json | 1.1 BacklogPaths     |
+| REQ-ROOT-02   | Each root has isolated runtime state files          | 1.1 BacklogPaths     |
+| REQ-STATE-01  | State files in .ralph/ subdirectory within root     | 1.1 BacklogPaths     |
+| REQ-STATE-02  | No .ralph/.ralph/ nesting for default root          | 1.1 BacklogPaths     |
+| REQ-STATE-04  | backlog.json inside or outside .ralph/ state dir    | 1.1 BacklogPaths     |
+| REQ-INST-01   | RALPH.md fallback resolution                        | 1.2 InstructionPaths |
+| REQ-INST-02   | REVIEW.md fallback resolution                       | 1.2 InstructionPaths |
+| REQ-LOCK-01   | Lock file in state directory                        | 1.3 LockFileContent  |
+| REQ-LOCK-02   | Lock contains PID and timestamp                     | 1.3 LockFileContent  |
+| REQ-LOCK-03   | Stale lock detection                                | 1.4 LockStatus       |
+| REQ-REL-02    | PID recycling detection                             | 1.3 LockFileContent  |
+| REQ-STATUS-01 | Active root discovery                               | 1.5 ActiveRoot       |
+| REQ-OBS-02    | Lock conflict includes PID and start time           | 2.1 LOCK_CONFLICT    |
 
 ## 1. Types
 

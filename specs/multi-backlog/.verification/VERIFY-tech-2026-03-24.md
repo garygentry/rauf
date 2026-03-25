@@ -1,10 +1,12 @@
 # Verification Report: multi-backlog (tech)
+
 Date: 2026-03-24
 Pipeline Stage: forge-2-tech (complete, v1)
 Artifacts Reviewed: specs/multi-backlog/PRD.md, specs/multi-backlog/tech-spec.md
 Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 
 ## Summary
+
 - Total findings: 7
 - Gaps: 3
 - Inconsistencies: 2
@@ -14,6 +16,7 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 ## Findings
 
 ### V-001: Tech spec function signatures diverge from actual source for several functions
+
 - **Severity:** inconsistency
 - **Location:** tech-spec.md, section 5.1 "Core Functions — Signature Changes"
 - **Issue:** The tech spec declares new signatures for several functions, but some proposed signatures do not match the actual current return types, which will cause confusion during implementation:
@@ -22,12 +25,13 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
   3. `writeIterationStatus(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<void>` — the actual function returns `Result<boolean>` (where `false` means throttled).
   4. `resetStalledItems(paths: BacklogPaths): Result<number>` — the actual function returns `Result<{ resetCount: number }>`.
   5. `deleteItem(paths: BacklogPaths, id: string): Result<BacklogItem>` — the actual function returns `Result<void>`.
-  These mismatches mean the implementation spec author must decide whether to change the return types (a breaking change to existing callers) or preserve them. The tech spec should be explicit about which approach to take.
+     These mismatches mean the implementation spec author must decide whether to change the return types (a breaking change to existing callers) or preserve them. The tech spec should be explicit about which approach to take.
 - **Suggested fix:** Update section 5.1 to match actual return types. For each function, use the current return type but replace the `projectPath: string` parameter with `paths: BacklogPaths`. Specifically: `readIterationStatus(paths: BacklogPaths): IterationStatus | null`, `clearIterationStatus(paths: BacklogPaths): void`, `writeIterationStatus(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<boolean>`, `resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }>`, `deleteItem(paths: BacklogPaths, id: string): Result<void>`. Add a note: "Signature changes are limited to replacing the `projectPath: string` parameter with `paths: BacklogPaths`. Return types are preserved to avoid breaking existing callers."
 - **References:** `packages/core/src/iteration-status.ts` (lines 31, 55, 78), `packages/core/src/backlog.ts` (lines 269, 374)
 - **Checklist:** CHECK-T05
 
 ### V-002: `selectNextItem` missing from signature change table
+
 - **Severity:** gap
 - **Location:** tech-spec.md, section 5.1 "Core Functions — Signature Changes"
 - **Issue:** `selectNextItem` is currently exported from `packages/core/src/backlog.ts` with signature `selectNextItem(backlog: Backlog): BacklogItem | null`. It does not take `projectPath` so it does not need a signature change — this is fine. However, it is called by `LoopRunner` (imported as `selectNextItem` at line 7 of `packages/loop/src/runner.ts`). The tech spec's section 6.1 says "All exported functions replace `projectPath: string` with `paths: BacklogPaths`. Internal path helpers are deleted." This blanket statement is misleading because `selectNextItem` takes neither `projectPath` nor `BacklogPaths` — it operates purely on in-memory data. The implementation specs need to know which functions are unchanged.
@@ -36,6 +40,7 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 - **Checklist:** CHECK-T05, CHECK-T08
 
 ### V-003: `scanActiveRoots` declared as async but placement is ambiguous
+
 - **Severity:** inconsistency
 - **Location:** tech-spec.md, section 3.5 vs section 6.2
 - **Issue:** Section 3.5 declares `scanActiveRoots(projectPath: string): Promise<ActiveRoot[]>` as an async function. Section 6.2 says it could live in either `backlog-root.ts` or `status.ts` ("either works"). However, all existing functions in both `status.ts` and `backlog.ts` are synchronous (using `fs.readFileSync`, `fs.existsSync`, etc.). Introducing an async function into a codebase that is entirely synchronous at the core layer is an architectural decision that deserves explicit justification. The scan algorithm described (walk + read small JSON files) can be done synchronously with `fs.readdirSync`/`fs.readFileSync` and stay under the 500ms target for 20 roots. Making it async would force all callers (CLI status command, web status route) to handle promises where they currently don't.
@@ -44,6 +49,7 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 - **Checklist:** CHECK-T09, CHECK-T04
 
 ### V-004: `resolveInstructionPaths` declared as sync but calls `fileExists` which requires filesystem access — return type for missing RALPH.md is underspecified
+
 - **Severity:** gap
 - **Location:** tech-spec.md, section 2.2 and section 3.9
 - **Issue:** Section 3.9 states `resolveInstructionPaths()` returns `null` for RALPH.md "if neither exists." However, section 3.9 also says "RALPH.md is required" in parentheses. The PRD's REQ-INST-01 says RALPH.md lookup falls back to the project-level file — but it does not say what happens if the project-level file is also missing. The tech spec should define the error behavior: does the loop fail to start, does it proceed without RALPH.md, or does it use a default? Currently in `packages/loop/src/prompt-builder.ts`, RALPH.md is read from a hardcoded path and its absence is handled by returning an error Result. The tech spec should clarify this contract.
@@ -52,6 +58,7 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 - **Checklist:** CHECK-T10, CHECK-T03
 
 ### V-005: Missing `watchLog` from signature change inventory
+
 - **Severity:** gap
 - **Location:** tech-spec.md, section 5.1 and section 2.3
 - **Issue:** `packages/core/src/status.ts` exports a `watchLog` function (imported by both `packages/cli/src/loop-commands.ts` and `packages/cli/src/status-commands.ts`). This function takes `projectPath` and constructs the log path internally using the `RALPH_DIR` constant. It is not listed in the tech spec's section 5.1 signature changes or section 2.3 modified modules table. If `watchLog` is not updated to accept `BacklogPaths`, the `--backlog` flag will not work for `ralph loop follow` and `ralph status --watch` commands.
@@ -60,6 +67,7 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 - **Checklist:** CHECK-T05, CHECK-T08
 
 ### V-006: No migration story for existing callers or incremental adoption strategy
+
 - **Severity:** improvement
 - **Location:** tech-spec.md, section 5.1
 - **Issue:** The tech spec proposes changing every core function signature from `projectPath: string` to `paths: BacklogPaths` in a single sweep. This is a large breaking change affecting every callsite in `packages/loop`, `packages/cli`, and `packages/web`. The tech spec does not describe whether this should be done atomically (one massive PR) or incrementally (e.g., add overloads first, migrate callers, then remove old signatures). For a change of this scope, an incremental strategy reduces risk and makes code review tractable. At minimum, the implementation specs and backlog should account for the migration ordering.
@@ -68,6 +76,7 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 - **Checklist:** CHECK-T15
 
 ### V-007: Web backlog route not listed in section 5.4 endpoint inventory
+
 - **Severity:** improvement
 - **Location:** tech-spec.md, section 5.4 "Web API Endpoints"
 - **Issue:** Section 5.4 lists `POST /:id/backlog` for creating items but omits `PUT /:id/backlog/:itemId` (update), `DELETE /:id/backlog/:itemId` (delete), and `GET /:id/backlog/:itemId` (get single item) which exist in `packages/web/src/server/routes/backlog.test.ts`. These endpoints also need to accept the `backlog` query parameter to route to the correct backlog root. The section should be a complete inventory of affected endpoints.
@@ -78,11 +87,13 @@ Checks Executed: 32 of 32 (25 pass, 7 fail, 0 not-applicable)
 ## Fix Execution Plan
 
 ### User Decisions Required
+
 None — all fixes can be applied directly.
 
 ### Execution Steps
 
 #### Step 1: Fix function signature mismatches in section 5.1
+
 - **Files:** `specs/multi-backlog/tech-spec.md`
 - **Addresses:** V-001
 - **Checklist:** CHECK-T05
@@ -92,11 +103,12 @@ None — all fixes can be applied directly.
   - `writeIterationStatus(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<boolean>` (not `Result<void>`)
   - `resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }>` (not `Result<number>`)
   - `deleteItem(paths: BacklogPaths, id: string): Result<void>` (not `Result<BacklogItem>`)
-  Add a note after the signature list: "Signature changes are limited to replacing the `projectPath: string` parameter with `paths: BacklogPaths`. Return types are preserved to avoid breaking existing callers."
+    Add a note after the signature list: "Signature changes are limited to replacing the `projectPath: string` parameter with `paths: BacklogPaths`. Return types are preserved to avoid breaking existing callers."
 - **Depends on:** none
 - **Rationale:** Accuracy of signatures is critical — implementation specs will be derived from these.
 
 #### Step 2: Add `selectNextItem` clarification and `watchLog` to inventory
+
 - **Files:** `specs/multi-backlog/tech-spec.md`
 - **Addresses:** V-002, V-005
 - **Checklist:** CHECK-T05, CHECK-T08
@@ -105,6 +117,7 @@ None — all fixes can be applied directly.
 - **Rationale:** Completeness of the function inventory prevents missed changes during implementation.
 
 #### Step 3: Resolve `scanActiveRoots` sync/async and placement
+
 - **Files:** `specs/multi-backlog/tech-spec.md`
 - **Addresses:** V-003
 - **Checklist:** CHECK-T09, CHECK-T04
@@ -113,6 +126,7 @@ None — all fixes can be applied directly.
 - **Rationale:** Consistency with existing core patterns avoids unnecessary async propagation.
 
 #### Step 4: Clarify RALPH.md-missing error behavior
+
 - **Files:** `specs/multi-backlog/tech-spec.md`
 - **Addresses:** V-004
 - **Checklist:** CHECK-T10, CHECK-T03
@@ -121,6 +135,7 @@ None — all fixes can be applied directly.
 - **Rationale:** Error contract must be explicit for downstream implementation specs.
 
 #### Step 5: Add migration strategy note
+
 - **Files:** `specs/multi-backlog/tech-spec.md`
 - **Addresses:** V-006
 - **Checklist:** CHECK-T15
@@ -129,6 +144,7 @@ None — all fixes can be applied directly.
 - **Rationale:** Guides backlog generation toward reviewable, incremental changes.
 
 #### Step 6: Complete web API endpoint inventory
+
 - **Files:** `specs/multi-backlog/tech-spec.md`
 - **Addresses:** V-007
 - **Checklist:** CHECK-T04, CHECK-T08

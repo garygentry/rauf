@@ -353,7 +353,7 @@ export type ArtifactStalenessReport = {
 
 export function checkArtifactStaleness(
   projectPath: string,
-  _options: UpdateOptions = {},
+  _options: UpdateOptions = {}, // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Result<ArtifactStalenessReport> {
   const resolved = path.resolve(projectPath);
 

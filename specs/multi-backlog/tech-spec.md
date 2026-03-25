@@ -5,6 +5,7 @@
 This feature introduces a **backlog root** abstraction — a self-contained directory holding a `backlog.json` and isolated runtime state — so ralph can operate on any backlog location without manual file shuffling. The central change is a new `packages/core/src/backlog-root.ts` module that becomes the single source of truth for all path resolution, replacing the hardcoded `.ralph/` constants scattered across every core module.
 
 Key architectural decisions:
+
 - **Centralized path resolution** via a `BacklogPaths` interface returned by `resolveBacklogPaths()`
 - **Basename detection** for the default-root special case (no `.ralph/.ralph/` nesting)
 - **Filesystem scan** for discovering active backlog roots (no index file)
@@ -69,10 +70,7 @@ export interface InstructionPaths {
  * When backlogFlag is omitted, returns path.join(projectPath, ".ralph").
  * When provided, resolves relative to projectPath and validates sandboxing.
  */
-export function resolveBacklogRoot(
-  projectPath: string,
-  backlogFlag?: string,
-): Result<string>;
+export function resolveBacklogRoot(projectPath: string, backlogFlag?: string): Result<string>;
 
 /**
  * Resolve the state directory for a backlog root.
@@ -88,10 +86,7 @@ export function resolveStateDir(backlogRoot: string): string;
  * Locates backlog.json in the root directory first, then falls back to stateDir.
  * Throws PATH_VIOLATION if backlogRoot is outside projectPath.
  */
-export function resolveBacklogPaths(
-  projectPath: string,
-  backlogRoot: string,
-): BacklogPaths;
+export function resolveBacklogPaths(projectPath: string, backlogRoot: string): BacklogPaths;
 
 /**
  * Resolve instruction file paths with per-root → project-level fallback.
@@ -99,9 +94,7 @@ export function resolveBacklogPaths(
  * Checks stateDir/RALPH.md first, then projectPath/.ralph/RALPH.md.
  * Same for REVIEW.md.
  */
-export function resolveInstructionPaths(
-  paths: BacklogPaths,
-): InstructionPaths;
+export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths;
 
 /**
  * Ensure the state directory exists, creating it (and parents) if needed.
@@ -111,23 +104,23 @@ export function ensureStateDir(paths: BacklogPaths): void;
 
 ### 2.3 Modified Modules
 
-| Module | Change |
-|--------|--------|
-| `packages/core/src/backlog.ts` | Replace internal `getBacklogPath()`/`getStatePath()` with `BacklogPaths` parameter on all exported functions |
-| `packages/core/src/status.ts` | Replace internal path helpers; `deriveStatus()` accepts `BacklogPaths`; add `scanActiveRoots()` |
-| `packages/core/src/iteration-status.ts` | Replace internal `statusPath()` with `BacklogPaths` parameter |
-| `packages/core/src/archive.ts` | Replace internal `getArchiveDir()` with `BacklogPaths` parameter |
-| `packages/core/src/reset.ts` | Replace inline path construction with `BacklogPaths` parameter |
-| `packages/core/src/schemas.ts` | Add `backlogRoot` to `LoopStartOptionsSchema` |
-| `packages/core/src/errors.ts` | Add `LOCK_CONFLICT` error code |
-| `packages/core/src/index.ts` | Add `export * from "./backlog-root.js"` and `export * from "./lock.js"` |
-| `packages/loop/src/runner.ts` | Accept `BacklogPaths` via options; pass to all core calls |
-| `packages/loop/src/prompt-builder.ts` | Accept `BacklogPaths` + `InstructionPaths`; remove hardcoded `.ralph/`; inject backlog root context into prompt |
-| `packages/cli/src/loop-commands.ts` | Extract `--backlog` flag; call `resolveBacklogRoot()`; pass to LoopRunner |
-| `packages/cli/src/backlog-commands.ts` | Extract `--backlog` flag; pass `BacklogPaths` to core |
-| `packages/cli/src/status-commands.ts` | Extract `--backlog` flag; call `scanActiveRoots()` when no flag; fix inline `.ralph/progress.md` path |
-| `packages/web/src/server/routes/loop.ts` | Accept `backlogRoot` in request body; pass through to LoopManager |
-| `packages/web/src/server/loop-manager.ts` | Key active loops by backlog root path instead of project path |
+| Module                                    | Change                                                                                                          |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `packages/core/src/backlog.ts`            | Replace internal `getBacklogPath()`/`getStatePath()` with `BacklogPaths` parameter on all exported functions    |
+| `packages/core/src/status.ts`             | Replace internal path helpers; `deriveStatus()` accepts `BacklogPaths`; add `scanActiveRoots()`                 |
+| `packages/core/src/iteration-status.ts`   | Replace internal `statusPath()` with `BacklogPaths` parameter                                                   |
+| `packages/core/src/archive.ts`            | Replace internal `getArchiveDir()` with `BacklogPaths` parameter                                                |
+| `packages/core/src/reset.ts`              | Replace inline path construction with `BacklogPaths` parameter                                                  |
+| `packages/core/src/schemas.ts`            | Add `backlogRoot` to `LoopStartOptionsSchema`                                                                   |
+| `packages/core/src/errors.ts`             | Add `LOCK_CONFLICT` error code                                                                                  |
+| `packages/core/src/index.ts`              | Add `export * from "./backlog-root.js"` and `export * from "./lock.js"`                                         |
+| `packages/loop/src/runner.ts`             | Accept `BacklogPaths` via options; pass to all core calls                                                       |
+| `packages/loop/src/prompt-builder.ts`     | Accept `BacklogPaths` + `InstructionPaths`; remove hardcoded `.ralph/`; inject backlog root context into prompt |
+| `packages/cli/src/loop-commands.ts`       | Extract `--backlog` flag; call `resolveBacklogRoot()`; pass to LoopRunner                                       |
+| `packages/cli/src/backlog-commands.ts`    | Extract `--backlog` flag; pass `BacklogPaths` to core                                                           |
+| `packages/cli/src/status-commands.ts`     | Extract `--backlog` flag; call `scanActiveRoots()` when no flag; fix inline `.ralph/progress.md` path           |
+| `packages/web/src/server/routes/loop.ts`  | Accept `backlogRoot` in request body; pass through to LoopManager                                               |
+| `packages/web/src/server/loop-manager.ts` | Key active loops by backlog root path instead of project path                                                   |
 
 ### 2.4 New Module: `packages/core/src/lock.ts` (REQ-LOCK-01 through REQ-LOCK-05)
 
@@ -183,6 +176,7 @@ export interface LockFileContent {
 ```
 
 **Lock lifecycle:**
+
 1. `acquireLock(stateDir)` — check existing lock; if stale (dead PID or recycled PID), remove and proceed; if live, return `LOCK_CONFLICT` error
 2. Lock acquired: write `{stateDir}/.loop.lock` atomically
 3. `releaseLock(stateDir)` — remove lock file (called in `LoopRunner` finally block)
@@ -208,6 +202,7 @@ export function scanActiveRoots(projectPath: string): ActiveRoot[];
 ```
 
 **Synchronous scan algorithm** (using `fs.readdirSync`/`fs.readFileSync`, consistent with existing core conventions):
+
 1. Recursively walk `projectPath` for files named `state.json` inside `.ralph/` directories
 2. Skip: `node_modules`, `.git`, `dist`, `build`, `coverage`
 3. For each `state.json`: parse, check `status !== "idle"`, extract backlog root from parent path
@@ -231,6 +226,7 @@ Do NOT modify files outside this state directory.
 ### 3.7 Web API Scope (REQ-CLI-05)
 
 **Decision:** Minimal changes to satisfy REQ-CLI-05 (CLI `--backlog` works when server is running):
+
 - Add `backlogRoot?: string` to the loop start/stop request body
 - `LoopManager` changes its internal map key from `projectPath` to `backlogRoot` (the full resolved path)
 - Status and backlog CRUD routes accept an optional `backlog` query parameter
@@ -246,6 +242,7 @@ No UI changes. The web dashboard multi-root views are explicitly out of scope (P
 ### 3.9 Instruction File Fallback (REQ-INST-01, REQ-INST-02)
 
 **Decision:** `resolveInstructionPaths()` checks:
+
 1. `{stateDir}/RALPH.md` — per-root override
 2. `{projectPath}/.ralph/RALPH.md` — project-level fallback
 
@@ -301,12 +298,19 @@ Every core function that currently takes `projectPath: string` and uses it for s
 export function readBacklog(paths: BacklogPaths): Result<Backlog>;
 export function writeBacklog(paths: BacklogPaths, backlog: Backlog): Result<void>;
 export function addItem(paths: BacklogPaths, input: CreateItemInput): Result<BacklogItem>;
-export function updateItem(paths: BacklogPaths, id: string, updates: UpdateItemInput): Result<BacklogItem>;
+export function updateItem(
+  paths: BacklogPaths,
+  id: string,
+  updates: UpdateItemInput,
+): Result<BacklogItem>;
 export function deleteItem(paths: BacklogPaths, id: string): Result<void>;
 export function restoreFromBackup(paths: BacklogPaths): Result<void>;
 export function resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }>;
 export function ensureBacklog(paths: BacklogPaths): Result<Backlog>;
-export function unblockItems(paths: BacklogPaths, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>;
+export function unblockItems(
+  paths: BacklogPaths,
+  itemId?: string,
+): Result<{ unblockedCount: number; unblockedIds: string[] }>;
 
 // status.ts
 export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus>;
@@ -320,7 +324,11 @@ export function clearCancelFile(paths: BacklogPaths): Result<void>;
 export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => void): () => void;
 
 // iteration-status.ts
-export function writeIterationStatus(paths: BacklogPaths, status: IterationStatus, force?: boolean): Result<boolean>;
+export function writeIterationStatus(
+  paths: BacklogPaths,
+  status: IterationStatus,
+  force?: boolean,
+): Result<boolean>;
 export function readIterationStatus(paths: BacklogPaths): IterationStatus | null;
 export function clearIterationStatus(paths: BacklogPaths): void;
 
@@ -461,13 +469,13 @@ export const ErrorCodes = {
 
 ### 7.2 Error Scenarios
 
-| Scenario | Error Code | Message |
-|----------|-----------|---------|
-| `--backlog` path resolves outside project root | `PATH_VIOLATION` | "Backlog root '{path}' is outside the project root" |
-| `--backlog` directory does not exist | `FILE_NOT_FOUND` | "Backlog root directory not found: {path}" |
-| No `backlog.json` found in root or stateDir | `FILE_NOT_FOUND` | "No backlog.json found in {root} or {stateDir}" |
-| Lock held by another live process | `LOCK_CONFLICT` | "Loop already running for {root} (PID {pid}, started {time})" |
-| Lock file unreadable/corrupt | *(auto-recover)* | Remove stale lock, log warning, proceed |
+| Scenario                                       | Error Code       | Message                                                       |
+| ---------------------------------------------- | ---------------- | ------------------------------------------------------------- |
+| `--backlog` path resolves outside project root | `PATH_VIOLATION` | "Backlog root '{path}' is outside the project root"           |
+| `--backlog` directory does not exist           | `FILE_NOT_FOUND` | "Backlog root directory not found: {path}"                    |
+| No `backlog.json` found in root or stateDir    | `FILE_NOT_FOUND` | "No backlog.json found in {root} or {stateDir}"               |
+| Lock held by another live process              | `LOCK_CONFLICT`  | "Loop already running for {root} (PID {pid}, started {time})" |
+| Lock file unreadable/corrupt                   | _(auto-recover)_ | Remove stale lock, log warning, proceed                       |
 
 All errors use the existing `Result<T, RalphError>` pattern. No new error types — just the new `LOCK_CONFLICT` code.
 
@@ -492,14 +500,16 @@ interface MultiRootProjectOptions {
  * Create a temp directory with a multi-root project structure.
  * Returns { projectPath, cleanup }.
  */
-export function createMultiRootProject(
-  options?: MultiRootProjectOptions,
-): { projectPath: string; cleanup: () => void };
+export function createMultiRootProject(options?: MultiRootProjectOptions): {
+  projectPath: string;
+  cleanup: () => void;
+};
 ```
 
 ### 8.2 Test Scenarios by Module
 
 **`backlog-root.test.ts`:**
+
 - Resolve default root (no flag) → `.ralph/`
 - Resolve custom root (`specs/auth`) → `specs/auth/`
 - State dir for default root → same directory (no nesting)
@@ -510,6 +520,7 @@ export function createMultiRootProject(
 - Nonexistent directory rejected
 
 **`lock.test.ts`:**
+
 - Acquire lock on fresh state dir → success
 - Acquire when already locked by live PID → LOCK_CONFLICT
 - Acquire when locked by dead PID → stale removal → success
@@ -518,16 +529,19 @@ export function createMultiRootProject(
 - Lock file corruption → treated as stale
 
 **`status.test.ts` (scan additions):**
+
 - Scan project with 0 active roots → empty list
 - Scan with 1 active, 2 idle → returns 1
 - Scan skips node_modules
 - Scan handles missing state.json gracefully
 
 **`backlog.test.ts` / `archive.test.ts` / etc. (updated):**
+
 - Existing tests updated to construct `BacklogPaths` instead of passing `projectPath`
 - Add parallel tests for non-default root paths
 
 **`prompt-builder.test.ts` (updated):**
+
 - RALPH.md found in per-root stateDir
 - RALPH.md fallback to project-level `.ralph/`
 - Active backlog root context injected into prompt
@@ -556,6 +570,7 @@ Update `test-sandbox/` to support `--backlog` flag testing. Add a scenario that 
 For process start time comparison on Linux: read `/proc/{pid}/stat` via `node:fs` (field 22, measured in clock ticks). On non-Linux platforms, fall back to PID-only check.
 
 **Internal dependencies:**
+
 - `backlog-root.ts` imports from `./fs-utils.js` (for `fileExists`)
 - `lock.ts` imports from `./fs-utils.js` (for `atomicWrite`, `fileExists`) and `./errors.js`
 - All existing core modules gain an import of `BacklogPaths` type from `./backlog-root.js`
@@ -564,8 +579,8 @@ For process start time comparison on Linux: read `/proc/{pid}/stat` via `node:fs
 
 None — all PRD open questions (OQ-01 through OQ-03) and interview decisions have been resolved:
 
-| Question | Resolution |
-|----------|-----------|
-| OQ-01: Lock file name | `.loop.lock` (hidden file, no collision with existing files) |
-| OQ-02: Active root discovery | Filesystem scan for `state.json` files (no index) |
-| OQ-03: Backup file location | Alongside the original `backlog.json` (existing `atomicWrite` behavior) |
+| Question                     | Resolution                                                              |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| OQ-01: Lock file name        | `.loop.lock` (hidden file, no collision with existing files)            |
+| OQ-02: Active root discovery | Filesystem scan for `state.json` files (no index)                       |
+| OQ-03: Backup file location  | Alongside the original `backlog.json` (existing `atomicWrite` behavior) |

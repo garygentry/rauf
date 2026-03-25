@@ -36,13 +36,13 @@ bash test-sandbox/verify.sh
 
 ## Available Scenarios
 
-| Scenario | Signal | Tools Emitted | Timing | Tests |
-|----------|--------|---------------|--------|-------|
-| `stream-done` | `RALPH_DONE` | Read, Edit | 300ms sleeps | Basic done flow with tool activity |
-| `stream-blocked` | `RALPH_BLOCKED` | None | Instant | Blocked signal parsing, reason extraction |
-| `stream-tools` | `RALPH_DONE` | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use |
-| `slow-stream` | `RALPH_DONE` | Read, Edit | 2s sleeps | Slow stream completion, timing resilience |
-| `stream-needs-human` | `RALPH_NEEDS_HUMAN` | None | Instant | Needs-human signal, item stays in_progress |
+| Scenario             | Signal              | Tools Emitted          | Timing       | Tests                                          |
+| -------------------- | ------------------- | ---------------------- | ------------ | ---------------------------------------------- |
+| `stream-done`        | `RALPH_DONE`        | Read, Edit             | 300ms sleeps | Basic done flow with tool activity             |
+| `stream-blocked`     | `RALPH_BLOCKED`     | None                   | Instant      | Blocked signal parsing, reason extraction      |
+| `stream-tools`       | `RALPH_DONE`        | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use |
+| `slow-stream`        | `RALPH_DONE`        | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience      |
+| `stream-needs-human` | `RALPH_NEEDS_HUMAN` | None                   | Instant      | Needs-human signal, item stays in_progress     |
 
 ## What to Observe
 
@@ -100,6 +100,7 @@ echo '{"type":"message_stop"}'
 ```
 
 Key rules:
+
 - First line must be `cat > /dev/null` to drain stdin
 - NDJSON must match Claude streaming API format
 - Signal goes in the last `text_delta` as the final non-empty line

@@ -426,7 +426,7 @@
         "No hardcoded .ralph/ path references remain in core modules (outside of constants and test fixtures)",
         "No circular dependencies between backlog-root.ts, lock.ts, and other core modules"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "completedAt": null,
       "dependsOn": [
         "011",

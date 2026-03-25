@@ -4,11 +4,11 @@ Directory structure, new module locations, barrel exports, and module dependency
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-ARCH-01 | Path resolution derived from backlog root parameter | 1. New Modules |
-| REQ-ARCH-02 | Core is single source of path resolution | 2. Module Dependency Graph |
-| REQ-ROOT-04 | Default root is not special-cased in the model | 1. New Modules |
+| REQ ID      | Requirement                                         | Section                    |
+| ----------- | --------------------------------------------------- | -------------------------- |
+| REQ-ARCH-01 | Path resolution derived from backlog root parameter | 1. New Modules             |
+| REQ-ARCH-02 | Core is single source of path resolution            | 2. Module Dependency Graph |
+| REQ-ROOT-04 | Default root is not special-cased in the model      | 1. New Modules             |
 
 ## 1. New Modules
 
@@ -114,7 +114,7 @@ export * from "./profile.js";
 export * from "./template.js";
 export * from "./claude-md.js";
 export * from "./backlog-root.js"; // NEW
-export * from "./lock.js";         // NEW
+export * from "./lock.js"; // NEW
 export * from "./backlog.js";
 export * from "./archive.js";
 export * from "./status.js";

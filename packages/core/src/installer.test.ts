@@ -497,7 +497,8 @@ describe("update — RALPH.md sentinel preservation", () => {
     const ralphMdPath = path.join(tmpDir, ".ralph", "RALPH.md");
     const original = fs.readFileSync(ralphMdPath, "utf-8");
     const customContent =
-      original + "\n- Always run database migrations before tests\n- Use factory functions from tests/helpers/\n";
+      original +
+      "\n- Always run database migrations before tests\n- Use factory functions from tests/helpers/\n";
     fs.writeFileSync(ralphMdPath, customContent);
 
     // Run update
@@ -544,9 +545,7 @@ describe("update — RALPH.md sentinel preservation", () => {
     // Strip sentinels to simulate a legacy file
     const ralphMdPath = path.join(tmpDir, ".ralph", "RALPH.md");
     const content = fs.readFileSync(ralphMdPath, "utf-8");
-    const legacy = content
-      .replace(RALPH_MD_MANAGED_START, "")
-      .replace(RALPH_MD_MANAGED_END, "");
+    const legacy = content.replace(RALPH_MD_MANAGED_START, "").replace(RALPH_MD_MANAGED_END, "");
     fs.writeFileSync(ralphMdPath, legacy);
 
     // Update should fall back to full overwrite

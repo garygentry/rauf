@@ -39,15 +39,15 @@ All filesystem operations and business logic. Zero UI or CLI concerns.
 
 Loop runner engine. Orchestrates the autonomous coding loop lifecycle.
 
-| Module              | Responsibility                                                      |
-| ------------------- | ------------------------------------------------------------------- |
-| `runner.ts`         | LoopRunner class — main loop lifecycle, iteration management        |
-| `events.ts`         | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent |
-| `claude-process.ts` | Spawn `claude -p` as child process with timeout and cancellation    |
-| `signal-parser.ts`  | Parse RALPH_DONE/BLOCKED/NEEDS_HUMAN/RALPH_REVIEW from Claude stdout |
+| Module              | Responsibility                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `runner.ts`         | LoopRunner class — main loop lifecycle, iteration management                                            |
+| `events.ts`         | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent                                     |
+| `claude-process.ts` | Spawn `claude -p` as child process with timeout and cancellation                                        |
+| `signal-parser.ts`  | Parse RALPH_DONE/BLOCKED/NEEDS_HUMAN/RALPH_REVIEW from Claude stdout                                    |
 | `prompt-builder.ts` | Build the prompt string from RALPH.md, item, backlog, and progress; build review prompts from REVIEW.md |
-| `usage-checker.ts`  | Check Claude API usage limits, interruptible sleep                  |
-| `git-commit.ts`     | Run `git add -A && git commit` after successful iterations          |
+| `usage-checker.ts`  | Check Claude API usage limits, interruptible sleep                                                      |
+| `git-commit.ts`     | Run `git add -A && git commit` after successful iterations                                              |
 
 ### packages/cli
 

@@ -98,7 +98,11 @@ export function readServerState(): ServerState | null {
   try {
     const content = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
     const parsed = JSON.parse(content) as Partial<ServerState>;
-    if (typeof parsed.pid === "number" && typeof parsed.port === "number" && typeof parsed.startedAt === "string") {
+    if (
+      typeof parsed.pid === "number" &&
+      typeof parsed.port === "number" &&
+      typeof parsed.startedAt === "string"
+    ) {
       return { pid: parsed.pid, port: parsed.port, startedAt: parsed.startedAt };
     }
   } catch {
@@ -214,7 +218,9 @@ export async function pingHealthEndpoint(port: number): Promise<HealthData | nul
     try {
       const resp = await fetch(url, { signal: controller.signal });
       if (!resp.ok) return null;
-      const body = (await resp.json()) as { data?: { uptime?: number; version?: string; pid?: number } };
+      const body = (await resp.json()) as {
+        data?: { uptime?: number; version?: string; pid?: number };
+      };
       return {
         uptime: body.data?.uptime ?? 0,
         version: body.data?.version ?? "unknown",
@@ -276,7 +282,10 @@ async function waitForDaemonReady(port: number, pid: number): Promise<DaemonRead
         }
         return { status: "crashed", message: lateError.message };
       }
-      return { status: "crashed", message: `Server process exited unexpectedly. Check ${SERVER_LOG_FILE}` };
+      return {
+        status: "crashed",
+        message: `Server process exited unexpectedly. Check ${SERVER_LOG_FILE}`,
+      };
     }
 
     // 3. Check health endpoint
@@ -364,7 +373,9 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
   if (portHealth && portHealth.pid) {
     // Something is responding on our port with ralph health data — orphan
     if (!ctx.globalFlags.quiet) {
-      info(`Detected orphaned ralph server (PID ${portHealth.pid}) on port ${port}. Cleaning up...`);
+      info(
+        `Detected orphaned ralph server (PID ${portHealth.pid}) on port ${port}. Cleaning up...`,
+      );
     }
     await killProcess(portHealth.pid);
     await sleep(500); // Wait for port release
@@ -555,7 +566,9 @@ export async function handleServerStop(ctx: CommandContext): Promise<number> {
   try {
     process.kill(state.pid, "SIGTERM");
   } catch (e) {
-    error(`Failed to send SIGTERM to PID ${state.pid}: ${e instanceof Error ? e.message : String(e)}`);
+    error(
+      `Failed to send SIGTERM to PID ${state.pid}: ${e instanceof Error ? e.message : String(e)}`,
+    );
     return ExitCode.ERROR;
   }
 

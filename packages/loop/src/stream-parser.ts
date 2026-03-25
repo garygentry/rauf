@@ -7,7 +7,12 @@
 
 // ─── Types ──────────────────────────────────────────────────────
 
-export type StreamEventType = "tool_start" | "tool_end" | "token_update" | "message_stop" | "api_retry";
+export type StreamEventType =
+  | "tool_start"
+  | "tool_end"
+  | "token_update"
+  | "message_stop"
+  | "api_retry";
 
 export interface ToolStartEvent {
   type: "tool_start";
@@ -117,7 +122,11 @@ export class StreamParser {
     const inputTokens = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
     if (inputTokens > 0) {
       this.inputTokens = inputTokens;
-      this.onEvent({ type: "token_update", inputTokens: this.inputTokens, outputTokens: this.outputTokens });
+      this.onEvent({
+        type: "token_update",
+        inputTokens: this.inputTokens,
+        outputTokens: this.outputTokens,
+      });
     }
   }
 
@@ -159,7 +168,11 @@ export class StreamParser {
     const outputTokens = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
     if (outputTokens > 0) {
       this.outputTokens = outputTokens;
-      this.onEvent({ type: "token_update", inputTokens: this.inputTokens, outputTokens: this.outputTokens });
+      this.onEvent({
+        type: "token_update",
+        inputTokens: this.inputTokens,
+        outputTokens: this.outputTokens,
+      });
     }
   }
 
@@ -181,7 +194,11 @@ export class StreamParser {
       if (input > 0) this.inputTokens = input;
       if (output > 0) this.outputTokens = output;
       if (input > 0 || output > 0) {
-        this.onEvent({ type: "token_update", inputTokens: this.inputTokens, outputTokens: this.outputTokens });
+        this.onEvent({
+          type: "token_update",
+          inputTokens: this.inputTokens,
+          outputTokens: this.outputTokens,
+        });
       }
     }
 
@@ -220,7 +237,11 @@ export class StreamParser {
       const output = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
       if (input > 0) this.inputTokens = input;
       if (output > 0) this.outputTokens = output;
-      this.onEvent({ type: "token_update", inputTokens: this.inputTokens, outputTokens: this.outputTokens });
+      this.onEvent({
+        type: "token_update",
+        inputTokens: this.inputTokens,
+        outputTokens: this.outputTokens,
+      });
     }
 
     this.onEvent({ type: "message_stop" });

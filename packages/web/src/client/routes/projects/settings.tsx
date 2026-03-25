@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
 import { useParams } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ProjectProfile, MarkerOptions, DiscoveredProject, MarkerFile, InstallationReport, ArtifactStalenessReport, ArtifactFileStatus } from "@ralph/core";
+import type {
+  ProjectProfile,
+  MarkerOptions,
+  DiscoveredProject,
+  MarkerFile,
+  InstallationReport,
+  ArtifactStalenessReport,
+  ArtifactFileStatus,
+} from "@ralph/core";
 import { ralphFetchJson } from "../../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -123,10 +131,9 @@ export function ProjectSettings() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      ralphFetchJson<InstallationReport>(
-        `/api/projects/${encodeURIComponent(projectId)}/update`,
-        { method: "POST" },
-      ),
+      ralphFetchJson<InstallationReport>(`/api/projects/${encodeURIComponent(projectId)}/update`, {
+        method: "POST",
+      }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "artifact-status"] });
@@ -307,7 +314,13 @@ export function ProjectSettings() {
           staleness={stalenessQuery.data}
           stalenessLoading={stalenessQuery.isLoading}
           updatePending={updateMutation.isPending}
-          updateError={updateMutation.isError ? (updateMutation.error instanceof Error ? updateMutation.error : new Error(String(updateMutation.error))) : null}
+          updateError={
+            updateMutation.isError
+              ? updateMutation.error instanceof Error
+                ? updateMutation.error
+                : new Error(String(updateMutation.error))
+              : null
+          }
           updateData={updateMutation.data}
           onUpdate={() => updateMutation.mutate()}
         />
@@ -661,24 +674,44 @@ function ArtifactStatusSection({
 
   if (updatePending) {
     buttonLabel = "Updating…";
-    buttonStyle = { borderColor: "var(--color-border)", color: "var(--color-text-muted)", backgroundColor: "var(--color-surface)" };
+    buttonStyle = {
+      borderColor: "var(--color-border)",
+      color: "var(--color-text-muted)",
+      backgroundColor: "var(--color-surface)",
+    };
     buttonDisabled = true;
   } else if (!staleness) {
     buttonLabel = "Update Artifacts";
-    buttonStyle = { borderColor: "var(--color-border)", color: "var(--color-text)", backgroundColor: "var(--color-surface)" };
+    buttonStyle = {
+      borderColor: "var(--color-border)",
+      color: "var(--color-text)",
+      backgroundColor: "var(--color-surface)",
+    };
     buttonDisabled = false;
   } else if (staleness.updatesAvailable === 0 && staleness.conflicts === 0) {
     buttonLabel = "Update Artifacts";
-    buttonStyle = { borderColor: "var(--color-border)", color: "var(--color-text)", backgroundColor: "var(--color-surface)" };
+    buttonStyle = {
+      borderColor: "var(--color-border)",
+      color: "var(--color-text)",
+      backgroundColor: "var(--color-surface)",
+    };
     buttonDisabled = false;
   } else if (staleness.updatesAvailable > 0) {
     buttonLabel = `Update ${staleness.updatesAvailable} File${staleness.updatesAvailable !== 1 ? "s" : ""}`;
-    buttonStyle = { borderColor: "transparent", color: "#fff", backgroundColor: "var(--color-accent)" };
+    buttonStyle = {
+      borderColor: "transparent",
+      color: "#fff",
+      backgroundColor: "var(--color-accent)",
+    };
     buttonDisabled = false;
   } else {
     // Only conflicts
     buttonLabel = "Update (review conflicts)";
-    buttonStyle = { borderColor: "rgba(217, 119, 6, 0.4)", color: "#d97706", backgroundColor: "rgba(217, 119, 6, 0.08)" };
+    buttonStyle = {
+      borderColor: "rgba(217, 119, 6, 0.4)",
+      color: "#d97706",
+      backgroundColor: "rgba(217, 119, 6, 0.08)",
+    };
     buttonDisabled = false;
   }
 
@@ -717,7 +750,10 @@ function ArtifactStatusSection({
                   ) : staleness ? (
                     <span
                       className="rounded px-1.5 py-0.5 text-xs font-medium"
-                      style={{ backgroundColor: "var(--color-surface-raised)", color: "var(--color-text-muted)" }}
+                      style={{
+                        backgroundColor: "var(--color-surface-raised)",
+                        color: "var(--color-text-muted)",
+                      }}
                     >
                       rendered
                     </span>
@@ -841,7 +877,10 @@ function ArtifactStatusBadge({ status }: { status: ArtifactFileStatus }) {
       return (
         <span
           className="rounded px-1.5 py-0.5 text-xs font-medium"
-          style={{ backgroundColor: "var(--color-surface-raised)", color: "var(--color-text-muted)" }}
+          style={{
+            backgroundColor: "var(--color-surface-raised)",
+            color: "var(--color-text-muted)",
+          }}
         >
           locally modified
         </span>

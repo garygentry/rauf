@@ -225,8 +225,8 @@ type LoopStateEnum =
   | "LIMIT_REACHED"
   | "ERROR"
   | "NOT_INSTALLED"
-  | "SLEEPING_LIMIT"   // Sleeping until 5-hour usage window resets
-  | "WEEKLY_LIMIT";    // 7-day weekly cap exhausted
+  | "SLEEPING_LIMIT" // Sleeping until 5-hour usage window resets
+  | "WEEKLY_LIMIT"; // 7-day weekly cap exhausted
 ```
 
 ## DiscoveredProject

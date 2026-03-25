@@ -387,11 +387,13 @@ Orchestrates a full project reset for a fresh backlog cycle.
 ### resetProject(projectPath, options?: ResetProjectOptions) → Result\<ResetProjectResult\>
 
 Options:
+
 - `clearBacklog?: boolean` — empty the backlog items array (preserve project/description metadata)
 - `keepProgress?: boolean` — when used with `clearBacklog`, preserve `progress.md` instead of archiving it
 - `keepLog?: boolean` — when used with `clearBacklog`, preserve `ralph.log` instead of archiving it
 
 Steps:
+
 1. Sweep all done items to archive (no min-age filter)
 2. Reset `in_progress` items → `pending`
 3. Delete `state.json` (swallow ENOENT)
@@ -404,15 +406,15 @@ Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`) — never overwrites 
 
 ## File locations summary
 
-| Module writes to | Files                                                          |
-| ---------------- | -------------------------------------------------------------- |
-| config.ts        | `.ralph.json`, `~/.ralph/config.json`                          |
-| backlog.ts       | `.ralph/backlog.json`, `.ralph/backlog.json.bak`               |
-| archive.ts       | `.ralph/archive/YYYY-MM.json`                                  |
+| Module writes to | Files                                                                          |
+| ---------------- | ------------------------------------------------------------------------------ |
+| config.ts        | `.ralph.json`, `~/.ralph/config.json`                                          |
+| backlog.ts       | `.ralph/backlog.json`, `.ralph/backlog.json.bak`                               |
+| archive.ts       | `.ralph/archive/YYYY-MM.json`                                                  |
 | reset.ts         | `.ralph/archive/YYYYMMDD-HHmmss-*`, `.ralph/state.json`, `.ralph/backlog.json` |
-| installer.ts     | All `.ralph/` files, CLAUDE.md, `.ralph.json`                  |
-| greenfield.ts    | All of installer + directory creation + git init               |
-| status.ts        | `.ralph/state.json`, `.ralph/ralph.log`, `.ralph/DONE`, `.ralph/CANCEL` |
-| discovery.ts     | (read-only)                                                    |
-| profile.ts       | (read-only, result stored by installer)                        |
-| template.ts      | (pure functions, no direct file I/O unless renderTemplateFile) |
+| installer.ts     | All `.ralph/` files, CLAUDE.md, `.ralph.json`                                  |
+| greenfield.ts    | All of installer + directory creation + git init                               |
+| status.ts        | `.ralph/state.json`, `.ralph/ralph.log`, `.ralph/DONE`, `.ralph/CANCEL`        |
+| discovery.ts     | (read-only)                                                                    |
+| profile.ts       | (read-only, result stored by installer)                                        |
+| template.ts      | (pure functions, no direct file I/O unless renderTemplateFile)                 |

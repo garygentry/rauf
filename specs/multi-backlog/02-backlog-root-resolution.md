@@ -4,32 +4,33 @@ The `backlog-root.ts` module — the centerpiece of multi-backlog. All path reso
 
 ## Requirement Coverage
 
-| REQ ID | Requirement | Section |
-|--------|-------------|---------|
-| REQ-ROOT-01 | Backlog root is a directory containing backlog.json | 2.3 resolveBacklogPaths |
-| REQ-ROOT-02 | Each root has isolated runtime state files | 2.3 resolveBacklogPaths |
-| REQ-ROOT-03 | Default root is .ralph/ when no --backlog flag | 2.1 resolveBacklogRoot |
-| REQ-ROOT-04 | Default root not special-cased in model | 2.2 resolveStateDir |
-| REQ-STATE-01 | State files in .ralph/ subdir within root | 2.2 resolveStateDir |
-| REQ-STATE-02 | No .ralph/.ralph/ nesting for default root | 2.2 resolveStateDir |
-| REQ-STATE-03 | State dir auto-created on first loop run | 2.5 ensureStateDir |
-| REQ-STATE-04 | backlog.json inside or outside .ralph/ | 2.3 resolveBacklogPaths |
-| REQ-CLI-02 | --backlog accepts directory path, not file path | 2.1 resolveBacklogRoot |
-| REQ-CLI-04 | Validate backlog root within project root | 2.1 resolveBacklogRoot |
-| REQ-ARCH-01 | Path resolution from single backlog root param | All |
-| REQ-ARCH-02 | Core is single source of path resolution | All |
-| REQ-SEC-01 | Path sandboxing within project root | 2.1 resolveBacklogRoot |
-| REQ-INST-01 | RALPH.md fallback resolution | 2.4 resolveInstructionPaths |
-| REQ-INST-02 | REVIEW.md fallback resolution | 2.4 resolveInstructionPaths |
-| REQ-INST-03 | progress.md always per-root | 2.3 resolveBacklogPaths |
-| REQ-REL-01 | Auto-create state dir if missing | 2.5 ensureStateDir |
-| REQ-REL-03 | Atomic write guarantees in any root | 2.3 resolveBacklogPaths (note) |
+| REQ ID       | Requirement                                         | Section                        |
+| ------------ | --------------------------------------------------- | ------------------------------ |
+| REQ-ROOT-01  | Backlog root is a directory containing backlog.json | 2.3 resolveBacklogPaths        |
+| REQ-ROOT-02  | Each root has isolated runtime state files          | 2.3 resolveBacklogPaths        |
+| REQ-ROOT-03  | Default root is .ralph/ when no --backlog flag      | 2.1 resolveBacklogRoot         |
+| REQ-ROOT-04  | Default root not special-cased in model             | 2.2 resolveStateDir            |
+| REQ-STATE-01 | State files in .ralph/ subdir within root           | 2.2 resolveStateDir            |
+| REQ-STATE-02 | No .ralph/.ralph/ nesting for default root          | 2.2 resolveStateDir            |
+| REQ-STATE-03 | State dir auto-created on first loop run            | 2.5 ensureStateDir             |
+| REQ-STATE-04 | backlog.json inside or outside .ralph/              | 2.3 resolveBacklogPaths        |
+| REQ-CLI-02   | --backlog accepts directory path, not file path     | 2.1 resolveBacklogRoot         |
+| REQ-CLI-04   | Validate backlog root within project root           | 2.1 resolveBacklogRoot         |
+| REQ-ARCH-01  | Path resolution from single backlog root param      | All                            |
+| REQ-ARCH-02  | Core is single source of path resolution            | All                            |
+| REQ-SEC-01   | Path sandboxing within project root                 | 2.1 resolveBacklogRoot         |
+| REQ-INST-01  | RALPH.md fallback resolution                        | 2.4 resolveInstructionPaths    |
+| REQ-INST-02  | REVIEW.md fallback resolution                       | 2.4 resolveInstructionPaths    |
+| REQ-INST-03  | progress.md always per-root                         | 2.3 resolveBacklogPaths        |
+| REQ-REL-01   | Auto-create state dir if missing                    | 2.5 ensureStateDir             |
+| REQ-REL-03   | Atomic write guarantees in any root                 | 2.3 resolveBacklogPaths (note) |
 
 ## 1. Module Overview
 
 **File:** `packages/core/src/backlog-root.ts`
 
 **Imports:**
+
 ```typescript
 import * as path from "node:path";
 import { fileExists, validatePath, ensureDir } from "./fs-utils.js";
@@ -58,10 +59,7 @@ Resolve the absolute backlog root path from a project path and an optional `--ba
  * @param backlogFlag - Optional --backlog flag value (relative directory path)
  * @returns Absolute path to the backlog root directory
  */
-export function resolveBacklogRoot(
-  projectPath: string,
-  backlogFlag?: string,
-): Result<string>;
+export function resolveBacklogRoot(projectPath: string, backlogFlag?: string): Result<string>;
 ```
 
 **Implementation logic:**
@@ -74,8 +72,8 @@ export function resolveBacklogRoot(
 
 **Error handling:**
 
-| Scenario | Error Code | Message |
-|----------|-----------|---------|
+| Scenario                                           | Error Code       | Message                                               |
+| -------------------------------------------------- | ---------------- | ----------------------------------------------------- |
 | `--backlog ../../outside` resolves outside project | `PATH_VIOLATION` | `"Backlog root '{path}' is outside the project root"` |
 
 **Note:** This function does NOT check whether the directory exists. Existence checking happens in `resolveBacklogPaths()` which is the next step in the resolution chain. This separation allows `resolveBacklogRoot()` to be used for path validation alone (e.g., in CLI flag parsing before any filesystem access).
@@ -118,10 +116,10 @@ export function resolveStateDir(backlogRoot: string): string {
 
 **Examples:**
 
-| `backlogRoot` | `resolveStateDir()` result |
-|---------------|---------------------------|
-| `/project/.ralph` | `/project/.ralph` (same directory) |
-| `/project/specs/auth` | `/project/specs/auth/.ralph` |
+| `backlogRoot`                | `resolveStateDir()` result                          |
+| ---------------------------- | --------------------------------------------------- |
+| `/project/.ralph`            | `/project/.ralph` (same directory)                  |
+| `/project/specs/auth`        | `/project/specs/auth/.ralph`                        |
 | `/project/specs/auth/.ralph` | `/project/specs/auth/.ralph` (basename is `.ralph`) |
 
 ### 2.3 `resolveBacklogPaths` (REQ-ROOT-01, REQ-ROOT-02, REQ-STATE-04, REQ-ARCH-01)
@@ -144,10 +142,7 @@ Build the complete set of resolved paths for a backlog root.
  * @param backlogRoot - Absolute path to the backlog root (from resolveBacklogRoot)
  * @returns Complete BacklogPaths object with all resolved paths
  */
-export function resolveBacklogPaths(
-  projectPath: string,
-  backlogRoot: string,
-): Result<BacklogPaths>;
+export function resolveBacklogPaths(projectPath: string, backlogRoot: string): Result<BacklogPaths>;
 ```
 
 **Implementation logic:**
@@ -184,19 +179,19 @@ return ok({
 
 **Error handling:**
 
-| Scenario | Error Code | Message |
-|----------|-----------|---------|
-| backlogRoot outside projectPath | `PATH_VIOLATION` | `"Backlog root '{path}' is outside the project root"` |
-| backlogRoot directory doesn't exist | `FILE_NOT_FOUND` | `"Backlog root directory not found: {path}"` |
-| No backlog.json in root or stateDir | `FILE_NOT_FOUND` | `"No backlog.json found in {root} or {stateDir}"` |
+| Scenario                            | Error Code       | Message                                               |
+| ----------------------------------- | ---------------- | ----------------------------------------------------- |
+| backlogRoot outside projectPath     | `PATH_VIOLATION` | `"Backlog root '{path}' is outside the project root"` |
+| backlogRoot directory doesn't exist | `FILE_NOT_FOUND` | `"Backlog root directory not found: {path}"`          |
+| No backlog.json in root or stateDir | `FILE_NOT_FOUND` | `"No backlog.json found in {root} or {stateDir}"`     |
 
 **Path examples:**
 
-| Backlog root | stateDir | backlog.json location | Notes |
-|-------------|----------|----------------------|-------|
-| `.ralph` | `.ralph` | `.ralph/backlog.json` | Default root — state and backlog coexist |
-| `specs/auth` | `specs/auth/.ralph` | `specs/auth/backlog.json` | Feature-forge convention — backlog outside .ralph/ |
-| `specs/auth` | `specs/auth/.ralph` | `specs/auth/.ralph/backlog.json` | Alternative — backlog inside .ralph/ |
+| Backlog root | stateDir            | backlog.json location            | Notes                                              |
+| ------------ | ------------------- | -------------------------------- | -------------------------------------------------- |
+| `.ralph`     | `.ralph`            | `.ralph/backlog.json`            | Default root — state and backlog coexist           |
+| `specs/auth` | `specs/auth/.ralph` | `specs/auth/backlog.json`        | Feature-forge convention — backlog outside .ralph/ |
+| `specs/auth` | `specs/auth/.ralph` | `specs/auth/.ralph/backlog.json` | Alternative — backlog inside .ralph/               |
 
 **Note on atomic writes (REQ-REL-03):** The `atomicWrite` utility in `fs-utils.ts` is path-agnostic — it works on any absolute path. By routing all paths through `BacklogPaths`, atomic write guarantees automatically extend to any backlog root. No changes needed to `atomicWrite` itself.
 
@@ -220,9 +215,7 @@ Resolve instruction file paths with per-root then project-level fallback.
  * @param paths - BacklogPaths object (must have projectPath and stateDir)
  * @returns Resolved paths for RALPH.md and REVIEW.md, or null if missing
  */
-export function resolveInstructionPaths(
-  paths: BacklogPaths,
-): InstructionPaths;
+export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths;
 ```
 
 **Implementation logic:**
@@ -256,12 +249,12 @@ export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths {
 
 **Fallback examples:**
 
-| Root | stateDir | RALPH.md exists in stateDir? | Result |
-|------|----------|------------------------------|--------|
-| `.ralph` | `.ralph` | Yes | `.ralph/RALPH.md` (no fallback needed — stateDir IS project .ralph/) |
-| `specs/auth` | `specs/auth/.ralph` | Yes | `specs/auth/.ralph/RALPH.md` |
-| `specs/auth` | `specs/auth/.ralph` | No | `.ralph/RALPH.md` (project-level fallback) |
-| `specs/auth` | `specs/auth/.ralph` | No (and project-level also missing) | `null` |
+| Root         | stateDir            | RALPH.md exists in stateDir?        | Result                                                               |
+| ------------ | ------------------- | ----------------------------------- | -------------------------------------------------------------------- |
+| `.ralph`     | `.ralph`            | Yes                                 | `.ralph/RALPH.md` (no fallback needed — stateDir IS project .ralph/) |
+| `specs/auth` | `specs/auth/.ralph` | Yes                                 | `specs/auth/.ralph/RALPH.md`                                         |
+| `specs/auth` | `specs/auth/.ralph` | No                                  | `.ralph/RALPH.md` (project-level fallback)                           |
+| `specs/auth` | `specs/auth/.ralph` | No (and project-level also missing) | `null`                                                               |
 
 ### 2.5 `ensureStateDir` (REQ-STATE-03, REQ-REL-01)
 

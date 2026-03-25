@@ -201,6 +201,7 @@ describe("BacklogItemSchema", () => {
   });
 
   it("accepts item without completedAt (optional)", () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { completedAt: _, ...itemWithoutCompletedAt } = validBacklogItem;
     const result = BacklogItemSchema.parse(itemWithoutCompletedAt);
     expect(result.completedAt).toBeUndefined();
@@ -400,10 +401,7 @@ describe("normalizeBacklogItems", () => {
     const input = {
       project: "test",
       description: "test",
-      items: [
-        { id: "001", dependencies: ["002"] },
-        { id: "002" },
-      ],
+      items: [{ id: "001", dependencies: ["002"] }, { id: "002" }],
     };
     const result = normalizeBacklogItems(input) as Record<string, unknown>;
     const items = result.items as Record<string, unknown>[];
@@ -968,9 +966,7 @@ describe("LOG_PATTERNS", () => {
   });
 
   it("needsHuman matches item needs human input format", () => {
-    const match = "Item 005 needs human input: Design review needed".match(
-      LOG_PATTERNS.needsHuman,
-    );
+    const match = "Item 005 needs human input: Design review needed".match(LOG_PATTERNS.needsHuman);
     expect(match).not.toBeNull();
     expect(match![1]).toBe("Design review needed");
   });

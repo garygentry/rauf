@@ -204,8 +204,8 @@ Existing projects using `.ralph/backlog.json` with the current single-backlog mo
 
 ## 10. Priority Summary
 
-| Priority | Requirements |
-|----------|-------------|
-| P0 | REQ-ROOT-01–04, REQ-STATE-01–03, REQ-CLI-01–05, REQ-STATUS-01, REQ-STATUS-03, REQ-LOCK-01–03, REQ-LOCK-05, REQ-INST-03, REQ-ARCH-01–03, REQ-SEC-01, REQ-OBS-01–02, REQ-REL-01, REQ-REL-03, REQ-PERF-02 |
-| P1 | REQ-STATE-04, REQ-STATUS-02, REQ-LOCK-04, REQ-INST-01–02, REQ-TMPL-01, REQ-PERF-01, REQ-SEC-02, REQ-REL-02 |
-| P2 | REQ-SCALE-01 |
+| Priority | Requirements                                                                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P0       | REQ-ROOT-01–04, REQ-STATE-01–03, REQ-CLI-01–05, REQ-STATUS-01, REQ-STATUS-03, REQ-LOCK-01–03, REQ-LOCK-05, REQ-INST-03, REQ-ARCH-01–03, REQ-SEC-01, REQ-OBS-01–02, REQ-REL-01, REQ-REL-03, REQ-PERF-02 |
+| P1       | REQ-STATE-04, REQ-STATUS-02, REQ-LOCK-04, REQ-INST-01–02, REQ-TMPL-01, REQ-PERF-01, REQ-SEC-02, REQ-REL-02                                                                                             |
+| P2       | REQ-SCALE-01                                                                                                                                                                                           |
