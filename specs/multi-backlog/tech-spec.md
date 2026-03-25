@@ -303,14 +303,14 @@ export function writeBacklog(paths: BacklogPaths, backlog: Backlog): Result<void
 export function addItem(paths: BacklogPaths, input: CreateItemInput): Result<BacklogItem>;
 export function updateItem(paths: BacklogPaths, id: string, updates: UpdateItemInput): Result<BacklogItem>;
 export function deleteItem(paths: BacklogPaths, id: string): Result<void>;
-export function restoreFromBackup(paths: BacklogPaths): Result<Backlog>;
+export function restoreFromBackup(paths: BacklogPaths): Result<void>;
 export function resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }>;
 export function ensureBacklog(paths: BacklogPaths): Result<Backlog>;
 export function unblockItems(paths: BacklogPaths, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>;
 
 // status.ts
 export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus>;
-export function readLogTail(paths: BacklogPaths, lines?: number): Result<string>;
+export function readLogTail(paths: BacklogPaths, lines?: number): Result<string[]>;
 export function writeLoopState(paths: BacklogPaths, state: LoopState): Result<void>;
 export function appendLog(paths: BacklogPaths, message: string): Result<void>;
 export function writeDoneFile(paths: BacklogPaths, content: string): Result<void>;

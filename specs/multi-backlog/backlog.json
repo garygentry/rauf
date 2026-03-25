@@ -221,7 +221,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Update LoopRunner to use BacklogPaths and lock lifecycle",
-      "description": "Modify `packages/loop/src/runner.ts` to use the `BacklogPaths` abstraction, acquire/release locks, and thread paths through all core function calls.\n\n1. Add imports to `packages/loop/src/runner.ts`:\n   ```typescript\n   import {\n     resolveBacklogPaths, resolveInstructionPaths, ensureStateDir,\n     acquireLock, releaseLock,\n     type BacklogPaths, type InstructionPaths,\n   } from \"@ralph/core\";\n   ```\n\n2. Convert LoopRunner to use a static factory pattern:\n   - Add `private readonly paths: BacklogPaths` field\n   - Add `private instructionPaths!: InstructionPaths` field\n   - Create `static create(projectPath, options): Result<LoopRunner>` that resolves BacklogPaths from `options.backlogRoot`\n   - Make the constructor private, accepting `(projectPath, paths, options)`\n   - See spec 05 section 2.1 for exact signatures\n\n3. Update `start()` method:\n   - Call `ensureStateDir(this.paths)` before any state file access\n   - Call `acquireLock(this.paths)` — return early with error event on LOCK_CONFLICT\n   - Call `resolveInstructionPaths(this.paths)` to set `this.instructionPaths`\n   - Log which backlog root is active via `appendLog(this.paths, ...)`\n   - Add `releaseLock(this.paths)` in the finally block\n   - See spec 05 section 2.2 for exact lifecycle\n\n4. Replace ALL core function calls from `this.projectPath` to `this.paths`:\n   - `clearDoneFile`, `clearCancelFile`, `readBacklog`, `updateItem`, `addItem`, `writeLoopState`, `appendLog`, `writeDoneFile`, `checkCancelRequested`, `sweepBacklog`, `writeIterationStatus`, `clearIterationStatus`\n   - Keep `readMarkerFile(this.projectPath)` unchanged (reads .ralph.json at project root)\n   - See spec 05 section 2.3 for complete list\n\n5. Update `buildPrompt` call: `buildPrompt(this.paths, this.instructionPaths, item, backlog)`\n\n6. Update `buildReviewPrompt` call: `buildReviewPrompt(this.paths, this.instructionPaths, completedItems, diff)`",
+      "description": "Modify `packages/loop/src/runner.ts` to use the `BacklogPaths` abstraction, acquire/release locks, and thread paths through all core function calls.\n\n1. Add imports to `packages/loop/src/runner.ts`:\n   ```typescript\n   import {\n     resolveBacklogPaths, resolveInstructionPaths, ensureStateDir,\n     acquireLock, releaseLock,\n     type BacklogPaths, type InstructionPaths,\n   } from \"@ralph/core\";\n   ```\n\n2. Convert LoopRunner to use a static factory pattern:\n   - Add `private readonly paths: BacklogPaths` field\n   - Add `private instructionPaths!: InstructionPaths` field\n   - Create `static create(projectPath, options): Result<LoopRunner>` that resolves BacklogPaths from `options.backlogRoot`\n   - Make the constructor private, accepting `(projectPath, paths, options)`\n   - See spec 05 section 2.1 for exact signatures\n\n3. Update `start()` method:\n   - Call `ensureStateDir(this.paths)` before any state file access\n   - Call `acquireLock(this.paths)` — return early with error event on LOCK_CONFLICT\n   - Call `resolveInstructionPaths(this.paths)` to set `this.instructionPaths`\n   - Log which backlog root is active via `appendLog(this.paths, ...)`\n   - Add `releaseLock(this.paths)` in the finally block\n   - See spec 05 section 2.2 for exact lifecycle\n\n4. Replace ALL core function calls from `this.projectPath` to `this.paths`:\n   - `clearDoneFile`, `clearCancelFile`, `readBacklog`, `updateItem`, `addItem`, `writeLoopState`, `appendLog`, `writeDoneFile`, `checkCancelRequested`, `sweepBacklog`, `writeIterationStatus`, `clearIterationStatus`\n   - Update the private `writeState()` helper method to pass `this.paths` to `writeLoopState` (see spec 05 section 2.6)\n   - Keep `readMarkerFile(this.projectPath)` unchanged (reads .ralph.json at project root)\n   - See spec 05 section 2.3 for complete list\n\n5. Update `buildPrompt` call: `buildPrompt(this.paths, this.instructionPaths, item, backlog)`\n\n6. Update `buildReviewPrompt` call: `buildReviewPrompt(this.paths, this.instructionPaths, completedItems, diff)`",
       "acceptanceCriteria": [
         "LoopRunner has a static create() method returning Result<LoopRunner>",
         "LoopRunner constructor is private",
@@ -238,7 +238,7 @@
       "completedAt": null,
       "dependsOn": ["002", "003", "004", "005", "006"],
       "notes": "Read spec 05-loop-runner-integration.md sections 1-2 completely. This is a large but mechanical change — every core function call in runner.ts changes from projectPath to this.paths. The key architectural change is the static factory pattern (create instead of constructor). The event emission still uses this.projectPath for project identification — don't change that. The LoopRunner currently stores this.projectPath — keep it alongside this.paths.",
-      "estimatedIterations": 1,
+      "estimatedIterations": 2,
       "specReferences": [
         "specs/multi-backlog/05-loop-runner-integration.md"
       ]
@@ -333,7 +333,7 @@
     {
       "id": "013",
       "type": "feature",
-      "priority": 2,
+      "priority": 1,
       "title": "Update web API routes and LoopManager for backlog root",
       "description": "Add backlog root parameter support to the web API routes and re-key LoopManager's internal maps.\n\n1. In `packages/web/src/server/routes/loop.ts`:\n   - Add `backlogRoot: z.string().optional()` to `StartLoopBodySchema`\n   - In start handler: resolve `backlogRoot` from body using `resolveBacklogRoot`\n   - Pass resolved `backlogRoot` in LoopStartOptions\n   - In stop handler: accept `backlogRoot` in body, pass to `manager.stopLoop`\n   - See spec 06 section 3.1\n\n2. In web status and backlog routes:\n   - Accept `backlog` query parameter on GET endpoints: `/:id/status`, `/:id/backlog`, `/:id/backlog/:itemId`\n   - Accept `backlogRoot` in body for POST/PUT/DELETE endpoints\n   - Resolve backlog root from the parameter using `resolveBacklogRoot` + `resolveBacklogPaths`\n   - Pass `paths` to core functions\n\n3. In `packages/web/src/server/loop-manager.ts`:\n   - Re-key `activeLoops` map from `projectPath` to resolved `backlogRoot` path\n   - Re-key `listeners` map similarly\n   - Update `startLoop()` to use `LoopRunner.create()` static factory\n   - Update `stopLoop()` and `isRunning()` to accept optional `backlogRoot` parameter\n   - Default key: `path.join(projectPath, \".ralph\")` when backlogRoot not specified\n   - See spec 06 section 3.2",
       "acceptanceCriteria": [
@@ -398,6 +398,27 @@
       "estimatedIterations": 1,
       "specReferences": [
         "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "016",
+      "type": "chore",
+      "priority": 2,
+      "title": "Create MIGRATION.md migration guide with agent prompt",
+      "description": "Create specs/multi-backlog/MIGRATION.md per PRD section 7. Include: (1) step-by-step instructions for updating a legacy single-backlog project, (2) a self-contained agent prompt that can be pasted into a Claude Code session, (3) note that projects using only .ralph/ default root need no migration.",
+      "acceptanceCriteria": [
+        "specs/multi-backlog/MIGRATION.md exists",
+        "Contains step-by-step instructions for updating legacy single-backlog projects",
+        "Contains a self-contained agent prompt for automated migration",
+        "Notes that projects using only .ralph/ default root need no migration"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["006"],
+      "notes": "PRD section 7 requires this deliverable. The default root layout is unchanged, so migration is only needed for projects that want to use non-default backlog roots.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/PRD.md"
       ]
     }
   ]
