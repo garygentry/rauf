@@ -34,3 +34,12 @@
 - After core package changes, must run `pnpm build` before `pnpm typecheck` so loop/cli/web packages see updated .d.ts files
 - New iteration-status.test.ts file created (didn't exist before); archive.test.ts and reset.test.ts updated
 - Pre-existing lint errors (installer.ts:356, schemas.test.ts:204) and format issues (specs/, skills/) still present — not related to this work
+
+### 009 — Update LoopRunner to use BacklogPaths and lock lifecycle (2026-03-25)
+- Static factory pattern (`LoopRunner.create()`) works cleanly — returns `Result<LoopRunner>` so callers handle errors via standard Result pattern
+- Replaced ~60 occurrences of `defaultBacklogPaths(this.projectPath)` with `this.paths` using `replace_all` — very mechanical
+- `startReviewOnly()` also needs `this.instructionPaths` set before calling `runReviewPass()` — easy to miss since it's a separate entry point
+- Test that created `LoopRunner` without `setupProject()` first failed because `create()` validates directory existence — added `setupProject` call
+- Prompt-builder signatures updated to `(paths, instructionPaths, ...)` with internal bridge `const projectPath = paths.projectPath` — full internal refactor deferred to item 010
+- CLI callers needed `return 1` (not bare `return`) since handler functions return `Promise<number>`
+- The `defaultBacklogPaths` import was cleanly removed from runner.ts — no longer needed since `this.paths` is resolved in `create()`

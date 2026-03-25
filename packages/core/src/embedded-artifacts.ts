@@ -6,7 +6,9 @@
  * Keys are relative paths within artifacts/variants/backlog-json/.
  */
 export const EMBEDDED_ARTIFACTS: ReadonlyMap<string, string> = new Map([
-  [".ralph/RALPH.md.tmpl", `# Ralph — Per-Iteration Instructions
+  [
+    ".ralph/RALPH.md.tmpl",
+    `# Ralph — Per-Iteration Instructions
 
 <!-- ralph:managed:start -->
 
@@ -68,8 +70,11 @@ Items may also include a \`specReferences\` field listing paths to specification
 
 ## Project-Specific Instructions
 <!-- Add custom instructions below this line — they survive ralph update -->
-`],
-  [".ralph/REVIEW.md.tmpl", `# Ralph — Post-Loop Review Pass
+`,
+  ],
+  [
+    ".ralph/REVIEW.md.tmpl",
+    `# Ralph — Post-Loop Review Pass
 
 You are a review agent auditing work completed by an autonomous coding loop. Your job is to verify that completed items genuinely meet their acceptance criteria and that no issues were introduced.
 
@@ -134,15 +139,21 @@ RALPH_DONE
 \`\`\`
 
 **IMPORTANT:** Be thorough but pragmatic. Only create fix items for genuine issues — not style preferences or minor nitpicks. Focus on correctness, test coverage gaps, and integration problems.
-`],
-  [".ralph/backlog.json", `{
+`,
+  ],
+  [
+    ".ralph/backlog.json",
+    `{
   "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "project": "",
   "description": "",
   "items": []
 }
-`],
-  [".ralph/backlog.schema.json", `{
+`,
+  ],
+  [
+    ".ralph/backlog.schema.json",
+    `{
   "type": "object",
   "properties": {
     "project": {
@@ -300,16 +311,22 @@ RALPH_DONE
   "title": "Ralph Backlog",
   "description": "Task backlog for a ralph autonomous coding loop project"
 }
-`],
-  [".ralph/progress.md", `# Progress & Learnings
+`,
+  ],
+  [
+    ".ralph/progress.md",
+    `# Progress & Learnings
 
 ## Codebase Patterns
 <!-- Patterns discovered during development will be logged here -->
 
 ## Session Log
 <!-- Each iteration appends its learnings here -->
-`],
-  ["CLAUDE_ADDON.md", `<!-- ralph:start -->
+`,
+  ],
+  [
+    "CLAUDE_ADDON.md",
+    `<!-- ralph:start -->
 
 ## Autonomous Loop (Ralph)
 
@@ -338,8 +355,11 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`progress.md\` for accumulated project learnings
 - Append new learnings to \`progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`],
-  ["CLAUDE_GREENFIELD.md.tmpl", `# {{projectName}}
+`,
+  ],
+  [
+    "CLAUDE_GREENFIELD.md.tmpl",
+    `# {{projectName}}
 
 ## Overview
 {{projectDescription}}
@@ -394,7 +414,8 @@ When running as a ralph loop iteration, follow these operational rules:
 - Read \`progress.md\` for accumulated project learnings
 - Append new learnings to \`progress.md\` if you discover important patterns
 <!-- ralph:end -->
-`],
+`,
+  ],
 ]);
 
 /**
