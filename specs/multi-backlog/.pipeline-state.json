@@ -84,7 +84,8 @@
       "findingsFile": "specs/multi-backlog/VERIFY-backlog-2026-03-25.md",
       "findingsCount": 7,
       "verifiedAt": "2026-03-25T00:00:00Z",
-      "fixedAt": "2026-03-25T00:00:00Z"
+      "fixedAt": "2026-03-25T00:00:00Z",
+      "commitHash": "5be793f"
     },
     "forge-5-docs": {
       "status": "pending",
