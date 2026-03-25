@@ -452,8 +452,8 @@
         "Contains a self-contained agent prompt for automated migration",
         "Notes that projects using only .ralph/ default root need no migration"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T07:18:18.167Z",
       "dependsOn": [
         "006"
       ],
