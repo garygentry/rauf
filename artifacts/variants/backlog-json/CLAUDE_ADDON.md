@@ -5,8 +5,8 @@
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
-1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
-2. Read `.ralph/backlog.json` — find the current `in_progress` item
+1. Read `RALPH.md` for detailed per-iteration instructions
+2. Read the backlog — find the current `in_progress` item
 3. The item's `acceptanceCriteria` define "done" for this iteration
 
 ### Working
@@ -22,8 +22,8 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
-- Do not modify `.ralph/backlog.json` — the loop runner manages status
-- Do not modify `.ralph/state.json` — the loop runner manages state
-- Read `.ralph/progress.md` for accumulated project learnings
-- Append new learnings to `.ralph/progress.md` if you discover important patterns
+- Do not modify `backlog.json` — the loop runner manages status
+- Do not modify `state.json` — the loop runner manages state
+- Read `progress.md` for accumulated project learnings
+- Append new learnings to `progress.md` if you discover important patterns
 <!-- ralph:end -->
