@@ -6,16 +6,19 @@ import * as os from "node:os";
 import { sweepBacklog, listArchiveMonths, readArchiveMonth, purgeArchive } from "./archive.js";
 import { writeBacklog } from "./backlog.js";
 import { defaultBacklogPaths } from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
 import { ErrorCodes } from "./errors.js";
 import type { Backlog, BacklogItem } from "./schemas.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
 let tmpDir: string;
+let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-archive-"));
   fs.mkdirSync(path.join(tmpDir, ".ralph"));
+  paths = defaultBacklogPaths(tmpDir);
 });
 
 afterEach(() => {
@@ -41,7 +44,7 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 }
 
 function writeSeedBacklog(items: BacklogItem[]): void {
-  const result = writeBacklog(defaultBacklogPaths(tmpDir), makeBacklog(items));
+  const result = writeBacklog(paths, makeBacklog(items));
   if (!result.ok) throw new Error(`Seed failed: ${result.error.message}`);
 }
 
@@ -64,7 +67,7 @@ describe("sweepBacklog", () => {
       makeItem({ id: "002", status: "in_progress" }),
     ]);
 
-    const result = sweepBacklog(tmpDir);
+    const result = sweepBacklog(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -83,7 +86,7 @@ describe("sweepBacklog", () => {
       makeItem({ id: "002", status: "pending" }),
     ]);
 
-    const result = sweepBacklog(tmpDir);
+    const result = sweepBacklog(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -111,7 +114,7 @@ describe("sweepBacklog", () => {
       makeItem({ id: "002", status: "done", completedAt: oldDate }),
     ]);
 
-    const result = sweepBacklog(tmpDir, { minAgeDays: 7 });
+    const result = sweepBacklog(paths, { minAgeDays: 7 });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -127,13 +130,13 @@ describe("sweepBacklog", () => {
       makeItem({ id: "001", status: "done", completedAt: "2026-02-01T00:00:00.000Z" }),
     ]);
 
-    const first = sweepBacklog(tmpDir);
+    const first = sweepBacklog(paths);
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     expect(first.value.archivedCount).toBe(1);
 
     // Second run — backlog now has no done items
-    const second = sweepBacklog(tmpDir);
+    const second = sweepBacklog(paths);
     expect(second.ok).toBe(true);
     if (!second.ok) return;
     expect(second.value.archivedCount).toBe(0);
@@ -149,7 +152,7 @@ describe("sweepBacklog", () => {
       makeItem({ id: "002", status: "done", completedAt: "2026-02-05T00:00:00.000Z" }),
     ]);
 
-    const result = sweepBacklog(tmpDir);
+    const result = sweepBacklog(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -168,7 +171,7 @@ describe("sweepBacklog", () => {
   it("6. done item with completedAt: null → falls back to current month", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "done", completedAt: null })]);
 
-    const result = sweepBacklog(tmpDir);
+    const result = sweepBacklog(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -182,7 +185,7 @@ describe("sweepBacklog", () => {
   });
 
   it("14. non-ralph path → FILE_NOT_FOUND error", () => {
-    const result = sweepBacklog("/nonexistent/path");
+    const result = sweepBacklog(defaultBacklogPaths("/nonexistent/path"));
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -194,7 +197,7 @@ describe("listArchiveMonths", () => {
   it("7. no archive dir → ok([])", () => {
     writeSeedBacklog([]);
 
-    const result = listArchiveMonths(tmpDir);
+    const result = listArchiveMonths(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -206,9 +209,9 @@ describe("listArchiveMonths", () => {
       makeItem({ id: "001", status: "done", completedAt: "2026-02-15T00:00:00.000Z" }),
       makeItem({ id: "002", status: "done", completedAt: "2026-01-10T00:00:00.000Z" }),
     ]);
-    sweepBacklog(tmpDir);
+    sweepBacklog(paths);
 
-    const result = listArchiveMonths(tmpDir);
+    const result = listArchiveMonths(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -220,7 +223,7 @@ describe("readArchiveMonth", () => {
   it("9. non-existent month → FILE_NOT_FOUND error", () => {
     writeSeedBacklog([]);
 
-    const result = readArchiveMonth(tmpDir, "2026-01");
+    const result = readArchiveMonth(paths, "2026-01");
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -231,9 +234,9 @@ describe("readArchiveMonth", () => {
     writeSeedBacklog([
       makeItem({ id: "001", status: "done", completedAt: "2026-02-10T00:00:00.000Z" }),
     ]);
-    sweepBacklog(tmpDir);
+    sweepBacklog(paths);
 
-    const result = readArchiveMonth(tmpDir, "2026-02");
+    const result = readArchiveMonth(paths, "2026-02");
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -249,9 +252,9 @@ describe("purgeArchive", () => {
       makeItem({ id: "001", status: "done", completedAt: "2026-01-10T00:00:00.000Z" }),
       makeItem({ id: "002", status: "done", completedAt: "2026-02-10T00:00:00.000Z" }),
     ]);
-    sweepBacklog(tmpDir);
+    sweepBacklog(paths);
 
-    const result = purgeArchive(tmpDir, "2026-01");
+    const result = purgeArchive(paths, "2026-01");
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -268,9 +271,9 @@ describe("purgeArchive", () => {
       makeItem({ id: "001", status: "done", completedAt: "2026-01-10T00:00:00.000Z" }),
       makeItem({ id: "002", status: "done", completedAt: "2026-02-10T00:00:00.000Z" }),
     ]);
-    sweepBacklog(tmpDir);
+    sweepBacklog(paths);
 
-    const result = purgeArchive(tmpDir);
+    const result = purgeArchive(paths);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -284,11 +287,53 @@ describe("purgeArchive", () => {
   it("13. non-existent month → ok with purgedCount: 0", () => {
     writeSeedBacklog([]);
 
-    const result = purgeArchive(tmpDir, "2026-01");
+    const result = purgeArchive(paths, "2026-01");
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.purgedCount).toBe(0);
     expect(result.value.purgedMonths).toEqual([]);
+  });
+});
+
+describe("non-default root", () => {
+  it("sweepBacklog operates on custom root archive directory", () => {
+    // Create custom root structure
+    const customRoot = path.join(tmpDir, "specs", "auth");
+    const customStateDir = path.join(customRoot, ".ralph");
+    const customArchiveDir = path.join(customStateDir, "archive");
+    fs.mkdirSync(customStateDir, { recursive: true });
+
+    const customPaths: BacklogPaths = {
+      projectPath: tmpDir,
+      root: customRoot,
+      stateDir: customStateDir,
+      backlog: path.join(customRoot, "backlog.json"),
+      state: path.join(customStateDir, "state.json"),
+      log: path.join(customStateDir, "ralph.log"),
+      done: path.join(customStateDir, "DONE"),
+      cancel: path.join(customStateDir, "CANCEL"),
+      progress: path.join(customStateDir, "progress.md"),
+      iterationStatus: path.join(customStateDir, "iteration-status.json"),
+      archive: customArchiveDir,
+      lock: path.join(customStateDir, ".loop.lock"),
+    };
+
+    // Write backlog to custom location
+    const seedResult = writeBacklog(customPaths, {
+      project: "test",
+      description: "",
+      items: [makeItem({ id: "001", status: "done", completedAt: "2026-03-10T00:00:00.000Z" })],
+    });
+    expect(seedResult.ok).toBe(true);
+
+    const result = sweepBacklog(customPaths);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.archivedCount).toBe(1);
+
+    // Archive written to custom path, not default
+    expect(fs.existsSync(path.join(customArchiveDir, "2026-03.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-03.json"))).toBe(false);
   });
 });

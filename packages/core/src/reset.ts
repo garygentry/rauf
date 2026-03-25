@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { sweepBacklog } from "./archive.js";
 import { readBacklog, writeBacklog, resetStalledItems, ensureBacklog } from "./backlog.js";
-import { defaultBacklogPaths } from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
 import { clearDoneFile, clearCancelFile } from "./status.js";
 import { atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { deployProgress } from "./installer.js";
@@ -34,11 +34,6 @@ export interface ResetProjectResult {
   logArchived: boolean;
 }
 
-// ─── Constants ──────────────────────────────────────────────────
-
-const RALPH_DIR = ".ralph";
-const STATE_FILENAME = "state.json";
-
 // ─── Helpers ────────────────────────────────────────────────────
 
 /** Compact, filesystem-safe timestamp: 20260317-143052 */
@@ -51,25 +46,23 @@ function archiveTimestamp(): string {
 // ─── resetProject ───────────────────────────────────────────────
 
 export function resetProject(
-  projectPath: string,
+  paths: BacklogPaths,
   options?: ResetProjectOptions,
 ): Result<ResetProjectResult> {
-  const resolved = path.resolve(projectPath);
-
   // 0. Ensure backlog.json exists (create empty if .ralph/ dir is present)
-  const ensureResult = ensureBacklog(defaultBacklogPaths(resolved));
+  const ensureResult = ensureBacklog(paths);
   if (!ensureResult.ok) return ensureResult;
 
   // 1. Sweep all done items to archive (no min-age filter)
-  const sweepResult = sweepBacklog(resolved);
+  const sweepResult = sweepBacklog(paths);
   if (!sweepResult.ok) return sweepResult;
 
   // 2. Reset in_progress → pending
-  const stalledResult = resetStalledItems(defaultBacklogPaths(resolved));
+  const stalledResult = resetStalledItems(paths);
   if (!stalledResult.ok) return stalledResult;
 
   // 3. Delete state.json (swallow ENOENT)
-  const statePath = path.join(resolved, RALPH_DIR, STATE_FILENAME);
+  const statePath = paths.state;
   let stateCleared = false;
   try {
     fs.unlinkSync(statePath);
@@ -85,21 +78,20 @@ export function resetProject(
   }
 
   // 4. Clear DONE file
-  const doneResult = clearDoneFile(defaultBacklogPaths(resolved));
+  const doneResult = clearDoneFile(paths);
   if (!doneResult.ok) return doneResult;
 
   // 5. Clear CANCEL file
-  const cancelResult = clearCancelFile(defaultBacklogPaths(resolved));
+  const cancelResult = clearCancelFile(paths);
   if (!cancelResult.ok) return cancelResult;
 
   // 6. Archive progress.md when clearing backlog (unless --keep-progress)
   const ts = archiveTimestamp();
   let progressArchived = false;
   if (options?.clearBacklog && !options?.keepProgress) {
-    const ralphDir = path.join(resolved, RALPH_DIR);
-    const progressPath = path.join(ralphDir, "progress.md");
+    const progressPath = paths.progress;
     if (fileExists(progressPath)) {
-      const archiveDir = path.join(ralphDir, "archive");
+      const archiveDir = paths.archive;
       const ensureResult = ensureDir(archiveDir);
       if (!ensureResult.ok) return ensureResult;
 
@@ -109,7 +101,7 @@ export function resetProject(
       if (!archiveResult.ok) return archiveResult;
 
       fs.unlinkSync(progressPath);
-      const deployResult = deployProgress(ralphDir);
+      const deployResult = deployProgress(paths.stateDir);
       if (!deployResult.ok) return deployResult;
 
       progressArchived = true;
@@ -119,10 +111,9 @@ export function resetProject(
   // 7. Archive ralph.log when clearing backlog (unless --keep-log)
   let logArchived = false;
   if (options?.clearBacklog && !options?.keepLog) {
-    const ralphDir = path.join(resolved, RALPH_DIR);
-    const logPath = path.join(ralphDir, "ralph.log");
+    const logPath = paths.log;
     if (fileExists(logPath)) {
-      const archiveDir = path.join(ralphDir, "archive");
+      const archiveDir = paths.archive;
       const ensureResult = ensureDir(archiveDir);
       if (!ensureResult.ok) return ensureResult;
 
@@ -145,11 +136,11 @@ export function resetProject(
   // 8. Optionally clear backlog (empty items, reset project/description)
   let backlogCleared = false;
   if (options?.clearBacklog) {
-    const backlogResult = readBacklog(defaultBacklogPaths(resolved));
+    const backlogResult = readBacklog(paths);
     if (!backlogResult.ok) return backlogResult;
 
     const backlog = backlogResult.value;
-    const writeResult = writeBacklog(defaultBacklogPaths(resolved), {
+    const writeResult = writeBacklog(paths, {
       ...backlog,
       items: [],
     });

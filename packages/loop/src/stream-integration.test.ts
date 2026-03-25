@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LoopEvent, Backlog, LoopStartOptions } from "@ralph/core";
-import { readIterationStatus } from "@ralph/core";
+import { readIterationStatus, defaultBacklogPaths } from "@ralph/core";
 
 import { LoopRunner } from "./runner.js";
 
@@ -255,7 +255,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     const runner = new LoopRunner(tmpDir, DEFAULT_OPTIONS);
     runner.on("llm_tool_activity", () => {
       if (!midRunStatus) {
-        midRunStatus = readIterationStatus(tmpDir);
+        midRunStatus = readIterationStatus(defaultBacklogPaths(tmpDir));
       }
     });
 
@@ -266,7 +266,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     expect(midRunStatus!.itemId).toBe("001");
 
     // After completion: status file cleared
-    expect(readIterationStatus(tmpDir)).toBeNull();
+    expect(readIterationStatus(defaultBacklogPaths(tmpDir))).toBeNull();
   });
 
   it("5: RALPH_BLOCKED via reconstructed text", async () => {

@@ -134,7 +134,7 @@ export class LoopRunner extends TypedEventEmitter {
           defaultBacklogPaths(this.projectPath),
           "Auto-sweep enabled, sweeping completed items",
         );
-        sweepBacklog(this.projectPath, { minAgeDays: sweepMinAgeDays });
+        sweepBacklog(defaultBacklogPaths(this.projectPath), { minAgeDays: sweepMinAgeDays });
       }
 
       // Write initial state
@@ -421,7 +421,7 @@ export class LoopRunner extends TypedEventEmitter {
       lastActivityAt,
       stuckWarning: false,
     };
-    writeIterationStatus(this.projectPath, iterStatus, true);
+    writeIterationStatus(defaultBacklogPaths(this.projectPath), iterStatus, true);
 
     // Stuck detection interval
     const stuckTimer = setInterval(() => {
@@ -431,7 +431,7 @@ export class LoopRunner extends TypedEventEmitter {
         this.emitEvent("llm_stuck_warning", { itemId: item.id, silentMs });
         iterStatus.stuckWarning = true;
         iterStatus.updatedAt = new Date().toISOString();
-        writeIterationStatus(this.projectPath, iterStatus);
+        writeIterationStatus(defaultBacklogPaths(this.projectPath), iterStatus);
       }
     }, STUCK_CHECK_INTERVAL_MS);
 
@@ -484,7 +484,7 @@ export class LoopRunner extends TypedEventEmitter {
         iterStatus.lastActivityAt = lastActivityAt;
         iterStatus.stuckWarning = stuckWarning;
         iterStatus.updatedAt = new Date().toISOString();
-        writeIterationStatus(this.projectPath, iterStatus);
+        writeIterationStatus(defaultBacklogPaths(this.projectPath), iterStatus);
       } catch {
         // Stream event handling must never crash the loop
       }
@@ -499,7 +499,7 @@ export class LoopRunner extends TypedEventEmitter {
     });
 
     clearInterval(stuckTimer);
-    clearIterationStatus(this.projectPath);
+    clearIterationStatus(defaultBacklogPaths(this.projectPath));
 
     if (!claudeResult.ok) {
       appendLog(

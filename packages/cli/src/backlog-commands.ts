@@ -466,7 +466,7 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = sweepBacklog(resolved, { minAgeDays: minAgeDays ?? undefined });
+  const result = sweepBacklog(defaultBacklogPaths(resolved), { minAgeDays: minAgeDays ?? undefined });
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -499,7 +499,7 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
   }
 
   const resolved = path.resolve(targetPath);
-  const monthsResult = listArchiveMonths(resolved);
+  const monthsResult = listArchiveMonths(defaultBacklogPaths(resolved));
   if (!monthsResult.ok) {
     return handleCoreError(monthsResult.error, ctx, resolved);
   }
@@ -514,7 +514,7 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
   // Read each archive for item counts
   const rows: { month: string; count: string }[] = [];
   for (const month of months) {
-    const archiveResult = readArchiveMonth(resolved, month);
+    const archiveResult = readArchiveMonth(defaultBacklogPaths(resolved), month);
     const count = archiveResult.ok ? String(archiveResult.value.items.length) : "?";
     rows.push({ month, count });
   }
@@ -547,7 +547,7 @@ export async function handleBacklogArchiveView(ctx: CommandContext): Promise<num
   }
 
   const resolved = path.resolve(targetPath);
-  const result = readArchiveMonth(resolved, month);
+  const result = readArchiveMonth(defaultBacklogPaths(resolved), month);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -605,7 +605,7 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = purgeArchive(resolved, month ?? undefined);
+  const result = purgeArchive(defaultBacklogPaths(resolved), month ?? undefined);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -675,7 +675,7 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = resetProject(resolved, {
+  const result = resetProject(defaultBacklogPaths(resolved), {
     clearBacklog: clear,
     keepProgress,
     keepLog,

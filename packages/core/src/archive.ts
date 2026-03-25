@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { readBacklog, writeBacklog } from "./backlog.js";
-import { defaultBacklogPaths } from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
 import {
   ArchiveMonthSchema,
   normalizeBacklogItems,
@@ -18,18 +18,6 @@ import {
 } from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
-
-const ARCHIVE_SUBDIR = ".ralph/archive";
-
-// ─── Path helpers ────────────────────────────────────────────────
-
-function getArchiveDir(projectPath: string): string {
-  return path.join(path.resolve(projectPath), ARCHIVE_SUBDIR);
-}
-
-function getArchiveFilePath(projectPath: string, month: string): string {
-  return path.join(getArchiveDir(projectPath), `${month}.json`);
-}
 
 const MONTH_REGEX = /^\d{4}-\d{2}$/;
 const ARCHIVE_FILE_REGEX = /^\d{4}-\d{2}\.json$/;
@@ -41,11 +29,11 @@ const ARCHIVE_FILE_REGEX = /^\d{4}-\d{2}\.json$/;
 // backlog.json is updated — safer failure mode than the reverse.
 
 export function sweepBacklog(
-  projectPath: string,
+  paths: BacklogPaths,
   options?: { minAgeDays?: number },
 ): Result<SweepResult> {
   // 1. Read backlog
-  const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
 
   const backlog = backlogResult.value;
@@ -81,7 +69,7 @@ export function sweepBacklog(
   }
 
   // 6. Ensure archive directory exists
-  const archiveDir = getArchiveDir(projectPath);
+  const archiveDir = paths.archive;
   const dirResult = ensureDir(archiveDir);
   if (!dirResult.ok) return dirResult;
 
@@ -89,7 +77,7 @@ export function sweepBacklog(
   const sortedMonths = [...byMonth.keys()].sort();
   for (const month of sortedMonths) {
     const items = byMonth.get(month)!;
-    const archivePath = getArchiveFilePath(projectPath, month);
+    const archivePath = path.join(paths.archive, `${month}.json`);
 
     // Merge with existing archive if present
     let existing: ArchiveMonth = { month, items: [] };
@@ -109,7 +97,7 @@ export function sweepBacklog(
   }
 
   // 8. Update backlog with remaining items
-  const backlogWriteResult = writeBacklog(defaultBacklogPaths(projectPath), {
+  const backlogWriteResult = writeBacklog(paths, {
     ...backlog,
     items: toKeep,
   });
@@ -123,8 +111,8 @@ export function sweepBacklog(
 //
 // Returns sorted list of YYYY-MM strings for existing archive files.
 
-export function listArchiveMonths(projectPath: string): Result<string[]> {
-  const archiveDir = getArchiveDir(projectPath);
+export function listArchiveMonths(paths: BacklogPaths): Result<string[]> {
+  const archiveDir = paths.archive;
 
   if (!fileExists(archiveDir)) {
     return ok([]);
@@ -150,7 +138,7 @@ export function listArchiveMonths(projectPath: string): Result<string[]> {
 //
 // Read and validate a single YYYY-MM archive file.
 
-export function readArchiveMonth(projectPath: string, month: string): Result<ArchiveMonth> {
+export function readArchiveMonth(paths: BacklogPaths, month: string): Result<ArchiveMonth> {
   if (!MONTH_REGEX.test(month)) {
     return err({
       code: ErrorCodes.VALIDATION_ERROR,
@@ -159,7 +147,7 @@ export function readArchiveMonth(projectPath: string, month: string): Result<Arc
     });
   }
 
-  const archivePath = getArchiveFilePath(projectPath, month);
+  const archivePath = path.join(paths.archive, `${month}.json`);
   return readJsonFile(archivePath, ArchiveMonthSchema, normalizeBacklogItems);
 }
 
@@ -169,7 +157,7 @@ export function readArchiveMonth(projectPath: string, month: string): Result<Arc
 // Non-existent months are silently treated as 0 (idempotent).
 
 export function purgeArchive(
-  projectPath: string,
+  paths: BacklogPaths,
   month?: string,
 ): Result<{ purgedCount: number; purgedMonths: string[] }> {
   // Single-month purge
@@ -182,7 +170,7 @@ export function purgeArchive(
       });
     }
 
-    const archivePath = getArchiveFilePath(projectPath, month);
+    const archivePath = path.join(paths.archive, `${month}.json`);
     if (!fileExists(archivePath)) {
       return ok({ purgedCount: 0, purgedMonths: [] });
     }
@@ -200,7 +188,7 @@ export function purgeArchive(
   }
 
   // Purge all months
-  const monthsResult = listArchiveMonths(projectPath);
+  const monthsResult = listArchiveMonths(paths);
   if (!monthsResult.ok) return monthsResult;
 
   const months = monthsResult.value;
@@ -210,7 +198,7 @@ export function purgeArchive(
 
   const purgedMonths: string[] = [];
   for (const m of months) {
-    const archivePath = getArchiveFilePath(projectPath, m);
+    const archivePath = path.join(paths.archive, `${m}.json`);
     try {
       fs.unlinkSync(archivePath);
       purgedMonths.push(m);
@@ -224,7 +212,7 @@ export function purgeArchive(
   }
 
   // Attempt to remove the (now-empty) archive directory — best effort
-  const archiveDir = getArchiveDir(projectPath);
+  const archiveDir = paths.archive;
   try {
     fs.rmdirSync(archiveDir);
   } catch {

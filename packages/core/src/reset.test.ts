@@ -6,15 +6,18 @@ import * as os from "node:os";
 import { resetProject } from "./reset.js";
 import { writeBacklog } from "./backlog.js";
 import { defaultBacklogPaths } from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
 import type { Backlog, BacklogItem } from "./schemas.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
 let tmpDir: string;
+let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-reset-"));
   fs.mkdirSync(path.join(tmpDir, ".ralph"));
+  paths = defaultBacklogPaths(tmpDir);
 });
 
 afterEach(() => {
@@ -100,7 +103,7 @@ describe("resetProject", () => {
     writeDoneMarker();
     writeCancelMarker();
 
-    const result = resetProject(tmpDir);
+    const result = resetProject(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -136,7 +139,7 @@ describe("resetProject", () => {
       makeItem({ id: "002", status: "done", completedAt: "2026-02-10T00:00:00.000Z" }),
     ]);
 
-    const result = resetProject(tmpDir, { clearBacklog: true });
+    const result = resetProject(paths, { clearBacklog: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -152,7 +155,7 @@ describe("resetProject", () => {
   it("idempotent — succeeds when no state files exist", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
 
-    const result = resetProject(tmpDir);
+    const result = resetProject(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -165,7 +168,7 @@ describe("resetProject", () => {
 
   it("auto-creates backlog.json when .ralph/ exists but backlog.json missing", () => {
     // No backlog.json written — just the .ralph dir
-    const result = resetProject(tmpDir);
+    const result = resetProject(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -183,7 +186,7 @@ describe("resetProject", () => {
     const progressPath = path.join(tmpDir, ".ralph", "progress.md");
     fs.writeFileSync(progressPath, "# Old learnings\n\nSome accumulated context.");
 
-    const result = resetProject(tmpDir, { clearBacklog: true });
+    const result = resetProject(paths, { clearBacklog: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -208,7 +211,7 @@ describe("resetProject", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
     // No progress.md created
 
-    const result = resetProject(tmpDir, { clearBacklog: true });
+    const result = resetProject(paths, { clearBacklog: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -221,7 +224,7 @@ describe("resetProject", () => {
     const progressPath = path.join(tmpDir, ".ralph", "progress.md");
     fs.writeFileSync(progressPath, "# Existing learnings");
 
-    const result = resetProject(tmpDir);
+    const result = resetProject(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -236,7 +239,7 @@ describe("resetProject", () => {
     const logPath = path.join(tmpDir, ".ralph", "ralph.log");
     fs.writeFileSync(logPath, "2026-03-01 some log entry\n2026-03-02 another entry\n");
 
-    const result = resetProject(tmpDir, { clearBacklog: true });
+    const result = resetProject(paths, { clearBacklog: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -258,7 +261,7 @@ describe("resetProject", () => {
   it("clearBacklog without ralph.log — logArchived false, no error", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
 
-    const result = resetProject(tmpDir, { clearBacklog: true });
+    const result = resetProject(paths, { clearBacklog: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -270,7 +273,7 @@ describe("resetProject", () => {
     const logPath = path.join(tmpDir, ".ralph", "ralph.log");
     fs.writeFileSync(logPath, "existing log data");
 
-    const result = resetProject(tmpDir);
+    const result = resetProject(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -287,7 +290,7 @@ describe("resetProject", () => {
     fs.writeFileSync(progressPath, "# Keep me");
     fs.writeFileSync(logPath, "archive me\n");
 
-    const result = resetProject(tmpDir, { clearBacklog: true, keepProgress: true });
+    const result = resetProject(paths, { clearBacklog: true, keepProgress: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -304,7 +307,7 @@ describe("resetProject", () => {
     fs.writeFileSync(progressPath, "# Archive me");
     fs.writeFileSync(logPath, "keep me\n");
 
-    const result = resetProject(tmpDir, { clearBacklog: true, keepLog: true });
+    const result = resetProject(paths, { clearBacklog: true, keepLog: true });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -314,5 +317,56 @@ describe("resetProject", () => {
     const freshContent = fs.readFileSync(progressPath, "utf-8");
     expect(freshContent).not.toContain("Archive me");
     expect(fs.readFileSync(logPath, "utf-8")).toBe("keep me\n");
+  });
+
+  it("works with non-default root paths", () => {
+    // Create custom root structure
+    const customRoot = path.join(tmpDir, "specs", "auth");
+    const customStateDir = path.join(customRoot, ".ralph");
+    fs.mkdirSync(customStateDir, { recursive: true });
+
+    const customPaths: BacklogPaths = {
+      projectPath: tmpDir,
+      root: customRoot,
+      stateDir: customStateDir,
+      backlog: path.join(customRoot, "backlog.json"),
+      state: path.join(customStateDir, "state.json"),
+      log: path.join(customStateDir, "ralph.log"),
+      done: path.join(customStateDir, "DONE"),
+      cancel: path.join(customStateDir, "CANCEL"),
+      progress: path.join(customStateDir, "progress.md"),
+      iterationStatus: path.join(customStateDir, "iteration-status.json"),
+      archive: path.join(customStateDir, "archive"),
+      lock: path.join(customStateDir, ".loop.lock"),
+    };
+
+    // Write backlog to custom location
+    const seedResult = writeBacklog(customPaths, {
+      project: "test",
+      description: "",
+      items: [
+        makeItem({ id: "001", status: "done", completedAt: "2026-01-15T12:00:00.000Z" }),
+        makeItem({ id: "002", status: "in_progress" }),
+      ],
+    });
+    expect(seedResult.ok).toBe(true);
+
+    // Write state.json to custom location
+    fs.writeFileSync(
+      path.join(customStateDir, "state.json"),
+      JSON.stringify({ status: "complete", iteration: 1 }),
+    );
+
+    const result = resetProject(customPaths);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.sweptCount).toBe(1);
+    expect(result.value.stalledResetCount).toBe(1);
+    expect(result.value.stateCleared).toBe(true);
+
+    // State files should be in custom location
+    expect(fs.existsSync(path.join(customStateDir, "state.json"))).toBe(false);
+    expect(fs.existsSync(path.join(customStateDir, "archive", "2026-01.json"))).toBe(true);
   });
 });

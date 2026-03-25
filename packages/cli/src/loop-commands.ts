@@ -969,7 +969,7 @@ export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
   const statusFile = path.resolve(projectPath, ".ralph", "iteration-status.json");
 
   // Initial read
-  const initial = readIterationStatus(projectPath);
+  const initial = readIterationStatus(defaultBacklogPaths(projectPath));
   if (!initial) {
     if (jsonOutput) {
       outputJson({ status: "no_iteration" });
@@ -1003,7 +1003,7 @@ export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
       watcher = fs.watch(ralphDir, (eventType, filename) => {
         if (filename !== "iteration-status.json") return;
 
-        const status = readIterationStatus(projectPath);
+        const status = readIterationStatus(defaultBacklogPaths(projectPath));
         if (status) {
           renderWatchOutput(status, jsonOutput);
         } else {

@@ -502,7 +502,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       );
     }
 
-    const result = sweepBacklog(projectPath, { minAgeDays: parseResult.data.minAgeDays });
+    const result = sweepBacklog(defaultBacklogPaths(projectPath), { minAgeDays: parseResult.data.minAgeDays });
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -529,13 +529,13 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const monthsResult = listArchiveMonths(projectPath);
+    const monthsResult = listArchiveMonths(defaultBacklogPaths(projectPath));
     if (!monthsResult.ok) {
       return c.json(errorResponse(monthsResult.error.code, monthsResult.error.message), 500);
     }
 
     const months = monthsResult.value.map((month) => {
-      const archiveResult = readArchiveMonth(projectPath, month);
+      const archiveResult = readArchiveMonth(defaultBacklogPaths(projectPath), month);
       return { month, count: archiveResult.ok ? archiveResult.value.items.length : 0 };
     });
 
@@ -558,7 +558,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = readArchiveMonth(projectPath, month);
+    const result = readArchiveMonth(defaultBacklogPaths(projectPath), month);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -586,7 +586,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = purgeArchive(projectPath, month);
+    const result = purgeArchive(defaultBacklogPaths(projectPath), month);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
