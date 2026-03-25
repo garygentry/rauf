@@ -311,8 +311,8 @@
         "LoopRunner.create() is used instead of new LoopRunner()",
         "pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T06:38:41.328Z",
       "dependsOn": [
         "009"
       ],
