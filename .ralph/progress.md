@@ -27,3 +27,10 @@
 - Removing NOT_INSTALLED check from deriveStatus (per spec 3.4) cascades to integration and web tests that expected that state — updated both to expect IDLE instead
 - Previously exported constants (RALPH_DIR, LOG_FILENAME, DONE_FILENAME, CANCEL_FILENAME) from status.ts now removed; integration.test.ts switched to DEFAULT_ROOT_DIR from backlog-root.ts and inline strings
 - scanActiveRoots uses SCAN_SKIP_DIRS cast to `readonly string[]` for `.includes()` compatibility with the `as const` tuple type
+
+### 006 — Refactor iteration-status.ts, archive.ts, reset.ts (2026-03-25)
+- Three modules refactored in parallel with agent delegation — worked cleanly since modules are independent
+- The `defaultBacklogPaths` bridge pattern continues to work well for downstream callers (CLI, loop, web)
+- After core package changes, must run `pnpm build` before `pnpm typecheck` so loop/cli/web packages see updated .d.ts files
+- New iteration-status.test.ts file created (didn't exist before); archive.test.ts and reset.test.ts updated
+- Pre-existing lint errors (installer.ts:356, schemas.test.ts:204) and format issues (specs/, skills/) still present — not related to this work
