@@ -27,6 +27,7 @@ export const ErrorCodes = {
   NOT_INSTALLED: "NOT_INSTALLED",
   CONFLICT: "CONFLICT",
   TRANSITION_INVALID: "TRANSITION_INVALID",
+  LOCK_CONFLICT: "LOCK_CONFLICT",
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

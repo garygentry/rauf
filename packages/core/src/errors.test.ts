@@ -112,7 +112,7 @@ describe("ErrorCodes", () => {
     }
   });
 
-  it("has exactly 8 error codes", () => {
-    expect(Object.keys(ErrorCodes)).toHaveLength(8);
+  it("has exactly 9 error codes", () => {
+    expect(Object.keys(ErrorCodes)).toHaveLength(9);
   });
 });

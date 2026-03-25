@@ -298,6 +298,7 @@ export const LoopStartOptionsSchema = z.object({
   provider: z.string().optional(),
   review: z.boolean().optional(),
   reviewOnly: z.boolean().optional(),
+  backlogRoot: z.string().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
