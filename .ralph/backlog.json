@@ -197,8 +197,8 @@
         "All three files still convey the same instructions (just with generic paths)",
         "pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T06:14:17.616Z",
       "dependsOn": [],
       "notes": "Read spec 05-loop-runner-integration.md section 4 completely for exact before/after wording. These template changes are safe because: (1) existing installations only use the default root, (2) the prompt-builder injects the actual paths at runtime. Be careful not to change the meaning of the instructions — only the path references.",
       "estimatedIterations": 1,

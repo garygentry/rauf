@@ -33,9 +33,10 @@ If any command is not configured (empty), skip it.
 ## Workflow
 
 1. You are one iteration of an autonomous coding loop
-2. Read \`.ralph/backlog.json\` — your current task is the \`in_progress\` item
+2. Read the backlog — find the current \`in_progress\` item
+   (The Active Backlog Root section in the prompt tells you the exact path)
 3. Read the item's \`acceptanceCriteria\` — each must pass
-4. Read \`.ralph/progress.md\` for context from previous iterations
+4. Read \`progress.md\` for context from previous iterations
 5. Implement the task
 6. Run verification: \`{{verifyCommand}}\`
 7. Commit with: \`[ralph] <id>: <title>\`
@@ -60,10 +61,10 @@ Items may also include a \`specReferences\` field listing paths to specification
 ## Important Rules
 
 - Work on ONE item only — the current \`in_progress\` item
-- Do NOT modify \`.ralph/backlog.json\` status — the loop runner manages it
-- Do NOT modify \`.ralph/state.json\` — the loop runner manages it
-- DO read \`.ralph/progress.md\` for accumulated learnings
-- DO append new learnings to \`.ralph/progress.md\` if you discover important patterns
+- Do NOT modify \`backlog.json\` — the loop runner manages status
+- Do NOT modify \`state.json\` — the loop runner manages state
+- DO read \`progress.md\` for accumulated learnings
+- DO append new learnings to \`progress.md\` if you discover important patterns
 - The backlog.json file is your source of truth for what to work on
 - Claude Code Tasks (if you use them internally) are your own planning — they don't affect the backlog
 
@@ -332,8 +333,8 @@ RALPH_DONE
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
-1. Read \`.ralph/RALPH.md\` for detailed per-iteration instructions
-2. Read \`.ralph/backlog.json\` — find the current \`in_progress\` item
+1. Read \`RALPH.md\` for detailed per-iteration instructions
+2. Read the backlog — find the current \`in_progress\` item
 3. The item's \`acceptanceCriteria\` define "done" for this iteration
 
 ### Working
@@ -349,10 +350,10 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
-- Do not modify \`.ralph/backlog.json\` — the loop runner manages status
-- Do not modify \`.ralph/state.json\` — the loop runner manages state
-- Read \`.ralph/progress.md\` for accumulated project learnings
-- Append new learnings to \`.ralph/progress.md\` if you discover important patterns
+- Do not modify \`backlog.json\` — the loop runner manages status
+- Do not modify \`state.json\` — the loop runner manages state
+- Read \`progress.md\` for accumulated project learnings
+- Append new learnings to \`progress.md\` if you discover important patterns
 <!-- ralph:end -->
 `,
   ],
@@ -391,8 +392,8 @@ When running as a ralph loop iteration, follow these operational rules:
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
-1. Read \`.ralph/RALPH.md\` for detailed per-iteration instructions
-2. Read \`.ralph/backlog.json\` — find the current \`in_progress\` item
+1. Read \`RALPH.md\` for detailed per-iteration instructions
+2. Read the backlog — find the current \`in_progress\` item
 3. The item's \`acceptanceCriteria\` define "done" for this iteration
 
 ### Working
@@ -408,10 +409,10 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
-- Do not modify \`.ralph/backlog.json\` — the loop runner manages status
-- Do not modify \`.ralph/state.json\` — the loop runner manages state
-- Read \`.ralph/progress.md\` for accumulated project learnings
-- Append new learnings to \`.ralph/progress.md\` if you discover important patterns
+- Do not modify \`backlog.json\` — the loop runner manages status
+- Do not modify \`state.json\` — the loop runner manages state
+- Read \`progress.md\` for accumulated project learnings
+- Append new learnings to \`progress.md\` if you discover important patterns
 <!-- ralph:end -->
 `,
   ],
