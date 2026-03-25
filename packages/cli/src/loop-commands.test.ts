@@ -138,8 +138,8 @@ describe("handleLoopFollow", () => {
       expect(code).toBe(ExitCode.ERROR);
     });
 
-    expect(output.stderr).toContain("No active loop");
-    expect(output.stdout).toContain("ralph loop run");
+    // When .ralph/ directory doesn't exist, resolveBacklogPaths fails before reaching status check
+    expect(output.stderr).toContain("not found");
   });
 });
 

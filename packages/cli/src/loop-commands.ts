@@ -22,6 +22,11 @@ import {
   watchLog,
   unblockItems,
   defaultBacklogPaths,
+  resolveBacklogRoot,
+  resolveBacklogPaths,
+  checkLock,
+  forceClearLock,
+  type BacklogPaths,
 } from "@ralph/core";
 import ports from "../../../config/ports.json";
 import { LoopRunner } from "@ralph/loop";
@@ -29,7 +34,7 @@ import { LoopRunner } from "@ralph/loop";
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
-import { c, info, print, error, success, outputJson } from "./formatter.js";
+import { c, info, print, error, warn, success, outputJson } from "./formatter.js";
 import { StatusLine } from "./status-line.js";
 import {
   readServerState,
@@ -114,13 +119,21 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const id = projectId(projectPath);
   const follow = extractBoolFlag(ctx.flags, "follow");
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
   if (retryBlocked) {
-    const ubResult = unblockItems(defaultBacklogPaths(projectPath));
-    if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-      info(
-        `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
-      );
+    // Resolve paths for unblock operation
+    const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+    if (brResult.ok) {
+      const prResult = resolveBacklogPaths(projectPath, brResult.value);
+      if (prResult.ok) {
+        const ubResult = unblockItems(prResult.value);
+        if (ubResult.ok && ubResult.value.unblockedCount > 0) {
+          info(
+            `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
+          );
+        }
+      }
     }
   }
 
@@ -140,6 +153,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   if (retries !== null) body.maxRetries = retries;
   if (model !== null) body.model = model;
   if (timeout !== null) body.sessionTimeoutMinutes = timeout;
+  if (backlogFlag !== null) body.backlogRoot = backlogFlag;
 
   try {
     const url = apiUrl(port, id, "start");
@@ -202,6 +216,7 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
   const port = getPort();
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
   if (!isServerRunning()) {
     error("Server is not running.");
@@ -213,9 +228,15 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
 
   try {
     const url = apiUrl(port, id, "stop");
+    const stopBody: Record<string, unknown> = {};
+    if (backlogFlag !== null) stopBody.backlogRoot = backlogFlag;
     const resp = await fetch(url, {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Ralph-Request": "true",
+      },
+      body: JSON.stringify(stopBody),
     });
 
     if (resp.ok) {
@@ -352,11 +373,12 @@ const DIRECT_MODE_POLL_MS = 2000;
  * Follow loop output in direct mode by tailing .ralph/ralph.log
  * and polling deriveStatus() to detect when the loop stops.
  */
-async function followDirectMode(projectPath: string): Promise<number> {
+async function followDirectMode(projectPath: string, paths?: BacklogPaths): Promise<number> {
   const id = projectId(projectPath);
+  const resolvedPaths = paths ?? defaultBacklogPaths(projectPath);
 
   // Check if a loop is currently active
-  const statusResult = deriveStatus(defaultBacklogPaths(projectPath));
+  const statusResult = deriveStatus(resolvedPaths);
   if (!statusResult.ok) {
     error(`Failed to read project status: ${statusResult.error.message}`);
     return ExitCode.ERROR;
@@ -370,7 +392,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
   }
 
   // Print recent log lines for context
-  const tailResult = readLogTail(defaultBacklogPaths(projectPath), 20);
+  const tailResult = readLogTail(resolvedPaths, 20);
   if (tailResult.ok && tailResult.value.length > 0) {
     info(c.dim("─── recent log ───"));
     for (const line of tailResult.value) {
@@ -406,7 +428,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
     const tryStartWatcher = () => {
       if (watcherActive) return;
       try {
-        stopWatcher = watchLog(defaultBacklogPaths(projectPath), (lines) => {
+        stopWatcher = watchLog(resolvedPaths, (lines) => {
           for (const line of lines) {
             print(line);
           }
@@ -424,7 +446,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
       // Retry watcher setup if it hasn't started yet
       if (!watcherActive) tryStartWatcher();
 
-      const result = deriveStatus(defaultBacklogPaths(projectPath));
+      const result = deriveStatus(resolvedPaths);
       if (!result.ok) return;
 
       if (TERMINAL_LOOP_STATES.has(result.value.loopState)) {
@@ -441,11 +463,13 @@ async function followDirectMode(projectPath: string): Promise<number> {
 export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
   // Server mode: existing SSE streaming behavior
   if (isServerRunning()) {
     const port = getPort();
-    const url = apiUrl(port, id, "events");
+    const eventsUrl = apiUrl(port, id, "events");
+    const url = backlogFlag ? `${eventsUrl}?backlog=${encodeURIComponent(backlogFlag)}` : eventsUrl;
 
     info(`Following loop events for ${c.cyan(id)}...`);
     info(c.dim("Press Ctrl+C to stop."));
@@ -460,8 +484,19 @@ export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
     return streamEventsUntilDone(url, statusLine);
   }
 
-  // Direct mode: tail ralph.log
-  return followDirectMode(projectPath);
+  // Direct mode: resolve paths for correct log file location
+  const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const pathsResult = resolveBacklogPaths(projectPath, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+
+  return followDirectMode(projectPath, pathsResult.value);
 }
 
 /** Connect to an SSE endpoint, parse events, and invoke callback for each LoopEvent */
@@ -522,6 +557,32 @@ async function connectSSE(
 
 export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const force = extractBoolFlag(ctx.flags, "force");
+
+  // Resolve backlog paths
+  const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const pathsResult = resolveBacklogPaths(projectPath, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
+
+  // Handle --force: clear existing lock with warning
+  if (force) {
+    const lockStatus = checkLock(paths);
+    if (lockStatus.ok && lockStatus.value.locked) {
+      warn(
+        `Force-clearing lock (PID ${lockStatus.value.pid}, started ${lockStatus.value.startedAt})`,
+      );
+      forceClearLock(paths);
+    }
+  }
 
   const iterations = extractNumberFlag(ctx.flags, "iterations") ?? DEFAULT_MAX_ITERATIONS;
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
@@ -532,7 +593,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
 
   if (retryBlocked) {
-    const ubResult = unblockItems(defaultBacklogPaths(projectPath));
+    const ubResult = unblockItems(paths);
     if (ubResult.ok && ubResult.value.unblockedCount > 0) {
       info(
         `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
@@ -547,6 +608,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     sessionTimeoutMinutes: timeout,
     review,
     reviewOnly,
+    backlogRoot: backlogRootResult.value,
   });
 
   info(`Running loop directly for ${c.cyan(path.basename(projectPath))}`);
@@ -559,7 +621,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const runnerResult = LoopRunner.create(projectPath, options);
   if (!runnerResult.ok) {
     error(runnerResult.error.message);
-    return 1;
+    return ExitCode.ERROR;
   }
   const runner = runnerResult.value;
 
@@ -750,6 +812,14 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
 export async function handleLoopReview(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  // Resolve backlog paths
+  const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.ERROR;
+  }
 
   const model = extractStringFlag(ctx.flags, "model") ?? undefined;
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
@@ -761,6 +831,7 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     sessionTimeoutMinutes: timeout,
     review: true,
     reviewOnly: true,
+    backlogRoot: backlogRootResult.value,
   });
 
   info(`Running standalone review for ${c.cyan(path.basename(projectPath))}`);
@@ -768,7 +839,7 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
   const runnerResult = LoopRunner.create(projectPath, options);
   if (!runnerResult.ok) {
     error(runnerResult.error.message);
-    return 1;
+    return ExitCode.ERROR;
   }
   const runner = runnerResult.value;
 
@@ -976,10 +1047,23 @@ export function formatAndPrintEvent(event: LoopEvent): void {
 export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const jsonOutput = ctx.globalFlags.json;
-  const statusFile = path.resolve(projectPath, ".ralph", "iteration-status.json");
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  // Resolve backlog paths
+  const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const pathsResult = resolveBacklogPaths(projectPath, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const watchPaths = pathsResult.value;
 
   // Initial read
-  const initial = readIterationStatus(defaultBacklogPaths(projectPath));
+  const initial = readIterationStatus(watchPaths);
   if (!initial) {
     if (jsonOutput) {
       outputJson({ status: "no_iteration" });
@@ -1007,13 +1091,13 @@ export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
     process.on("SIGINT", onSignal);
     process.on("SIGTERM", onSignal);
 
-    const ralphDir = path.resolve(projectPath, ".ralph");
+    const watchDir = path.dirname(watchPaths.iterationStatus);
 
     try {
-      watcher = fs.watch(ralphDir, (eventType, filename) => {
+      watcher = fs.watch(watchDir, (eventType, filename) => {
         if (filename !== "iteration-status.json") return;
 
-        const status = readIterationStatus(defaultBacklogPaths(projectPath));
+        const status = readIterationStatus(watchPaths);
         if (status) {
           renderWatchOutput(status, jsonOutput);
         } else {
@@ -1029,7 +1113,7 @@ export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
       });
 
       watcher.on("error", () => {
-        error("Watch error on .ralph directory");
+        error(`Watch error on ${path.relative(process.cwd(), watchDir)} directory`);
         finish(ExitCode.ERROR);
       });
     } catch (e) {
