@@ -10,7 +10,7 @@
 // HTTP layer (Hono routes + SSE).
 
 import type { LoopEvent, LoopStartOptions } from "@ralph/core";
-import { discoverProjects, resetStalledItems } from "@ralph/core";
+import { discoverProjects, resetStalledItems, defaultBacklogPaths } from "@ralph/core";
 import { LoopRunner } from "@ralph/loop";
 import type { LoopResult } from "@ralph/loop";
 
@@ -159,7 +159,7 @@ export class LoopManager {
     if (!discoveryResult.ok) return;
 
     for (const project of discoveryResult.value.projects) {
-      resetStalledItems(project.path);
+      resetStalledItems(defaultBacklogPaths(project.path));
     }
   }
 

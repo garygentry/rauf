@@ -1,6 +1,13 @@
 import { execFile } from "node:child_process";
 
-import type { LoopStartOptions, LoopEvent, LoopState, Backlog, BacklogItem, IterationStatus } from "@ralph/core";
+import type {
+  LoopStartOptions,
+  LoopEvent,
+  LoopState,
+  Backlog,
+  BacklogItem,
+  IterationStatus,
+} from "@ralph/core";
 import {
   readBacklog,
   selectNextItem,
@@ -17,6 +24,7 @@ import {
   sweepBacklog,
   writeIterationStatus,
   clearIterationStatus,
+  defaultBacklogPaths,
 } from "@ralph/core";
 
 import { TypedEventEmitter } from "./events.js";
@@ -243,7 +251,9 @@ export class LoopRunner extends TypedEventEmitter {
       // Reset in_progress item on crash/unexpected termination
       if (this.currentItemId) {
         try {
-          updateItem(this.projectPath, this.currentItemId, { status: "pending" });
+          updateItem(defaultBacklogPaths(this.projectPath), this.currentItemId, {
+            status: "pending",
+          });
           appendLog(
             this.projectPath,
             `Reset item ${this.currentItemId} to pending (crash cleanup)`,
@@ -265,7 +275,7 @@ export class LoopRunner extends TypedEventEmitter {
     this.baseCommitHash = await this.getHeadCommit();
 
     // Read backlog and find all done items
-    const backlogResult = readBacklog(this.projectPath);
+    const backlogResult = readBacklog(defaultBacklogPaths(this.projectPath));
     if (!backlogResult.ok) {
       appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
       return { completedCount: 0, blockedCount: 0, cancelled: false };
@@ -310,7 +320,7 @@ export class LoopRunner extends TypedEventEmitter {
     );
 
     // Select next item
-    const backlogResult = readBacklog(this.projectPath);
+    const backlogResult = readBacklog(defaultBacklogPaths(this.projectPath));
     if (!backlogResult.ok) {
       appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
       this.emitEvent("loop_error", { error: backlogResult.error.message });
@@ -334,7 +344,7 @@ export class LoopRunner extends TypedEventEmitter {
     appendLog(this.projectPath, `Selected item ${item.id}: ${item.title}`);
 
     // Mark item as in_progress
-    const markResult = updateItem(this.projectPath, item.id, {
+    const markResult = updateItem(defaultBacklogPaths(this.projectPath), item.id, {
       status: "in_progress",
     });
     if (!markResult.ok) {
@@ -351,13 +361,13 @@ export class LoopRunner extends TypedEventEmitter {
 
     // Build prompt
     // Re-read backlog since we just updated the item status
-    const freshBacklog = readBacklog(this.projectPath);
+    const freshBacklog = readBacklog(defaultBacklogPaths(this.projectPath));
     const promptBacklog = freshBacklog.ok ? freshBacklog.value : backlog;
     const promptResult = buildPrompt(this.projectPath, item, promptBacklog);
     if (!promptResult.ok) {
       appendLog(this.projectPath, `Failed to build prompt: ${promptResult.error.message}`);
       // Reset item to pending since we couldn't process it
-      updateItem(this.projectPath, item.id, { status: "pending" });
+      updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
       this.currentItemId = null;
       return "continue";
     }
@@ -475,13 +485,14 @@ export class LoopRunner extends TypedEventEmitter {
 
     if (!claudeResult.ok) {
       appendLog(this.projectPath, `Failed to spawn claude: ${claudeResult.error.message}`);
-      updateItem(this.projectPath, item.id, { status: "pending" });
+      updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
       this.currentItemId = null;
       this.emitEvent("loop_error", { error: claudeResult.error.message });
       return "break";
     }
 
-    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } = claudeResult.value;
+    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } =
+      claudeResult.value;
     this.emitEvent("llm_exited", {
       itemId: item.id,
       provider: "claude-cli",
@@ -498,7 +509,7 @@ export class LoopRunner extends TypedEventEmitter {
     if (exitCode !== 0 && this.hasUsageLimitInStderr(stderr)) {
       appendLog(this.projectPath, "Usage limit detected in stderr");
       // Reset item to pending
-      updateItem(this.projectPath, item.id, { status: "pending" });
+      updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
       this.currentItemId = null;
 
       // Check API for 5h vs 7d
@@ -511,7 +522,8 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     // Parse signal — prefer reconstructed text from stream-json, fall back to raw stdout
-    const signalText = reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
+    const signalText =
+      reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
     const parsed = parseSignal(signalText);
     this.emitEvent("signal_parsed", {
       itemId: item.id,
@@ -523,15 +535,19 @@ export class LoopRunner extends TypedEventEmitter {
       `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`,
     );
     if (parsed.signal === "none") {
-      const textSource = reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
+      const textSource =
+        reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
       const preview = signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText;
-      appendLog(this.projectPath, `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`);
+      appendLog(
+        this.projectPath,
+        `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`,
+      );
     }
 
     // Handle signal
     switch (parsed.signal) {
       case "done": {
-        updateItem(this.projectPath, item.id, { status: "done" });
+        updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "done" });
         this.completedCount++;
         this.completedItemIds.push(item.id);
         this.emitEvent("item_completed", {
@@ -551,7 +567,7 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "blocked": {
         const reason = parsed.reason ?? "No reason provided";
-        updateItem(this.projectPath, item.id, {
+        updateItem(defaultBacklogPaths(this.projectPath), item.id, {
           status: "blocked",
           blockedReason: reason,
         });
@@ -590,7 +606,7 @@ export class LoopRunner extends TypedEventEmitter {
         if (retries >= this.options.maxRetries) {
           // Max retries reached — mark as blocked
           const reason = `No signal after ${retries} attempts`;
-          updateItem(this.projectPath, item.id, {
+          updateItem(defaultBacklogPaths(this.projectPath), item.id, {
             status: "blocked",
             blockedReason: reason,
           });
@@ -604,7 +620,7 @@ export class LoopRunner extends TypedEventEmitter {
           this.writeState("running", null, "error");
         } else {
           // Re-queue: reset to pending for retry
-          updateItem(this.projectPath, item.id, { status: "pending" });
+          updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
           this.emitEvent("item_retried", {
             itemId: item.id,
             attempt: retries,
@@ -634,7 +650,7 @@ export class LoopRunner extends TypedEventEmitter {
     this.writeState("reviewing", null);
 
     // Read completed items from backlog
-    const backlogResult = readBacklog(this.projectPath);
+    const backlogResult = readBacklog(defaultBacklogPaths(this.projectPath));
     if (!backlogResult.ok) {
       const reason = `Failed to read backlog for review: ${backlogResult.error.message}`;
       appendLog(this.projectPath, reason);
@@ -704,7 +720,7 @@ export class LoopRunner extends TypedEventEmitter {
       let created = 0;
 
       for (const reviewItem of parsed.reviewPayload.items) {
-        const result = addItem(this.projectPath, {
+        const result = addItem(defaultBacklogPaths(this.projectPath), {
           type: reviewItem.type,
           priority: reviewItem.priority,
           title: reviewItem.title,

@@ -32,6 +32,7 @@ import {
   updateItem,
   deleteItem,
   restoreFromBackup,
+  defaultBacklogPaths,
   sweepBacklog,
   listArchiveMonths,
   readArchiveMonth,
@@ -420,7 +421,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const backlogResult = readBacklog(projectPath);
+    const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
     if (!backlogResult.ok) {
       const status = backlogResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
       return c.json(errorResponse(backlogResult.error.code, backlogResult.error.message), status);
@@ -464,7 +465,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = restoreFromBackup(projectPath);
+    const result = restoreFromBackup(defaultBacklogPaths(projectPath));
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -627,7 +628,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
 
     const input: CreateItemInput = parseResult.data;
 
-    const result = addItem(projectPath, input);
+    const result = addItem(defaultBacklogPaths(projectPath), input);
     if (!result.ok) {
       const status = result.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 400;
       return c.json(
@@ -653,7 +654,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const backlogResult = readBacklog(projectPath);
+    const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
     if (!backlogResult.ok) {
       const status = backlogResult.error.code === ErrorCodes.FILE_NOT_FOUND ? 404 : 500;
       return c.json(errorResponse(backlogResult.error.code, backlogResult.error.message), status);
@@ -698,7 +699,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
 
     const updates: UpdateItemInput = parseResult.data;
 
-    const result = updateItem(projectPath, itemId, updates);
+    const result = updateItem(defaultBacklogPaths(projectPath), itemId, updates);
     if (!result.ok) {
       const status =
         result.error.code === ErrorCodes.FILE_NOT_FOUND
@@ -731,7 +732,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = deleteItem(projectPath, itemId);
+    const result = deleteItem(defaultBacklogPaths(projectPath), itemId);
     if (!result.ok) {
       const status =
         result.error.code === ErrorCodes.CONFLICT

@@ -16,12 +16,7 @@ import {
   type BacklogItemSource,
 } from "./schemas.js";
 import { readMarkerFile } from "./config.js";
-
-// ─── Constants ───────────────────────────────────────────────────
-
-const BACKLOG_DIR = ".ralph";
-const BACKLOG_FILENAME = "backlog.json";
-const STATE_FILENAME = "state.json";
+import type { BacklogPaths } from "./backlog-root.js";
 
 // ─── Input Types ─────────────────────────────────────────────────
 
@@ -55,31 +50,21 @@ export interface UpdateItemInput {
   specReferences?: string[];
 }
 
-// ─── Path helpers ────────────────────────────────────────────────
-
-function getBacklogPath(projectPath: string): string {
-  return path.join(path.resolve(projectPath), BACKLOG_DIR, BACKLOG_FILENAME);
-}
-
-function getStatePath(projectPath: string): string {
-  return path.join(path.resolve(projectPath), BACKLOG_DIR, STATE_FILENAME);
-}
-
 // ─── readBacklog ─────────────────────────────────────────────────
 //
-// Read and validate .ralph/backlog.json.
+// Read and validate backlog.json.
 
-export function readBacklog(projectPath: string): Result<Backlog> {
-  return readJsonFile(getBacklogPath(projectPath), BacklogSchema, normalizeBacklogItems);
+export function readBacklog(paths: BacklogPaths): Result<Backlog> {
+  return readJsonFile(paths.backlog, BacklogSchema, normalizeBacklogItems);
 }
 
 // ─── writeBacklog ────────────────────────────────────────────────
 //
 // Atomic write with .bak backup (handled by atomicWrite for backlog.json).
 
-export function writeBacklog(projectPath: string, backlog: Backlog): Result<void> {
+export function writeBacklog(paths: BacklogPaths, backlog: Backlog): Result<void> {
   const content = JSON.stringify(backlog, null, 2) + "\n";
-  return atomicWrite(getBacklogPath(projectPath), content);
+  return atomicWrite(paths.backlog, content);
 }
 
 // ─── validateStatusTransition ────────────────────────────────────
@@ -100,9 +85,9 @@ export function validateStatusTransition(
 // Auto-assigns zero-padded ID (max+1), injects smart default
 // criterion if no AC provided, validates dependsOn references.
 
-export function addItem(projectPath: string, input: CreateItemInput): Result<BacklogItem> {
+export function addItem(paths: BacklogPaths, input: CreateItemInput): Result<BacklogItem> {
   // 1. Read current backlog
-  const backlogResult = readBacklog(projectPath);
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
 
   const backlog = backlogResult.value;
@@ -140,7 +125,7 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
   // 5. Smart default criteria if none provided
   let criteria = input.acceptanceCriteria ?? [];
   if (criteria.length === 0) {
-    const markerResult = readMarkerFile(projectPath);
+    const markerResult = readMarkerFile(paths.projectPath);
     const verifyCommand = markerResult.ok ? markerResult.value.profile.verify : "";
     const defaultCriterion = verifyCommand
       ? `${verifyCommand} passes`
@@ -171,7 +156,7 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
 
   // 7. Append and write
   backlog.items.push(newItem);
-  const writeResult = writeBacklog(projectPath, backlog);
+  const writeResult = writeBacklog(paths, backlog);
   if (!writeResult.ok) return writeResult;
 
   return ok(newItem);
@@ -182,12 +167,12 @@ export function addItem(projectPath: string, input: CreateItemInput): Result<Bac
 // Enforces valid status transitions, auto-sets completedAt on done.
 
 export function updateItem(
-  projectPath: string,
+  paths: BacklogPaths,
   itemId: string,
   updates: UpdateItemInput,
 ): Result<BacklogItem> {
   // 1. Read backlog, find item
-  const backlogResult = readBacklog(projectPath);
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
 
   const backlog = backlogResult.value;
@@ -255,7 +240,7 @@ export function updateItem(
 
   // 6. Write
   backlog.items[itemIndex] = updatedItem;
-  const writeResult = writeBacklog(projectPath, backlog);
+  const writeResult = writeBacklog(paths, backlog);
   if (!writeResult.ok) return writeResult;
 
   return ok(updatedItem);
@@ -266,9 +251,9 @@ export function updateItem(
 // Blocks deletion of in_progress items if loop is active (state.json
 // shows running/starting). Warns about dependent items via details.
 
-export function deleteItem(projectPath: string, itemId: string): Result<void> {
+export function deleteItem(paths: BacklogPaths, itemId: string): Result<void> {
   // 1. Read backlog, find item
-  const backlogResult = readBacklog(projectPath);
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
 
   const backlog = backlogResult.value;
@@ -286,8 +271,7 @@ export function deleteItem(projectPath: string, itemId: string): Result<void> {
 
   // 2. Block deletion of in_progress items if loop is active
   if (item.status === "in_progress") {
-    const statePath = getStatePath(projectPath);
-    const stateResult = readJsonFile(statePath, LoopStateSchema);
+    const stateResult = readJsonFile(paths.state, LoopStateSchema);
 
     if (stateResult.ok) {
       const state = stateResult.value;
@@ -304,7 +288,7 @@ export function deleteItem(projectPath: string, itemId: string): Result<void> {
 
   // 3. Remove from items array and write
   backlog.items.splice(itemIndex, 1);
-  const writeResult = writeBacklog(projectPath, backlog);
+  const writeResult = writeBacklog(paths, backlog);
   if (!writeResult.ok) return writeResult;
 
   return ok(undefined);
@@ -314,9 +298,8 @@ export function deleteItem(projectPath: string, itemId: string): Result<void> {
 //
 // Copy .ralph/backlog.json.bak → .ralph/backlog.json if backup exists.
 
-export function restoreFromBackup(projectPath: string): Result<void> {
-  const backlogPath = getBacklogPath(projectPath);
-  const bakPath = `${backlogPath}.bak`;
+export function restoreFromBackup(paths: BacklogPaths): Result<void> {
+  const bakPath = `${paths.backlog}.bak`;
 
   if (!fileExists(bakPath)) {
     return err({
@@ -327,7 +310,7 @@ export function restoreFromBackup(projectPath: string): Result<void> {
   }
 
   try {
-    fs.copyFileSync(bakPath, backlogPath);
+    fs.copyFileSync(bakPath, paths.backlog);
     return ok(undefined);
   } catch (e) {
     return err({
@@ -371,15 +354,15 @@ export function selectNextItem(backlog: Backlog): BacklogItem | null {
 // Reads backlog, resets all in_progress items to pending via
 // updateItem. Returns count of reset items.
 
-export function resetStalledItems(projectPath: string): Result<{ resetCount: number }> {
-  const backlogResult = readBacklog(projectPath);
+export function resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }> {
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
 
   const inProgressItems = backlogResult.value.items.filter((i) => i.status === "in_progress");
 
   let resetCount = 0;
   for (const item of inProgressItems) {
-    const result = updateItem(projectPath, item.id, { status: "pending" });
+    const result = updateItem(paths, item.id, { status: "pending" });
     if (!result.ok) return result;
     resetCount++;
   }
@@ -392,24 +375,20 @@ export function resetStalledItems(projectPath: string): Result<{ resetCount: num
 // If .ralph/ exists but backlog.json does not, create an empty one.
 // Returns NOT_INSTALLED if .ralph/ itself is missing.
 
-export function ensureBacklog(projectPath: string): Result<void> {
-  const resolved = path.resolve(projectPath);
-  const ralphDir = path.join(resolved, BACKLOG_DIR);
-  const backlogPath = getBacklogPath(projectPath);
-
+export function ensureBacklog(paths: BacklogPaths): Result<void> {
   // If backlog already exists, nothing to do
-  if (fileExists(backlogPath)) return ok(undefined);
+  if (fileExists(paths.backlog)) return ok(undefined);
 
-  // If .ralph/ dir doesn't exist, ralph is genuinely not installed
-  if (!fileExists(ralphDir)) {
+  // For default root: check if .ralph/ dir exists — NOT_INSTALLED if missing
+  if (path.basename(paths.root) === ".ralph" && !fileExists(paths.root)) {
     return err({
       code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed at ${resolved}`,
+      message: `Ralph is not installed at ${paths.projectPath}`,
     });
   }
 
-  // .ralph/ exists but backlog.json doesn't — create empty one
-  const projectName = path.basename(resolved);
+  // Create empty backlog
+  const projectName = path.basename(paths.projectPath);
 
   const emptyBacklog: Backlog = {
     project: projectName,
@@ -417,7 +396,7 @@ export function ensureBacklog(projectPath: string): Result<void> {
     items: [],
   };
 
-  return writeBacklog(projectPath, emptyBacklog);
+  return writeBacklog(paths, emptyBacklog);
 }
 
 // ─── unblockItems ─────────────────────────────────────────────────
@@ -426,10 +405,10 @@ export function ensureBacklog(projectPath: string): Result<void> {
 // If itemId provided, unblock just that item; otherwise unblock all.
 
 export function unblockItems(
-  projectPath: string,
+  paths: BacklogPaths,
   itemId?: string,
 ): Result<{ unblockedCount: number; unblockedIds: string[] }> {
-  const backlogResult = readBacklog(projectPath);
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
 
   const backlog = backlogResult.value;
@@ -454,7 +433,7 @@ export function unblockItems(
     item.status = "pending";
     delete item.blockedReason;
 
-    const writeResult = writeBacklog(projectPath, backlog);
+    const writeResult = writeBacklog(paths, backlog);
     if (!writeResult.ok) return writeResult;
 
     return ok({ unblockedCount: 1, unblockedIds: [itemId] });
@@ -471,7 +450,7 @@ export function unblockItems(
     delete item.blockedReason;
   }
 
-  const writeResult = writeBacklog(projectPath, backlog);
+  const writeResult = writeBacklog(paths, backlog);
   if (!writeResult.ok) return writeResult;
 
   return ok({
@@ -479,7 +458,3 @@ export function unblockItems(
     unblockedIds: blockedItems.map((i) => i.id),
   });
 }
-
-// ─── Exported constants (for testing) ────────────────────────────
-
-export { BACKLOG_DIR, BACKLOG_FILENAME, STATE_FILENAME };

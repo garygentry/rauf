@@ -5,6 +5,7 @@ import * as os from "node:os";
 
 import { sweepBacklog, listArchiveMonths, readArchiveMonth, purgeArchive } from "./archive.js";
 import { writeBacklog } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import { ErrorCodes } from "./errors.js";
 import type { Backlog, BacklogItem } from "./schemas.js";
 
@@ -40,7 +41,7 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 }
 
 function writeSeedBacklog(items: BacklogItem[]): void {
-  const result = writeBacklog(tmpDir, makeBacklog(items));
+  const result = writeBacklog(defaultBacklogPaths(tmpDir), makeBacklog(items));
   if (!result.ok) throw new Error(`Seed failed: ${result.error.message}`);
 }
 

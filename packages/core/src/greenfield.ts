@@ -9,6 +9,7 @@ import { install, type InstallOptions, readArtifact } from "./installer.js";
 import { getPreset, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
 import { writeMarkerFile, readMarkerFile } from "./config.js";
 import { addItem, type CreateItemInput } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import {
   BacklogSchema,
   normalizeBacklogItems,
@@ -399,7 +400,7 @@ function seedBacklog(
   // Add each item via the backlog module (proper ID assignment)
   let addedCount = 0;
   for (const item of items) {
-    const addResult = addItem(projectPath, item);
+    const addResult = addItem(defaultBacklogPaths(projectPath), item);
     if (!addResult.ok) return addResult;
     addedCount++;
   }

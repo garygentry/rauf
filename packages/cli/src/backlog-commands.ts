@@ -17,6 +17,7 @@ import {
   purgeArchive,
   resetProject,
   unblockItems,
+  defaultBacklogPaths,
   ErrorCodes,
   type BacklogItem,
   type BacklogItemType,
@@ -77,7 +78,7 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = readBacklog(resolved);
+  const result = readBacklog(defaultBacklogPaths(resolved));
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -194,7 +195,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
     warn("No --ac flags provided. A smart default acceptance criterion will be added.");
   }
 
-  const result = addItem(resolved, input);
+  const result = addItem(defaultBacklogPaths(resolved), input);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -281,7 +282,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   if (blockedReason !== null) updates.blockedReason = blockedReason;
   if (estimatedIterations !== null) updates.estimatedIterations = estimatedIterations;
 
-  const result = updateItem(resolved, itemId, updates);
+  const result = updateItem(defaultBacklogPaths(resolved), itemId, updates);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -317,7 +318,7 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = deleteItem(resolved, itemId);
+  const result = deleteItem(defaultBacklogPaths(resolved), itemId);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -345,7 +346,7 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
 
   const resolved = path.resolve(targetPath);
 
-  const result = readBacklog(resolved);
+  const result = readBacklog(defaultBacklogPaths(resolved));
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -384,7 +385,7 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = restoreFromBackup(resolved);
+  const result = restoreFromBackup(defaultBacklogPaths(resolved));
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -417,7 +418,7 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
 
   if (dryRun) {
     // Preview mode — read backlog and show what would be swept
-    const backlogResult = readBacklog(resolved);
+    const backlogResult = readBacklog(defaultBacklogPaths(resolved));
     if (!backlogResult.ok) {
       return handleCoreError(backlogResult.error, ctx, resolved);
     }
@@ -668,7 +669,9 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
 
   if (!yes) {
     error("Resetting project state requires confirmation.");
-    info("Pass --yes to confirm. This will sweep done items, clear loop state, and reset stalled items.");
+    info(
+      "Pass --yes to confirm. This will sweep done items, clear loop state, and reset stalled items.",
+    );
     return ExitCode.INVALID_ARGS;
   }
 
@@ -690,10 +693,14 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   const parts: string[] = [];
 
   if (r.sweptCount > 0) {
-    parts.push(`swept ${r.sweptCount} done item${r.sweptCount === 1 ? "" : "s"} → ${r.sweptMonths.join(", ")}`);
+    parts.push(
+      `swept ${r.sweptCount} done item${r.sweptCount === 1 ? "" : "s"} → ${r.sweptMonths.join(", ")}`,
+    );
   }
   if (r.stalledResetCount > 0) {
-    parts.push(`reset ${r.stalledResetCount} stalled item${r.stalledResetCount === 1 ? "" : "s"} to pending`);
+    parts.push(
+      `reset ${r.stalledResetCount} stalled item${r.stalledResetCount === 1 ? "" : "s"} to pending`,
+    );
   }
   if (r.stateCleared) {
     parts.push("cleared state.json");
@@ -732,7 +739,7 @@ export async function handleBacklogUnblock(ctx: CommandContext): Promise<number>
   const resolved = path.resolve(targetPath);
   const itemId = ctx.args[1] ?? undefined;
 
-  const result = unblockItems(resolved, itemId);
+  const result = unblockItems(defaultBacklogPaths(resolved), itemId);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }

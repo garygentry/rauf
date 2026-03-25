@@ -11,7 +11,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { readToolConfig, LoopStartOptionsSchema, readIterationStatus, type LoopEvent, type IterationStatus, deriveStatus, readLogTail, watchLog, unblockItems } from "@ralph/core";
+import {
+  readToolConfig,
+  LoopStartOptionsSchema,
+  readIterationStatus,
+  type LoopEvent,
+  type IterationStatus,
+  deriveStatus,
+  readLogTail,
+  watchLog,
+  unblockItems,
+  defaultBacklogPaths,
+} from "@ralph/core";
 import ports from "../../../config/ports.json";
 import { LoopRunner } from "@ralph/loop";
 
@@ -105,9 +116,11 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
 
   if (retryBlocked) {
-    const ubResult = unblockItems(projectPath);
+    const ubResult = unblockItems(defaultBacklogPaths(projectPath));
     if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-      info(`Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`);
+      info(
+        `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
+      );
     }
   }
 
@@ -245,10 +258,7 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
  * auto-disconnect when a terminal event is received.
  * Returns the exit code.
  */
-async function streamEventsUntilDone(
-  url: string,
-  sl?: StatusLine,
-): Promise<number> {
+async function streamEventsUntilDone(url: string, sl?: StatusLine): Promise<number> {
   let currentItemId = "";
   let currentItemTitle = "";
 
@@ -522,9 +532,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
 
   if (retryBlocked) {
-    const ubResult = unblockItems(projectPath);
+    const ubResult = unblockItems(defaultBacklogPaths(projectPath));
     if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-      info(`Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`);
+      info(
+        `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
+      );
     }
   }
 
@@ -643,10 +655,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
           tokenSummary = "";
           break;
         case "sleep_start":
-          statusLine.startCountdown(
-            "Rate limited — resumes in",
-            new Date(event.sleepUntil),
-          );
+          statusLine.startCountdown("Rate limited — resumes in", new Date(event.sleepUntil));
           break;
         case "sleep_end":
           statusLine.stop();
@@ -674,8 +683,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       runner.requestGracefulStop();
       print("");
       info(
-        c.yellow("Finishing current iteration... ") +
-        c.dim("Press Ctrl+C again to force quit.")
+        c.yellow("Finishing current iteration... ") + c.dim("Press Ctrl+C again to force quit."),
       );
     } else {
       print("");
@@ -755,11 +763,7 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
   const runner = new LoopRunner(projectPath, options);
 
   // Subscribe to review events
-  const eventTypes: LoopEvent["type"][] = [
-    "review_started",
-    "review_completed",
-    "review_failed",
-  ];
+  const eventTypes: LoopEvent["type"][] = ["review_started", "review_completed", "review_failed"];
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
       formatAndPrintEvent(event);
@@ -775,8 +779,7 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       runner.requestGracefulStop();
       print("");
       info(
-        c.yellow("Finishing current iteration... ") +
-        c.dim("Press Ctrl+C again to force quit.")
+        c.yellow("Finishing current iteration... ") + c.dim("Press Ctrl+C again to force quit."),
       );
     } else {
       print("");
@@ -921,7 +924,9 @@ export function formatAndPrintEvent(event: LoopEvent): void {
         `${prefix} ${c.green("\u25A0")} ${c.green("Loop completed")} \u2014 ${event.completedCount} done, ${event.blockedCount} blocked`,
       );
       if (event.blockedCount > 0) {
-        print(`${prefix}   ${c.dim("Retry:")} ${c.cyan("ralph backlog unblock .")} ${c.dim("or")} ${c.cyan("ralph loop run . --retry-blocked")}`);
+        print(
+          `${prefix}   ${c.dim("Retry:")} ${c.cyan("ralph backlog unblock .")} ${c.dim("or")} ${c.cyan("ralph loop run . --retry-blocked")}`,
+        );
       }
       break;
 

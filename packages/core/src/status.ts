@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, fileExists, atomicWrite } from "./fs-utils.js";
 import { readBacklog } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import {
   LoopStateSchema,
   LOG_PATTERNS,
@@ -54,7 +55,7 @@ function getCancelPath(projectPath: string): string {
 // ─── BacklogSummary ──────────────────────────────────────────────
 
 function computeBacklogSummary(projectPath: string): BacklogSummary {
-  const backlogResult = readBacklog(projectPath);
+  const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
   if (!backlogResult.ok) {
     return { pending: 0, inProgress: 0, blocked: 0, done: 0, total: 0 };
   }

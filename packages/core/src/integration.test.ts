@@ -22,7 +22,7 @@ import { deriveStatus, readLogTail, RALPH_DIR, LOG_FILENAME, DONE_FILENAME } fro
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
 import { fileExists } from "./fs-utils.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
-import { STATE_FILENAME } from "./backlog.js";
+import { STATE_FILENAME, defaultBacklogPaths } from "./backlog-root.js";
 import type { LoopState } from "./schemas.js";
 
 // ─── Shared Fixtures ─────────────────────────────────────────────
@@ -181,7 +181,7 @@ describe("Integration: install into fresh directory", () => {
     expect(ralphMd).toContain("pnpm test");
 
     // Backlog is valid and empty
-    const backlogResult = readBacklog(projectDir);
+    const backlogResult = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlogResult.ok).toBe(true);
     if (!backlogResult.ok) return;
     expect(backlogResult.value.project).toBe("integration-test");
@@ -309,7 +309,7 @@ describe("Integration: greenfield init creates valid project", () => {
     expect(markerResult.value.ralph).toBe(true);
 
     // Backlog is valid and empty (no seed provided)
-    const backlogResult = readBacklog(projectDir);
+    const backlogResult = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlogResult.ok).toBe(true);
     if (!backlogResult.ok) return;
     expect(backlogResult.value.items).toEqual([]);
@@ -341,7 +341,7 @@ describe("Integration: greenfield init creates valid project", () => {
     expect(result.ok).toBe(true);
 
     // Verify seeded items
-    const backlogResult = readBacklog(projectDir);
+    const backlogResult = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlogResult.ok).toBe(true);
     if (!backlogResult.ok) return;
 
@@ -403,7 +403,7 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
 
   it("add → list → edit → delete full cycle", () => {
     // ── Add items ──
-    const add1 = addItem(projectDir, {
+    const add1 = addItem(defaultBacklogPaths(projectDir), {
       type: "feature",
       priority: 1,
       title: "Implement login",
@@ -415,7 +415,7 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
     expect(add1.value.id).toBe("001");
     expect(add1.value.status).toBe("pending");
 
-    const add2 = addItem(projectDir, {
+    const add2 = addItem(defaultBacklogPaths(projectDir), {
       type: "bug",
       priority: 2,
       title: "Fix header alignment",
@@ -424,7 +424,7 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
     if (!add2.ok) return;
     expect(add2.value.id).toBe("002");
 
-    const add3 = addItem(projectDir, {
+    const add3 = addItem(defaultBacklogPaths(projectDir), {
       type: "chore",
       priority: 3,
       title: "Set up linting",
@@ -435,7 +435,7 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
     expect(add3.value.id).toBe("003");
 
     // ── List (read backlog) ──
-    const backlog = readBacklog(projectDir);
+    const backlog = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
     expect(backlog.value.items).toHaveLength(3);
@@ -444,20 +444,20 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
     expect(backlog.value.items[2]!.title).toBe("Set up linting");
 
     // ── Edit: transition pending → in_progress ──
-    const edit1 = updateItem(projectDir, "001", { status: "in_progress" });
+    const edit1 = updateItem(defaultBacklogPaths(projectDir), "001", { status: "in_progress" });
     expect(edit1.ok).toBe(true);
     if (!edit1.ok) return;
     expect(edit1.value.status).toBe("in_progress");
 
     // ── Edit: transition in_progress → done ──
-    const edit2 = updateItem(projectDir, "001", { status: "done" });
+    const edit2 = updateItem(defaultBacklogPaths(projectDir), "001", { status: "done" });
     expect(edit2.ok).toBe(true);
     if (!edit2.ok) return;
     expect(edit2.value.status).toBe("done");
     expect(edit2.value.completedAt).not.toBeNull();
 
     // ── Edit: update title and priority ──
-    const edit3 = updateItem(projectDir, "002", {
+    const edit3 = updateItem(defaultBacklogPaths(projectDir), "002", {
       title: "Fix header and footer alignment",
       priority: 1,
     });
@@ -467,11 +467,11 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
     expect(edit3.value.priority).toBe(1);
 
     // ── Delete an item ──
-    const del = deleteItem(projectDir, "003");
+    const del = deleteItem(defaultBacklogPaths(projectDir), "003");
     expect(del.ok).toBe(true);
 
     // ── Verify final state ──
-    const finalBacklog = readBacklog(projectDir);
+    const finalBacklog = readBacklog(defaultBacklogPaths(projectDir));
     expect(finalBacklog.ok).toBe(true);
     if (!finalBacklog.ok) return;
     expect(finalBacklog.value.items).toHaveLength(2);
@@ -487,10 +487,10 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
   });
 
   it("invalid transitions are rejected", () => {
-    addItem(projectDir, { type: "feature", priority: 1, title: "Test item" });
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 1, title: "Test item" });
 
     // pending → done is invalid (must go through in_progress)
-    const badTransition = updateItem(projectDir, "001", { status: "done" });
+    const badTransition = updateItem(defaultBacklogPaths(projectDir), "001", { status: "done" });
     expect(badTransition.ok).toBe(false);
     if (badTransition.ok) return;
     expect(badTransition.error.code).toBe("TRANSITION_INVALID");
@@ -498,23 +498,23 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
 
   it("backup and restore works after modifications", () => {
     // Add items (each write creates a .bak)
-    addItem(projectDir, { type: "feature", priority: 1, title: "Item A" });
-    addItem(projectDir, { type: "bug", priority: 2, title: "Item B" });
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 1, title: "Item A" });
+    addItem(defaultBacklogPaths(projectDir), { type: "bug", priority: 2, title: "Item B" });
 
     // Now add a third item — the .bak now has 2 items
-    addItem(projectDir, { type: "chore", priority: 3, title: "Item C" });
+    addItem(defaultBacklogPaths(projectDir), { type: "chore", priority: 3, title: "Item C" });
 
     // Verify we have 3 items
-    const before = readBacklog(projectDir);
+    const before = readBacklog(defaultBacklogPaths(projectDir));
     expect(before.ok).toBe(true);
     if (!before.ok) return;
     expect(before.value.items).toHaveLength(3);
 
     // Restore from backup (should have 2 items, from before the 3rd add)
-    const restoreResult = restoreFromBackup(projectDir);
+    const restoreResult = restoreFromBackup(defaultBacklogPaths(projectDir));
     expect(restoreResult.ok).toBe(true);
 
-    const after = readBacklog(projectDir);
+    const after = readBacklog(defaultBacklogPaths(projectDir));
     expect(after.ok).toBe(true);
     if (!after.ok) return;
     expect(after.value.items).toHaveLength(2);
@@ -523,7 +523,7 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
 
   it("auto-assigns smart default acceptance criteria", () => {
     // Add item without explicit acceptance criteria
-    const result = addItem(projectDir, {
+    const result = addItem(defaultBacklogPaths(projectDir), {
       type: "feature",
       priority: 1,
       title: "No explicit AC",
@@ -536,25 +536,29 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
   });
 
   it("ID assignment handles gaps from deletions", () => {
-    addItem(projectDir, { type: "feature", priority: 1, title: "First" }); // 001
-    addItem(projectDir, { type: "feature", priority: 2, title: "Second" }); // 002
-    addItem(projectDir, { type: "feature", priority: 3, title: "Third" }); // 003
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 1, title: "First" }); // 001
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 2, title: "Second" }); // 002
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 3, title: "Third" }); // 003
 
     // Delete item 002
-    deleteItem(projectDir, "002");
+    deleteItem(defaultBacklogPaths(projectDir), "002");
 
     // Next ID should be 004, not 002 (gaps are intentional)
-    const add4 = addItem(projectDir, { type: "feature", priority: 1, title: "Fourth" });
+    const add4 = addItem(defaultBacklogPaths(projectDir), {
+      type: "feature",
+      priority: 1,
+      title: "Fourth",
+    });
     expect(add4.ok).toBe(true);
     if (!add4.ok) return;
     expect(add4.value.id).toBe("004");
   });
 
   it("dependsOn references are validated", () => {
-    addItem(projectDir, { type: "feature", priority: 1, title: "Foundation" }); // 001
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 1, title: "Foundation" }); // 001
 
     // Add item depending on 001 — should succeed
-    const dep = addItem(projectDir, {
+    const dep = addItem(defaultBacklogPaths(projectDir), {
       type: "feature",
       priority: 2,
       title: "Dependent",
@@ -563,7 +567,7 @@ describe("Integration: backlog add/list/edit/delete cycle", () => {
     expect(dep.ok).toBe(true);
 
     // Add item depending on nonexistent item — should fail
-    const badDep = addItem(projectDir, {
+    const badDep = addItem(defaultBacklogPaths(projectDir), {
       type: "feature",
       priority: 2,
       title: "Bad dependency",
@@ -592,9 +596,9 @@ describe("Integration: status derivation with mock state.json", () => {
     expect(result.ok).toBe(true);
 
     // Add some backlog items
-    addItem(projectDir, { type: "feature", priority: 1, title: "Task A" });
-    addItem(projectDir, { type: "feature", priority: 2, title: "Task B" });
-    addItem(projectDir, { type: "bug", priority: 1, title: "Task C" });
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 1, title: "Task A" });
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 2, title: "Task B" });
+    addItem(defaultBacklogPaths(projectDir), { type: "bug", priority: 1, title: "Task C" });
   });
 
   it("derives RUNNING state from state.json with recent updatedAt", () => {
@@ -695,8 +699,8 @@ describe("Integration: status derivation with mock state.json", () => {
 
   it("backlog summary reflects actual backlog state", () => {
     // Transition one item to in_progress, another to done
-    updateItem(projectDir, "001", { status: "in_progress" });
-    updateItem(projectDir, "001", { status: "done" });
+    updateItem(defaultBacklogPaths(projectDir), "001", { status: "in_progress" });
+    updateItem(defaultBacklogPaths(projectDir), "001", { status: "done" });
 
     writeStateJson(projectDir, makeLoopState({ status: "completed" }));
 
@@ -751,8 +755,8 @@ describe("Integration: install → backlog → status full workflow", () => {
     expect(installResult.ok).toBe(true);
 
     // Add items
-    addItem(projectDir, { type: "feature", priority: 1, title: "Feature 1" });
-    addItem(projectDir, { type: "feature", priority: 2, title: "Feature 2" });
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 1, title: "Feature 1" });
+    addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 2, title: "Feature 2" });
 
     // Check status (should be IDLE — no loop running)
     const statusResult = deriveStatus(projectDir);
@@ -764,7 +768,7 @@ describe("Integration: install → backlog → status full workflow", () => {
     expect(statusResult.value.backlogSummary.total).toBe(2);
 
     // Simulate loop running
-    updateItem(projectDir, "001", { status: "in_progress" });
+    updateItem(defaultBacklogPaths(projectDir), "001", { status: "in_progress" });
     writeStateJson(
       projectDir,
       makeLoopState({
@@ -783,7 +787,7 @@ describe("Integration: install → backlog → status full workflow", () => {
     expect(runningStatus.value.currentItem).toBe("001");
 
     // Simulate loop completing item
-    updateItem(projectDir, "001", { status: "done" });
+    updateItem(defaultBacklogPaths(projectDir), "001", { status: "done" });
     writeStateJson(
       projectDir,
       makeLoopState({

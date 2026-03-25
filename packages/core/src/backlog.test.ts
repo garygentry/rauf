@@ -15,23 +15,30 @@ import {
   resetStalledItems,
   ensureBacklog,
   unblockItems,
-  BACKLOG_DIR,
-  BACKLOG_FILENAME,
-  STATE_FILENAME,
 } from "./backlog.js";
 import type { CreateItemInput, UpdateItemInput } from "./backlog.js";
+import {
+  defaultBacklogPaths,
+  BACKLOG_FILENAME,
+  STATE_FILENAME,
+  DEFAULT_ROOT_DIR,
+} from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
 import { ErrorCodes } from "./errors.js";
 import { VALID_STATUS_TRANSITIONS } from "./schemas.js";
 import type { Backlog, BacklogItem, LoopState, MarkerFile } from "./schemas.js";
+import { createMultiRootProject } from "./test-helpers.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
 let tmpDir: string;
+let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-backlog-"));
   // Create .ralph directory
-  fs.mkdirSync(path.join(tmpDir, BACKLOG_DIR));
+  fs.mkdirSync(path.join(tmpDir, DEFAULT_ROOT_DIR));
+  paths = defaultBacklogPaths(tmpDir);
 });
 
 afterEach(() => {
@@ -65,14 +72,12 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 
 /** Write a backlog.json directly (for test setup) */
 function writeBacklogRaw(backlog: Backlog): void {
-  const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
-  fs.writeFileSync(filePath, JSON.stringify(backlog, null, 2) + "\n");
+  fs.writeFileSync(paths.backlog, JSON.stringify(backlog, null, 2) + "\n");
 }
 
 /** Write a state.json directly (for test setup) */
 function writeStateJson(state: LoopState): void {
-  const filePath = path.join(tmpDir, BACKLOG_DIR, STATE_FILENAME);
-  fs.writeFileSync(filePath, JSON.stringify(state, null, 2) + "\n");
+  fs.writeFileSync(paths.state, JSON.stringify(state, null, 2) + "\n");
 }
 
 /** Write a .ralph.json marker file (for smart default tests) */
@@ -133,7 +138,7 @@ describe("readBacklog", () => {
     const backlog = makeBacklog([makeItem()]);
     writeBacklogRaw(backlog);
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -146,7 +151,7 @@ describe("readBacklog", () => {
     const backlog = makeBacklog([]);
     writeBacklogRaw(backlog);
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -154,7 +159,7 @@ describe("readBacklog", () => {
   });
 
   it("returns FILE_NOT_FOUND when backlog.json is missing", () => {
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     // Remove the file (only .ralph dir exists)
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -163,10 +168,9 @@ describe("readBacklog", () => {
   });
 
   it("returns INVALID_JSON for malformed JSON", () => {
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
-    fs.writeFileSync(filePath, "{ not valid json }}}");
+    fs.writeFileSync(paths.backlog, "{ not valid json }}}");
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -174,10 +178,9 @@ describe("readBacklog", () => {
   });
 
   it("returns VALIDATION_ERROR for schema-invalid JSON", () => {
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
-    fs.writeFileSync(filePath, JSON.stringify({ project: 123, items: "not-array" }));
+    fs.writeFileSync(paths.backlog, JSON.stringify({ project: 123, items: "not-array" }));
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -185,9 +188,8 @@ describe("readBacklog", () => {
   });
 
   it("returns VALIDATION_ERROR for items with invalid fields", () => {
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
     fs.writeFileSync(
-      filePath,
+      paths.backlog,
       JSON.stringify({
         project: "test",
         description: "test",
@@ -195,7 +197,7 @@ describe("readBacklog", () => {
       }),
     );
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -203,9 +205,8 @@ describe("readBacklog", () => {
   });
 
   it("accepts items with non-numeric IDs", () => {
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
     fs.writeFileSync(
-      filePath,
+      paths.backlog,
       JSON.stringify({
         project: "test",
         description: "test",
@@ -224,16 +225,15 @@ describe("readBacklog", () => {
       }),
     );
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.items[0]!.id).toBe("notif-001");
   });
 
   it("accepts items without completedAt field", () => {
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
     fs.writeFileSync(
-      filePath,
+      paths.backlog,
       JSON.stringify({
         project: "test",
         description: "test",
@@ -251,16 +251,15 @@ describe("readBacklog", () => {
       }),
     );
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.items[0]!.completedAt).toBeUndefined();
   });
 
   it("normalizes dependencies field to dependsOn", () => {
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
     fs.writeFileSync(
-      filePath,
+      paths.backlog,
       JSON.stringify({
         project: "test",
         description: "test",
@@ -280,7 +279,7 @@ describe("readBacklog", () => {
       }),
     );
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.items[0]!.dependsOn).toEqual(["002", "003"]);
@@ -293,13 +292,12 @@ describe("writeBacklog", () => {
   it("writes valid JSON atomically", () => {
     const backlog = makeBacklog([makeItem()]);
 
-    const result = writeBacklog(tmpDir, backlog);
+    const result = writeBacklog(paths, backlog);
     expect(result.ok).toBe(true);
 
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
-    expect(fs.existsSync(filePath)).toBe(true);
+    expect(fs.existsSync(paths.backlog)).toBe(true);
 
-    const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const content = JSON.parse(fs.readFileSync(paths.backlog, "utf-8"));
     expect(content.project).toBe("test-project");
     expect(content.items).toHaveLength(1);
   });
@@ -309,11 +307,11 @@ describe("writeBacklog", () => {
     writeBacklogRaw(backlog1);
 
     const backlog2 = makeBacklog([makeItem({ title: "Updated" })]);
-    const result = writeBacklog(tmpDir, backlog2);
+    const result = writeBacklog(paths, backlog2);
     expect(result.ok).toBe(true);
 
     // Check .bak exists with original content
-    const bakPath = path.join(tmpDir, BACKLOG_DIR, `${BACKLOG_FILENAME}.bak`);
+    const bakPath = `${paths.backlog}.bak`;
     expect(fs.existsSync(bakPath)).toBe(true);
 
     const bakContent = JSON.parse(fs.readFileSync(bakPath, "utf-8"));
@@ -322,18 +320,17 @@ describe("writeBacklog", () => {
 
   it("does not leave .tmp files", () => {
     const backlog = makeBacklog([]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const tmpFile = path.join(tmpDir, BACKLOG_DIR, `${BACKLOG_FILENAME}.tmp`);
+    const tmpFile = `${paths.backlog}.tmp`;
     expect(fs.existsSync(tmpFile)).toBe(false);
   });
 
   it("produces pretty-printed JSON with trailing newline", () => {
     const backlog = makeBacklog([makeItem()]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const filePath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
-    const raw = fs.readFileSync(filePath, "utf-8");
+    const raw = fs.readFileSync(paths.backlog, "utf-8");
     expect(raw.split("\n").length).toBeGreaterThan(1);
     expect(raw.endsWith("\n")).toBe(true);
   });
@@ -343,9 +340,9 @@ describe("writeBacklog", () => {
       makeItem({ id: "001", title: "First" }),
       makeItem({ id: "002", title: "Second", dependsOn: ["001"] }),
     ]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -407,7 +404,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Test AC"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -425,7 +422,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Fix the bug"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -442,7 +439,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -450,12 +447,7 @@ describe("addItem", () => {
   });
 
   it("generates numeric ID when existing IDs are non-numeric", () => {
-    writeBacklogRaw(
-      makeBacklog([
-        makeItem({ id: "notif-001" }),
-        makeItem({ id: "auth-setup" }),
-      ]),
-    );
+    writeBacklogRaw(makeBacklog([makeItem({ id: "notif-001" }), makeItem({ id: "auth-setup" })]));
 
     const input: CreateItemInput = {
       type: "feature",
@@ -464,7 +456,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -488,7 +480,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -506,7 +498,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -523,7 +515,7 @@ describe("addItem", () => {
       title: "No AC",
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -541,7 +533,7 @@ describe("addItem", () => {
       title: "With marker",
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -559,7 +551,7 @@ describe("addItem", () => {
       acceptanceCriteria: [],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -576,7 +568,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Tests pass", "Linting clean"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -594,7 +586,7 @@ describe("addItem", () => {
       dependsOn: ["001", "999"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -614,7 +606,7 @@ describe("addItem", () => {
       dependsOn: ["001", "002"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -631,7 +623,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -649,7 +641,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -669,7 +661,7 @@ describe("addItem", () => {
       estimatedIterations: 3,
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -688,7 +680,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -705,7 +697,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -727,7 +719,7 @@ describe("addItem", () => {
       },
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -749,7 +741,7 @@ describe("addItem", () => {
       specReferences: ["docs/auth-spec.md", "docs/ARCHITECTURE.md"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -766,7 +758,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -790,9 +782,9 @@ describe("addItem", () => {
       specReferences: ["docs/spec.md"],
     };
 
-    addItem(tmpDir, input);
+    addItem(paths, input);
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -815,10 +807,10 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    addItem(tmpDir, input);
+    addItem(paths, input);
 
     // Read back from disk
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -835,7 +827,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -855,7 +847,7 @@ describe("addItem", () => {
       reviewBatch: "2026-03-17T12:00:00.000Z",
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -863,7 +855,7 @@ describe("addItem", () => {
     expect(result.value.reviewBatch).toBe("2026-03-17T12:00:00.000Z");
 
     // Verify it persists in the file
-    const backlog = readBacklog(tmpDir);
+    const backlog = readBacklog(paths);
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
 
@@ -882,7 +874,7 @@ describe("addItem", () => {
       acceptanceCriteria: ["Done"],
     };
 
-    const result = addItem(tmpDir, input);
+    const result = addItem(paths, input);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -903,7 +895,7 @@ describe("updateItem", () => {
       priority: 3,
     };
 
-    const result = updateItem(tmpDir, "001", updates);
+    const result = updateItem(paths, "001", updates);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -915,7 +907,7 @@ describe("updateItem", () => {
   it("allows valid status transition: pending → in_progress", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "pending" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "in_progress" });
+    const result = updateItem(paths, "001", { status: "in_progress" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -925,7 +917,7 @@ describe("updateItem", () => {
   it("allows valid status transition: in_progress → done", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "done" });
+    const result = updateItem(paths, "001", { status: "done" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -935,7 +927,7 @@ describe("updateItem", () => {
   it("allows valid status transition: in_progress → blocked", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
 
-    const result = updateItem(tmpDir, "001", {
+    const result = updateItem(paths, "001", {
       status: "blocked",
       blockedReason: "Waiting on dependency",
     });
@@ -949,7 +941,7 @@ describe("updateItem", () => {
   it("allows valid status transition: blocked → pending", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "blocked" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "pending" });
+    const result = updateItem(paths, "001", { status: "pending" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -959,7 +951,7 @@ describe("updateItem", () => {
   it("allows valid status transition: done → pending", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "done" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "pending" });
+    const result = updateItem(paths, "001", { status: "pending" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -969,7 +961,7 @@ describe("updateItem", () => {
   it("rejects invalid transition: pending → done", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "pending" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "done" });
+    const result = updateItem(paths, "001", { status: "done" });
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -981,7 +973,7 @@ describe("updateItem", () => {
   it("rejects invalid transition: done → in_progress", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "done" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "in_progress" });
+    const result = updateItem(paths, "001", { status: "in_progress" });
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -991,7 +983,7 @@ describe("updateItem", () => {
   it("rejects invalid transition: blocked → done", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "blocked" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "done" });
+    const result = updateItem(paths, "001", { status: "done" });
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1002,7 +994,7 @@ describe("updateItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
 
     const before = new Date().toISOString();
-    const result = updateItem(tmpDir, "001", { status: "done" });
+    const result = updateItem(paths, "001", { status: "done" });
     const after = new Date().toISOString();
 
     expect(result.ok).toBe(true);
@@ -1017,7 +1009,7 @@ describe("updateItem", () => {
   it("does not set completedAt for non-done transitions", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "pending" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "in_progress" });
+    const result = updateItem(paths, "001", { status: "in_progress" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1027,7 +1019,7 @@ describe("updateItem", () => {
   it("validates dependsOn references", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    const result = updateItem(tmpDir, "001", { dependsOn: ["999"] });
+    const result = updateItem(paths, "001", { dependsOn: ["999"] });
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1038,7 +1030,7 @@ describe("updateItem", () => {
   it("allows valid dependsOn update", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" }), makeItem({ id: "002" })]));
 
-    const result = updateItem(tmpDir, "002", { dependsOn: ["001"] });
+    const result = updateItem(paths, "002", { dependsOn: ["001"] });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1048,7 +1040,7 @@ describe("updateItem", () => {
   it("returns error for non-existent item", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    const result = updateItem(tmpDir, "999", { title: "Nope" });
+    const result = updateItem(paths, "999", { title: "Nope" });
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1059,14 +1051,14 @@ describe("updateItem", () => {
   it("allows same status (no transition check needed)", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "pending" })]));
 
-    const result = updateItem(tmpDir, "001", { status: "pending" });
+    const result = updateItem(paths, "001", { status: "pending" });
     expect(result.ok).toBe(true);
   });
 
   it("updates acceptance criteria", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    const result = updateItem(tmpDir, "001", {
+    const result = updateItem(paths, "001", {
       acceptanceCriteria: ["New criterion 1", "New criterion 2"],
     });
     expect(result.ok).toBe(true);
@@ -1078,9 +1070,9 @@ describe("updateItem", () => {
   it("persists updates to disk", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    updateItem(tmpDir, "001", { title: "Persisted update" });
+    updateItem(paths, "001", { title: "Persisted update" });
 
-    const result = readBacklog(tmpDir);
+    const result = readBacklog(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1096,7 +1088,7 @@ describe("updateItem", () => {
     });
     writeBacklogRaw(makeBacklog([original]));
 
-    const result = updateItem(tmpDir, "001", { title: "Updated" });
+    const result = updateItem(paths, "001", { title: "Updated" });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1108,7 +1100,7 @@ describe("updateItem", () => {
   it("updates agentDelegation", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    const result = updateItem(tmpDir, "001", {
+    const result = updateItem(paths, "001", {
       agentDelegation: {
         recommendedConcurrency: 3,
         strategy: "Parallel",
@@ -1128,7 +1120,7 @@ describe("updateItem", () => {
   it("updates specReferences", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    const result = updateItem(tmpDir, "001", {
+    const result = updateItem(paths, "001", {
       specReferences: ["docs/spec.md"],
     });
     expect(result.ok).toBe(true);
@@ -1144,11 +1136,11 @@ describe("deleteItem", () => {
   it("deletes an existing item", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" }), makeItem({ id: "002" })]));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
 
     // Verify removed from disk
-    const backlog = readBacklog(tmpDir);
+    const backlog = readBacklog(paths);
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
 
@@ -1159,7 +1151,7 @@ describe("deleteItem", () => {
   it("returns error for non-existent item", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001" })]));
 
-    const result = deleteItem(tmpDir, "999");
+    const result = deleteItem(paths, "999");
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1171,7 +1163,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
     writeStateJson(makeLoopState({ status: "running", currentItem: "001" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1184,7 +1176,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
     writeStateJson(makeLoopState({ status: "starting" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1195,7 +1187,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
     writeStateJson(makeLoopState({ status: "paused" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
   });
 
@@ -1203,7 +1195,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
     writeStateJson(makeLoopState({ status: "complete" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
   });
 
@@ -1211,7 +1203,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
     // No state.json — loop not active
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
   });
 
@@ -1219,7 +1211,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "pending" })]));
     writeStateJson(makeLoopState({ status: "running" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
   });
 
@@ -1227,7 +1219,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "done" })]));
     writeStateJson(makeLoopState({ status: "running" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
   });
 
@@ -1235,7 +1227,7 @@ describe("deleteItem", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "blocked" })]));
     writeStateJson(makeLoopState({ status: "running" }));
 
-    const result = deleteItem(tmpDir, "001");
+    const result = deleteItem(paths, "001");
     expect(result.ok).toBe(true);
   });
 });
@@ -1249,20 +1241,20 @@ describe("restoreFromBackup", () => {
 
     // Write original, then overwrite to create .bak
     writeBacklogRaw(original);
-    writeBacklog(tmpDir, modified);
+    writeBacklog(paths, modified);
 
     // Verify current is modified
-    const beforeRestore = readBacklog(tmpDir);
+    const beforeRestore = readBacklog(paths);
     expect(beforeRestore.ok).toBe(true);
     if (!beforeRestore.ok) return;
     expect(beforeRestore.value.items[0]!.title).toBe("Modified");
 
     // Restore from backup
-    const result = restoreFromBackup(tmpDir);
+    const result = restoreFromBackup(paths);
     expect(result.ok).toBe(true);
 
     // Verify current is back to original
-    const afterRestore = readBacklog(tmpDir);
+    const afterRestore = readBacklog(paths);
     expect(afterRestore.ok).toBe(true);
     if (!afterRestore.ok) return;
     expect(afterRestore.value.items[0]!.title).toBe("Original");
@@ -1272,7 +1264,7 @@ describe("restoreFromBackup", () => {
     writeBacklogRaw(makeBacklog([]));
     // No .bak file
 
-    const result = restoreFromBackup(tmpDir);
+    const result = restoreFromBackup(paths);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1281,20 +1273,19 @@ describe("restoreFromBackup", () => {
   });
 
   it("overwrites current backlog with .bak content", () => {
-    const backlogPath = path.join(tmpDir, BACKLOG_DIR, BACKLOG_FILENAME);
-    const bakPath = `${backlogPath}.bak`;
+    const bakPath = `${paths.backlog}.bak`;
 
     // Write original and .bak manually
     const bakContent = makeBacklog([makeItem({ title: "Backup version" })]);
     const currentContent = makeBacklog([makeItem({ title: "Current version" })]);
 
     fs.writeFileSync(bakPath, JSON.stringify(bakContent, null, 2) + "\n");
-    fs.writeFileSync(backlogPath, JSON.stringify(currentContent, null, 2) + "\n");
+    fs.writeFileSync(paths.backlog, JSON.stringify(currentContent, null, 2) + "\n");
 
-    const result = restoreFromBackup(tmpDir);
+    const result = restoreFromBackup(paths);
     expect(result.ok).toBe(true);
 
-    const restored = readBacklog(tmpDir);
+    const restored = readBacklog(paths);
     expect(restored.ok).toBe(true);
     if (!restored.ok) return;
     expect(restored.value.items[0]!.title).toBe("Backup version");
@@ -1503,14 +1494,14 @@ describe("resetStalledItems", () => {
       ]),
     );
 
-    const result = resetStalledItems(tmpDir);
+    const result = resetStalledItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     expect(result.value.resetCount).toBe(2);
 
     // Verify on disk
-    const backlog = readBacklog(tmpDir);
+    const backlog = readBacklog(paths);
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
 
@@ -1529,7 +1520,7 @@ describe("resetStalledItems", () => {
       ]),
     );
 
-    const result = resetStalledItems(tmpDir);
+    const result = resetStalledItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1539,7 +1530,7 @@ describe("resetStalledItems", () => {
   it("handles empty backlog gracefully", () => {
     writeBacklogRaw(makeBacklog([]));
 
-    const result = resetStalledItems(tmpDir);
+    const result = resetStalledItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1555,7 +1546,7 @@ describe("resetStalledItems", () => {
       ]),
     );
 
-    const result = resetStalledItems(tmpDir);
+    const result = resetStalledItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -1564,7 +1555,7 @@ describe("resetStalledItems", () => {
 
   it("returns error when backlog.json is missing", () => {
     // .ralph dir exists but no backlog.json
-    const result = resetStalledItems(tmpDir);
+    const result = resetStalledItems(paths);
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -1574,12 +1565,12 @@ describe("resetStalledItems", () => {
   it("uses updateItem for proper validation", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
 
-    const result = resetStalledItems(tmpDir);
+    const result = resetStalledItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     // Verify item was properly reset on disk
-    const backlog = readBacklog(tmpDir);
+    const backlog = readBacklog(paths);
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
 
@@ -1592,13 +1583,13 @@ describe("resetStalledItems", () => {
 describe("ensureBacklog", () => {
   it("no-ops when backlog.json already exists", () => {
     const backlog = makeBacklog([makeItem()]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const result = ensureBacklog(tmpDir);
+    const result = ensureBacklog(paths);
     expect(result.ok).toBe(true);
 
     // Verify existing backlog unchanged
-    const read = readBacklog(tmpDir);
+    const read = readBacklog(paths);
     expect(read.ok).toBe(true);
     if (!read.ok) return;
     expect(read.value.items).toHaveLength(1);
@@ -1607,10 +1598,10 @@ describe("ensureBacklog", () => {
 
   it("creates empty backlog.json when .ralph/ exists but backlog.json missing", () => {
     // .ralph/ dir created by beforeEach, no backlog.json
-    const result = ensureBacklog(tmpDir);
+    const result = ensureBacklog(paths);
     expect(result.ok).toBe(true);
 
-    const read = readBacklog(tmpDir);
+    const read = readBacklog(paths);
     expect(read.ok).toBe(true);
     if (!read.ok) return;
     expect(read.value.items).toHaveLength(0);
@@ -1618,10 +1609,10 @@ describe("ensureBacklog", () => {
   });
 
   it("uses directory basename as project name", () => {
-    const result = ensureBacklog(tmpDir);
+    const result = ensureBacklog(paths);
     expect(result.ok).toBe(true);
 
-    const read = readBacklog(tmpDir);
+    const read = readBacklog(paths);
     expect(read.ok).toBe(true);
     if (!read.ok) return;
     expect(read.value.project).toBe(path.basename(tmpDir));
@@ -1632,12 +1623,50 @@ describe("ensureBacklog", () => {
     // Use a path without .ralph/ dir
     const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-no-install-"));
     try {
-      const result = ensureBacklog(emptyDir);
+      const emptyPaths = defaultBacklogPaths(emptyDir);
+      const result = ensureBacklog(emptyPaths);
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.error.code).toBe(ErrorCodes.NOT_INSTALLED);
     } finally {
       fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not return NOT_INSTALLED for non-default root", () => {
+    // Non-default root: basename is not ".ralph"
+    const nonDefaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-nondefault-"));
+    try {
+      const specsDir = path.join(nonDefaultDir, "specs", "auth");
+      fs.mkdirSync(specsDir, { recursive: true });
+      const stateDir = path.join(specsDir, ".ralph");
+      fs.mkdirSync(stateDir, { recursive: true });
+
+      const nonDefaultPaths: BacklogPaths = {
+        projectPath: nonDefaultDir,
+        root: specsDir,
+        stateDir,
+        backlog: path.join(specsDir, BACKLOG_FILENAME),
+        state: path.join(stateDir, STATE_FILENAME),
+        log: path.join(stateDir, "ralph.log"),
+        done: path.join(stateDir, "DONE"),
+        cancel: path.join(stateDir, "CANCEL"),
+        progress: path.join(stateDir, "progress.md"),
+        iterationStatus: path.join(stateDir, "iteration-status.json"),
+        archive: path.join(stateDir, "archive"),
+        lock: path.join(stateDir, ".loop.lock"),
+      };
+
+      // ensureBacklog should create empty backlog, not return NOT_INSTALLED
+      const result = ensureBacklog(nonDefaultPaths);
+      expect(result.ok).toBe(true);
+
+      const read = readBacklog(nonDefaultPaths);
+      expect(read.ok).toBe(true);
+      if (!read.ok) return;
+      expect(read.value.items).toHaveLength(0);
+    } finally {
+      fs.rmSync(nonDefaultDir, { recursive: true, force: true });
     }
   });
 });
@@ -1649,15 +1678,15 @@ describe("unblockItems", () => {
     const backlog = makeBacklog([
       makeItem({ id: "001", status: "blocked", blockedReason: "signal detection failed" }),
     ]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const result = unblockItems(tmpDir, "001");
+    const result = unblockItems(paths, "001");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.unblockedCount).toBe(1);
     expect(result.value.unblockedIds).toEqual(["001"]);
 
-    const readResult = readBacklog(tmpDir);
+    const readResult = readBacklog(paths);
     expect(readResult.ok).toBe(true);
     if (!readResult.ok) return;
     const item = readResult.value.items[0]!;
@@ -1671,15 +1700,15 @@ describe("unblockItems", () => {
       makeItem({ id: "002", status: "pending", title: "Not blocked" }),
       makeItem({ id: "003", status: "blocked", blockedReason: "reason 2" }),
     ]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const result = unblockItems(tmpDir);
+    const result = unblockItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.unblockedCount).toBe(2);
     expect(result.value.unblockedIds).toEqual(["001", "003"]);
 
-    const readResult = readBacklog(tmpDir);
+    const readResult = readBacklog(paths);
     expect(readResult.ok).toBe(true);
     if (!readResult.ok) return;
     expect(readResult.value.items[0]!.status).toBe("pending");
@@ -1690,12 +1719,10 @@ describe("unblockItems", () => {
   });
 
   it("errors on non-blocked item", () => {
-    const backlog = makeBacklog([
-      makeItem({ id: "001", status: "pending" }),
-    ]);
-    writeBacklog(tmpDir, backlog);
+    const backlog = makeBacklog([makeItem({ id: "001", status: "pending" })]);
+    writeBacklog(paths, backlog);
 
-    const result = unblockItems(tmpDir, "001");
+    const result = unblockItems(paths, "001");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
@@ -1703,12 +1730,10 @@ describe("unblockItems", () => {
   });
 
   it("errors on non-existent item", () => {
-    const backlog = makeBacklog([
-      makeItem({ id: "001", status: "blocked" }),
-    ]);
-    writeBacklog(tmpDir, backlog);
+    const backlog = makeBacklog([makeItem({ id: "001", status: "blocked" })]);
+    writeBacklog(paths, backlog);
 
-    const result = unblockItems(tmpDir, "999");
+    const result = unblockItems(paths, "999");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
@@ -1720,12 +1745,95 @@ describe("unblockItems", () => {
       makeItem({ id: "001", status: "pending" }),
       makeItem({ id: "002", status: "done", completedAt: new Date().toISOString() }),
     ]);
-    writeBacklog(tmpDir, backlog);
+    writeBacklog(paths, backlog);
 
-    const result = unblockItems(tmpDir);
+    const result = unblockItems(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.unblockedCount).toBe(0);
     expect(result.value.unblockedIds).toEqual([]);
+  });
+});
+
+// ─── Non-default root ──────────────────────────────────────────
+
+describe("non-default root", () => {
+  it("operates on a non-default backlog root (specs/auth)", () => {
+    const { projectPath: multiProjectPath, cleanup } = createMultiRootProject({
+      roots: [
+        {
+          path: "specs/auth",
+          backlog: {
+            project: "auth-feature",
+            description: "Auth backlog",
+            items: [
+              {
+                id: "001",
+                type: "feature",
+                priority: 1,
+                title: "Add login",
+                description: "Login page",
+                acceptanceCriteria: ["Login works"],
+                status: "pending",
+                completedAt: null,
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    try {
+      const authRoot = path.join(multiProjectPath, "specs", "auth");
+      const authStateDir = path.join(authRoot, ".ralph");
+      const authPaths: BacklogPaths = {
+        projectPath: multiProjectPath,
+        root: authRoot,
+        stateDir: authStateDir,
+        backlog: path.join(authRoot, BACKLOG_FILENAME),
+        state: path.join(authStateDir, STATE_FILENAME),
+        log: path.join(authStateDir, "ralph.log"),
+        done: path.join(authStateDir, "DONE"),
+        cancel: path.join(authStateDir, "CANCEL"),
+        progress: path.join(authStateDir, "progress.md"),
+        iterationStatus: path.join(authStateDir, "iteration-status.json"),
+        archive: path.join(authStateDir, "archive"),
+        lock: path.join(authStateDir, ".loop.lock"),
+      };
+
+      // Read from the non-default root
+      const readResult = readBacklog(authPaths);
+      expect(readResult.ok).toBe(true);
+      if (!readResult.ok) return;
+      expect(readResult.value.project).toBe("auth-feature");
+      expect(readResult.value.items).toHaveLength(1);
+      expect(readResult.value.items[0]!.title).toBe("Add login");
+
+      // Add an item to the non-default root
+      const addResult = addItem(authPaths, {
+        type: "bug",
+        priority: 2,
+        title: "Fix auth redirect",
+        acceptanceCriteria: ["Redirect works"],
+      });
+      expect(addResult.ok).toBe(true);
+      if (!addResult.ok) return;
+      expect(addResult.value.id).toBe("002");
+
+      // Verify it's persisted in the non-default root
+      const backlog = readBacklog(authPaths);
+      expect(backlog.ok).toBe(true);
+      if (!backlog.ok) return;
+      expect(backlog.value.items).toHaveLength(2);
+
+      // Verify the default root is untouched
+      const defaultPaths = defaultBacklogPaths(multiProjectPath);
+      const defaultBacklog = readBacklog(defaultPaths);
+      expect(defaultBacklog.ok).toBe(true);
+      if (!defaultBacklog.ok) return;
+      expect(defaultBacklog.value.items).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
   });
 });

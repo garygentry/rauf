@@ -13,6 +13,7 @@ import {
   type InitOptions,
 } from "./greenfield.js";
 import { readBacklog } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
 import { fileExists } from "./fs-utils.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
@@ -296,7 +297,7 @@ describe("initProject: backlog seeding", () => {
     if (!result.ok) return;
 
     // Check backlog was seeded
-    const backlog = readBacklog(projectDir);
+    const backlog = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
     expect(backlog.value.items.length).toBe(2);
@@ -319,7 +320,7 @@ describe("initProject: backlog seeding", () => {
 
     expect(result.ok).toBe(true);
 
-    const backlog = readBacklog(projectDir);
+    const backlog = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
     expect(backlog.value.items.length).toBe(2);
@@ -344,7 +345,7 @@ describe("initProject: backlog seeding", () => {
 
     expect(result.ok).toBe(true);
 
-    const backlog = readBacklog(projectDir);
+    const backlog = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
     expect(backlog.value.items.length).toBe(3);
@@ -369,7 +370,7 @@ describe("initProject: backlog seeding", () => {
 
     expect(result.ok).toBe(true);
 
-    const backlog = readBacklog(projectDir);
+    const backlog = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
     expect(backlog.value.items.length).toBe(2);
@@ -404,7 +405,7 @@ describe("initProject: backlog seeding", () => {
       }),
     );
 
-    const backlog = readBacklog(projectDir);
+    const backlog = readBacklog(defaultBacklogPaths(projectDir));
     expect(backlog.ok).toBe(true);
     if (!backlog.ok) return;
     expect(backlog.value.items[0]!.id).toBe("001");

@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { sweepBacklog } from "./archive.js";
 import { readBacklog, writeBacklog, resetStalledItems, ensureBacklog } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import { clearDoneFile, clearCancelFile } from "./status.js";
 import { atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { deployProgress } from "./installer.js";
@@ -56,7 +57,7 @@ export function resetProject(
   const resolved = path.resolve(projectPath);
 
   // 0. Ensure backlog.json exists (create empty if .ralph/ dir is present)
-  const ensureResult = ensureBacklog(resolved);
+  const ensureResult = ensureBacklog(defaultBacklogPaths(resolved));
   if (!ensureResult.ok) return ensureResult;
 
   // 1. Sweep all done items to archive (no min-age filter)
@@ -64,7 +65,7 @@ export function resetProject(
   if (!sweepResult.ok) return sweepResult;
 
   // 2. Reset in_progress → pending
-  const stalledResult = resetStalledItems(resolved);
+  const stalledResult = resetStalledItems(defaultBacklogPaths(resolved));
   if (!stalledResult.ok) return stalledResult;
 
   // 3. Delete state.json (swallow ENOENT)
@@ -144,11 +145,11 @@ export function resetProject(
   // 8. Optionally clear backlog (empty items, reset project/description)
   let backlogCleared = false;
   if (options?.clearBacklog) {
-    const backlogResult = readBacklog(resolved);
+    const backlogResult = readBacklog(defaultBacklogPaths(resolved));
     if (!backlogResult.ok) return backlogResult;
 
     const backlog = backlogResult.value;
-    const writeResult = writeBacklog(resolved, {
+    const writeResult = writeBacklog(defaultBacklogPaths(resolved), {
       ...backlog,
       items: [],
     });

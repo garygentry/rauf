@@ -20,7 +20,7 @@ import {
   STALENESS_THRESHOLD_MS,
   LOG_ACTIVE_THRESHOLD_MS,
 } from "./status.js";
-import { STATE_FILENAME } from "./backlog.js";
+import { STATE_FILENAME } from "./backlog-root.js";
 import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────

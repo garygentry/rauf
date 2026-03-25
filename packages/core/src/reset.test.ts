@@ -5,6 +5,7 @@ import * as os from "node:os";
 
 import { resetProject } from "./reset.js";
 import { writeBacklog } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import type { Backlog, BacklogItem } from "./schemas.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -39,15 +40,12 @@ function makeBacklog(items: BacklogItem[]): Backlog {
 }
 
 function writeSeedBacklog(items: BacklogItem[]): void {
-  const result = writeBacklog(tmpDir, makeBacklog(items));
+  const result = writeBacklog(defaultBacklogPaths(tmpDir), makeBacklog(items));
   if (!result.ok) throw new Error(`Seed failed: ${result.error.message}`);
 }
 
 function writeStateJson(data: object): void {
-  fs.writeFileSync(
-    path.join(tmpDir, ".ralph", "state.json"),
-    JSON.stringify(data, null, 2),
-  );
+  fs.writeFileSync(path.join(tmpDir, ".ralph", "state.json"), JSON.stringify(data, null, 2));
 }
 
 function writeDoneMarker(content: string = "complete"): void {
@@ -196,7 +194,9 @@ describe("resetProject", () => {
     const progressArchive = findArchiveFile(archiveDir, "-progress.md");
     expect(progressArchive).toBeDefined();
     expect(progressArchive).toMatch(/^\d{8}-\d{6}-progress\.md$/);
-    expect(fs.readFileSync(path.join(archiveDir, progressArchive!), "utf-8")).toBe("# Old learnings\n\nSome accumulated context.");
+    expect(fs.readFileSync(path.join(archiveDir, progressArchive!), "utf-8")).toBe(
+      "# Old learnings\n\nSome accumulated context.",
+    );
 
     // Verify fresh progress.md was deployed (not the old content)
     expect(fs.existsSync(progressPath)).toBe(true);
@@ -247,7 +247,9 @@ describe("resetProject", () => {
     const logArchive = findArchiveFile(archiveDir, "-ralph.log");
     expect(logArchive).toBeDefined();
     expect(logArchive).toMatch(/^\d{8}-\d{6}-ralph\.log$/);
-    expect(fs.readFileSync(path.join(archiveDir, logArchive!), "utf-8")).toContain("some log entry");
+    expect(fs.readFileSync(path.join(archiveDir, logArchive!), "utf-8")).toContain(
+      "some log entry",
+    );
 
     // Verify original log removed (not recreated — appendLog creates on first write)
     expect(fs.existsSync(logPath)).toBe(false);

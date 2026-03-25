@@ -220,3 +220,27 @@ export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths {
 export function ensureStateDir(paths: BacklogPaths): Result<void> {
   return ensureDir(paths.stateDir);
 }
+
+/**
+ * Construct BacklogPaths for the default root ({projectPath}/.ralph) without
+ * any filesystem checks. Useful as a bridge for callers that don't yet resolve
+ * paths via resolveBacklogPaths.
+ */
+export function defaultBacklogPaths(projectPath: string): BacklogPaths {
+  const resolved = path.resolve(projectPath);
+  const stateDir = path.join(resolved, ".ralph");
+  return {
+    projectPath: resolved,
+    root: stateDir,
+    stateDir,
+    backlog: path.join(stateDir, BACKLOG_FILENAME),
+    state: path.join(stateDir, STATE_FILENAME),
+    log: path.join(stateDir, "ralph.log"),
+    done: path.join(stateDir, "DONE"),
+    cancel: path.join(stateDir, "CANCEL"),
+    progress: path.join(stateDir, "progress.md"),
+    iterationStatus: path.join(stateDir, "iteration-status.json"),
+    archive: path.join(stateDir, "archive"),
+    lock: path.join(stateDir, LOCK_FILENAME),
+  };
+}

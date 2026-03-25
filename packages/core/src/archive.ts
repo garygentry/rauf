@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, fileExists, ensureDir } from "./fs-utils.js";
 import { readBacklog, writeBacklog } from "./backlog.js";
+import { defaultBacklogPaths } from "./backlog-root.js";
 import {
   ArchiveMonthSchema,
   normalizeBacklogItems,
@@ -44,7 +45,7 @@ export function sweepBacklog(
   options?: { minAgeDays?: number },
 ): Result<SweepResult> {
   // 1. Read backlog
-  const backlogResult = readBacklog(projectPath);
+  const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
   if (!backlogResult.ok) return backlogResult;
 
   const backlog = backlogResult.value;
@@ -108,7 +109,10 @@ export function sweepBacklog(
   }
 
   // 8. Update backlog with remaining items
-  const backlogWriteResult = writeBacklog(projectPath, { ...backlog, items: toKeep });
+  const backlogWriteResult = writeBacklog(defaultBacklogPaths(projectPath), {
+    ...backlog,
+    items: toKeep,
+  });
   if (!backlogWriteResult.ok) return backlogWriteResult;
 
   // 9. Return summary
