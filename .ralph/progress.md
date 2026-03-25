@@ -20,3 +20,10 @@
 - Barrel export in index.ts simplified from explicit named re-exports to `export * from "./backlog.js"` since constants removed from backlog.ts eliminated the TS2308 conflict
 - CLI loop-commands.test.ts has 3 flaky tests (handleLoopStop, handleLoopFollow, path resolution) that depend on server connectivity timing — pass in isolation, fail intermittently in parallel runs
 - Pre-existing format issues in many files (specs, some source files) — not related to this work
+
+### 005 — Refactor status.ts, add scanActiveRoots (2026-03-25)
+- Same `defaultBacklogPaths` bridge pattern from item 004 applied to all status function callers
+- Multi-line function calls (appendLog with args on separate lines) require separate replace_all passes for each indentation level — single-line replace_all misses them
+- Removing NOT_INSTALLED check from deriveStatus (per spec 3.4) cascades to integration and web tests that expected that state — updated both to expect IDLE instead
+- Previously exported constants (RALPH_DIR, LOG_FILENAME, DONE_FILENAME, CANCEL_FILENAME) from status.ts now removed; integration.test.ts switched to DEFAULT_ROOT_DIR from backlog-root.ts and inline strings
+- scanActiveRoots uses SCAN_SKIP_DIRS cast to `readonly string[]` for `.includes()` compatibility with the `as const` tuple type
