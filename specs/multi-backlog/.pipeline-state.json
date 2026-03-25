@@ -40,7 +40,7 @@
       "commitHash": "c9af3a7"
     },
     "forge-3-specs": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "artifacts": [
         "specs/multi-backlog/00-core-definitions.md",
@@ -53,8 +53,8 @@
         "specs/multi-backlog/07-testing-strategy.md",
         "specs/multi-backlog/TRACEABILITY.md"
       ],
-      "completedAt": null,
-      "commitHash": null,
+      "completedAt": "2026-03-25T00:00:00Z",
+      "commitHash": "38e55ca",
       "basedOnVersions": {
         "forge-1-prd": 1,
         "forge-2-tech": 1
