@@ -78,8 +78,8 @@
         "pnpm typecheck passes",
         "pnpm test packages/core/src/lock.test.ts passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T05:26:09.632Z",
       "dependsOn": [
         "001"
       ],
