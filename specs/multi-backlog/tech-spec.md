@@ -72,7 +72,7 @@ export interface InstructionPaths {
 export function resolveBacklogRoot(
   projectPath: string,
   backlogFlag?: string,
-): string;
+): Result<string>;
 
 /**
  * Resolve the state directory for a backlog root.
@@ -306,7 +306,7 @@ export function deleteItem(paths: BacklogPaths, id: string): Result<void>;
 export function restoreFromBackup(paths: BacklogPaths): Result<Backlog>;
 export function resetStalledItems(paths: BacklogPaths): Result<{ resetCount: number }>;
 export function ensureBacklog(paths: BacklogPaths): Result<Backlog>;
-export function unblockItems(paths: BacklogPaths, itemId?: string): Result<number>;
+export function unblockItems(paths: BacklogPaths, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>;
 
 // status.ts
 export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus>;

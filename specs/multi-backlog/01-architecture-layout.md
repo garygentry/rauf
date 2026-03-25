@@ -48,7 +48,8 @@ backlog.ts
   └── (all functions change first param from projectPath to paths: BacklogPaths)
 
 status.ts
-  ├── imports: backlog-root.ts (BacklogPaths, ActiveRoot — types)  # CHANGED
+  ├── imports: backlog-root.ts (BacklogPaths — type only)  # CHANGED
+  ├── defines: ActiveRoot (co-located with scanActiveRoots)
   └── (all functions change first param; adds scanActiveRoots)
 
 iteration-status.ts

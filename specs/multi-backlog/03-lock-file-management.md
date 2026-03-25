@@ -27,12 +27,13 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { atomicWrite, fileExists } from "./fs-utils.js";
 import type { BacklogPaths } from "./backlog-root.js";
-import { LockFileContentSchema, type LockFileContent, type LockStatus } from "./schemas.js";
+// LockFileContent, LockFileContentSchema, and LockStatus are defined locally in this module
+// (see 00-core-definitions.md section 1.8 for type location reference)
 ```
 
 **Exports:** `acquireLock`, `releaseLock`, `checkLock`, `forceClearLock`
 
-Type definitions for `LockFileContent`, `LockFileContentSchema`, and `LockStatus` are in `00-core-definitions.md` and live in `schemas.ts` / `backlog-root.ts`.
+Type definitions for `LockFileContent`, `LockFileContentSchema`, and `LockStatus` are in `00-core-definitions.md` and are defined locally within `lock.ts` (see 00-core-definitions.md section 1.8).
 
 ## 2. Functions
 

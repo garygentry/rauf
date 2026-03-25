@@ -59,7 +59,7 @@ import type { BacklogPaths } from "./backlog-root.js";
 | `restoreFromBackup` | `(projectPath: string): Result<void>` | `(paths: BacklogPaths): Result<void>` |
 | `resetStalledItems` | `(projectPath: string): Result<{ resetCount: number }>` | `(paths: BacklogPaths): Result<{ resetCount: number }>` |
 | `ensureBacklog` | `(projectPath: string): Result<void>` | `(paths: BacklogPaths): Result<void>` |
-| `unblockItems` | `(projectPath: string, itemId?: string): Result<...>` | `(paths: BacklogPaths, itemId?: string): Result<...>` |
+| `unblockItems` | `(projectPath: string, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>` | `(paths: BacklogPaths, itemId?: string): Result<{ unblockedCount: number; unblockedIds: string[] }>` |
 
 **Unchanged:** `selectNextItem(backlog: Backlog)`, `validateStatusTransition(current, target)`
 
@@ -176,7 +176,8 @@ function getCancelPath(projectPath: string): string { ... }
 ### 3.2 New Imports
 
 ```typescript
-import type { BacklogPaths, ActiveRoot } from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
+// ActiveRoot is defined locally in status.ts (see 00-core-definitions.md section 1.8)
 ```
 
 ### 3.3 Signature Changes

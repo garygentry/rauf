@@ -105,6 +105,8 @@ This feature introduces the concept of a **backlog root** — a self-contained d
   - Priority: P1
 - REQ-INST-03: `progress.md` is always per-backlog-root (no fallback). Each root accumulates its own learnings.
   - Priority: P0
+- REQ-TMPL-01: Artifact templates (RALPH.md.tmpl, CLAUDE_ADDON.md, CLAUDE_GREENFIELD.md.tmpl) must use path-agnostic wording. Runtime prompt injection provides actual paths.
+  - Priority: P1
 
 ### 3.7 Core Architecture
 
@@ -205,5 +207,5 @@ Existing projects using `.ralph/backlog.json` with the current single-backlog mo
 | Priority | Requirements |
 |----------|-------------|
 | P0 | REQ-ROOT-01–04, REQ-STATE-01–03, REQ-CLI-01–05, REQ-STATUS-01, REQ-STATUS-03, REQ-LOCK-01–03, REQ-LOCK-05, REQ-INST-03, REQ-ARCH-01–03, REQ-SEC-01, REQ-OBS-01–02, REQ-REL-01, REQ-REL-03, REQ-PERF-02 |
-| P1 | REQ-STATE-04, REQ-STATUS-02, REQ-LOCK-04, REQ-INST-01–02, REQ-PERF-01, REQ-SEC-02, REQ-REL-02 |
+| P1 | REQ-STATE-04, REQ-STATUS-02, REQ-LOCK-04, REQ-INST-01–02, REQ-TMPL-01, REQ-PERF-01, REQ-SEC-02, REQ-REL-02 |
 | P2 | REQ-SCALE-01 |

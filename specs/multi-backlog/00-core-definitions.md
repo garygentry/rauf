@@ -184,6 +184,15 @@ export const LoopStartOptionsSchema = z.object({
 });
 ```
 
+### 1.8 Type Locations
+
+The types defined above are implemented in the following source files:
+
+- `BacklogPaths`, `InstructionPaths` → `backlog-root.ts`
+- `LockFileContent`, `LockFileContentSchema`, `LockStatus` → `lock.ts` (defined locally, not in `schemas.ts`)
+- `ActiveRoot` → `status.ts` (co-located with `scanActiveRoots()` which returns `ActiveRoot[]`)
+- `LoopStartOptionsSchema` extension → `schemas.ts`
+
 ## 2. Error Codes
 
 ### 2.1 `LOCK_CONFLICT` (REQ-OBS-02)

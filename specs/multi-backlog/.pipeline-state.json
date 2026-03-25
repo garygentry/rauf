@@ -60,6 +60,13 @@
         "forge-2-tech": 1
       }
     },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": "specs/multi-backlog/VERIFY-specs-2026-03-25.md",
+      "findingsCount": 8,
+      "verifiedAt": "2026-03-25T00:00:00Z",
+      "fixedAt": "2026-03-25T00:00:00Z"
+    },
     "forge-4-backlog": {
       "status": "pending",
       "version": 0,

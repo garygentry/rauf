@@ -53,6 +53,8 @@ const paths = pathsResult.value;
 
 When `--backlog` is omitted, `extractStringFlag` returns `null`, so `resolveBacklogRoot` defaults to `{projectPath}/.ralph`.
 
+**Error path formatting:** When printing error messages to the CLI, convert absolute paths to relative paths using `path.relative(process.cwd(), absolutePath)` for readability. The internal error messages from core use absolute paths for programmatic clarity, but users should see concise relative paths.
+
 ### 2.2 `handleLoopRun` (REQ-LOCK-04)
 
 The direct-mode `loop run` command gains `--backlog` and `--force` flag extraction:
@@ -235,12 +237,45 @@ const result = readLogTail(resolved, lines);
 const result = readLogTail(paths, lines);
 ```
 
-### 2.8 Affected Commands Summary
+### 2.8 `handleReset`
+
+The reset command gains `--backlog` flag support. Since `resetProject` calls multiple core functions (each now accepting `BacklogPaths`), the handler must resolve paths at entry:
+
+```typescript
+export async function handleReset(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) { /* unchanged */ }
+
+  const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  // Resolve paths (same pattern as 2.1)
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) { error(...); return ExitCode.ERROR; }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) { error(...); return ExitCode.ERROR; }
+  const paths = pathsResult.value;
+
+  // Pass BacklogPaths to resetProject (see 04-core-module-refactor.md section 6)
+  const result = resetProject(paths, options);
+  // Note: resetProject internally calls ensureBacklog(paths), sweepBacklog(paths),
+  // resetStalledItems(paths), clearDoneFile(paths), clearCancelFile(paths),
+  // and deployProgress(paths.stateDir) — all using the resolved BacklogPaths.
+
+  if (!result.ok) {
+    error(result.error.message);
+    return ExitCode.ERROR;
+  }
+  // ... format and print result (unchanged pattern) ...
+}
+```
+
+### 2.9 Affected Commands Summary
 
 | Command | `--backlog` | `--force` |
 |---------|:-----------:|:---------:|
 | `ralph loop run` | Yes | Yes (new) |
-| `ralph loop start` | Yes | Yes (new) |
+| `ralph loop start` | Yes | No |
 | `ralph loop stop` | Yes | No |
 | `ralph loop follow` | Yes | No |
 | `ralph loop review` | Yes | No |
@@ -352,7 +387,12 @@ export class LoopManager {
   private listeners = new Map<string, Set<LoopEventListener>>();
 
   startLoop(projectPath: string, options: LoopStartOptions): { ok: boolean; error?: string } {
-    const runner = new LoopRunner(projectPath, options);
+    // Use static factory (see spec 05, section 2.1)
+    const runnerResult = LoopRunner.create(projectPath, options);
+    if (!runnerResult.ok) {
+      return { ok: false, error: runnerResult.error.message };
+    }
+    const runner = runnerResult.value;
 
     // Key by backlog root (default: {projectPath}/.ralph)
     const backlogRoot = options.backlogRoot ?? path.join(projectPath, ".ralph");
