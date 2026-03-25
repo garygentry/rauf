@@ -3,6 +3,23 @@ set -euo pipefail
 SANDBOX_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SANDBOX_DIR/.." && pwd)"
 SCENARIO="${1:-stream-done}"
+shift || true
+
+# Parse optional --backlog flag from remaining args
+BACKLOG_FLAG=""
+BACKLOG_DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --backlog)
+      BACKLOG_DIR="$2"
+      BACKLOG_FLAG="--backlog $2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
 # Validate scenario exists
 if [ ! -f "$SANDBOX_DIR/scenarios/${SCENARIO}.sh" ]; then
@@ -19,39 +36,49 @@ export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
 export MOCK_CLAUDE_SCENARIO="$SCENARIO"
 
 echo "=== Running scenario: $SCENARIO ==="
-ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1
+# shellcheck disable=SC2086
+ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 $BACKLOG_FLAG
 EXIT_CODE=$?
 
 echo ""
 echo "=== Post-run state ==="
 
+# Determine state directory based on --backlog flag
+if [ -n "$BACKLOG_DIR" ]; then
+  STATE_DIR="$SANDBOX_DIR/$BACKLOG_DIR/.ralph"
+  BACKLOG_FILE="$SANDBOX_DIR/$BACKLOG_DIR/backlog.json"
+else
+  STATE_DIR="$SANDBOX_DIR/.ralph"
+  BACKLOG_FILE="$SANDBOX_DIR/.ralph/backlog.json"
+fi
+
 # Show backlog item statuses
-if [ -f "$SANDBOX_DIR/.ralph/backlog.json" ]; then
+if [ -f "$BACKLOG_FILE" ]; then
   echo "Backlog items:"
   if command -v jq &>/dev/null; then
-    jq -r '.items[] | "  \(.id): \(.status)\(if .blockedReason then " (\(.blockedReason))" else "" end)"' "$SANDBOX_DIR/.ralph/backlog.json"
+    jq -r '.items[] | "  \(.id): \(.status)\(if .blockedReason then " (\(.blockedReason))" else "" end)"' "$BACKLOG_FILE"
   else
-    cat "$SANDBOX_DIR/.ralph/backlog.json"
+    cat "$BACKLOG_FILE"
   fi
 fi
 
 # Show state.json status
-if [ -f "$SANDBOX_DIR/.ralph/state.json" ]; then
+if [ -f "$STATE_DIR/state.json" ]; then
   echo "Loop state:"
   if command -v jq &>/dev/null; then
-    jq -r '  "  status: \(.status), lastSignal: \(.lastSignal)"' "$SANDBOX_DIR/.ralph/state.json"
+    jq -r '  "  status: \(.status), lastSignal: \(.lastSignal)"' "$STATE_DIR/state.json"
   else
-    cat "$SANDBOX_DIR/.ralph/state.json"
+    cat "$STATE_DIR/state.json"
   fi
 fi
 
 # Show DONE file
-if [ -f "$SANDBOX_DIR/.ralph/DONE" ]; then
-  echo "DONE file: $(cat "$SANDBOX_DIR/.ralph/DONE")"
+if [ -f "$STATE_DIR/DONE" ]; then
+  echo "DONE file: $(cat "$STATE_DIR/DONE")"
 fi
 
 # Warn if iteration-status.json still exists (should be cleaned up)
-if [ -f "$SANDBOX_DIR/.ralph/iteration-status.json" ]; then
+if [ -f "$STATE_DIR/iteration-status.json" ]; then
   echo "WARNING: iteration-status.json still exists (should have been cleaned up)"
 fi
 

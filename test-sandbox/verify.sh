@@ -79,6 +79,67 @@ assert_state_status() {
   fi
 }
 
+# ─── Multi-backlog assertion helpers ─────────────────────────────────
+
+assert_file_exists() {
+  local filepath="$1"
+  local label="${2:-$filepath}"
+  if [ -f "$filepath" ]; then
+    pass "$label exists"
+  else
+    fail "$label missing"
+  fi
+}
+
+assert_file_not_exists() {
+  local filepath="$1"
+  local label="${2:-$filepath}"
+  if [ ! -f "$filepath" ]; then
+    pass "$label does not exist"
+  else
+    fail "$label should not exist but does"
+  fi
+}
+
+assert_dir_exists() {
+  local dirpath="$1"
+  local label="${2:-$dirpath}"
+  if [ -d "$dirpath" ]; then
+    pass "$label exists"
+  else
+    fail "$label missing"
+  fi
+}
+
+assert_item_status_at() {
+  local backlog_file="$1"
+  local item_id="$2"
+  local expected="$3"
+  local actual
+  actual=$(jq -r ".items[] | select(.id == \"$item_id\") | .status" "$backlog_file")
+  if [ "$actual" = "$expected" ]; then
+    pass "item $item_id status = $expected (at $backlog_file)"
+  else
+    fail "item $item_id status: expected '$expected', got '$actual' (at $backlog_file)"
+  fi
+}
+
+assert_state_status_at() {
+  local state_file="$1"
+  local expected="$2"
+  if [ ! -f "$state_file" ]; then
+    fail "state.json missing at $state_file"
+    return
+  fi
+  local actual
+  actual=$(jq -r '.status' "$state_file")
+  if [ "$actual" = "$expected" ]; then
+    pass "state status = $expected (at $state_file)"
+  else
+    fail "state status: expected '$expected', got '$actual' (at $state_file)"
+  fi
+}
+
 # ─── Run a scenario ──────────────────────────────────────────────────
 
 run_scenario() {
@@ -133,6 +194,47 @@ assert_item_status "001" "in_progress"
 assert_no_iteration_status
 assert_done_file_exists
 assert_done_file_contains "needs_human"
+
+# ─── Multi-backlog scenario ──────────────────────────────────────────
+
+# 6. multi-backlog: --backlog flag routes state to custom root
+echo ""
+echo "=== Scenario: multi-backlog ==="
+
+# Reset sandbox (also sets up specs/feature-a/backlog.json)
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+export MOCK_CLAUDE_SCENARIO="stream-done"
+
+# Verify the backlog file is in place before run
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/backlog.json" "specs/feature-a/backlog.json (pre-run)"
+
+# Run with --backlog flag
+ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --backlog specs/feature-a >/dev/null 2>&1 || true
+
+# Assert state dir was auto-created at specs/feature-a/.ralph/
+assert_dir_exists "$SANDBOX_DIR/specs/feature-a/.ralph" "specs/feature-a/.ralph state dir"
+
+# Assert state.json written to custom root state dir
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/.ralph/state.json" "specs/feature-a/.ralph/state.json"
+assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.ralph/state.json" "limit_reached"
+
+# Assert ralph.log written to custom root state dir
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/.ralph/ralph.log" "specs/feature-a/.ralph/ralph.log"
+
+# Assert DONE file written to custom root state dir
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/.ralph/DONE" "specs/feature-a/.ralph/DONE"
+
+# Assert backlog item was picked up and marked done
+assert_item_status_at "$SANDBOX_DIR/specs/feature-a/backlog.json" "001" "done"
+
+# Assert .loop.lock was cleaned up after run
+assert_file_not_exists "$SANDBOX_DIR/specs/feature-a/.ralph/.loop.lock" "specs/feature-a/.ralph/.loop.lock (cleaned up)"
+
+# Assert default .ralph/ was NOT modified (state.json should not exist from this run)
+# Note: default .ralph/state.json might exist from setup, but shouldn't have been updated
+# We verify the custom root got the state, which is the key assertion
 
 # ─── Summary ─────────────────────────────────────────────────────────
 
