@@ -2,8 +2,8 @@
   "feature": "multi-backlog",
   "pipelineStatus": "active",
   "createdAt": "2026-03-24T00:00:00Z",
-  "updatedAt": "2026-03-24T12:00:00Z",
-  "currentStage": "forge-3-specs",
+  "updatedAt": "2026-03-25T00:00:00Z",
+  "currentStage": "forge-4-backlog",
   "stages": {
     "forge-1-prd": {
       "status": "complete",
@@ -40,12 +40,25 @@
       "commitHash": "c9af3a7"
     },
     "forge-3-specs": {
-      "status": "pending",
-      "version": 0,
-      "artifacts": [],
+      "status": "in-progress",
+      "version": 1,
+      "artifacts": [
+        "specs/multi-backlog/00-core-definitions.md",
+        "specs/multi-backlog/01-architecture-layout.md",
+        "specs/multi-backlog/02-backlog-root-resolution.md",
+        "specs/multi-backlog/03-lock-file-management.md",
+        "specs/multi-backlog/04-core-module-refactor.md",
+        "specs/multi-backlog/05-loop-runner-integration.md",
+        "specs/multi-backlog/06-cli-web-integration.md",
+        "specs/multi-backlog/07-testing-strategy.md",
+        "specs/multi-backlog/TRACEABILITY.md"
+      ],
       "completedAt": null,
       "commitHash": null,
-      "basedOnVersions": {}
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      }
     },
     "forge-4-backlog": {
       "status": "pending",
