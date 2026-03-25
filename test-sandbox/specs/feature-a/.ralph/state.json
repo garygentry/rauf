@@ -1,0 +1,14 @@
+{
+  "status": "running",
+  "iteration": 1,
+  "maxIterations": 1,
+  "currentItem": null,
+  "lastSignal": "clean",
+  "startedAt": "2026-03-25T07:13:49.005Z",
+  "updatedAt": "2026-03-25T07:13:49.627Z",
+  "completedItems": [
+    "001"
+  ],
+  "blockedItems": [],
+  "error": null
+}
