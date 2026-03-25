@@ -376,8 +376,8 @@
         "Default backlog root is {projectPath}/.ralph when not specified",
         "pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T06:58:57.813Z",
       "dependsOn": [
         "009",
         "011"
