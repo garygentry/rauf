@@ -280,8 +280,8 @@
         "pnpm typecheck passes",
         "pnpm test packages/loop/src/prompt-builder.test.ts passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T06:32:53.412Z",
       "dependsOn": [
         "002",
         "008",
