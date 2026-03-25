@@ -14,6 +14,26 @@ function testPaths(tmpDir: string): BacklogPaths {
   return defaultBacklogPaths(tmpDir);
 }
 
+/** Build BacklogPaths for a non-default root */
+function nonDefaultPaths(tmpDir: string, rootRel: string): BacklogPaths {
+  const root = path.join(tmpDir, rootRel);
+  const stateDir = path.join(root, ".ralph");
+  return {
+    projectPath: tmpDir,
+    root,
+    stateDir,
+    backlog: path.join(root, "backlog.json"),
+    state: path.join(stateDir, "state.json"),
+    log: path.join(stateDir, "ralph.log"),
+    done: path.join(stateDir, "DONE"),
+    cancel: path.join(stateDir, "CANCEL"),
+    progress: path.join(stateDir, "progress.md"),
+    iterationStatus: path.join(stateDir, "iteration-status.json"),
+    archive: path.join(stateDir, "archive"),
+    lock: path.join(stateDir, ".loop.lock"),
+  };
+}
+
 /** Build InstructionPaths for the default .ralph root in a test dir */
 function testInstructionPaths(tmpDir: string): InstructionPaths {
   const ralphMd = path.join(tmpDir, RALPH_DIR, "RALPH.md");
@@ -33,9 +53,11 @@ function setupProject(
   opts: {
     ralphMd?: string;
     progressMd?: string | null;
+    /** Optional: set up files in a non-default state directory */
+    stateDir?: string;
   } = {},
 ): void {
-  const ralphDir = path.join(tmpDir, RALPH_DIR);
+  const ralphDir = opts.stateDir ?? path.join(tmpDir, RALPH_DIR);
   fs.mkdirSync(ralphDir, { recursive: true });
 
   if (opts.ralphMd !== undefined) {
@@ -279,7 +301,7 @@ describe("buildPrompt", () => {
       }
     });
 
-    it("includes the important reminder at the end", () => {
+    it("includes the important reminder with relative paths", () => {
       setupProject(tmpDir, { ralphMd: "instructions" });
       const item = makeItem({ id: "007" });
 
@@ -683,6 +705,148 @@ describe("buildPrompt", () => {
       }
     });
   });
+
+  describe("Active Backlog Root section", () => {
+    it("is always injected for default root", () => {
+      setupProject(tmpDir, { ralphMd: "instructions" });
+
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        makeItem(),
+        makeBacklog(),
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain("## Active Backlog Root");
+        expect(result.value).toContain(
+          "You are working against the backlog at: .ralph/backlog.json",
+        );
+        expect(result.value).toContain("State directory: .ralph/");
+        expect(result.value).toContain("Progress log: .ralph/progress.md");
+        expect(result.value).toContain("Do NOT modify files outside this state directory.");
+      }
+    });
+
+    it("is injected with correct relative paths for non-default root", () => {
+      const paths = nonDefaultPaths(tmpDir, "specs/auth");
+      const stateDir = paths.stateDir;
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(path.join(stateDir, "RALPH.md"), "instructions");
+
+      const instrPaths: InstructionPaths = {
+        ralphMd: path.join(stateDir, "RALPH.md"),
+        reviewMd: null,
+      };
+
+      const result = buildPrompt(paths, instrPaths, makeItem(), makeBacklog());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain("## Active Backlog Root");
+        expect(result.value).toContain(
+          "You are working against the backlog at: specs/auth/backlog.json",
+        );
+        expect(result.value).toContain("State directory: specs/auth/.ralph/");
+        expect(result.value).toContain("Progress log: specs/auth/.ralph/progress.md");
+      }
+    });
+  });
+
+  describe("non-default root handling", () => {
+    it("reads RALPH.md from per-root stateDir", () => {
+      const paths = nonDefaultPaths(tmpDir, "specs/auth");
+      fs.mkdirSync(paths.stateDir, { recursive: true });
+      fs.writeFileSync(path.join(paths.stateDir, "RALPH.md"), "per-root instructions");
+
+      const instrPaths: InstructionPaths = {
+        ralphMd: path.join(paths.stateDir, "RALPH.md"),
+        reviewMd: null,
+      };
+
+      const result = buildPrompt(paths, instrPaths, makeItem(), makeBacklog());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain("per-root instructions");
+      }
+    });
+
+    it("reads RALPH.md from project-level fallback", () => {
+      // Set up project-level RALPH.md
+      setupProject(tmpDir, { ralphMd: "project-level instructions" });
+      const paths = nonDefaultPaths(tmpDir, "specs/auth");
+      fs.mkdirSync(paths.stateDir, { recursive: true });
+
+      // instructionPaths resolved to project-level fallback
+      const instrPaths: InstructionPaths = {
+        ralphMd: path.join(tmpDir, ".ralph", "RALPH.md"),
+        reviewMd: null,
+      };
+
+      const result = buildPrompt(paths, instrPaths, makeItem(), makeBacklog());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain("project-level instructions");
+      }
+    });
+
+    it("returns error when RALPH.md missing everywhere", () => {
+      const paths = nonDefaultPaths(tmpDir, "specs/auth");
+      fs.mkdirSync(paths.stateDir, { recursive: true });
+
+      const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: null };
+
+      const result = buildPrompt(paths, instrPaths, makeItem(), makeBacklog());
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.code).toBe("FILE_NOT_FOUND");
+        expect(result.error.message).toContain("RALPH.md");
+      }
+    });
+
+    it("reads progress.md always from stateDir", () => {
+      const paths = nonDefaultPaths(tmpDir, "specs/auth");
+      fs.mkdirSync(paths.stateDir, { recursive: true });
+      fs.writeFileSync(path.join(paths.stateDir, "RALPH.md"), "instructions");
+      fs.writeFileSync(path.join(paths.stateDir, "progress.md"), "per-root progress");
+
+      const instrPaths: InstructionPaths = {
+        ralphMd: path.join(paths.stateDir, "RALPH.md"),
+        reviewMd: null,
+      };
+
+      const result = buildPrompt(paths, instrPaths, makeItem(), makeBacklog());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain("per-root progress");
+      }
+    });
+
+    it("uses relative paths in the important reminder for non-default root", () => {
+      const paths = nonDefaultPaths(tmpDir, "specs/auth");
+      fs.mkdirSync(paths.stateDir, { recursive: true });
+      fs.writeFileSync(path.join(paths.stateDir, "RALPH.md"), "instructions");
+
+      const instrPaths: InstructionPaths = {
+        ralphMd: path.join(paths.stateDir, "RALPH.md"),
+        reviewMd: null,
+      };
+
+      const result = buildPrompt(paths, instrPaths, makeItem({ id: "042" }), makeBacklog());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain(
+          "Do NOT modify specs/auth/backlog.json or specs/auth/.ralph/state.json",
+        );
+      }
+    });
+  });
 });
 
 describe("buildReviewPrompt", () => {
@@ -829,6 +993,100 @@ describe("buildReviewPrompt", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value).toContain("Learned that foo is important");
+    }
+  });
+
+  it("uses per-root REVIEW.md via instructionPaths", () => {
+    const paths = nonDefaultPaths(tmpDir, "specs/auth");
+    fs.mkdirSync(paths.stateDir, { recursive: true });
+
+    // Write a custom REVIEW.md in the non-default root's state dir
+    const reviewPath = path.join(paths.stateDir, "REVIEW.md");
+    fs.writeFileSync(
+      reviewPath,
+      "# Per-Root Review\n\nRun: {{verifyCommand}}\n\n{{completedItemsDetail}}\n\n{{gitDiff}}",
+    );
+
+    // Write marker file at project root
+    const marker: MarkerFile = {
+      ralph: true,
+      version: "1",
+      variant: "backlog-json",
+      installedAt: "2026-01-01T00:00:00Z",
+      installedBy: "test",
+      profile: {
+        stack: "TypeScript",
+        packageManager: "pnpm",
+        monorepo: false,
+        commands: { test: "pnpm test", typecheck: "tsc", lint: null, build: null, format: null },
+        verify: "pnpm test && pnpm typecheck",
+      },
+      artifactHashes: {},
+      options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
+    };
+    fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(marker));
+
+    const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: reviewPath };
+    const items = [
+      makeItem({ id: "001", title: "Auth", status: "done", completedAt: "2026-01-01" }),
+    ];
+
+    const result = buildReviewPrompt(paths, instrPaths, items, "diff content");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("# Per-Root Review");
+      expect(result.value).toContain("Auth");
+      expect(result.value).toContain("diff content");
+    }
+  });
+
+  it("falls back to embedded template when reviewMd is null", () => {
+    setupReviewProject(tmpDir);
+    const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: null };
+    const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
+
+    const result = buildReviewPrompt(testPaths(tmpDir), instrPaths, items, "some diff");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Falls back to embedded REVIEW.md.tmpl
+      expect(result.value).toContain("Post-Loop Review Pass");
+    }
+  });
+
+  it("reads progress.md from per-root stateDir", () => {
+    const paths = nonDefaultPaths(tmpDir, "specs/auth");
+    fs.mkdirSync(paths.stateDir, { recursive: true });
+    fs.writeFileSync(path.join(paths.stateDir, "progress.md"), "per-root review progress");
+
+    // Write marker file at project root
+    const marker: MarkerFile = {
+      ralph: true,
+      version: "1",
+      variant: "backlog-json",
+      installedAt: "2026-01-01T00:00:00Z",
+      installedBy: "test",
+      profile: {
+        stack: "TypeScript",
+        packageManager: "pnpm",
+        monorepo: false,
+        commands: { test: "pnpm test", typecheck: "tsc", lint: null, build: null, format: null },
+        verify: "pnpm test",
+      },
+      artifactHashes: {},
+      options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
+    };
+    fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(marker));
+
+    const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: null };
+    const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
+
+    const result = buildReviewPrompt(paths, instrPaths, items, "");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toContain("per-root review progress");
     }
   });
 });

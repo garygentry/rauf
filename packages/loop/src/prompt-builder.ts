@@ -13,11 +13,6 @@ import {
 } from "@ralph/core";
 import { ok, err, ErrorCodes } from "@ralph/core";
 
-const RALPH_DIR = ".ralph";
-const RALPH_MD = "RALPH.md";
-const REVIEW_MD = "REVIEW.md";
-const PROGRESS_MD = "progress.md";
-
 /** Summary counts for backlog items by status */
 interface BacklogSummary {
   pending: number;
@@ -155,19 +150,17 @@ export function buildPrompt(
   item: BacklogItem,
   backlog: Backlog,
 ): Result<string> {
-  const projectPath = paths.projectPath;
-  const ralphMdPath = path.join(projectPath, RALPH_DIR, RALPH_MD);
-
-  if (!fileExists(ralphMdPath)) {
+  if (!instructionPaths.ralphMd) {
     return err({
       code: ErrorCodes.FILE_NOT_FOUND,
-      message: `RALPH.md not found at ${ralphMdPath}`,
+      message: "RALPH.md not found in backlog root state directory or project .ralph/",
     });
   }
 
-  const ralphMdContent = fs.readFileSync(ralphMdPath, "utf-8");
-  const progressPath = path.join(projectPath, RALPH_DIR, PROGRESS_MD);
-  const progressContent = fileExists(progressPath) ? fs.readFileSync(progressPath, "utf-8") : null;
+  const ralphMdContent = fs.readFileSync(instructionPaths.ralphMd, "utf-8");
+  const progressContent = fileExists(paths.progress)
+    ? fs.readFileSync(paths.progress, "utf-8")
+    : null;
 
   const summary = computeBacklogSummary(backlog);
   const itemJson = JSON.stringify(item, null, 2);
@@ -179,6 +172,17 @@ export function buildPrompt(
 
   // Section 1: RALPH.md as system context
   sections.push(`# Ralph — Per-Iteration Instructions\n\n${ralphMdContent}`);
+
+  // Section 1.5: Active Backlog Root context (always injected)
+  const relativeBacklog = path.relative(paths.projectPath, paths.backlog);
+  const relativeStateDir = path.relative(paths.projectPath, paths.stateDir);
+  const relativeProgress = path.relative(paths.projectPath, paths.progress);
+
+  sections.push(`## Active Backlog Root
+You are working against the backlog at: ${relativeBacklog}
+State directory: ${relativeStateDir}/
+Progress log: ${relativeProgress}
+Do NOT modify files outside this state directory.`);
 
   // Section 2: Current task
   sections.push(`## Your Current Task
@@ -231,8 +235,10 @@ ${progressContent}
   }
 
   // Section 6: Important reminder
+  const relBacklog = path.relative(paths.projectPath, paths.backlog);
+  const relState = path.relative(paths.projectPath, paths.state);
   sections.push(`---
-**IMPORTANT:** You are working on item ${item.id} ONLY. Do NOT modify .ralph/backlog.json or .ralph/state.json — the loop runner manages status. When done, output your exit signal as the LAST line of your response.`);
+**IMPORTANT:** You are working on item ${item.id} ONLY. Do NOT modify ${relBacklog} or ${relState} — the loop runner manages status. When done, output your exit signal as the LAST line of your response.`);
 
   return ok(sections.join("\n\n\n"));
 }
@@ -254,17 +260,15 @@ export function buildReviewPrompt(
   completedItems: BacklogItem[],
   gitDiff: string,
 ): Result<string> {
-  const projectPath = paths.projectPath;
   // Read verify command from marker file
-  const markerResult = readMarkerFile(projectPath);
+  const markerResult = readMarkerFile(paths.projectPath);
   const verifyCommand = markerResult.ok
     ? markerResult.value.profile.verify
     : "echo 'No verify command configured'";
 
   // Read progress.md
-  const progressPath = path.join(projectPath, RALPH_DIR, PROGRESS_MD);
-  const progressContent = fileExists(progressPath)
-    ? fs.readFileSync(progressPath, "utf-8")
+  const progressContent = fileExists(paths.progress)
+    ? fs.readFileSync(paths.progress, "utf-8")
     : "No progress log available.";
 
   // Format completed items detail
@@ -281,12 +285,11 @@ export function buildReviewPrompt(
       ? gitDiff.slice(0, MAX_DIFF_SIZE) + "\n\n... [diff truncated at 100KB] ..."
       : gitDiff;
 
-  // Try to read user-customizable REVIEW.md first
-  const reviewMdPath = path.join(projectPath, RALPH_DIR, REVIEW_MD);
+  // Try to read user-customizable REVIEW.md first (resolved by instructionPaths)
   let templateContent: string;
 
-  if (fileExists(reviewMdPath)) {
-    templateContent = fs.readFileSync(reviewMdPath, "utf-8");
+  if (instructionPaths.reviewMd) {
+    templateContent = fs.readFileSync(instructionPaths.reviewMd, "utf-8");
   } else {
     // Fall back to embedded template
     try {
