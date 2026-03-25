@@ -17,8 +17,8 @@
         "Constants LOCK_FILENAME, SCAN_SKIP_DIRS, STATE_FILENAME, BACKLOG_FILENAME, DEFAULT_ROOT_DIR are exported from backlog-root.ts",
         "pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T05:19:16.501Z",
       "dependsOn": [],
       "notes": "Read spec 00-core-definitions.md completely for exact type definitions with JSDoc. Read spec 01-architecture-layout.md for barrel export ordering. The placeholder stubs let downstream items compile against the types immediately. Import paths use .js extension per project convention (e.g., './backlog-root.js').",
       "estimatedIterations": 1,
