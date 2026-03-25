@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, fileExists, atomicWrite } from "./fs-utils.js";
 import { readBacklog } from "./backlog.js";
-import { defaultBacklogPaths } from "./backlog-root.js";
+import { type BacklogPaths, SCAN_SKIP_DIRS } from "./backlog-root.js";
 import {
   LoopStateSchema,
   LOG_PATTERNS,
@@ -15,12 +15,6 @@ import {
 } from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
-
-const RALPH_DIR = ".ralph";
-const STATE_FILENAME = "state.json";
-const LOG_FILENAME = "ralph.log";
-const DONE_FILENAME = "DONE";
-const CANCEL_FILENAME = "CANCEL";
 
 /** Staleness threshold in milliseconds (5 minutes) */
 const STALENESS_THRESHOLD_MS = 5 * 60 * 1000;
@@ -34,28 +28,25 @@ const MAX_LOG_TAIL_LINES = 10_000;
 /** Lines to scan from end for fallback status patterns */
 const LOG_SCAN_TAIL_LINES = 1000;
 
-// ─── Path helpers ────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────────
 
-function getStatePath(projectPath: string): string {
-  return path.join(path.resolve(projectPath), RALPH_DIR, STATE_FILENAME);
-}
-
-function getLogPath(projectPath: string): string {
-  return path.join(path.resolve(projectPath), RALPH_DIR, LOG_FILENAME);
-}
-
-function getDonePath(projectPath: string): string {
-  return path.join(path.resolve(projectPath), RALPH_DIR, DONE_FILENAME);
-}
-
-function getCancelPath(projectPath: string): string {
-  return path.join(path.resolve(projectPath), RALPH_DIR, CANCEL_FILENAME);
+/**
+ * A backlog root discovered to have an active (non-idle) loop.
+ * Returned by `scanActiveRoots()` for the status display.
+ */
+export interface ActiveRoot {
+  /** Relative path from project root to the backlog root directory */
+  relativePath: string;
+  /** Current loop status (from state.json or lock file presence) */
+  loopState: LoopStateEnum;
+  /** ID of the backlog item currently being worked on, if any */
+  currentItem: string | null;
 }
 
 // ─── BacklogSummary ──────────────────────────────────────────────
 
-function computeBacklogSummary(projectPath: string): BacklogSummary {
-  const backlogResult = readBacklog(defaultBacklogPaths(projectPath));
+function computeBacklogSummary(paths: BacklogPaths): BacklogSummary {
+  const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) {
     return { pending: 0, inProgress: 0, blocked: 0, done: 0, total: 0 };
   }
@@ -90,9 +81,8 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
   return mapping[status];
 }
 
-function deriveFromStateJson(projectPath: string): Result<DerivedStatus | null> {
-  const statePath = getStatePath(projectPath);
-  const stateResult = readJsonFile(statePath, LoopStateSchema);
+function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> {
+  const stateResult = readJsonFile(paths.state, LoopStateSchema);
 
   if (!stateResult.ok) {
     // state.json missing or invalid — signal to fall through to Tier 2
@@ -123,17 +113,17 @@ function deriveFromStateJson(projectPath: string): Result<DerivedStatus | null> 
     lastSignal: state.lastSignal,
     startedAt: state.startedAt,
     elapsed,
-    backlogSummary: computeBacklogSummary(projectPath),
+    backlogSummary: computeBacklogSummary(paths),
     sleepUntil: state.sleepUntil ?? null,
   });
 }
 
 // ─── Tier 2: Log parsing fallback ───────────────────────────────
 
-function deriveFromLogParsing(projectPath: string): DerivedStatus {
-  const logPath = getLogPath(projectPath);
-  const donePath = getDonePath(projectPath);
-  const summary = computeBacklogSummary(projectPath);
+function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
+  const logPath = paths.log;
+  const donePath = paths.done;
+  const summary = computeBacklogSummary(paths);
 
   const base: DerivedStatus = {
     loopState: "IDLE",
@@ -290,27 +280,9 @@ function computeElapsed(startedAt: string | null): number | null {
 //   2. Log parsing fallback (heuristic)
 // Always reads backlog for summary counts.
 
-export function deriveStatus(projectPath: string): Result<DerivedStatus> {
-  const resolved = path.resolve(projectPath);
-
-  // Check if project has ralph installed
-  const ralphDir = path.join(resolved, RALPH_DIR);
-  if (!fileExists(ralphDir)) {
-    return ok({
-      loopState: "NOT_INSTALLED",
-      stateSource: "none",
-      iteration: null,
-      maxIterations: null,
-      currentItem: null,
-      lastSignal: null,
-      startedAt: null,
-      elapsed: null,
-      backlogSummary: { pending: 0, inProgress: 0, blocked: 0, done: 0, total: 0 },
-    });
-  }
-
+export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus> {
   // Tier 1: Try state.json
-  const tier1Result = deriveFromStateJson(projectPath);
+  const tier1Result = deriveFromStateJson(paths);
   if (!tier1Result.ok) return tier1Result;
 
   if (tier1Result.value !== null) {
@@ -318,15 +290,15 @@ export function deriveStatus(projectPath: string): Result<DerivedStatus> {
   }
 
   // Tier 2: Fall back to log parsing
-  return ok(deriveFromLogParsing(projectPath));
+  return ok(deriveFromLogParsing(paths));
 }
 
 // ─── readLogTail ────────────────────────────────────────────────
 //
 // Read last N lines of ralph.log. Cap at MAX_LOG_TAIL_LINES.
 
-export function readLogTail(projectPath: string, lines: number = 50): Result<string[]> {
-  const logPath = getLogPath(projectPath);
+export function readLogTail(paths: BacklogPaths, lines: number = 50): Result<string[]> {
+  const logPath = paths.log;
   const cappedLines = Math.min(Math.max(lines, 1), MAX_LOG_TAIL_LINES);
 
   if (!fileExists(logPath)) {
@@ -357,8 +329,8 @@ export function readLogTail(projectPath: string, lines: number = 50): Result<str
 // Watch ralph.log for changes using fs.watch. Calls callback with
 // new lines as they appear. Returns cleanup function to stop watching.
 
-export function watchLog(projectPath: string, callback: (lines: string[]) => void): () => void {
-  const logPath = getLogPath(projectPath);
+export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => void): () => void {
+  const logPath = paths.log;
   let lastSize = 0;
 
   // Initialize size from current file
@@ -406,11 +378,11 @@ export function watchLog(projectPath: string, callback: (lines: string[]) => voi
 
 // ─── writeLoopState ──────────────────────────────────────────────
 //
-// Atomic write of .ralph/state.json with LoopStateSchema validation.
+// Atomic write of state.json with LoopStateSchema validation.
 // Auto-sets updatedAt to current ISO timestamp before writing.
 
 export function writeLoopState(
-  projectPath: string,
+  paths: BacklogPaths,
   state: Omit<LoopState, "updatedAt"> & { updatedAt?: string },
 ): Result<void> {
   const stateWithTimestamp: LoopState = {
@@ -433,17 +405,16 @@ export function writeLoopState(
     });
   }
 
-  const statePath = getStatePath(projectPath);
-  return atomicWrite(statePath, JSON.stringify(validation.data, null, 2) + "\n");
+  return atomicWrite(paths.state, JSON.stringify(validation.data, null, 2) + "\n");
 }
 
 // ─── appendLog ───────────────────────────────────────────────────
 //
-// Append a timestamped line to .ralph/ralph.log.
+// Append a timestamped line to ralph.log.
 // Format: [YYYY-MM-DD HH:MM:SS] message\n
 
-export function appendLog(projectPath: string, message: string): Result<void> {
-  const logPath = getLogPath(projectPath);
+export function appendLog(paths: BacklogPaths, message: string): Result<void> {
+  const logPath = paths.log;
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -468,10 +439,10 @@ export function appendLog(projectPath: string, message: string): Result<void> {
 
 // ─── writeDoneFile ───────────────────────────────────────────────
 //
-// Write content string to .ralph/DONE marker file.
+// Write content string to DONE marker file.
 
-export function writeDoneFile(projectPath: string, content: string): Result<void> {
-  const donePath = getDonePath(projectPath);
+export function writeDoneFile(paths: BacklogPaths, content: string): Result<void> {
+  const donePath = paths.done;
 
   try {
     fs.writeFileSync(donePath, content, "utf-8");
@@ -487,10 +458,10 @@ export function writeDoneFile(projectPath: string, content: string): Result<void
 
 // ─── clearDoneFile ───────────────────────────────────────────────
 //
-// Remove .ralph/DONE file. Returns ok even if file doesn't exist.
+// Remove DONE file. Returns ok even if file doesn't exist.
 
-export function clearDoneFile(projectPath: string): Result<void> {
-  const donePath = getDonePath(projectPath);
+export function clearDoneFile(paths: BacklogPaths): Result<void> {
+  const donePath = paths.done;
 
   try {
     fs.unlinkSync(donePath);
@@ -510,19 +481,19 @@ export function clearDoneFile(projectPath: string): Result<void> {
 
 // ─── checkCancelRequested ────────────────────────────────────────
 //
-// Check if .ralph/CANCEL file exists. Returns boolean directly
+// Check if CANCEL file exists. Returns boolean directly
 // (not wrapped in Result).
 
-export function checkCancelRequested(projectPath: string): boolean {
-  return fileExists(getCancelPath(projectPath));
+export function checkCancelRequested(paths: BacklogPaths): boolean {
+  return fileExists(paths.cancel);
 }
 
 // ─── clearCancelFile ─────────────────────────────────────────────
 //
-// Remove .ralph/CANCEL file. Returns whether the file existed.
+// Remove CANCEL file. Returns whether the file existed.
 
-export function clearCancelFile(projectPath: string): Result<boolean> {
-  const cancelPath = getCancelPath(projectPath);
+export function clearCancelFile(paths: BacklogPaths): Result<boolean> {
+  const cancelPath = paths.cancel;
 
   try {
     fs.unlinkSync(cancelPath);
@@ -540,13 +511,97 @@ export function clearCancelFile(projectPath: string): Result<boolean> {
   }
 }
 
+// ─── scanActiveRoots ─────────────────────────────────────────────
+//
+// Scan the project for backlog roots with active (non-idle) loops.
+
+function walkForStateFiles(dir: string, projectPath: string, results: ActiveRoot[]): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // Permission denied or deleted — skip
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const name = entry.name;
+    if ((SCAN_SKIP_DIRS as readonly string[]).includes(name)) continue;
+
+    const fullPath = path.join(dir, name);
+
+    if (name === ".ralph") {
+      // Check for state.json in this .ralph dir
+      const statePath = path.join(fullPath, "state.json");
+      try {
+        const raw = fs.readFileSync(statePath, "utf-8");
+        const parsed = LoopStateSchema.safeParse(JSON.parse(raw));
+        if (parsed.success && parsed.data.status !== "idle") {
+          // Determine backlog root: if parent has backlog.json, root is parent; else root is .ralph dir
+          const parentDir = dir;
+          const parentHasBacklog = fileExists(path.join(parentDir, "backlog.json"));
+          const backlogRoot = parentHasBacklog ? parentDir : fullPath;
+          results.push({
+            relativePath: path.relative(projectPath, backlogRoot),
+            loopState: mapLoopStateStatus(parsed.data.status),
+            currentItem: parsed.data.currentItem,
+          });
+        }
+      } catch {
+        // Missing or corrupt state.json — skip
+      }
+
+      // Check for .loop.lock without active state
+      const lockPath = path.join(fullPath, ".loop.lock");
+      if (fileExists(lockPath)) {
+        const parentDir = dir;
+        const parentHasBacklog = fileExists(path.join(parentDir, "backlog.json"));
+        const backlogRoot = parentHasBacklog ? parentDir : fullPath;
+        const relPath = path.relative(projectPath, backlogRoot);
+        // Only add if not already in results
+        if (!results.some((r) => r.relativePath === relPath)) {
+          results.push({
+            relativePath: relPath,
+            loopState: "RUNNING",
+            currentItem: null,
+          });
+        }
+      }
+
+      // Don't recurse into .ralph dirs
+      continue;
+    }
+
+    // Recurse into non-.ralph directories
+    walkForStateFiles(fullPath, projectPath, results);
+  }
+}
+
+/**
+ * Scan the project for backlog roots with active (non-idle) loops.
+ *
+ * Walks the project directory looking for state.json files inside .ralph/
+ * directories. For each found, reads the state and returns roots with
+ * non-idle status. Also detects .loop.lock files as activity indicators.
+ *
+ * Skips: node_modules, .git, dist, build, coverage
+ *
+ * @param projectPath - Absolute path to the project root
+ * @returns Array of active roots with their status
+ */
+export function scanActiveRoots(projectPath: string): Result<ActiveRoot[]> {
+  const resolved = path.resolve(projectPath);
+  const results: ActiveRoot[] = [];
+
+  walkForStateFiles(resolved, resolved, results);
+
+  // Sort by relativePath for deterministic output
+  results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+  return ok(results);
+}
+
 // ─── Exported constants (for testing) ────────────────────────────
 
-export {
-  RALPH_DIR,
-  LOG_FILENAME,
-  DONE_FILENAME,
-  CANCEL_FILENAME,
-  STALENESS_THRESHOLD_MS,
-  LOG_ACTIVE_THRESHOLD_MS,
-};
+export { STALENESS_THRESHOLD_MS, LOG_ACTIVE_THRESHOLD_MS };

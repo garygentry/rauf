@@ -11,6 +11,7 @@ import {
   readLogTail,
   watchLog,
   fileExists,
+  defaultBacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
 } from "@ralph/core";
@@ -42,7 +43,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     return handleStatusWatch(resolved, interval);
   }
 
-  const result = deriveStatus(resolved);
+  const result = deriveStatus(defaultBacklogPaths(resolved));
 
   if (!result.ok) {
     if (ctx.globalFlags.json) {
@@ -85,7 +86,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
     return handleLogFollow(resolved, tailN);
   }
 
-  const result = readLogTail(resolved, tailN);
+  const result = readLogTail(defaultBacklogPaths(resolved), tailN);
   if (!result.ok) {
     if (ctx.globalFlags.json) {
       outputJson({ error: result.error });
@@ -150,7 +151,7 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
 
 async function handleLogFollow(projectPath: string, initialLines: number): Promise<number> {
   // Show existing tail first
-  const tailResult = readLogTail(projectPath, initialLines);
+  const tailResult = readLogTail(defaultBacklogPaths(projectPath), initialLines);
   if (tailResult.ok && tailResult.value.length > 0) {
     for (const line of tailResult.value) {
       print(line);
@@ -173,7 +174,7 @@ async function handleLogFollow(projectPath: string, initialLines: number): Promi
     process.on("SIGTERM", stop);
 
     try {
-      cleanup = watchLog(projectPath, (newLines) => {
+      cleanup = watchLog(defaultBacklogPaths(projectPath), (newLines) => {
         for (const line of newLines) {
           print(line);
         }
@@ -190,10 +191,7 @@ async function handleLogFollow(projectPath: string, initialLines: number): Promi
 
 // ─── Status watch mode ──────────────────────────────────────────
 
-async function handleStatusWatch(
-  projectPath: string,
-  intervalSeconds: number,
-): Promise<number> {
+async function handleStatusWatch(projectPath: string, intervalSeconds: number): Promise<number> {
   return new Promise<number>((resolve) => {
     let running = true;
 
@@ -214,7 +212,7 @@ async function handleStatusWatch(
       print(c.dim(`ralph status  (${now})  Ctrl+C to stop`));
       print("");
 
-      const result = deriveStatus(projectPath);
+      const result = deriveStatus(defaultBacklogPaths(projectPath));
       if (!result.ok) {
         error(result.error.message);
       } else {

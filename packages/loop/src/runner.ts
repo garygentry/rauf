@@ -112,8 +112,8 @@ export class LoopRunner extends TypedEventEmitter {
 
     try {
       // (1) Clear DONE and CANCEL files at startup
-      clearDoneFile(this.projectPath);
-      clearCancelFile(this.projectPath);
+      clearDoneFile(defaultBacklogPaths(this.projectPath));
+      clearCancelFile(defaultBacklogPaths(this.projectPath));
 
       // (2) Read .ralph.json marker for project-level options
       const markerResult = readMarkerFile(this.projectPath);
@@ -130,7 +130,10 @@ export class LoopRunner extends TypedEventEmitter {
 
       // (3) Auto-sweep if enabled
       if (autoSweep) {
-        appendLog(this.projectPath, "Auto-sweep enabled, sweeping completed items");
+        appendLog(
+          defaultBacklogPaths(this.projectPath),
+          "Auto-sweep enabled, sweeping completed items",
+        );
         sweepBacklog(this.projectPath, { minAgeDays: sweepMinAgeDays });
       }
 
@@ -148,16 +151,19 @@ export class LoopRunner extends TypedEventEmitter {
         maxIterations: this.options.maxIterations,
         model: this.options.model ?? projectModel,
       });
-      appendLog(this.projectPath, `Loop started (maxIterations=${this.options.maxIterations})`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Loop started (maxIterations=${this.options.maxIterations})`,
+      );
       this.writeState("running", null);
 
       // (5) Main loop
       while (this.iterationCount < this.options.maxIterations) {
         if (this.isCancelled()) {
-          appendLog(this.projectPath, "Loop cancelled");
+          appendLog(defaultBacklogPaths(this.projectPath), "Loop cancelled");
           this.emitEvent("loop_cancelled", {});
           this.writeState("paused", null);
-          writeDoneFile(this.projectPath, "cancel");
+          writeDoneFile(defaultBacklogPaths(this.projectPath), "cancel");
           return {
             completedCount: this.completedCount,
             blockedCount: this.blockedCount,
@@ -213,14 +219,17 @@ export class LoopRunner extends TypedEventEmitter {
       // Loop ended
       if (this.iterationCount >= this.options.maxIterations) {
         // Max iterations reached
-        appendLog(this.projectPath, `Max iterations reached (${this.options.maxIterations})`);
+        appendLog(
+          defaultBacklogPaths(this.projectPath),
+          `Max iterations reached (${this.options.maxIterations})`,
+        );
         this.writeState("limit_reached", null);
         this.emitEvent("loop_completed", {
           completedCount: this.completedCount,
           blockedCount: this.blockedCount,
         });
         const summary = this.buildSummary();
-        writeDoneFile(this.projectPath, summary);
+        writeDoneFile(defaultBacklogPaths(this.projectPath), summary);
       } else {
         // No more items or loop completed naturally
         this.writeState("complete", null);
@@ -229,8 +238,8 @@ export class LoopRunner extends TypedEventEmitter {
           blockedCount: this.blockedCount,
         });
         const summary = this.buildSummary();
-        writeDoneFile(this.projectPath, summary);
-        appendLog(this.projectPath, "Loop completed");
+        writeDoneFile(defaultBacklogPaths(this.projectPath), summary);
+        appendLog(defaultBacklogPaths(this.projectPath), "Loop completed");
       }
 
       return {
@@ -243,7 +252,7 @@ export class LoopRunner extends TypedEventEmitter {
     } catch (e) {
       // Crash cleanup: reset in_progress item to pending
       const errorMsg = e instanceof Error ? e.message : String(e);
-      appendLog(this.projectPath, `Loop error: ${errorMsg}`);
+      appendLog(defaultBacklogPaths(this.projectPath), `Loop error: ${errorMsg}`);
       this.emitEvent("loop_error", { error: errorMsg });
       this.writeState("error", null, "error", errorMsg);
       throw e;
@@ -255,7 +264,7 @@ export class LoopRunner extends TypedEventEmitter {
             status: "pending",
           });
           appendLog(
-            this.projectPath,
+            defaultBacklogPaths(this.projectPath),
             `Reset item ${this.currentItemId} to pending (crash cleanup)`,
           );
         } catch {
@@ -277,13 +286,16 @@ export class LoopRunner extends TypedEventEmitter {
     // Read backlog and find all done items
     const backlogResult = readBacklog(defaultBacklogPaths(this.projectPath));
     if (!backlogResult.ok) {
-      appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Failed to read backlog: ${backlogResult.error.message}`,
+      );
       return { completedCount: 0, blockedCount: 0, cancelled: false };
     }
 
     const doneItems = backlogResult.value.items.filter((i) => i.status === "done");
     if (doneItems.length === 0) {
-      appendLog(this.projectPath, "No completed items to review");
+      appendLog(defaultBacklogPaths(this.projectPath), "No completed items to review");
       return { completedCount: 0, blockedCount: 0, cancelled: false };
     }
 
@@ -315,14 +327,17 @@ export class LoopRunner extends TypedEventEmitter {
       maxIterations: this.options.maxIterations,
     });
     appendLog(
-      this.projectPath,
+      defaultBacklogPaths(this.projectPath),
       `--- Iteration ${this.iterationCount} / ${this.options.maxIterations} ---`,
     );
 
     // Select next item
     const backlogResult = readBacklog(defaultBacklogPaths(this.projectPath));
     if (!backlogResult.ok) {
-      appendLog(this.projectPath, `Failed to read backlog: ${backlogResult.error.message}`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Failed to read backlog: ${backlogResult.error.message}`,
+      );
       this.emitEvent("loop_error", { error: backlogResult.error.message });
       return "break";
     }
@@ -331,7 +346,7 @@ export class LoopRunner extends TypedEventEmitter {
     const item = selectNextItem(backlog);
 
     if (!item) {
-      appendLog(this.projectPath, "No eligible items found, loop complete");
+      appendLog(defaultBacklogPaths(this.projectPath), "No eligible items found, loop complete");
       return "break";
     }
 
@@ -341,7 +356,7 @@ export class LoopRunner extends TypedEventEmitter {
       title: item.title,
       priority: item.priority,
     });
-    appendLog(this.projectPath, `Selected item ${item.id}: ${item.title}`);
+    appendLog(defaultBacklogPaths(this.projectPath), `Selected item ${item.id}: ${item.title}`);
 
     // Mark item as in_progress
     const markResult = updateItem(defaultBacklogPaths(this.projectPath), item.id, {
@@ -349,7 +364,7 @@ export class LoopRunner extends TypedEventEmitter {
     });
     if (!markResult.ok) {
       appendLog(
-        this.projectPath,
+        defaultBacklogPaths(this.projectPath),
         `Failed to mark item ${item.id} in_progress: ${markResult.error.message}`,
       );
       return "break";
@@ -365,7 +380,10 @@ export class LoopRunner extends TypedEventEmitter {
     const promptBacklog = freshBacklog.ok ? freshBacklog.value : backlog;
     const promptResult = buildPrompt(this.projectPath, item, promptBacklog);
     if (!promptResult.ok) {
-      appendLog(this.projectPath, `Failed to build prompt: ${promptResult.error.message}`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Failed to build prompt: ${promptResult.error.message}`,
+      );
       // Reset item to pending since we couldn't process it
       updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
       this.currentItemId = null;
@@ -380,7 +398,7 @@ export class LoopRunner extends TypedEventEmitter {
       timeoutMinutes: this.options.sessionTimeoutMinutes,
     });
     appendLog(
-      this.projectPath,
+      defaultBacklogPaths(this.projectPath),
       `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
     );
 
@@ -484,7 +502,10 @@ export class LoopRunner extends TypedEventEmitter {
     clearIterationStatus(this.projectPath);
 
     if (!claudeResult.ok) {
-      appendLog(this.projectPath, `Failed to spawn claude: ${claudeResult.error.message}`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Failed to spawn claude: ${claudeResult.error.message}`,
+      );
       updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
       this.currentItemId = null;
       this.emitEvent("loop_error", { error: claudeResult.error.message });
@@ -501,13 +522,13 @@ export class LoopRunner extends TypedEventEmitter {
       durationMs,
     });
     appendLog(
-      this.projectPath,
+      defaultBacklogPaths(this.projectPath),
       `Claude exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
     );
 
     // Check stderr for usage limit patterns BEFORE normal signal parsing
     if (exitCode !== 0 && this.hasUsageLimitInStderr(stderr)) {
-      appendLog(this.projectPath, "Usage limit detected in stderr");
+      appendLog(defaultBacklogPaths(this.projectPath), "Usage limit detected in stderr");
       // Reset item to pending
       updateItem(defaultBacklogPaths(this.projectPath), item.id, { status: "pending" });
       this.currentItemId = null;
@@ -531,7 +552,7 @@ export class LoopRunner extends TypedEventEmitter {
       reason: parsed.reason,
     });
     appendLog(
-      this.projectPath,
+      defaultBacklogPaths(this.projectPath),
       `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`,
     );
     if (parsed.signal === "none") {
@@ -539,7 +560,7 @@ export class LoopRunner extends TypedEventEmitter {
         reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
       const preview = signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText;
       appendLog(
-        this.projectPath,
+        defaultBacklogPaths(this.projectPath),
         `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`,
       );
     }
@@ -554,13 +575,19 @@ export class LoopRunner extends TypedEventEmitter {
           itemId: item.id,
           title: item.title,
         });
-        appendLog(this.projectPath, `Item ${item.id} completed: ${item.title}`);
+        appendLog(
+          defaultBacklogPaths(this.projectPath),
+          `Item ${item.id} completed: ${item.title}`,
+        );
         this.writeState("running", null, "clean");
 
         // Auto-commit
         const commitResult = await gitCommit(this.projectPath, item.id, item.title);
         if (commitResult.ok && commitResult.value.commitHash) {
-          appendLog(this.projectPath, `Committed: ${commitResult.value.commitHash}`);
+          appendLog(
+            defaultBacklogPaths(this.projectPath),
+            `Committed: ${commitResult.value.commitHash}`,
+          );
         }
         break;
       }
@@ -577,7 +604,7 @@ export class LoopRunner extends TypedEventEmitter {
           itemId: item.id,
           reason,
         });
-        appendLog(this.projectPath, `Item ${item.id} blocked: ${reason}`);
+        appendLog(defaultBacklogPaths(this.projectPath), `Item ${item.id} blocked: ${reason}`);
         this.writeState("running", null, "blocked");
         break;
       }
@@ -591,9 +618,12 @@ export class LoopRunner extends TypedEventEmitter {
           itemId: item.id,
           reason,
         });
-        appendLog(this.projectPath, `Item ${item.id} needs human input: ${reason}`);
+        appendLog(
+          defaultBacklogPaths(this.projectPath),
+          `Item ${item.id} needs human input: ${reason}`,
+        );
         this.writeState("paused_human", item.id, "needs_human");
-        writeDoneFile(this.projectPath, `needs_human: ${reason}`);
+        writeDoneFile(defaultBacklogPaths(this.projectPath), `needs_human: ${reason}`);
         return "exit";
       }
 
@@ -616,7 +646,10 @@ export class LoopRunner extends TypedEventEmitter {
             itemId: item.id,
             reason,
           });
-          appendLog(this.projectPath, `Item ${item.id} blocked after ${retries} retries`);
+          appendLog(
+            defaultBacklogPaths(this.projectPath),
+            `Item ${item.id} blocked after ${retries} retries`,
+          );
           this.writeState("running", null, "error");
         } else {
           // Re-queue: reset to pending for retry
@@ -627,7 +660,7 @@ export class LoopRunner extends TypedEventEmitter {
             maxRetries: this.options.maxRetries,
           });
           appendLog(
-            this.projectPath,
+            defaultBacklogPaths(this.projectPath),
             `Item ${item.id} retry ${retries}/${this.options.maxRetries}`,
           );
         }
@@ -643,7 +676,7 @@ export class LoopRunner extends TypedEventEmitter {
 
   /** Run the post-loop review pass. Returns result indicating outcome. */
   private async runReviewPass(): Promise<ReviewPassResult> {
-    appendLog(this.projectPath, "Starting review pass");
+    appendLog(defaultBacklogPaths(this.projectPath), "Starting review pass");
     this.emitEvent("review_started", {
       completedItemIds: [...this.completedItemIds],
     });
@@ -653,7 +686,7 @@ export class LoopRunner extends TypedEventEmitter {
     const backlogResult = readBacklog(defaultBacklogPaths(this.projectPath));
     if (!backlogResult.ok) {
       const reason = `Failed to read backlog for review: ${backlogResult.error.message}`;
-      appendLog(this.projectPath, reason);
+      appendLog(defaultBacklogPaths(this.projectPath), reason);
       this.emitEvent("review_failed", { reason });
       return "failed";
     }
@@ -663,7 +696,7 @@ export class LoopRunner extends TypedEventEmitter {
     );
 
     if (completedItems.length === 0) {
-      appendLog(this.projectPath, "No completed items to review");
+      appendLog(defaultBacklogPaths(this.projectPath), "No completed items to review");
       this.emitEvent("review_failed", { reason: "No completed items found" });
       return "failed";
     }
@@ -675,7 +708,7 @@ export class LoopRunner extends TypedEventEmitter {
     const promptResult = buildReviewPrompt(this.projectPath, completedItems, gitDiff);
     if (!promptResult.ok) {
       const reason = `Failed to build review prompt: ${promptResult.error.message}`;
-      appendLog(this.projectPath, reason);
+      appendLog(defaultBacklogPaths(this.projectPath), reason);
       this.emitEvent("review_failed", { reason });
       return "failed";
     }
@@ -685,7 +718,7 @@ export class LoopRunner extends TypedEventEmitter {
     const projectModel = markerResult.ok ? markerResult.value.options.model : undefined;
     const resolvedModel = this.options.model ?? projectModel;
 
-    appendLog(this.projectPath, "Spawning claude for review pass");
+    appendLog(defaultBacklogPaths(this.projectPath), "Spawning claude for review pass");
 
     // Spawn Claude with review prompt
     const claudeResult = await spawnClaude(promptResult.value, {
@@ -696,7 +729,7 @@ export class LoopRunner extends TypedEventEmitter {
 
     if (!claudeResult.ok) {
       const reason = `Failed to spawn claude for review: ${claudeResult.error.message}`;
-      appendLog(this.projectPath, reason);
+      appendLog(defaultBacklogPaths(this.projectPath), reason);
       this.emitEvent("review_failed", { reason });
       return "failed";
     }
@@ -707,7 +740,7 @@ export class LoopRunner extends TypedEventEmitter {
     const parsed = parseSignal(stdout);
 
     if (parsed.signal === "done") {
-      appendLog(this.projectPath, "Review pass: clean — no issues found");
+      appendLog(defaultBacklogPaths(this.projectPath), "Review pass: clean — no issues found");
       this.emitEvent("review_completed", {
         itemsCreated: 0,
         summary: "No issues found",
@@ -732,7 +765,7 @@ export class LoopRunner extends TypedEventEmitter {
         if (result.ok) {
           created++;
           appendLog(
-            this.projectPath,
+            defaultBacklogPaths(this.projectPath),
             `Review created item: ${result.value.id} — ${reviewItem.title}`,
           );
         }
@@ -742,7 +775,7 @@ export class LoopRunner extends TypedEventEmitter {
       this.reviewSummary = parsed.reviewPayload.summary;
 
       appendLog(
-        this.projectPath,
+        defaultBacklogPaths(this.projectPath),
         `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
       );
       this.emitEvent("review_completed", {
@@ -755,7 +788,7 @@ export class LoopRunner extends TypedEventEmitter {
 
     // Other signal or parse failure — non-fatal
     const reason = `Review returned unexpected signal: ${parsed.signal}`;
-    appendLog(this.projectPath, reason);
+    appendLog(defaultBacklogPaths(this.projectPath), reason);
     this.emitEvent("review_failed", { reason });
     return "failed";
   }
@@ -801,7 +834,7 @@ export class LoopRunner extends TypedEventEmitter {
   private isCancelled(): boolean {
     if (this.softCancelled) return true;
     if (this.abortController.signal.aborted) return true;
-    return checkCancelRequested(this.projectPath);
+    return checkCancelRequested(defaultBacklogPaths(this.projectPath));
   }
 
   /** Emit a typed LoopEvent with base fields */
@@ -826,7 +859,7 @@ export class LoopRunner extends TypedEventEmitter {
     lastSignal?: LoopState["lastSignal"],
     error?: string,
   ): void {
-    writeLoopState(this.projectPath, {
+    writeLoopState(defaultBacklogPaths(this.projectPath), {
       status,
       iteration: this.iterationCount,
       maxIterations: this.options.maxIterations,
@@ -850,7 +883,10 @@ export class LoopRunner extends TypedEventEmitter {
     const tokenResult = readClaudeOAuthToken();
     if (!tokenResult.ok) {
       // Can't read token — proceed with reactive-only detection
-      appendLog(this.projectPath, "OAuth token unavailable, skipping usage preflight");
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        "OAuth token unavailable, skipping usage preflight",
+      );
       return "continue";
     }
 
@@ -863,13 +899,16 @@ export class LoopRunner extends TypedEventEmitter {
     if (usageResult.limitType === "7d") {
       // Weekly limit — write DONE and exit
       const resetsAt = usageResult.resetsAt ?? "unknown";
-      appendLog(this.projectPath, `Weekly usage limit reached (resets at ${resetsAt})`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Weekly usage limit reached (resets at ${resetsAt})`,
+      );
       this.emitEvent("usage_limit_hit", {
         limitType: "7d",
         utilization: usageResult.utilization ?? 100,
       });
       this.writeState("weekly_limit", null);
-      writeDoneFile(this.projectPath, `weekly_limit:${resetsAt}`);
+      writeDoneFile(defaultBacklogPaths(this.projectPath), `weekly_limit:${resetsAt}`);
       return "exit";
     }
 
@@ -878,7 +917,7 @@ export class LoopRunner extends TypedEventEmitter {
       const resetsAt = usageResult.resetsAt ?? "";
       const retryAfter = usageResult.retryAfter ?? 0;
       appendLog(
-        this.projectPath,
+        defaultBacklogPaths(this.projectPath),
         `5-hour usage limit reached, sleeping until ${resetsAt} (${retryAfter}s)`,
       );
       this.emitEvent("usage_limit_hit", {
@@ -896,12 +935,12 @@ export class LoopRunner extends TypedEventEmitter {
       );
 
       this.emitEvent("sleep_end", {});
-      appendLog(this.projectPath, "Woke from usage limit sleep");
+      appendLog(defaultBacklogPaths(this.projectPath), "Woke from usage limit sleep");
 
       if (this.isCancelled()) {
-        appendLog(this.projectPath, "Loop cancelled during sleep");
+        appendLog(defaultBacklogPaths(this.projectPath), "Loop cancelled during sleep");
         this.emitEvent("loop_cancelled", {});
-        writeDoneFile(this.projectPath, "cancel");
+        writeDoneFile(defaultBacklogPaths(this.projectPath), "cancel");
         return "exit";
       }
 
@@ -916,7 +955,10 @@ export class LoopRunner extends TypedEventEmitter {
     const tokenResult = readClaudeOAuthToken();
     if (!tokenResult.ok) {
       // Can't check API — treat as 5h limit with short sleep
-      appendLog(this.projectPath, "OAuth token unavailable for usage check, sleeping 60s");
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        "OAuth token unavailable for usage check, sleeping 60s",
+      );
       this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
       this.emitEvent("sleep_start", {
         sleepUntil: new Date(Date.now() + 60_000).toISOString(),
@@ -928,7 +970,7 @@ export class LoopRunner extends TypedEventEmitter {
       );
       this.emitEvent("sleep_end", {});
       if (this.isCancelled()) {
-        writeDoneFile(this.projectPath, "cancel");
+        writeDoneFile(defaultBacklogPaths(this.projectPath), "cancel");
         return "exit";
       }
       return "continue";
@@ -944,13 +986,16 @@ export class LoopRunner extends TypedEventEmitter {
     if (usageResult.limitType === "7d") {
       // Weekly limit — exit
       const resetsAt = usageResult.resetsAt ?? "unknown";
-      appendLog(this.projectPath, `Weekly usage limit detected (resets at ${resetsAt})`);
+      appendLog(
+        defaultBacklogPaths(this.projectPath),
+        `Weekly usage limit detected (resets at ${resetsAt})`,
+      );
       this.emitEvent("usage_limit_hit", {
         limitType: "7d",
         utilization: usageResult.utilization ?? 100,
       });
       this.writeState("weekly_limit", null);
-      writeDoneFile(this.projectPath, `weekly_limit:${resetsAt}`);
+      writeDoneFile(defaultBacklogPaths(this.projectPath), `weekly_limit:${resetsAt}`);
       return "exit";
     }
 
@@ -958,7 +1003,7 @@ export class LoopRunner extends TypedEventEmitter {
     const resetsAt = usageResult.resetsAt ?? "";
     const retryAfter = usageResult.retryAfter ?? 0;
     appendLog(
-      this.projectPath,
+      defaultBacklogPaths(this.projectPath),
       `5-hour usage limit detected, sleeping until ${resetsAt} (${retryAfter}s)`,
     );
     this.emitEvent("usage_limit_hit", {
@@ -976,11 +1021,11 @@ export class LoopRunner extends TypedEventEmitter {
     );
 
     this.emitEvent("sleep_end", {});
-    appendLog(this.projectPath, "Woke from usage limit sleep");
+    appendLog(defaultBacklogPaths(this.projectPath), "Woke from usage limit sleep");
 
     if (this.isCancelled()) {
-      appendLog(this.projectPath, "Loop cancelled during sleep");
-      writeDoneFile(this.projectPath, "cancel");
+      appendLog(defaultBacklogPaths(this.projectPath), "Loop cancelled during sleep");
+      writeDoneFile(defaultBacklogPaths(this.projectPath), "cancel");
       return "exit";
     }
 
@@ -992,10 +1037,10 @@ export class LoopRunner extends TypedEventEmitter {
   private async checkBetweenIterations(): Promise<"continue" | "exit"> {
     // Check cancellation
     if (this.isCancelled()) {
-      appendLog(this.projectPath, "Loop cancelled between iterations");
+      appendLog(defaultBacklogPaths(this.projectPath), "Loop cancelled between iterations");
       this.emitEvent("loop_cancelled", {});
       this.writeState("paused", null);
-      writeDoneFile(this.projectPath, "cancel");
+      writeDoneFile(defaultBacklogPaths(this.projectPath), "cancel");
       return "exit";
     }
 
@@ -1012,7 +1057,7 @@ export class LoopRunner extends TypedEventEmitter {
     if (usageResult.limitType === "7d") {
       const resetsAt = usageResult.resetsAt ?? "unknown";
       appendLog(
-        this.projectPath,
+        defaultBacklogPaths(this.projectPath),
         `Weekly usage limit hit between iterations (resets at ${resetsAt})`,
       );
       this.emitEvent("usage_limit_hit", {
@@ -1020,7 +1065,7 @@ export class LoopRunner extends TypedEventEmitter {
         utilization: usageResult.utilization ?? 100,
       });
       this.writeState("weekly_limit", null);
-      writeDoneFile(this.projectPath, `weekly_limit:${resetsAt}`);
+      writeDoneFile(defaultBacklogPaths(this.projectPath), `weekly_limit:${resetsAt}`);
       return "exit";
     }
 
@@ -1028,7 +1073,7 @@ export class LoopRunner extends TypedEventEmitter {
     const resetsAt = usageResult.resetsAt ?? "";
     const retryAfter = usageResult.retryAfter ?? 0;
     appendLog(
-      this.projectPath,
+      defaultBacklogPaths(this.projectPath),
       `5-hour usage limit between iterations, sleeping until ${resetsAt}`,
     );
     this.emitEvent("usage_limit_hit", {
@@ -1046,11 +1091,11 @@ export class LoopRunner extends TypedEventEmitter {
     );
 
     this.emitEvent("sleep_end", {});
-    appendLog(this.projectPath, "Woke from usage limit sleep");
+    appendLog(defaultBacklogPaths(this.projectPath), "Woke from usage limit sleep");
 
     if (this.isCancelled()) {
-      appendLog(this.projectPath, "Loop cancelled during sleep");
-      writeDoneFile(this.projectPath, "cancel");
+      appendLog(defaultBacklogPaths(this.projectPath), "Loop cancelled during sleep");
+      writeDoneFile(defaultBacklogPaths(this.projectPath), "cancel");
       return "exit";
     }
 

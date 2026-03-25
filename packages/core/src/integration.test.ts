@@ -18,11 +18,11 @@ import { spawnSync } from "node:child_process";
 import { install, preflight, update, uninstall } from "./installer.js";
 import { initProject } from "./greenfield.js";
 import { readBacklog, addItem, updateItem, deleteItem, restoreFromBackup } from "./backlog.js";
-import { deriveStatus, readLogTail, RALPH_DIR, LOG_FILENAME, DONE_FILENAME } from "./status.js";
+import { deriveStatus, readLogTail } from "./status.js";
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
 import { fileExists } from "./fs-utils.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
-import { STATE_FILENAME, defaultBacklogPaths } from "./backlog-root.js";
+import { STATE_FILENAME, DEFAULT_ROOT_DIR, defaultBacklogPaths } from "./backlog-root.js";
 import type { LoopState } from "./schemas.js";
 
 // ─── Shared Fixtures ─────────────────────────────────────────────
@@ -77,16 +77,16 @@ function createProject(
 
 /** Write a state.json into a project's .ralph/ directory. */
 function writeStateJson(projectPath: string, state: LoopState): void {
-  const ralphDir = path.join(projectPath, RALPH_DIR);
+  const ralphDir = path.join(projectPath, DEFAULT_ROOT_DIR);
   fs.mkdirSync(ralphDir, { recursive: true });
   fs.writeFileSync(path.join(ralphDir, STATE_FILENAME), JSON.stringify(state, null, 2));
 }
 
 /** Write a ralph.log file into a project's .ralph/ directory. */
 function writeLog(projectPath: string, content: string, mtimeOverride?: Date): void {
-  const ralphDir = path.join(projectPath, RALPH_DIR);
+  const ralphDir = path.join(projectPath, DEFAULT_ROOT_DIR);
   fs.mkdirSync(ralphDir, { recursive: true });
-  const filePath = path.join(ralphDir, LOG_FILENAME);
+  const filePath = path.join(ralphDir, "ralph.log");
   fs.writeFileSync(filePath, content);
   if (mtimeOverride) {
     fs.utimesSync(filePath, mtimeOverride, mtimeOverride);
@@ -95,9 +95,9 @@ function writeLog(projectPath: string, content: string, mtimeOverride?: Date): v
 
 /** Write a DONE file into a project's .ralph/ directory. */
 function writeDoneFile(projectPath: string, content: string = ""): void {
-  const ralphDir = path.join(projectPath, RALPH_DIR);
+  const ralphDir = path.join(projectPath, DEFAULT_ROOT_DIR);
   fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, DONE_FILENAME), content);
+  fs.writeFileSync(path.join(ralphDir, "DONE"), content);
 }
 
 /** Create a valid LoopState object for testing. */
@@ -604,7 +604,7 @@ describe("Integration: status derivation with mock state.json", () => {
   it("derives RUNNING state from state.json with recent updatedAt", () => {
     writeStateJson(projectDir, makeLoopState({ status: "running" }));
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -625,7 +625,7 @@ describe("Integration: status derivation with mock state.json", () => {
       }),
     );
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -642,7 +642,7 @@ describe("Integration: status derivation with mock state.json", () => {
       }),
     );
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -661,7 +661,7 @@ describe("Integration: status derivation with mock state.json", () => {
       ].join("\n"),
     );
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -677,7 +677,7 @@ describe("Integration: status derivation with mock state.json", () => {
     // Write DONE file
     writeDoneFile(projectDir, "done");
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -690,7 +690,7 @@ describe("Integration: status derivation with mock state.json", () => {
     writeLog(projectDir, "Some log\n", staleDate);
     writeDoneFile(projectDir, "needs_human");
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -704,7 +704,7 @@ describe("Integration: status derivation with mock state.json", () => {
 
     writeStateJson(projectDir, makeLoopState({ status: "completed" }));
 
-    const result = deriveStatus(projectDir);
+    const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -717,7 +717,7 @@ describe("Integration: status derivation with mock state.json", () => {
     const lines = Array.from({ length: 100 }, (_, i) => `Line ${i + 1}`);
     writeLog(projectDir, lines.join("\n") + "\n");
 
-    const result = readLogTail(projectDir, 10);
+    const result = readLogTail(defaultBacklogPaths(projectDir), 10);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -725,16 +725,19 @@ describe("Integration: status derivation with mock state.json", () => {
     expect(result.value[result.value.length - 1]).toBe("Line 100");
   });
 
-  it("NOT_INSTALLED when .ralph directory does not exist", () => {
-    // Create a project without installing ralph
+  it("returns IDLE when .ralph directory does not exist (caller handles NOT_INSTALLED)", () => {
+    // Create a project without installing ralph.
+    // With BacklogPaths, deriveStatus no longer checks for .ralph dir existence —
+    // the caller (CLI/web) is responsible for the NOT_INSTALLED check.
     const bareDir = path.join(tmpDir, "bare-project");
     createProject(bareDir, { git: true });
 
-    const result = deriveStatus(bareDir);
+    const result = deriveStatus(defaultBacklogPaths(bareDir));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.loopState).toBe("NOT_INSTALLED");
+    expect(result.value.loopState).toBe("IDLE");
+    expect(result.value.stateSource).toBe("none");
   });
 });
 
@@ -759,7 +762,7 @@ describe("Integration: install → backlog → status full workflow", () => {
     addItem(defaultBacklogPaths(projectDir), { type: "feature", priority: 2, title: "Feature 2" });
 
     // Check status (should be IDLE — no loop running)
-    const statusResult = deriveStatus(projectDir);
+    const statusResult = deriveStatus(defaultBacklogPaths(projectDir));
     expect(statusResult.ok).toBe(true);
     if (!statusResult.ok) return;
 
@@ -780,7 +783,7 @@ describe("Integration: install → backlog → status full workflow", () => {
     );
 
     // Status should now be RUNNING
-    const runningStatus = deriveStatus(projectDir);
+    const runningStatus = deriveStatus(defaultBacklogPaths(projectDir));
     expect(runningStatus.ok).toBe(true);
     if (!runningStatus.ok) return;
     expect(runningStatus.value.loopState).toBe("RUNNING");
@@ -798,7 +801,7 @@ describe("Integration: install → backlog → status full workflow", () => {
     );
 
     // Status should now be COMPLETE
-    const completeStatus = deriveStatus(projectDir);
+    const completeStatus = deriveStatus(defaultBacklogPaths(projectDir));
     expect(completeStatus.ok).toBe(true);
     if (!completeStatus.ok) return;
     expect(completeStatus.value.loopState).toBe("COMPLETE");

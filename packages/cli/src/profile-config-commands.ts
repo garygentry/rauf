@@ -14,6 +14,7 @@ import {
   detectProfile,
   discoverProjects,
   deriveStatus,
+  defaultBacklogPaths,
   update,
   ErrorCodes,
   type ProjectProfile,
@@ -150,9 +151,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
   if (!updateResult.ok) {
     // Non-fatal — profile was saved, just warn that RALPH.md wasn't re-rendered
     if (!ctx.globalFlags.json) {
-      info(
-        `Profile saved but RALPH.md could not be updated: ${updateResult.error.message}`,
-      );
+      info(`Profile saved but RALPH.md could not be updated: ${updateResult.error.message}`);
       info(`Run 'ralph update ${targetPath}' manually to sync.`);
     }
   }
@@ -371,7 +370,7 @@ export async function handleProjectsStatus(ctx: CommandContext): Promise<number>
 
   // Derive status for each project
   const projectStatuses = projects.map((p) => {
-    const statusResult = deriveStatus(p.path);
+    const statusResult = deriveStatus(defaultBacklogPaths(p.path));
     return {
       project: p,
       status: statusResult.ok ? statusResult.value : null,

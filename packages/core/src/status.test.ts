@@ -13,15 +13,24 @@ import {
   clearDoneFile,
   checkCancelRequested,
   clearCancelFile,
-  RALPH_DIR,
-  LOG_FILENAME,
-  DONE_FILENAME,
-  CANCEL_FILENAME,
+  scanActiveRoots,
   STALENESS_THRESHOLD_MS,
   LOG_ACTIVE_THRESHOLD_MS,
 } from "./status.js";
-import { STATE_FILENAME } from "./backlog-root.js";
+import {
+  STATE_FILENAME,
+  DEFAULT_ROOT_DIR,
+  LOCK_FILENAME,
+  defaultBacklogPaths,
+} from "./backlog-root.js";
+import type { BacklogPaths } from "./backlog-root.js";
 import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
+
+// ─── Constants (test-local) ────────────────────────────────────────
+
+const LOG_FILENAME = "ralph.log";
+const DONE_FILENAME = "DONE";
+const CANCEL_FILENAME = "CANCEL";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -35,29 +44,34 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+/** Build BacklogPaths for the default root in tmpDir */
+function makePaths(): BacklogPaths {
+  return defaultBacklogPaths(tmpDir);
+}
+
 /** Create .ralph directory */
 function createRalphDir(): void {
-  fs.mkdirSync(path.join(tmpDir, RALPH_DIR), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, DEFAULT_ROOT_DIR), { recursive: true });
 }
 
 /** Write a state.json for test setup */
 function writeStateJson(state: LoopState): void {
   createRalphDir();
-  const filePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
   fs.writeFileSync(filePath, JSON.stringify(state, null, 2) + "\n");
 }
 
 /** Write a backlog.json for test setup */
 function writeBacklog(backlog: Backlog): void {
   createRalphDir();
-  const filePath = path.join(tmpDir, RALPH_DIR, "backlog.json");
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json");
   fs.writeFileSync(filePath, JSON.stringify(backlog, null, 2) + "\n");
 }
 
 /** Write ralph.log with given content */
 function writeLog(content: string, mtimeOverride?: Date): void {
   createRalphDir();
-  const filePath = path.join(tmpDir, RALPH_DIR, LOG_FILENAME);
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
   fs.writeFileSync(filePath, content);
   if (mtimeOverride) {
     fs.utimesSync(filePath, mtimeOverride, mtimeOverride);
@@ -67,7 +81,7 @@ function writeLog(content: string, mtimeOverride?: Date): void {
 /** Write DONE file */
 function setupDoneFile(content: string = ""): void {
   createRalphDir();
-  const filePath = path.join(tmpDir, RALPH_DIR, DONE_FILENAME);
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
   fs.writeFileSync(filePath, content);
 }
 
@@ -116,11 +130,13 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 // ─── deriveStatus: Tier 1 (state.json) ──────────────────────────
 
 describe("deriveStatus — Tier 1: state.json", () => {
-  it("returns NOT_INSTALLED when .ralph directory is missing", () => {
-    const result = deriveStatus(tmpDir);
+  it("returns IDLE with stateSource 'none' when .ralph directory is missing", () => {
+    // With BacklogPaths, deriveStatus no longer checks for .ralph dir existence.
+    // When state.json is missing and no log exists, it returns IDLE via tier 2.
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.loopState).toBe("NOT_INSTALLED");
+    expect(result.value.loopState).toBe("IDLE");
     expect(result.value.stateSource).toBe("none");
     expect(result.value.backlogSummary.total).toBe(0);
   });
@@ -129,7 +145,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     const state = makeLoopState({ status: "running" });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("RUNNING");
@@ -144,7 +160,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     const state = makeLoopState({ status: "starting", iteration: 0 });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("RUNNING");
@@ -154,7 +170,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     const state = makeLoopState({ status: "complete" });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("COMPLETE");
@@ -165,7 +181,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     const state = makeLoopState({ status: "paused" });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED");
@@ -175,7 +191,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     const state = makeLoopState({ status: "paused_human" });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED_HUMAN");
@@ -185,7 +201,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     const state = makeLoopState({ status: "limit_reached" });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("LIMIT_REACHED");
@@ -198,7 +214,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("ERROR");
@@ -212,7 +228,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED");
@@ -227,7 +243,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED");
@@ -241,7 +257,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("RUNNING");
@@ -255,7 +271,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("COMPLETE");
@@ -268,7 +284,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Should be approximately 10 seconds (allow 2s tolerance)
@@ -279,7 +295,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
   it("reports stateSource as 'state.json' for Tier 1", () => {
     writeStateJson(makeLoopState());
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.stateSource).toBe("state.json");
@@ -293,7 +309,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     createRalphDir();
     // No state.json, no log
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("IDLE");
@@ -304,7 +320,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     // Write log with recent mtime (default is now)
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("RUNNING");
@@ -315,7 +331,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     const staleTime = new Date(Date.now() - LOG_ACTIVE_THRESHOLD_MS - 5000);
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n", staleTime);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED");
@@ -327,7 +343,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
     setupDoneFile("");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("COMPLETE");
@@ -338,7 +354,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
     setupDoneFile("needs_human: requires API key setup");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED_HUMAN");
@@ -349,7 +365,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
     setupDoneFile("LIMIT REACHED after 20 iterations");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("LIMIT_REACHED");
@@ -360,7 +376,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
     setupDoneFile("error: claude process exited with code 1");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("ERROR");
@@ -378,7 +394,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
       ].join("\n"),
     );
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.iteration).toBe(2);
@@ -394,7 +410,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
       ].join("\n"),
     );
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.lastSignal).toBe("blocked");
@@ -409,7 +425,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
       ].join("\n"),
     );
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.lastSignal).toBe("clean");
@@ -424,7 +440,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
       ].join("\n"),
     );
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.lastSignal).toBe("needs_human");
@@ -432,11 +448,11 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
 
   it("falls back to Tier 2 when state.json is invalid JSON", () => {
     createRalphDir();
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, "not json at all");
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Should use log parsing since state.json is invalid
@@ -445,11 +461,11 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
 
   it("falls back to Tier 2 when state.json fails schema validation", () => {
     createRalphDir();
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, JSON.stringify({ status: "invalid_status" }));
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.stateSource).toBe("log-parsing");
@@ -471,7 +487,7 @@ describe("deriveStatus — BacklogSummary", () => {
     writeBacklog(backlog);
     writeStateJson(makeLoopState());
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -492,7 +508,7 @@ describe("deriveStatus — BacklogSummary", () => {
     writeBacklog(backlog);
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -508,7 +524,7 @@ describe("deriveStatus — BacklogSummary", () => {
   it("returns zero counts when backlog.json is missing", () => {
     writeStateJson(makeLoopState());
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -523,11 +539,11 @@ describe("deriveStatus — BacklogSummary", () => {
 
   it("returns zero counts when backlog.json is invalid", () => {
     createRalphDir();
-    const backlogPath = path.join(tmpDir, RALPH_DIR, "backlog.json");
+    const backlogPath = path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json");
     fs.writeFileSync(backlogPath, "not json");
     writeStateJson(makeLoopState());
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
@@ -540,7 +556,7 @@ describe("deriveStatus — BacklogSummary", () => {
 describe("readLogTail", () => {
   it("returns empty array when log file is missing", () => {
     createRalphDir();
-    const result = readLogTail(tmpDir, 10);
+    const result = readLogTail(makePaths(), 10);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual([]);
@@ -550,7 +566,7 @@ describe("readLogTail", () => {
     const lines = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`);
     writeLog(lines.join("\n") + "\n");
 
-    const result = readLogTail(tmpDir, 5);
+    const result = readLogTail(makePaths(), 5);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual(["Line 16", "Line 17", "Line 18", "Line 19", "Line 20"]);
@@ -559,7 +575,7 @@ describe("readLogTail", () => {
   it("returns all lines when N exceeds file length", () => {
     writeLog("Line 1\nLine 2\nLine 3\n");
 
-    const result = readLogTail(tmpDir, 100);
+    const result = readLogTail(makePaths(), 100);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual(["Line 1", "Line 2", "Line 3"]);
@@ -568,7 +584,7 @@ describe("readLogTail", () => {
   it("handles log without trailing newline", () => {
     writeLog("Line 1\nLine 2");
 
-    const result = readLogTail(tmpDir, 10);
+    const result = readLogTail(makePaths(), 10);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual(["Line 1", "Line 2"]);
@@ -578,7 +594,7 @@ describe("readLogTail", () => {
     const lines = Array.from({ length: 100 }, (_, i) => `Line ${i + 1}`);
     writeLog(lines.join("\n") + "\n");
 
-    const result = readLogTail(tmpDir);
+    const result = readLogTail(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.length).toBe(50);
@@ -591,7 +607,7 @@ describe("readLogTail", () => {
     const lines = Array.from({ length: 5 }, (_, i) => `Line ${i + 1}`);
     writeLog(lines.join("\n") + "\n");
 
-    const result = readLogTail(tmpDir, 20_000);
+    const result = readLogTail(makePaths(), 20_000);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Should return all 5 lines (capped request but fewer lines exist)
@@ -601,7 +617,7 @@ describe("readLogTail", () => {
   it("handles empty log file", () => {
     writeLog("");
 
-    const result = readLogTail(tmpDir, 10);
+    const result = readLogTail(makePaths(), 10);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toEqual([]);
@@ -610,7 +626,7 @@ describe("readLogTail", () => {
   it("handles log with only newlines", () => {
     writeLog("\n\n\n");
 
-    const result = readLogTail(tmpDir, 10);
+    const result = readLogTail(makePaths(), 10);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Split on \n from "\n\n\n" gives ["", "", "", ""] → pop last → ["", "", ""]
@@ -625,7 +641,7 @@ describe("watchLog", () => {
     createRalphDir();
     writeLog("Initial content\n");
 
-    const cleanup = watchLog(tmpDir, () => {});
+    const cleanup = watchLog(makePaths(), () => {});
     expect(typeof cleanup).toBe("function");
     cleanup();
   });
@@ -634,12 +650,12 @@ describe("watchLog", () => {
     writeLog("Line 1\n");
 
     const receivedLines: string[][] = [];
-    const cleanup = watchLog(tmpDir, (lines) => {
+    const cleanup = watchLog(makePaths(), (lines) => {
       receivedLines.push(lines);
     });
 
     // Append new content
-    const logPath = path.join(tmpDir, RALPH_DIR, LOG_FILENAME);
+    const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.appendFileSync(logPath, "Line 2\nLine 3\n");
 
     // Wait for watcher to trigger
@@ -658,7 +674,7 @@ describe("watchLog", () => {
     writeLog("Line 1\n");
 
     const receivedLines: string[][] = [];
-    const cleanup = watchLog(tmpDir, (lines) => {
+    const cleanup = watchLog(makePaths(), (lines) => {
       receivedLines.push(lines);
     });
 
@@ -676,7 +692,7 @@ describe("deriveStatus — edge cases", () => {
   it("handles .ralph dir exists but is completely empty", () => {
     createRalphDir();
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("IDLE");
@@ -685,10 +701,10 @@ describe("deriveStatus — edge cases", () => {
 
   it("handles state.json with empty file", () => {
     createRalphDir();
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, "");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     // Falls through to Tier 2
@@ -700,7 +716,7 @@ describe("deriveStatus — edge cases", () => {
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
     setupDoneFile("");
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("COMPLETE");
@@ -711,20 +727,11 @@ describe("deriveStatus — edge cases", () => {
     writeStateJson(makeLoopState({ status: "running" }));
     setupDoneFile(""); // DONE file would suggest COMPLETE in Tier 2
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("RUNNING");
     expect(result.value.stateSource).toBe("state.json");
-  });
-
-  it("handles project path with trailing slash", () => {
-    writeStateJson(makeLoopState({ status: "complete" }));
-
-    const result = deriveStatus(tmpDir + "/");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value.loopState).toBe("COMPLETE");
   });
 
   it("handles elapsed as null when startedAt is invalid", () => {
@@ -733,7 +740,7 @@ describe("deriveStatus — edge cases", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.elapsed).toBeNull();
@@ -753,7 +760,7 @@ describe("deriveStatus — usage limit states", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("SLEEPING_LIMIT");
@@ -774,7 +781,7 @@ describe("deriveStatus — usage limit states", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("SLEEPING_LIMIT");
@@ -790,7 +797,7 @@ describe("deriveStatus — usage limit states", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("WEEKLY_LIMIT");
@@ -809,7 +816,7 @@ describe("deriveStatus — usage limit states", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("WEEKLY_LIMIT");
@@ -824,7 +831,7 @@ describe("deriveStatus — usage limit states", () => {
     });
     writeStateJson(state);
 
-    const result = deriveStatus(tmpDir);
+    const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.loopState).toBe("SLEEPING_LIMIT");
@@ -839,11 +846,11 @@ describe("writeLoopState", () => {
     createRalphDir();
     const state = makeLoopState({ status: "running" });
 
-    const result = writeLoopState(tmpDir, state);
+    const result = writeLoopState(makePaths(), state);
     expect(result.ok).toBe(true);
 
     // Verify file was written
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     const content = JSON.parse(fs.readFileSync(statePath, "utf-8"));
     expect(content.status).toBe("running");
     expect(content.iteration).toBe(2);
@@ -854,11 +861,11 @@ describe("writeLoopState", () => {
     const state = makeLoopState({ status: "running" });
     const before = new Date().toISOString();
 
-    const result = writeLoopState(tmpDir, state);
+    const result = writeLoopState(makePaths(), state);
     expect(result.ok).toBe(true);
 
     const after = new Date().toISOString();
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     const content = JSON.parse(fs.readFileSync(statePath, "utf-8"));
 
     // updatedAt should be between before and after
@@ -871,10 +878,10 @@ describe("writeLoopState", () => {
     const oldTimestamp = "2020-01-01T00:00:00.000Z";
     const state = makeLoopState({ status: "running", updatedAt: oldTimestamp });
 
-    const result = writeLoopState(tmpDir, state);
+    const result = writeLoopState(makePaths(), state);
     expect(result.ok).toBe(true);
 
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     const content = JSON.parse(fs.readFileSync(statePath, "utf-8"));
     expect(content.updatedAt).not.toBe(oldTimestamp);
   });
@@ -895,7 +902,7 @@ describe("writeLoopState", () => {
       error: null,
     };
 
-    const result = writeLoopState(tmpDir, invalidState);
+    const result = writeLoopState(makePaths(), invalidState);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("VALIDATION_ERROR");
@@ -908,7 +915,7 @@ describe("writeLoopState", () => {
       status: "running",
     } as unknown as LoopState;
 
-    const result = writeLoopState(tmpDir, partialState);
+    const result = writeLoopState(makePaths(), partialState);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("VALIDATION_ERROR");
@@ -918,7 +925,7 @@ describe("writeLoopState", () => {
     // No createRalphDir() — directory missing
     const state = makeLoopState({ status: "running" });
 
-    const result = writeLoopState(tmpDir, state);
+    const result = writeLoopState(makePaths(), state);
     expect(result.ok).toBe(false);
   });
 
@@ -926,9 +933,9 @@ describe("writeLoopState", () => {
     createRalphDir();
     const state = makeLoopState({ status: "complete" });
 
-    writeLoopState(tmpDir, state);
+    writeLoopState(makePaths(), state);
 
-    const statePath = path.join(tmpDir, RALPH_DIR, STATE_FILENAME);
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     const raw = fs.readFileSync(statePath, "utf-8");
     // Should be pretty-printed (contains newlines) and end with newline
     expect(raw).toContain("\n");
@@ -944,10 +951,10 @@ describe("appendLog", () => {
   it("appends timestamped line to ralph.log", () => {
     createRalphDir();
     // Create the log file first
-    const logPath = path.join(tmpDir, RALPH_DIR, LOG_FILENAME);
+    const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.writeFileSync(logPath, "");
 
-    const result = appendLog(tmpDir, "Hello world");
+    const result = appendLog(makePaths(), "Hello world");
     expect(result.ok).toBe(true);
 
     const content = fs.readFileSync(logPath, "utf-8");
@@ -957,11 +964,11 @@ describe("appendLog", () => {
 
   it("appends multiple lines sequentially", () => {
     createRalphDir();
-    const logPath = path.join(tmpDir, RALPH_DIR, LOG_FILENAME);
+    const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.writeFileSync(logPath, "");
 
-    appendLog(tmpDir, "First message");
-    appendLog(tmpDir, "Second message");
+    appendLog(makePaths(), "First message");
+    appendLog(makePaths(), "Second message");
 
     const content = fs.readFileSync(logPath, "utf-8");
     const lines = content.trim().split("\n");
@@ -973,17 +980,17 @@ describe("appendLog", () => {
   it("creates log file if it does not exist (when directory exists)", () => {
     createRalphDir();
 
-    const result = appendLog(tmpDir, "New log");
+    const result = appendLog(makePaths(), "New log");
     expect(result.ok).toBe(true);
 
-    const logPath = path.join(tmpDir, RALPH_DIR, LOG_FILENAME);
+    const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     expect(fs.existsSync(logPath)).toBe(true);
     const content = fs.readFileSync(logPath, "utf-8");
     expect(content).toContain("New log");
   });
 
   it("returns error when .ralph directory does not exist", () => {
-    const result = appendLog(tmpDir, "Should fail");
+    const result = appendLog(makePaths(), "Should fail");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("FILE_NOT_FOUND");
@@ -991,10 +998,10 @@ describe("appendLog", () => {
 
   it("preserves existing log content when appending", () => {
     createRalphDir();
-    const logPath = path.join(tmpDir, RALPH_DIR, LOG_FILENAME);
+    const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.writeFileSync(logPath, "[2026-02-27 10:00:00] Previous entry\n");
 
-    appendLog(tmpDir, "New entry");
+    appendLog(makePaths(), "New entry");
 
     const content = fs.readFileSync(logPath, "utf-8");
     expect(content).toContain("Previous entry");
@@ -1005,34 +1012,34 @@ describe("appendLog", () => {
 // ─── writeDoneFile ───────────────────────────────────────────────
 
 describe("writeDoneFile", () => {
-  it("writes content string to .ralph/DONE", () => {
+  it("writes content string to DONE file", () => {
     createRalphDir();
 
-    const result = writeDoneFile(tmpDir, "loop completed successfully");
+    const result = writeDoneFile(makePaths(), "loop completed successfully");
     expect(result.ok).toBe(true);
 
-    const donePath = path.join(tmpDir, RALPH_DIR, DONE_FILENAME);
+    const donePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
     const content = fs.readFileSync(donePath, "utf-8");
     expect(content).toBe("loop completed successfully");
   });
 
-  it("writes empty string to .ralph/DONE", () => {
+  it("writes empty string to DONE file", () => {
     createRalphDir();
 
-    const result = writeDoneFile(tmpDir, "");
+    const result = writeDoneFile(makePaths(), "");
     expect(result.ok).toBe(true);
 
-    const donePath = path.join(tmpDir, RALPH_DIR, DONE_FILENAME);
+    const donePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
     const content = fs.readFileSync(donePath, "utf-8");
     expect(content).toBe("");
   });
 
   it("overwrites existing DONE file", () => {
     createRalphDir();
-    const donePath = path.join(tmpDir, RALPH_DIR, DONE_FILENAME);
+    const donePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
     fs.writeFileSync(donePath, "old content");
 
-    const result = writeDoneFile(tmpDir, "new content");
+    const result = writeDoneFile(makePaths(), "new content");
     expect(result.ok).toBe(true);
 
     const content = fs.readFileSync(donePath, "utf-8");
@@ -1040,7 +1047,7 @@ describe("writeDoneFile", () => {
   });
 
   it("returns error when .ralph directory does not exist", () => {
-    const result = writeDoneFile(tmpDir, "should fail");
+    const result = writeDoneFile(makePaths(), "should fail");
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("FILE_NOT_FOUND");
@@ -1052,10 +1059,10 @@ describe("writeDoneFile", () => {
 describe("clearDoneFile", () => {
   it("removes existing DONE file", () => {
     createRalphDir();
-    const donePath = path.join(tmpDir, RALPH_DIR, DONE_FILENAME);
+    const donePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
     fs.writeFileSync(donePath, "done");
 
-    const result = clearDoneFile(tmpDir);
+    const result = clearDoneFile(makePaths());
     expect(result.ok).toBe(true);
     expect(fs.existsSync(donePath)).toBe(false);
   });
@@ -1063,13 +1070,13 @@ describe("clearDoneFile", () => {
   it("returns ok when DONE file does not exist", () => {
     createRalphDir();
 
-    const result = clearDoneFile(tmpDir);
+    const result = clearDoneFile(makePaths());
     expect(result.ok).toBe(true);
   });
 
   it("returns ok even when .ralph directory does not exist", () => {
     // No createRalphDir()
-    const result = clearDoneFile(tmpDir);
+    const result = clearDoneFile(makePaths());
     expect(result.ok).toBe(true);
   });
 });
@@ -1077,30 +1084,30 @@ describe("clearDoneFile", () => {
 // ─── checkCancelRequested ────────────────────────────────────────
 
 describe("checkCancelRequested", () => {
-  it("returns true when .ralph/CANCEL exists", () => {
+  it("returns true when CANCEL exists", () => {
     createRalphDir();
-    const cancelPath = path.join(tmpDir, RALPH_DIR, CANCEL_FILENAME);
+    const cancelPath = path.join(tmpDir, DEFAULT_ROOT_DIR, CANCEL_FILENAME);
     fs.writeFileSync(cancelPath, "");
 
-    expect(checkCancelRequested(tmpDir)).toBe(true);
+    expect(checkCancelRequested(makePaths())).toBe(true);
   });
 
-  it("returns false when .ralph/CANCEL does not exist", () => {
+  it("returns false when CANCEL does not exist", () => {
     createRalphDir();
 
-    expect(checkCancelRequested(tmpDir)).toBe(false);
+    expect(checkCancelRequested(makePaths())).toBe(false);
   });
 
   it("returns false when .ralph directory does not exist", () => {
-    expect(checkCancelRequested(tmpDir)).toBe(false);
+    expect(checkCancelRequested(makePaths())).toBe(false);
   });
 
   it("returns true regardless of CANCEL file content", () => {
     createRalphDir();
-    const cancelPath = path.join(tmpDir, RALPH_DIR, CANCEL_FILENAME);
+    const cancelPath = path.join(tmpDir, DEFAULT_ROOT_DIR, CANCEL_FILENAME);
     fs.writeFileSync(cancelPath, "user requested cancellation");
 
-    expect(checkCancelRequested(tmpDir)).toBe(true);
+    expect(checkCancelRequested(makePaths())).toBe(true);
   });
 });
 
@@ -1109,10 +1116,10 @@ describe("checkCancelRequested", () => {
 describe("clearCancelFile", () => {
   it("removes CANCEL file and returns true when it existed", () => {
     createRalphDir();
-    const cancelPath = path.join(tmpDir, RALPH_DIR, CANCEL_FILENAME);
+    const cancelPath = path.join(tmpDir, DEFAULT_ROOT_DIR, CANCEL_FILENAME);
     fs.writeFileSync(cancelPath, "");
 
-    const result = clearCancelFile(tmpDir);
+    const result = clearCancelFile(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toBe(true);
@@ -1122,16 +1129,207 @@ describe("clearCancelFile", () => {
   it("returns false when CANCEL file did not exist", () => {
     createRalphDir();
 
-    const result = clearCancelFile(tmpDir);
+    const result = clearCancelFile(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toBe(false);
   });
 
   it("returns false when .ralph directory does not exist", () => {
-    const result = clearCancelFile(tmpDir);
+    const result = clearCancelFile(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toBe(false);
+  });
+});
+
+// ─── scanActiveRoots ─────────────────────────────────────────────
+
+describe("scanActiveRoots", () => {
+  it("returns empty array when no active roots exist", () => {
+    createRalphDir();
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual([]);
+  });
+
+  it("returns active roots and skips idle ones", () => {
+    // Create default root with running state
+    createRalphDir();
+    const defaultState = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
+    fs.writeFileSync(
+      defaultState,
+      JSON.stringify(makeLoopState({ status: "running", currentItem: "001" })),
+    );
+
+    // Create specs/auth root with idle state
+    const authDir = path.join(tmpDir, "specs", "auth");
+    const authStateDir = path.join(authDir, ".ralph");
+    fs.mkdirSync(authStateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(authStateDir, STATE_FILENAME),
+      JSON.stringify(makeLoopState({ status: "idle", currentItem: null })),
+    );
+
+    // Create specs/billing root with running state
+    const billingDir = path.join(tmpDir, "specs", "billing");
+    const billingStateDir = path.join(billingDir, ".ralph");
+    fs.mkdirSync(billingStateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(billingDir, "backlog.json"),
+      JSON.stringify({ project: "billing", description: "", items: [] }),
+    );
+    fs.writeFileSync(
+      path.join(billingStateDir, STATE_FILENAME),
+      JSON.stringify(makeLoopState({ status: "running", currentItem: "005" })),
+    );
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Should find 2 active roots (default + billing), skip idle auth
+    expect(result.value).toHaveLength(2);
+    expect(result.value[0]!.relativePath).toBe(".ralph");
+    expect(result.value[0]!.loopState).toBe("RUNNING");
+    expect(result.value[0]!.currentItem).toBe("001");
+    expect(result.value[1]!.relativePath).toBe(path.join("specs", "billing"));
+    expect(result.value[1]!.loopState).toBe("RUNNING");
+    expect(result.value[1]!.currentItem).toBe("005");
+  });
+
+  it("skips node_modules, .git, dist, build, coverage directories", () => {
+    createRalphDir();
+
+    // Create .ralph dirs inside skip directories
+    for (const skipDir of ["node_modules", ".git", "dist", "build", "coverage"]) {
+      const stateDir = path.join(tmpDir, skipDir, "some-pkg", ".ralph");
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(stateDir, STATE_FILENAME),
+        JSON.stringify(makeLoopState({ status: "running" })),
+      );
+    }
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // None of the skip directories should appear
+    expect(result.value).toEqual([]);
+  });
+
+  it("handles missing state.json gracefully", () => {
+    // Create .ralph dir without state.json
+    createRalphDir();
+
+    // Create another root with .ralph dir but no state.json
+    const otherStateDir = path.join(tmpDir, "specs", "api", ".ralph");
+    fs.mkdirSync(otherStateDir, { recursive: true });
+    // No state.json written
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual([]);
+  });
+
+  it("handles corrupt state.json gracefully", () => {
+    createRalphDir();
+    const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
+    fs.writeFileSync(statePath, "not json at all");
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual([]);
+  });
+
+  it("sorts results by relativePath", () => {
+    // Create multiple active roots in non-alphabetical order
+    const roots = ["specs/zebra", "specs/alpha", "specs/middle"];
+    for (const rootPath of roots) {
+      const stateDir = path.join(tmpDir, rootPath, ".ralph");
+      fs.mkdirSync(stateDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, rootPath, "backlog.json"),
+        JSON.stringify({ project: rootPath, description: "", items: [] }),
+      );
+      fs.writeFileSync(
+        path.join(stateDir, STATE_FILENAME),
+        JSON.stringify(makeLoopState({ status: "running" })),
+      );
+    }
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const paths = result.value.map((r) => r.relativePath);
+    expect(paths).toEqual([
+      path.join("specs", "alpha"),
+      path.join("specs", "middle"),
+      path.join("specs", "zebra"),
+    ]);
+  });
+
+  it("detects lock file as activity indicator", () => {
+    createRalphDir();
+    // No state.json, but has a lock file
+    fs.writeFileSync(
+      path.join(tmpDir, DEFAULT_ROOT_DIR, LOCK_FILENAME),
+      JSON.stringify({ pid: 12345, startedAt: new Date().toISOString(), processStartTime: null }),
+    );
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]!.relativePath).toBe(".ralph");
+    expect(result.value[0]!.loopState).toBe("RUNNING");
+    expect(result.value[0]!.currentItem).toBeNull();
+  });
+
+  it("does not duplicate when both state.json and lock file exist", () => {
+    createRalphDir();
+    fs.writeFileSync(
+      path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME),
+      JSON.stringify(makeLoopState({ status: "running", currentItem: "001" })),
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, DEFAULT_ROOT_DIR, LOCK_FILENAME),
+      JSON.stringify({ pid: 12345, startedAt: new Date().toISOString(), processStartTime: null }),
+    );
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Should only appear once
+    expect(result.value).toHaveLength(1);
+    expect(result.value[0]!.currentItem).toBe("001");
+  });
+
+  it("works with non-default root (backlog.json in parent dir)", () => {
+    // Create specs/auth with backlog.json in root and running state in .ralph/
+    const authDir = path.join(tmpDir, "specs", "auth");
+    const authStateDir = path.join(authDir, ".ralph");
+    fs.mkdirSync(authStateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(authDir, "backlog.json"),
+      JSON.stringify({ project: "auth", description: "", items: [] }),
+    );
+    fs.writeFileSync(
+      path.join(authStateDir, STATE_FILENAME),
+      JSON.stringify(makeLoopState({ status: "running", currentItem: "002" })),
+    );
+
+    const result = scanActiveRoots(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toHaveLength(1);
+    // Since parent has backlog.json, backlog root is the parent dir
+    expect(result.value[0]!.relativePath).toBe(path.join("specs", "auth"));
+    expect(result.value[0]!.currentItem).toBe("002");
   });
 });

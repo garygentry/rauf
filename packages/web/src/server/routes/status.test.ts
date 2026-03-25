@@ -104,13 +104,13 @@ afterEach(() => {
 // ─── GET /api/projects/:id/status ────────────────────────────────
 
 describe("GET /api/projects/:id/status", () => {
-  it("returns NOT_INSTALLED when .ralph/ directory is missing", async () => {
+  it("returns IDLE when .ralph/ directory is missing (caller handles NOT_INSTALLED)", async () => {
     writeMarker(projectDir);
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/status");
     expect(res.status).toBe(200);
     const body = (await json(res)) as { data: { loopState: string } };
-    expect(body.data.loopState).toBe("NOT_INSTALLED");
+    expect(body.data.loopState).toBe("IDLE");
   });
 
   it("returns IDLE when .ralph/ exists but no state.json or log file", async () => {

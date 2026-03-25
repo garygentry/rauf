@@ -356,7 +356,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
   const id = projectId(projectPath);
 
   // Check if a loop is currently active
-  const statusResult = deriveStatus(projectPath);
+  const statusResult = deriveStatus(defaultBacklogPaths(projectPath));
   if (!statusResult.ok) {
     error(`Failed to read project status: ${statusResult.error.message}`);
     return ExitCode.ERROR;
@@ -370,7 +370,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
   }
 
   // Print recent log lines for context
-  const tailResult = readLogTail(projectPath, 20);
+  const tailResult = readLogTail(defaultBacklogPaths(projectPath), 20);
   if (tailResult.ok && tailResult.value.length > 0) {
     info(c.dim("─── recent log ───"));
     for (const line of tailResult.value) {
@@ -406,7 +406,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
     const tryStartWatcher = () => {
       if (watcherActive) return;
       try {
-        stopWatcher = watchLog(projectPath, (lines) => {
+        stopWatcher = watchLog(defaultBacklogPaths(projectPath), (lines) => {
           for (const line of lines) {
             print(line);
           }
@@ -424,7 +424,7 @@ async function followDirectMode(projectPath: string): Promise<number> {
       // Retry watcher setup if it hasn't started yet
       if (!watcherActive) tryStartWatcher();
 
-      const result = deriveStatus(projectPath);
+      const result = deriveStatus(defaultBacklogPaths(projectPath));
       if (!result.ok) return;
 
       if (TERMINAL_LOOP_STATES.has(result.value.loopState)) {

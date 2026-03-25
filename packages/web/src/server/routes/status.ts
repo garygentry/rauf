@@ -20,6 +20,7 @@ import {
   validatePath,
   readToolConfig,
   resolveRootDirectory,
+  defaultBacklogPaths,
 } from "@ralph/core";
 
 import { errorResponse } from "../app.js";
@@ -84,7 +85,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
     }
 
-    const result = deriveStatus(projectPath);
+    const result = deriveStatus(defaultBacklogPaths(projectPath));
     if (!result.ok) {
       return c.json(
         errorResponse(result.error.code, result.error.message, result.error.details),
@@ -132,7 +133,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       // ── Initial events ──────────────────────────────────────
 
       // 1. Send last 50 log lines immediately on connect
-      const logResult = readLogTail(projectPath, 50);
+      const logResult = readLogTail(defaultBacklogPaths(projectPath), 50);
       if (logResult.ok && logResult.value.length > 0) {
         await stream
           .writeSSE({ data: JSON.stringify(logResult.value), event: "log" })
@@ -140,7 +141,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       }
 
       // 2. Send current derived status on connect
-      const statusResult = deriveStatus(projectPath);
+      const statusResult = deriveStatus(defaultBacklogPaths(projectPath));
       let lastStatusJson = "";
       if (statusResult.ok) {
         lastStatusJson = JSON.stringify(statusResult.value);
@@ -153,7 +154,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
       // If the log file doesn't exist yet, fs.watch throws — catch and skip.
 
       try {
-        const stopLog = watchLog(projectPath, (newLines) => {
+        const stopLog = watchLog(defaultBacklogPaths(projectPath), (newLines) => {
           if (stream.aborted || stream.closed) return;
           stream.writeSSE({ data: JSON.stringify(newLines), event: "log" }).catch(() => {});
         });
@@ -168,7 +169,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
 
       const statusPoll = setInterval(() => {
         if (stream.aborted || stream.closed) return;
-        const newStatusResult = deriveStatus(projectPath);
+        const newStatusResult = deriveStatus(defaultBacklogPaths(projectPath));
         if (newStatusResult.ok) {
           const json = JSON.stringify(newStatusResult.value);
           if (json !== lastStatusJson) {
@@ -222,7 +223,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
     const tail = tailParam !== undefined ? parseInt(tailParam, 10) : 50;
     const lines = isNaN(tail) || tail <= 0 ? 50 : tail;
 
-    const result = readLogTail(projectPath, lines);
+    const result = readLogTail(defaultBacklogPaths(projectPath), lines);
     if (!result.ok) {
       return c.json(
         errorResponse(result.error.code, result.error.message, result.error.details),

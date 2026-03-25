@@ -85,11 +85,11 @@ export function resetProject(
   }
 
   // 4. Clear DONE file
-  const doneResult = clearDoneFile(resolved);
+  const doneResult = clearDoneFile(defaultBacklogPaths(resolved));
   if (!doneResult.ok) return doneResult;
 
   // 5. Clear CANCEL file
-  const cancelResult = clearCancelFile(resolved);
+  const cancelResult = clearCancelFile(defaultBacklogPaths(resolved));
   if (!cancelResult.ok) return cancelResult;
 
   // 6. Archive progress.md when clearing backlog (unless --keep-progress)
