@@ -127,13 +127,13 @@ describe("handleBacklogList", () => {
     expect(code).toBe(ExitCode.INVALID_ARGS);
   });
 
-  it("returns NOT_FOUND for missing backlog.json", async () => {
+  it("returns ERROR for missing backlog root", async () => {
     const projectDir = path.join(tmpDir, "no-backlog");
     fs.mkdirSync(projectDir, { recursive: true });
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleBacklogList(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.ERROR);
   });
 
   it("shows table output for populated backlog", async () => {
@@ -953,7 +953,7 @@ describe("error handling and recovery messages", () => {
     expect(output.stdout).toContain("restore");
   });
 
-  it("missing installation returns NOT_FOUND with install suggestion", async () => {
+  it("missing installation returns ERROR with descriptive message", async () => {
     const projectDir = path.join(tmpDir, "no-ralph");
     fs.mkdirSync(projectDir, { recursive: true });
 
@@ -962,11 +962,11 @@ describe("error handling and recovery messages", () => {
 
     const output = await captureOutput(async () => {
       const code = await handleBacklogList(ctx);
-      expect(code).toBe(ExitCode.NOT_FOUND);
+      expect(code).toBe(ExitCode.ERROR);
     });
 
-    // Suggestion should mention install
-    expect(output.stdout).toContain("install");
+    // Error should mention the backlog root or directory not found
+    expect(output.stderr).toContain("not found");
   });
 
   it("--quiet suppresses suggestion but not error", async () => {
@@ -1154,10 +1154,7 @@ describe("handleBacklogReset", () => {
     expect(parsed.backlogCleared).toBe(true);
 
     // Verify backlog is empty but metadata preserved
-    const backlogRaw = fs.readFileSync(
-      path.join(projectDir, ".ralph", "backlog.json"),
-      "utf-8",
-    );
+    const backlogRaw = fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items).toHaveLength(0);
     expect(backlog.project).toBe("test-project");

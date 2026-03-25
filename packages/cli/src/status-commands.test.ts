@@ -386,6 +386,7 @@ describe("handleLog", () => {
   it("prints last N lines of log file", async () => {
     const projectDir = path.join(tmpDir, "log-project");
     const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
     fs.writeFileSync(path.join(ralphDir, "ralph.log"), lines.join("\n") + "\n");
 
@@ -413,6 +414,7 @@ describe("handleLog", () => {
   it("uses default tail of 20 lines", async () => {
     const projectDir = path.join(tmpDir, "default-tail");
     const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
     fs.writeFileSync(path.join(ralphDir, "ralph.log"), lines.join("\n") + "\n");
 
@@ -440,6 +442,7 @@ describe("handleLog", () => {
   it("returns all lines when log has fewer lines than tail", async () => {
     const projectDir = path.join(tmpDir, "short-log");
     const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     fs.writeFileSync(path.join(ralphDir, "ralph.log"), "line 1\nline 2\nline 3\n");
 
     const output: string[] = [];
@@ -472,7 +475,8 @@ describe("handleProgress", () => {
 
   it("returns SUCCESS with info message when progress.md is missing", async () => {
     const projectDir = path.join(tmpDir, "no-progress");
-    createRalphProject(projectDir);
+    const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     const ctx = makeCtx([projectDir]);
     const code = await handleProgress(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
@@ -481,6 +485,7 @@ describe("handleProgress", () => {
   it("prints progress.md content", async () => {
     const projectDir = path.join(tmpDir, "progress-project");
     const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     const content = "# Progress\n\n- Step 1 done\n- Step 2 in progress\n";
     fs.writeFileSync(path.join(ralphDir, "progress.md"), content);
 
@@ -506,6 +511,7 @@ describe("handleProgress", () => {
   it("outputs JSON with content when --json flag is set", async () => {
     const projectDir = path.join(tmpDir, "json-progress");
     const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     fs.writeFileSync(path.join(ralphDir, "progress.md"), "# Progress\n\nSome notes.");
 
     let output = "";
@@ -530,7 +536,8 @@ describe("handleProgress", () => {
 
   it("outputs JSON with null content when progress.md missing", async () => {
     const projectDir = path.join(tmpDir, "no-progress-json");
-    createRalphProject(projectDir);
+    const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
 
     let output = "";
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -554,6 +561,7 @@ describe("handleProgress", () => {
   it("handles empty progress.md gracefully", async () => {
     const projectDir = path.join(tmpDir, "empty-progress");
     const ralphDir = createRalphProject(projectDir);
+    createBacklog(ralphDir);
     fs.writeFileSync(path.join(ralphDir, "progress.md"), "");
     const ctx = makeCtx([projectDir]);
     const code = await handleProgress(ctx);

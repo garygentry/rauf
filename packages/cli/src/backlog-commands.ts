@@ -17,7 +17,8 @@ import {
   purgeArchive,
   resetProject,
   unblockItems,
-  defaultBacklogPaths,
+  resolveBacklogRoot,
+  resolveBacklogPaths,
   ErrorCodes,
   type BacklogItem,
   type BacklogItemType,
@@ -63,6 +64,18 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const statusFilter = extractStringFlag(ctx.flags, "status");
   const typeFilter = extractStringFlag(ctx.flags, "type");
 
@@ -78,7 +91,7 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = readBacklog(defaultBacklogPaths(resolved));
+  const result = readBacklog(paths);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -135,6 +148,18 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const title = extractStringFlag(ctx.flags, "title");
   const type = extractStringFlag(ctx.flags, "type");
   const priorityNum = extractNumberFlag(ctx.flags, "priority");
@@ -195,7 +220,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
     warn("No --ac flags provided. A smart default acceptance criterion will be added.");
   }
 
-  const result = addItem(defaultBacklogPaths(resolved), input);
+  const result = addItem(paths, input);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -224,6 +249,18 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const title = extractStringFlag(ctx.flags, "title");
   const type = extractStringFlag(ctx.flags, "type");
   const priorityNum = extractNumberFlag(ctx.flags, "priority");
@@ -282,7 +319,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   if (blockedReason !== null) updates.blockedReason = blockedReason;
   if (estimatedIterations !== null) updates.estimatedIterations = estimatedIterations;
 
-  const result = updateItem(defaultBacklogPaths(resolved), itemId, updates);
+  const result = updateItem(paths, itemId, updates);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -309,6 +346,18 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const yes = extractBoolFlag(ctx.flags, "yes");
 
   // Confirmation check — in non-interactive CLI mode, require --yes
@@ -318,7 +367,7 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = deleteItem(defaultBacklogPaths(resolved), itemId);
+  const result = deleteItem(paths, itemId);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -345,8 +394,20 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
 
-  const result = readBacklog(defaultBacklogPaths(resolved));
+  const result = readBacklog(paths);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -377,6 +438,18 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const yes = extractBoolFlag(ctx.flags, "yes");
 
   if (!yes) {
@@ -385,7 +458,7 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = restoreFromBackup(defaultBacklogPaths(resolved));
+  const result = restoreFromBackup(paths);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -412,13 +485,25 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const yes = extractBoolFlag(ctx.flags, "yes");
   const dryRun = extractBoolFlag(ctx.flags, "dry-run");
   const minAgeDays = extractNumberFlag(ctx.flags, "min-age-days");
 
   if (dryRun) {
     // Preview mode — read backlog and show what would be swept
-    const backlogResult = readBacklog(defaultBacklogPaths(resolved));
+    const backlogResult = readBacklog(paths);
     if (!backlogResult.ok) {
       return handleCoreError(backlogResult.error, ctx, resolved);
     }
@@ -466,7 +551,7 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = sweepBacklog(defaultBacklogPaths(resolved), { minAgeDays: minAgeDays ?? undefined });
+  const result = sweepBacklog(paths, { minAgeDays: minAgeDays ?? undefined });
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -499,7 +584,19 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
   }
 
   const resolved = path.resolve(targetPath);
-  const monthsResult = listArchiveMonths(defaultBacklogPaths(resolved));
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
+  const monthsResult = listArchiveMonths(paths);
   if (!monthsResult.ok) {
     return handleCoreError(monthsResult.error, ctx, resolved);
   }
@@ -514,7 +611,7 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
   // Read each archive for item counts
   const rows: { month: string; count: string }[] = [];
   for (const month of months) {
-    const archiveResult = readArchiveMonth(defaultBacklogPaths(resolved), month);
+    const archiveResult = readArchiveMonth(paths, month);
     const count = archiveResult.ok ? String(archiveResult.value.items.length) : "?";
     rows.push({ month, count });
   }
@@ -547,7 +644,19 @@ export async function handleBacklogArchiveView(ctx: CommandContext): Promise<num
   }
 
   const resolved = path.resolve(targetPath);
-  const result = readArchiveMonth(defaultBacklogPaths(resolved), month);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
+  const result = readArchiveMonth(paths, month);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -596,6 +705,18 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const yes = extractBoolFlag(ctx.flags, "yes");
   const month = extractStringFlag(ctx.flags, "month");
 
@@ -605,7 +726,7 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = purgeArchive(defaultBacklogPaths(resolved), month ?? undefined);
+  const result = purgeArchive(paths, month ?? undefined);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }
@@ -662,6 +783,18 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const yes = extractBoolFlag(ctx.flags, "yes");
   const clear = extractBoolFlag(ctx.flags, "clear");
   const keepProgress = extractBoolFlag(ctx.flags, "keep-progress");
@@ -675,7 +808,7 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  const result = resetProject(defaultBacklogPaths(resolved), {
+  const result = resetProject(paths, {
     clearBacklog: clear,
     keepProgress,
     keepLog,
@@ -737,9 +870,21 @@ export async function handleBacklogUnblock(ctx: CommandContext): Promise<number>
   }
 
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
   const itemId = ctx.args[1] ?? undefined;
 
-  const result = unblockItems(defaultBacklogPaths(resolved), itemId);
+  const result = unblockItems(paths, itemId);
   if (!result.ok) {
     return handleCoreError(result.error, ctx, resolved);
   }

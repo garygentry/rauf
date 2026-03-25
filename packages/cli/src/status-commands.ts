@@ -11,14 +11,17 @@ import {
   readLogTail,
   watchLog,
   fileExists,
-  defaultBacklogPaths,
+  resolveBacklogRoot,
+  resolveBacklogPaths,
+  scanActiveRoots,
+  type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
 } from "@ralph/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
-import { extractBoolFlag, extractNumberFlag } from "./parser.js";
+import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
 import { c, info, print, error, outputJson } from "./formatter.js";
 
 // ─── handleStatus ─────────────────────────────────────────────────
@@ -36,34 +39,91 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 
   const watch = extractBoolFlag(ctx.flags, "watch");
   const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
-
   const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
   if (watch) {
-    return handleStatusWatch(resolved, interval);
+    // Pass backlogFlag to watch mode
+    return handleStatusWatch(resolved, interval, backlogFlag ?? undefined);
   }
 
-  const result = deriveStatus(defaultBacklogPaths(resolved));
-
-  if (!result.ok) {
-    if (ctx.globalFlags.json) {
-      outputJson({ error: result.error });
-    } else {
-      error(result.error.message);
-      info(`Ensure ralph is installed. Run: ${c.cyan(`ralph install ${resolved}`)}`);
+  if (backlogFlag) {
+    // Show status for specific root only
+    const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag);
+    if (!backlogRootResult.ok) {
+      error(backlogRootResult.error.message);
+      return ExitCode.INVALID_ARGS;
     }
-    return ExitCode.ERROR;
+    const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+    if (!pathsResult.ok) {
+      error(pathsResult.error.message);
+      return ExitCode.ERROR;
+    }
+
+    const result = deriveStatus(pathsResult.value);
+    if (!result.ok) {
+      if (ctx.globalFlags.json) {
+        outputJson({ error: result.error });
+      } else {
+        error(result.error.message);
+      }
+      return ExitCode.ERROR;
+    }
+
+    if (ctx.globalFlags.json) {
+      outputJson(result.value);
+      return statusExitCode(result.value.loopState);
+    }
+
+    printStatusSummary(result.value);
+    return statusExitCode(result.value.loopState);
+  } else {
+    // Default root + list active non-default roots
+    const defaultRoot = path.join(resolved, ".ralph");
+    const defaultPathsResult = resolveBacklogPaths(resolved, defaultRoot);
+
+    if (defaultPathsResult.ok) {
+      const result = deriveStatus(defaultPathsResult.value);
+      if (!result.ok) {
+        if (ctx.globalFlags.json) {
+          outputJson({ error: result.error });
+        } else {
+          error(result.error.message);
+          info(`Ensure ralph is installed. Run: ${c.cyan(`ralph install ${resolved}`)}`);
+        }
+        return ExitCode.ERROR;
+      }
+
+      const status = result.value;
+      if (ctx.globalFlags.json) {
+        outputJson(status);
+        return statusExitCode(status.loopState);
+      }
+
+      printStatusSummary(status);
+    }
+
+    // Scan for active non-default roots
+    const activeRootsResult = scanActiveRoots(resolved);
+    if (activeRootsResult.ok && activeRootsResult.value.length > 0) {
+      const nonDefault = activeRootsResult.value.filter((r) => r.relativePath !== ".ralph");
+      if (nonDefault.length > 0) {
+        print("");
+        print(c.bold("Active backlog roots:"));
+        for (const root of nonDefault) {
+          const stateLabel = root.loopState;
+          const itemLabel = root.currentItem ? ` (item ${root.currentItem})` : "";
+          print(`  ${c.cyan(root.relativePath)} — ${stateLabel}${itemLabel}`);
+        }
+      }
+    }
+
+    if (defaultPathsResult.ok) {
+      const result = deriveStatus(defaultPathsResult.value);
+      if (result.ok) return statusExitCode(result.value.loopState);
+    }
+    return ExitCode.SUCCESS;
   }
-
-  const status = result.value;
-
-  if (ctx.globalFlags.json) {
-    outputJson(status);
-    return statusExitCode(status.loopState);
-  }
-
-  printStatusSummary(status);
-  return statusExitCode(status.loopState);
 }
 
 // ─── handleLog ────────────────────────────────────────────────────
@@ -81,12 +141,25 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const resolved = path.resolve(targetPath);
   const tailN = extractNumberFlag(ctx.flags, "tail") ?? 20;
   const follow = extractBoolFlag(ctx.flags, "follow");
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
 
   if (follow) {
-    return handleLogFollow(resolved, tailN);
+    return handleLogFollow(paths, tailN);
   }
 
-  const result = readLogTail(defaultBacklogPaths(resolved), tailN);
+  const result = readLogTail(paths, tailN);
   if (!result.ok) {
     if (ctx.globalFlags.json) {
       outputJson({ error: result.error });
@@ -121,7 +194,20 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
   }
 
   const resolved = path.resolve(targetPath);
-  const progressPath = path.join(resolved, ".ralph", "progress.md");
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
+  const progressPath = paths.progress;
 
   if (!fileExists(progressPath)) {
     if (ctx.globalFlags.json) {
@@ -142,16 +228,16 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
     return ExitCode.SUCCESS;
   } catch (e) {
     error(`Failed to read progress file: ${e instanceof Error ? e.message : String(e)}`);
-    info("Check that .ralph/progress.md is readable and not corrupted.");
+    info("Check that the progress file is readable and not corrupted.");
     return ExitCode.ERROR;
   }
 }
 
 // ─── Internal: log follow mode ───────────────────────────────────
 
-async function handleLogFollow(projectPath: string, initialLines: number): Promise<number> {
+async function handleLogFollow(paths: BacklogPaths, initialLines: number): Promise<number> {
   // Show existing tail first
-  const tailResult = readLogTail(defaultBacklogPaths(projectPath), initialLines);
+  const tailResult = readLogTail(paths, initialLines);
   if (tailResult.ok && tailResult.value.length > 0) {
     for (const line of tailResult.value) {
       print(line);
@@ -174,7 +260,7 @@ async function handleLogFollow(projectPath: string, initialLines: number): Promi
     process.on("SIGTERM", stop);
 
     try {
-      cleanup = watchLog(defaultBacklogPaths(projectPath), (newLines) => {
+      cleanup = watchLog(paths, (newLines) => {
         for (const line of newLines) {
           print(line);
         }
@@ -191,7 +277,11 @@ async function handleLogFollow(projectPath: string, initialLines: number): Promi
 
 // ─── Status watch mode ──────────────────────────────────────────
 
-async function handleStatusWatch(projectPath: string, intervalSeconds: number): Promise<number> {
+async function handleStatusWatch(
+  projectPath: string,
+  intervalSeconds: number,
+  backlogFlag?: string,
+): Promise<number> {
   return new Promise<number>((resolve) => {
     let running = true;
 
@@ -212,7 +302,21 @@ async function handleStatusWatch(projectPath: string, intervalSeconds: number): 
       print(c.dim(`ralph status  (${now})  Ctrl+C to stop`));
       print("");
 
-      const result = deriveStatus(defaultBacklogPaths(projectPath));
+      // Resolve paths for the target backlog root
+      const rootResult = resolveBacklogRoot(projectPath, backlogFlag);
+      if (!rootResult.ok) {
+        error(rootResult.error.message);
+        if (running) setTimeout(tick, intervalSeconds * 1000);
+        return;
+      }
+      const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+      if (!pathsResult.ok) {
+        error(pathsResult.error.message);
+        if (running) setTimeout(tick, intervalSeconds * 1000);
+        return;
+      }
+
+      const result = deriveStatus(pathsResult.value);
       if (!result.ok) {
         error(result.error.message);
       } else {
