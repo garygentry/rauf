@@ -5,7 +5,6 @@ import * as os from "node:os";
 
 import { resetProject } from "./reset.js";
 import { writeBacklog } from "./backlog.js";
-import { ErrorCodes } from "./errors.js";
 import type { Backlog, BacklogItem } from "./schemas.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -148,8 +147,8 @@ describe("resetProject", () => {
 
     const backlog = readBacklogFile();
     expect(backlog.items).toHaveLength(0);
-    expect(backlog.project).toBe("");
-    expect(backlog.description).toBe("");
+    expect(backlog.project).toBe("test-project");
+    expect(backlog.description).toBe("A test project");
   });
 
   it("idempotent — succeeds when no state files exist", () => {

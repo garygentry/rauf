@@ -150,8 +150,6 @@ export function resetProject(
     const backlog = backlogResult.value;
     const writeResult = writeBacklog(resolved, {
       ...backlog,
-      project: '',
-      description: '',
       items: [],
     });
     if (!writeResult.ok) return writeResult;
