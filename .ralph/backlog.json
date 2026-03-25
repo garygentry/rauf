@@ -401,8 +401,8 @@
         "State files are created in specs/feature-a/.ralph/ (not .ralph/)",
         "bash test-sandbox/verify.sh passes (including multi-backlog scenario)"
       ],
-      "status": "in_progress",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-03-25T07:07:52.255Z",
       "dependsOn": [
         "011"
       ],
