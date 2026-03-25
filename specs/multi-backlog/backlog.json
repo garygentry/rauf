@@ -393,7 +393,7 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011", "012", "013"],
+      "dependsOn": ["011", "012", "013", "014"],
       "notes": "This is the final verification item. If tests fail, fix them in this iteration rather than creating new backlog items. The test-sandbox may not work if the ralph binary hasn't been rebuilt — run pnpm build first if needed.",
       "estimatedIterations": 1,
       "specReferences": [
