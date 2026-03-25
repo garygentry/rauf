@@ -68,11 +68,11 @@
       "fixedAt": "2026-03-25T00:00:00Z"
     },
     "forge-4-backlog": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "artifacts": ["specs/multi-backlog/backlog.json"],
-      "completedAt": null,
-      "commitHash": null,
+      "completedAt": "2026-03-25T12:00:00Z",
+      "commitHash": "aa3e91d",
       "basedOnVersions": {
         "forge-1-prd": 1,
         "forge-2-tech": 1,
