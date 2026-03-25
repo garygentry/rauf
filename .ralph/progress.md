@@ -13,3 +13,10 @@
 - Pre-existing lint errors in `installer.ts:356` and `schemas.test.ts:204` (unused vars) — not related to multi-backlog work
 - Web test `GET /api/config > returns default config` is flaky — fails intermittently with 500 instead of 200
 - The barrel export in index.ts uses explicit named re-exports from `./backlog.js` to avoid TS2308 conflicts with constants from `./backlog-root.js` (BACKLOG_FILENAME, STATE_FILENAME)
+
+### 004 — Refactor backlog.ts to accept BacklogPaths (2026-03-25)
+- Changing function signatures in core requires updating ALL downstream callers (CLI, loop, web) for typecheck to pass — can't defer to later items
+- Added `defaultBacklogPaths(projectPath)` bridge function to `backlog-root.ts` — constructs BacklogPaths for default root without filesystem checks, used by callers not yet migrated to `resolveBacklogPaths`
+- Barrel export in index.ts simplified from explicit named re-exports to `export * from "./backlog.js"` since constants removed from backlog.ts eliminated the TS2308 conflict
+- CLI loop-commands.test.ts has 3 flaky tests (handleLoopStop, handleLoopFollow, path resolution) that depend on server connectivity timing — pass in isolation, fail intermittently in parallel runs
+- Pre-existing format issues in many files (specs, some source files) — not related to this work
