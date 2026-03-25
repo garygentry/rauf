@@ -1,4 +1,8 @@
-import type { Result } from "./errors.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { fileExists, validatePath, ensureDir } from "./fs-utils.js";
+import { type Result, ok, err, ErrorCodes } from "./errors.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -72,16 +76,34 @@ export interface InstructionPaths {
   reviewMd: string | null;
 }
 
-// ─── Placeholder Functions ────────────────────────────────────────
+// ─── Functions ────────────────────────────────────────────────────
 
 /**
- * Resolve the backlog root directory from project path and optional --backlog flag.
- * No flag → default `.ralph/` directory. With flag → resolve relative to projectPath.
+ * Resolve the absolute backlog root path from a project path and optional --backlog flag.
+ *
+ * When `backlogFlag` is omitted or undefined, returns the default root: `{projectPath}/.ralph`.
+ * When provided, resolves relative to `projectPath` and validates that the result
+ * is within the project root (path sandboxing per REQ-SEC-01).
+ *
+ * @param projectPath - Absolute path to the project root (directory containing .ralph.json)
+ * @param backlogFlag - Optional --backlog flag value (relative directory path)
+ * @returns Absolute path to the backlog root directory
  */
 export function resolveBacklogRoot(projectPath: string, backlogFlag?: string): Result<string> {
-  void projectPath;
-  void backlogFlag;
-  throw new Error("not implemented");
+  if (backlogFlag === undefined || backlogFlag === "") {
+    return ok(path.join(path.resolve(projectPath), ".ralph"));
+  }
+
+  const resolved = path.resolve(projectPath, backlogFlag);
+  const validation = validatePath(resolved, [path.resolve(projectPath)]);
+  if (!validation.ok) {
+    return err({
+      code: ErrorCodes.PATH_VIOLATION,
+      message: `Backlog root '${resolved}' is outside the project root`,
+    });
+  }
+
+  return ok(resolved);
 }
 
 /**
@@ -90,8 +112,11 @@ export function resolveBacklogRoot(projectPath: string, backlogFlag?: string): R
  * Otherwise returns `root/.ralph/`.
  */
 export function resolveStateDir(backlogRoot: string): string {
-  void backlogRoot;
-  throw new Error("not implemented");
+  const resolved = path.resolve(backlogRoot);
+  if (path.basename(resolved) === ".ralph") {
+    return resolved;
+  }
+  return path.join(resolved, ".ralph");
 }
 
 /**
@@ -102,23 +127,96 @@ export function resolveBacklogPaths(
   projectPath: string,
   backlogRoot: string,
 ): Result<BacklogPaths> {
-  void projectPath;
-  void backlogRoot;
-  throw new Error("not implemented");
+  // 1. Validate backlogRoot within projectPath
+  const validation = validatePath(backlogRoot, [path.resolve(projectPath)]);
+  if (!validation.ok) {
+    return err({
+      code: ErrorCodes.PATH_VIOLATION,
+      message: `Backlog root '${backlogRoot}' is outside the project root`,
+    });
+  }
+
+  // 2. Check that backlogRoot exists as a directory
+  try {
+    const stat = fs.statSync(path.resolve(backlogRoot));
+    if (!stat.isDirectory()) {
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message: `Backlog root directory not found: ${backlogRoot}`,
+      });
+    }
+  } catch {
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Backlog root directory not found: ${backlogRoot}`,
+    });
+  }
+
+  // 3. Compute stateDir
+  const stateDir = resolveStateDir(backlogRoot);
+
+  // 4. Locate backlog.json
+  const rootBacklog = path.join(path.resolve(backlogRoot), "backlog.json");
+  const stateDirBacklog = path.join(stateDir, "backlog.json");
+  let backlogPath: string;
+
+  if (fileExists(rootBacklog)) {
+    backlogPath = rootBacklog;
+  } else if (stateDir !== path.resolve(backlogRoot) && fileExists(stateDirBacklog)) {
+    backlogPath = stateDirBacklog;
+  } else {
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `No backlog.json found in ${backlogRoot} or ${stateDir}`,
+    });
+  }
+
+  // 5. Build and return BacklogPaths
+  return ok({
+    projectPath: path.resolve(projectPath),
+    root: path.resolve(backlogRoot),
+    stateDir,
+    backlog: backlogPath,
+    state: path.join(stateDir, "state.json"),
+    log: path.join(stateDir, "ralph.log"),
+    done: path.join(stateDir, "DONE"),
+    cancel: path.join(stateDir, "CANCEL"),
+    progress: path.join(stateDir, "progress.md"),
+    iterationStatus: path.join(stateDir, "iteration-status.json"),
+    archive: path.join(stateDir, "archive"),
+    lock: path.join(stateDir, ".loop.lock"),
+  });
 }
 
 /**
  * Resolve instruction file paths (RALPH.md, REVIEW.md) with per-root-then-project fallback.
  */
 export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths {
-  void paths;
-  throw new Error("not implemented");
+  const projectRalphDir = path.join(paths.projectPath, ".ralph");
+
+  function resolveWithFallback(filename: string): string | null {
+    // 1. Per-root override
+    const perRoot = path.join(paths.stateDir, filename);
+    if (fileExists(perRoot)) return perRoot;
+
+    // 2. Project-level fallback (only if stateDir differs from project .ralph/)
+    if (paths.stateDir !== projectRalphDir) {
+      const projectLevel = path.join(projectRalphDir, filename);
+      if (fileExists(projectLevel)) return projectLevel;
+    }
+
+    return null;
+  }
+
+  return {
+    ralphMd: resolveWithFallback("RALPH.md"),
+    reviewMd: resolveWithFallback("REVIEW.md"),
+  };
 }
 
 /**
  * Ensure the state directory exists (creates with parents if needed).
  */
-export async function ensureStateDir(paths: BacklogPaths): Promise<Result<void>> {
-  void paths;
-  throw new Error("not implemented");
+export function ensureStateDir(paths: BacklogPaths): Result<void> {
+  return ensureDir(paths.stateDir);
 }
