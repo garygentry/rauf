@@ -1,0 +1,404 @@
+{
+  "project": "ralph",
+  "description": "Multi-backlog support — enables ralph to operate on any backlog location with isolated state, lock files, and per-root instruction resolution. Introduces BacklogPaths abstraction, --backlog CLI flag, and filesystem-based active root scanning.",
+  "items": [
+    {
+      "id": "001",
+      "type": "chore",
+      "priority": 1,
+      "title": "Scaffold new core modules with types, constants, and barrel exports",
+      "description": "Create the foundation files for multi-backlog: type definitions, error codes, constants, and barrel export wiring.\n\n1. Create `packages/core/src/backlog-root.ts` with:\n   - `BacklogPaths` interface (all fields from spec 00 section 1.1): `projectPath`, `root`, `stateDir`, `backlog`, `state`, `log`, `done`, `cancel`, `progress`, `iterationStatus`, `archive`, `lock`\n   - `InstructionPaths` interface (spec 00 section 1.2): `ralphMd`, `reviewMd`\n   - Placeholder function stubs for `resolveBacklogRoot`, `resolveStateDir`, `resolveBacklogPaths`, `resolveInstructionPaths`, `ensureStateDir` — each should have the correct signature and a `throw new Error('not implemented')` body\n   - Constants: `LOCK_FILENAME = \".loop.lock\"`, `SCAN_SKIP_DIRS`, `STATE_FILENAME = \"state.json\"`, `BACKLOG_FILENAME = \"backlog.json\"`, `DEFAULT_ROOT_DIR = \".ralph\"`\n\n2. Create `packages/core/src/lock.ts` with:\n   - `LockFileContent` interface (spec 00 section 1.3): `pid`, `startedAt`, `processStartTime`\n   - `LockFileContentSchema` Zod schema (spec 00 section 1.6)\n   - `LockStatus` interface (spec 00 section 1.4): `locked`, `pid?`, `startedAt?`, `stale?`\n   - Placeholder function stubs for `acquireLock`, `releaseLock`, `checkLock`, `forceClearLock`\n\n3. Add `LOCK_CONFLICT` to `ErrorCodes` in `packages/core/src/errors.ts`\n\n4. Add `backlogRoot: z.string().optional()` to `LoopStartOptionsSchema` in `packages/core/src/schemas.ts`\n\n5. Update `packages/core/src/index.ts` barrel to add:\n   - `export * from \"./backlog-root.js\";` (before `./backlog.js`)\n   - `export * from \"./lock.js\";` (before `./backlog.js`)\n\n6. Ensure `test-helpers.ts` is NOT exported from the barrel.",
+      "acceptanceCriteria": [
+        "packages/core/src/backlog-root.ts exists and exports BacklogPaths, InstructionPaths, and 5 placeholder functions",
+        "packages/core/src/lock.ts exists and exports LockFileContent, LockFileContentSchema, LockStatus, and 4 placeholder functions",
+        "ErrorCodes in packages/core/src/errors.ts includes LOCK_CONFLICT",
+        "LoopStartOptionsSchema in packages/core/src/schemas.ts has optional backlogRoot field",
+        "packages/core/src/index.ts re-exports backlog-root.js and lock.js before backlog.js",
+        "Constants LOCK_FILENAME, SCAN_SKIP_DIRS, STATE_FILENAME, BACKLOG_FILENAME, DEFAULT_ROOT_DIR are exported from backlog-root.ts",
+        "pnpm typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Read spec 00-core-definitions.md completely for exact type definitions with JSDoc. Read spec 01-architecture-layout.md for barrel export ordering. The placeholder stubs let downstream items compile against the types immediately. Import paths use .js extension per project convention (e.g., './backlog-root.js').",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/00-core-definitions.md",
+        "specs/multi-backlog/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement backlog-root.ts resolution functions with unit tests and shared test helper",
+      "description": "Replace the placeholder stubs in `packages/core/src/backlog-root.ts` with full implementations, create the shared test helper, and write comprehensive unit tests.\n\n1. Implement `resolveBacklogRoot(projectPath, backlogFlag?)` in `packages/core/src/backlog-root.ts`:\n   - No flag → return `ok(path.join(path.resolve(projectPath), \".ralph\"))`\n   - With flag → resolve relative to projectPath, validate sandboxing via `validatePath()` from `./fs-utils.js`\n   - Return `PATH_VIOLATION` error if outside project root\n   - Import `validatePath` from `./fs-utils.js` and `Result, ok, err, ErrorCodes` from `./errors.js`\n\n2. Implement `resolveStateDir(backlogRoot)` — pure function:\n   - `path.basename(resolved) === \".ralph\"` → return resolved (no nesting)\n   - Otherwise → return `path.join(resolved, \".ralph\")`\n\n3. Implement `resolveBacklogPaths(projectPath, backlogRoot)` — returns `Result<BacklogPaths>`:\n   - Validate backlogRoot within projectPath\n   - Check backlogRoot directory exists\n   - Locate backlog.json: check root first, then stateDir fallback\n   - Build full BacklogPaths object per spec 02 section 2.3\n   - Use `fileExists()` from `./fs-utils.js` for existence checks\n\n4. Implement `resolveInstructionPaths(paths)` — synchronous:\n   - Check `{stateDir}/RALPH.md` first, fallback to `{projectPath}/.ralph/RALPH.md`\n   - Same for REVIEW.md\n   - Return null if neither exists\n   - Skip fallback when stateDir === projectRalphDir (default root case)\n\n5. Implement `ensureStateDir(paths)` — delegates to `ensureDir(paths.stateDir)` from `./fs-utils.js`\n\n6. Create `packages/core/src/test-helpers.ts` with `createMultiRootProject()` function per spec 07 section 2. This file must NOT be exported from the barrel.\n\n7. Create `packages/core/src/backlog-root.test.ts` with tests covering:\n   - resolveBacklogRoot: no flag default, custom path, path traversal rejection, empty string\n   - resolveStateDir: .ralph basename, custom basename\n   - resolveBacklogPaths: backlog.json in root, in stateDir, missing, nonexistent dir, all paths absolute\n   - resolveInstructionPaths: per-root RALPH.md, project-level fallback, missing everywhere, default root\n   - ensureStateDir: creates dir with parents, existing dir no-op",
+      "acceptanceCriteria": [
+        "resolveBacklogRoot with no flag returns {projectPath}/.ralph",
+        "resolveBacklogRoot with '../../outside' returns PATH_VIOLATION error",
+        "resolveStateDir for .ralph basename returns same directory (no nesting)",
+        "resolveStateDir for specs/auth returns specs/auth/.ralph",
+        "resolveBacklogPaths finds backlog.json in root directory first",
+        "resolveBacklogPaths falls back to stateDir for backlog.json",
+        "resolveBacklogPaths returns FILE_NOT_FOUND when no backlog.json exists",
+        "resolveInstructionPaths finds per-root RALPH.md when present",
+        "resolveInstructionPaths falls back to project-level RALPH.md",
+        "test-helpers.ts is NOT exported from packages/core/src/index.ts",
+        "pnpm typecheck passes",
+        "pnpm test packages/core/src/backlog-root.test.ts passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001"],
+      "notes": "Read spec 02-backlog-root-resolution.md completely — it has exact implementation logic for each function. Use existing utilities: fileExists at packages/core/src/fs-utils.ts:163, validatePath at packages/core/src/fs-utils.ts:136, ensureDir at packages/core/src/fs-utils.ts:176. The test helper uses real temp directories (fs.mkdtempSync), not mocks.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/02-backlog-root-resolution.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement lock.ts lock file management with unit tests",
+      "description": "Replace the placeholder stubs in `packages/core/src/lock.ts` with full implementations and write unit tests.\n\n1. Implement helper functions in `packages/core/src/lock.ts`:\n   - `isProcessAlive(pid)` — uses `process.kill(pid, 0)` in try/catch\n   - `isProcessRecycled(pid, recordedStartTime)` — reads `/proc/{pid}/stat` on Linux, returns false on non-Linux\n   - `getProcessStartTime(pid)` — reads `/proc/{pid}/stat` field 22, returns null on non-Linux\n   - For `/proc/{pid}/stat` parsing: find last `)`, split remainder, field 22 is at index 19 in post-paren fields\n\n2. Implement `acquireLock(paths)` in lock.ts:\n   - Call checkLock first\n   - If locked && !stale → return LOCK_CONFLICT error with pid, startedAt, and relative path in message\n   - If locked && stale → remove stale lock file\n   - Write new lock with `atomicWrite(paths.lock, ...)` containing pid, startedAt, processStartTime\n   - Import `atomicWrite` and `fileExists` from `./fs-utils.js`\n\n3. Implement `releaseLock(paths)` — fs.unlinkSync with ENOENT tolerance (idempotent)\n\n4. Implement `checkLock(paths)` — read lock file, validate with LockFileContentSchema, check PID liveness and recycling\n\n5. Implement `forceClearLock(paths)` — delegates to releaseLock\n\n6. Create `packages/core/src/lock.test.ts` with tests:\n   - acquireLock on fresh dir creates .loop.lock with valid JSON\n   - acquireLock when locked by current (live) PID returns LOCK_CONFLICT\n   - acquireLock when locked by dead PID (use PID 999999999) removes stale lock and acquires\n   - acquireLock with corrupt lock file treats as stale\n   - releaseLock removes lock file\n   - releaseLock returns ok when no lock exists\n   - checkLock returns { locked: false } when no lock\n   - checkLock returns { locked: true, stale: false } for live PID\n   - checkLock returns { locked: true, stale: true } for dead PID\n   - forceClearLock removes lock regardless",
+      "acceptanceCriteria": [
+        "acquireLock creates .loop.lock with pid, startedAt, and processStartTime fields",
+        "acquireLock returns LOCK_CONFLICT when locked by a live process",
+        "acquireLock removes stale lock (dead PID) and acquires successfully",
+        "releaseLock removes .loop.lock file",
+        "releaseLock returns ok even when no lock file exists (idempotent)",
+        "checkLock returns { locked: false } when no lock file",
+        "checkLock returns stale: true for dead PID",
+        "forceClearLock removes lock regardless of PID status",
+        "Lock file JSON validates against LockFileContentSchema",
+        "pnpm typecheck passes",
+        "pnpm test packages/core/src/lock.test.ts passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001"],
+      "notes": "Read spec 03-lock-file-management.md completely — it has exact implementation logic including the /proc/{pid}/stat parsing algorithm. Use process.pid for 'live PID' tests and 999999999 for 'dead PID' tests. The lock file path comes from paths.lock (set by resolveBacklogPaths). Use createMultiRootProject from test-helpers.ts (import via relative path '../test-helpers.js', NOT from barrel). The relative path in LOCK_CONFLICT error messages uses path.relative(paths.projectPath, paths.root).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/03-lock-file-management.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Refactor backlog.ts to accept BacklogPaths and update tests",
+      "description": "Change all exported functions in `packages/core/src/backlog.ts` from accepting `projectPath: string` to `paths: BacklogPaths`, and update all corresponding tests.\n\n1. In `packages/core/src/backlog.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete internal constants: `BACKLOG_DIR`, `BACKLOG_FILENAME`, `STATE_FILENAME`\n   - Delete internal helper functions: `getBacklogPath()`, `getStatePath()`\n   - Change first parameter of these functions from `projectPath: string` to `paths: BacklogPaths`:\n     - `readBacklog`, `writeBacklog`, `addItem`, `updateItem`, `deleteItem`, `restoreFromBackup`, `resetStalledItems`, `ensureBacklog`, `unblockItems`\n   - Replace all internal path construction:\n     - `getBacklogPath(projectPath)` → `paths.backlog`\n     - `getStatePath(projectPath)` → `paths.state`\n   - In `addItem`: change `readMarkerFile(projectPath)` → `readMarkerFile(paths.projectPath)`\n   - In `ensureBacklog`: update NOT_INSTALLED check per spec 04 section 2.4\n   - In `restoreFromBackup`: use `paths.backlog` for backup path\n   - Update internal calls: `readBacklog(projectPath)` → `readBacklog(paths)`, etc.\n   - Leave `selectNextItem(backlog)` and `validateStatusTransition()` unchanged (no projectPath param)\n\n2. Update `packages/core/src/backlog.test.ts`:\n   - Import `resolveBacklogPaths` from `./backlog-root.js` and `createMultiRootProject` from `./test-helpers.js`\n   - Replace all `readBacklog(projectPath)` calls with `readBacklog(paths)` pattern\n   - Use `createMultiRootProject()` for test setup where appropriate\n   - Add at least one test operating on a non-default root (e.g., `specs/auth`)",
+      "acceptanceCriteria": [
+        "All exported functions in backlog.ts accept BacklogPaths as first parameter",
+        "No internal path constants (BACKLOG_DIR, BACKLOG_FILENAME, STATE_FILENAME) remain in backlog.ts",
+        "No internal path helper functions (getBacklogPath, getStatePath) remain in backlog.ts",
+        "selectNextItem and validateStatusTransition signatures are unchanged",
+        "readMarkerFile still uses paths.projectPath (project root)",
+        "pnpm typecheck passes",
+        "pnpm test packages/core/src/backlog.test.ts passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002"],
+      "notes": "Read spec 04-core-module-refactor.md section 2 completely. The ensureBacklog function has a special case for the NOT_INSTALLED check — for the default root, check if .ralph/ dir exists; for non-default roots, NOT_INSTALLED doesn't apply. Be careful with addItem's call to readMarkerFile — it still needs paths.projectPath, not paths.root. Also update any internal calls between functions (e.g., resetStalledItems calls readBacklog and updateItem).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/04-core-module-refactor.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Refactor status.ts, add scanActiveRoots, and update tests",
+      "description": "Change all exported functions in `packages/core/src/status.ts` to accept `BacklogPaths`, add the `scanActiveRoots()` function, and update tests.\n\n1. In `packages/core/src/status.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete internal constants: `RALPH_DIR`, `STATE_FILENAME`, `LOG_FILENAME`, `DONE_FILENAME`, `CANCEL_FILENAME`\n   - Delete internal helper functions: `getStatePath()`, `getLogPath()`, `getDonePath()`, `getCancelPath()`\n   - Change first parameter from `projectPath: string` to `paths: BacklogPaths` for:\n     - `deriveStatus`, `readLogTail`, `watchLog`, `writeLoopState`, `appendLog`, `writeDoneFile`, `clearDoneFile`, `checkCancelRequested`, `clearCancelFile`\n   - Replace all path construction with direct field access on `paths`\n   - Update private `computeBacklogSummary` to accept `BacklogPaths`\n   - Update `deriveStatus` NOT_INSTALLED check per spec 04 section 3.4\n   - Keep `STALENESS_THRESHOLD_MS` and `LOG_ACTIVE_THRESHOLD_MS` (used by tests)\n\n2. Add `ActiveRoot` interface (from spec 00 section 1.5) in status.ts\n\n3. Implement `scanActiveRoots(projectPath: string): Result<ActiveRoot[]>`:\n   - Synchronous recursive walk using `fs.readdirSync` with `{ withFileTypes: true }`\n   - Skip directories in SCAN_SKIP_DIRS (import from `./backlog-root.js`)\n   - For each `.ralph` directory found, check for `state.json`\n   - Parse state.json, if status !== 'idle', compute backlog root and add to results\n   - Also check for `.loop.lock` files as activity indicators\n   - Sort results by `relativePath`\n   - See spec 04 section 3.5 for exact algorithm\n\n4. Update `packages/core/src/status.test.ts`:\n   - Update all existing tests to use BacklogPaths\n   - Add scanActiveRoots tests: 0 active roots, 1 active + 2 idle, skips node_modules, handles missing state.json\n   - Add test for non-default root",
+      "acceptanceCriteria": [
+        "All exported functions in status.ts accept BacklogPaths as first parameter",
+        "No internal path constants or helper functions remain in status.ts",
+        "ActiveRoot interface is exported from status.ts",
+        "scanActiveRoots returns active roots sorted by relativePath",
+        "scanActiveRoots skips node_modules, .git, dist, build, coverage directories",
+        "scanActiveRoots handles missing/corrupt state.json gracefully",
+        "STALENESS_THRESHOLD_MS and LOG_ACTIVE_THRESHOLD_MS are preserved",
+        "pnpm typecheck passes",
+        "pnpm test packages/core/src/status.test.ts passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002"],
+      "notes": "Read spec 04-core-module-refactor.md sections 3.1 through 3.6 completely. The scanActiveRoots function is the most complex new function — follow the exact algorithm in section 3.5. Import SCAN_SKIP_DIRS from ./backlog-root.js. The LoopStateEnum type is imported from ./schemas.js. Don't recurse into .ralph directories during the scan walk.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/04-core-module-refactor.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Refactor iteration-status.ts, archive.ts, and reset.ts with test updates",
+      "description": "Change all exported functions in three core modules to accept `BacklogPaths` and update tests.\n\n1. In `packages/core/src/iteration-status.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete: `STATUS_FILENAME` constant, `statusPath()` helper\n   - Change first param to `paths: BacklogPaths` for: `writeIterationStatus`, `readIterationStatus`, `clearIterationStatus`\n   - Replace `statusPath(projectPath)` → `paths.iterationStatus`\n   - Change throttle map key from `projectPath` to `paths.iterationStatus` (per spec 04 section 4.3)\n\n2. In `packages/core/src/archive.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete: `ARCHIVE_SUBDIR` constant, `getArchiveDir()`, `getArchiveFilePath()` helpers\n   - Change first param to `paths: BacklogPaths` for: `sweepBacklog`, `listArchiveMonths`, `readArchiveMonth`, `purgeArchive`\n   - Replace `getArchiveDir(projectPath)` → `paths.archive`\n   - Replace archive file path with inline `path.join(paths.archive, \\`${month}.json\\`)`\n   - Update internal calls to `readBacklog(paths)` and `writeBacklog(paths, ...)`\n\n3. In `packages/core/src/reset.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete: `RALPH_DIR`, `STATE_FILENAME` constants\n   - Change first param to `paths: BacklogPaths` for: `resetProject`\n   - Replace all internal path construction with paths fields\n   - Update calls: `ensureBacklog(paths)`, `sweepBacklog(paths)`, `resetStalledItems(paths)`, `clearDoneFile(paths)`, `clearCancelFile(paths)`\n   - Update `deployProgress(ralphDir)` → `deployProgress(paths.stateDir)` — verify deployProgress accepts this\n   - Use `paths.archive`, `paths.progress`, `paths.state`\n\n4. Update test files for all three modules:\n   - `iteration-status.test.ts`: update to use BacklogPaths, add non-default root test\n   - `archive.test.ts`: update to use BacklogPaths, add non-default root test\n   - `reset.test.ts`: update to use BacklogPaths, add non-default root test",
+      "acceptanceCriteria": [
+        "All exported functions in iteration-status.ts accept BacklogPaths as first parameter",
+        "All exported functions in archive.ts accept BacklogPaths as first parameter",
+        "resetProject in reset.ts accepts BacklogPaths as first parameter",
+        "No internal path constants or helpers remain in any of the three modules",
+        "Iteration status throttle key uses paths.iterationStatus, not projectPath",
+        "pnpm typecheck passes",
+        "pnpm test passes for iteration-status.test.ts, archive.test.ts, and reset.test.ts"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002", "004", "005"],
+      "notes": "Read spec 04-core-module-refactor.md sections 4, 5, and 6. These three modules follow the same mechanical transformation pattern as backlog.ts and status.ts. The reset.ts module calls deployProgress — verify its current signature in packages/core/src/installer.ts before changing the call. The throttle key change in iteration-status.ts is subtle but important for multi-root correctness.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/04-core-module-refactor.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ],
+      "agentDelegation": {
+        "recommendedConcurrency": 3,
+        "strategy": "Split by module. Each subagent handles one module's refactor and its test updates independently.",
+        "subtasks": [
+          "Refactor packages/core/src/iteration-status.ts: add BacklogPaths import, delete STATUS_FILENAME and statusPath(), change all function first params to paths: BacklogPaths, replace statusPath(projectPath) with paths.iterationStatus, change lastWriteAt map key from projectPath to paths.iterationStatus. Update packages/core/src/iteration-status.test.ts to construct BacklogPaths and add a non-default root test.",
+          "Refactor packages/core/src/archive.ts: add BacklogPaths import, delete ARCHIVE_SUBDIR/getArchiveDir/getArchiveFilePath, change all function first params to paths: BacklogPaths, replace path construction with paths.archive and inline path.join, update internal readBacklog/writeBacklog calls. Update packages/core/src/archive.test.ts to use BacklogPaths and add a non-default root test.",
+          "Refactor packages/core/src/reset.ts: add BacklogPaths import, delete RALPH_DIR/STATE_FILENAME, change resetProject first param to paths: BacklogPaths, update all internal core calls to use paths, update deployProgress call to use paths.stateDir. Update packages/core/src/reset.test.ts to use BacklogPaths and add a non-default root test."
+        ]
+      }
+    },
+    {
+      "id": "007",
+      "type": "chore",
+      "priority": 1,
+      "title": "Update artifact templates to use path-agnostic wording",
+      "description": "Replace hardcoded `.ralph/` path references in installed artifact templates with generic filenames. The prompt-builder's 'Active Backlog Root' section (added in item 010) provides the actual paths at runtime.\n\n1. Edit `artifacts/variants/backlog-json/.ralph/RALPH.md.tmpl`:\n   - Replace `.ralph/RALPH.md` → `RALPH.md`\n   - Replace `.ralph/backlog.json` → `backlog.json` (or 'the backlog')\n   - Replace `.ralph/progress.md` → `progress.md`\n   - Replace `.ralph/state.json` → `state.json`\n   - Add note: '(The Active Backlog Root section in the prompt tells you the exact paths)'\n   - See spec 05 section 4.2 for exact before/after wording\n\n2. Edit `artifacts/variants/backlog-json/CLAUDE_ADDON.md`:\n   - Same path-agnostic replacements in the 'Autonomous Loop (Ralph)' section\n   - Replace `.ralph/RALPH.md` → `RALPH.md`\n   - Replace `.ralph/backlog.json` → `backlog.json`\n   - Replace `.ralph/progress.md` → `progress.md`\n   - Replace `.ralph/state.json` → `state.json`\n   - See spec 05 section 4.3\n\n3. Edit `artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl`:\n   - Same transformation as CLAUDE_ADDON.md for the ralph section\n   - See spec 05 section 4.4",
+      "acceptanceCriteria": [
+        "RALPH.md.tmpl contains no .ralph/ prefixed paths (uses bare filenames like backlog.json, state.json, progress.md)",
+        "CLAUDE_ADDON.md contains no .ralph/ prefixed paths in the Autonomous Loop section",
+        "CLAUDE_GREENFIELD.md.tmpl contains no .ralph/ prefixed paths in the ralph section",
+        "All three files still convey the same instructions (just with generic paths)",
+        "pnpm typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Read spec 05-loop-runner-integration.md section 4 completely for exact before/after wording. These template changes are safe because: (1) existing installations only use the default root, (2) the prompt-builder injects the actual paths at runtime. Be careful not to change the meaning of the instructions — only the path references.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/05-loop-runner-integration.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "chore",
+      "priority": 1,
+      "title": "Regenerate embedded-artifacts.ts after template changes",
+      "description": "Regenerate the embedded artifacts TypeScript file that contains string literals of the template content.\n\n1. Run the existing generation script:\n   ```bash\n   node scripts/generate-embedded-artifacts.ts\n   ```\n   Or, if it uses bun:\n   ```bash\n   bun scripts/generate-embedded-artifacts.ts\n   ```\n\n2. Verify that `packages/core/src/embedded-artifacts.ts` has been updated with the new template content (check that the old `.ralph/` prefixed paths are no longer present in the embedded strings).\n\n3. If the generation script doesn't exist at that path, search for it — it may be at a different location. Look for files matching `*generate*artifact*` or `*embed*artifact*` in the scripts/ directory.",
+      "acceptanceCriteria": [
+        "packages/core/src/embedded-artifacts.ts is regenerated with updated template content",
+        "The embedded RALPH.md.tmpl content in embedded-artifacts.ts uses generic filenames (no .ralph/ prefixes)",
+        "The embedded CLAUDE_ADDON.md content uses generic filenames",
+        "pnpm typecheck passes",
+        "pnpm test passes (embedded artifacts content matches source templates)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["007"],
+      "notes": "The generation script reads all files under artifacts/ and embeds them as string literals in a TypeScript file. This is an existing build step. If the script path is different, check scripts/ directory. The generated file should be committed alongside the template changes.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/05-loop-runner-integration.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "Update LoopRunner to use BacklogPaths and lock lifecycle",
+      "description": "Modify `packages/loop/src/runner.ts` to use the `BacklogPaths` abstraction, acquire/release locks, and thread paths through all core function calls.\n\n1. Add imports to `packages/loop/src/runner.ts`:\n   ```typescript\n   import {\n     resolveBacklogPaths, resolveInstructionPaths, ensureStateDir,\n     acquireLock, releaseLock,\n     type BacklogPaths, type InstructionPaths,\n   } from \"@ralph/core\";\n   ```\n\n2. Convert LoopRunner to use a static factory pattern:\n   - Add `private readonly paths: BacklogPaths` field\n   - Add `private instructionPaths!: InstructionPaths` field\n   - Create `static create(projectPath, options): Result<LoopRunner>` that resolves BacklogPaths from `options.backlogRoot`\n   - Make the constructor private, accepting `(projectPath, paths, options)`\n   - See spec 05 section 2.1 for exact signatures\n\n3. Update `start()` method:\n   - Call `ensureStateDir(this.paths)` before any state file access\n   - Call `acquireLock(this.paths)` — return early with error event on LOCK_CONFLICT\n   - Call `resolveInstructionPaths(this.paths)` to set `this.instructionPaths`\n   - Log which backlog root is active via `appendLog(this.paths, ...)`\n   - Add `releaseLock(this.paths)` in the finally block\n   - See spec 05 section 2.2 for exact lifecycle\n\n4. Replace ALL core function calls from `this.projectPath` to `this.paths`:\n   - `clearDoneFile`, `clearCancelFile`, `readBacklog`, `updateItem`, `addItem`, `writeLoopState`, `appendLog`, `writeDoneFile`, `checkCancelRequested`, `sweepBacklog`, `writeIterationStatus`, `clearIterationStatus`\n   - Keep `readMarkerFile(this.projectPath)` unchanged (reads .ralph.json at project root)\n   - See spec 05 section 2.3 for complete list\n\n5. Update `buildPrompt` call: `buildPrompt(this.paths, this.instructionPaths, item, backlog)`\n\n6. Update `buildReviewPrompt` call: `buildReviewPrompt(this.paths, this.instructionPaths, completedItems, diff)`",
+      "acceptanceCriteria": [
+        "LoopRunner has a static create() method returning Result<LoopRunner>",
+        "LoopRunner constructor is private",
+        "LoopRunner.create() resolves BacklogPaths from options.backlogRoot",
+        "start() calls ensureStateDir before any state file access",
+        "start() calls acquireLock and returns early on LOCK_CONFLICT",
+        "finally block calls releaseLock",
+        "All core function calls use this.paths instead of this.projectPath",
+        "readMarkerFile still uses this.projectPath (project root)",
+        "buildPrompt receives BacklogPaths + InstructionPaths",
+        "pnpm typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002", "003", "004", "005", "006"],
+      "notes": "Read spec 05-loop-runner-integration.md sections 1-2 completely. This is a large but mechanical change — every core function call in runner.ts changes from projectPath to this.paths. The key architectural change is the static factory pattern (create instead of constructor). The event emission still uses this.projectPath for project identification — don't change that. The LoopRunner currently stores this.projectPath — keep it alongside this.paths.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/05-loop-runner-integration.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "feature",
+      "priority": 1,
+      "title": "Update prompt-builder.ts for BacklogPaths and InstructionPaths with tests",
+      "description": "Modify `packages/loop/src/prompt-builder.ts` to receive BacklogPaths and InstructionPaths instead of constructing paths internally, and update tests.\n\n1. In `packages/loop/src/prompt-builder.ts`:\n   - Add import: `import type { BacklogPaths, InstructionPaths } from \"@ralph/core\";`\n   - Delete internal constants: `RALPH_DIR`, `RALPH_MD`, `REVIEW_MD`, `PROGRESS_MD`\n   - Change `buildPrompt` signature to: `(paths: BacklogPaths, instructionPaths: InstructionPaths, item: BacklogItem, backlog: Backlog): Result<string>`\n   - Change `buildReviewPrompt` signature to: `(paths: BacklogPaths, instructionPaths: InstructionPaths, completedItems: BacklogItem[], gitDiff: string): Result<string>`\n\n2. Update RALPH.md reading:\n   - Use `instructionPaths.ralphMd` — if null, return FILE_NOT_FOUND error\n   - Remove internal path construction\n\n3. Update progress.md reading:\n   - Use `paths.progress` directly (always per-root, no fallback)\n\n4. Add 'Active Backlog Root' section to the prompt (ALWAYS, including default root):\n   ```\n   ## Active Backlog Root\n   You are working against the backlog at: {relative backlog path}\n   State directory: {relative state dir}/\n   Progress log: {relative progress path}\n   Do NOT modify files outside this state directory.\n   ```\n   - Compute relative paths via `path.relative(paths.projectPath, ...)`\n\n5. Update 'Do NOT modify' reminder to use relative paths from BacklogPaths\n\n6. Update `buildReviewPrompt`:\n   - Use `instructionPaths.reviewMd` for REVIEW.md (with embedded template fallback)\n   - Use `paths.progress` for progress.md\n   - Use `readMarkerFile(paths.projectPath)` for verify command\n\n7. Update `packages/loop/src/prompt-builder.test.ts`:\n   - Update all tests to pass BacklogPaths + InstructionPaths\n   - Test: RALPH.md from per-root stateDir\n   - Test: RALPH.md fallback to project-level\n   - Test: Missing RALPH.md returns error\n   - Test: progress.md always from stateDir\n   - Test: 'Active Backlog Root' section is present in output\n   - Test: Review prompt uses per-root REVIEW.md\n   - Test: Review prompt falls back to embedded template",
+      "acceptanceCriteria": [
+        "buildPrompt accepts (paths, instructionPaths, item, backlog) signature",
+        "buildReviewPrompt accepts (paths, instructionPaths, completedItems, gitDiff) signature",
+        "No hardcoded .ralph/ path constants remain in prompt-builder.ts",
+        "buildPrompt uses instructionPaths.ralphMd (returns error if null)",
+        "buildPrompt uses paths.progress for progress.md (per-root, no fallback)",
+        "Active Backlog Root section is ALWAYS injected into the prompt",
+        "buildReviewPrompt uses instructionPaths.reviewMd with embedded template fallback",
+        "pnpm typecheck passes",
+        "pnpm test packages/loop/src/prompt-builder.test.ts passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002", "008", "009"],
+      "notes": "Read spec 05-loop-runner-integration.md sections 3.1-3.6 completely. The 'Active Backlog Root' section is the key new feature here — it tells the agent which backlog root is active at runtime, compensating for the path-agnostic templates. This section is ALWAYS injected, even for the default root. Use path.relative(paths.projectPath, ...) for all displayed paths. The getEmbeddedArtifact function is used for the REVIEW.md fallback.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/05-loop-runner-integration.md",
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add --backlog flag to CLI loop commands",
+      "description": "Add `--backlog` flag extraction and BacklogPaths resolution to all CLI loop commands in `packages/cli/src/loop-commands.ts`.\n\n1. Add imports:\n   ```typescript\n   import { resolveBacklogRoot, resolveBacklogPaths, checkLock, forceClearLock, type BacklogPaths } from \"@ralph/core\";\n   ```\n\n2. Update `handleLoopRun`:\n   - Extract `--backlog` flag: `const backlogFlag = extractStringFlag(ctx.flags, \"backlog\")`\n   - Extract `--force` flag: `const force = extractBoolFlag(ctx.flags, \"force\")`\n   - Resolve paths using the 3-line preamble (resolveBacklogRoot → resolveBacklogPaths)\n   - If `--force`: check lock, warn, and force-clear per spec 06 section 2.2\n   - Pass `backlogRoot: backlogRootResult.value` in LoopStartOptions\n   - Use `LoopRunner.create()` static factory instead of `new LoopRunner()`\n\n3. Update `handleLoopStart`:\n   - Extract `--backlog` flag\n   - Pass `backlogRoot` in POST body to server\n\n4. Update `handleLoopStop`:\n   - Extract `--backlog` flag\n   - Pass `backlogRoot` in POST body to server\n\n5. Update `handleLoopFollow`:\n   - Extract `--backlog` flag\n   - If server mode: append `?backlog=` query param to SSE URL\n   - If direct mode: resolve paths and use `paths.log` for `watchLog`\n\n6. Update `handleLoopReview` (if it exists):\n   - Extract `--backlog` flag and resolve paths",
+      "acceptanceCriteria": [
+        "ralph loop run . --backlog specs/auth resolves to specs/auth/backlog.json",
+        "ralph loop run . (no flag) uses .ralph/backlog.json (unchanged behavior)",
+        "ralph loop run . --backlog ../../outside produces PATH_VIOLATION error",
+        "ralph loop run . --backlog specs/auth --force clears existing lock before starting",
+        "handleLoopStart passes backlogRoot in POST body",
+        "handleLoopStop passes backlogRoot in POST body",
+        "handleLoopFollow appends backlog query param to SSE URL",
+        "LoopRunner.create() is used instead of new LoopRunner()",
+        "pnpm typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["009"],
+      "notes": "Read spec 06-cli-web-integration.md sections 2.1-2.3 completely. The resolution pattern is the same 3-line preamble for every command. The --force flag is only relevant for loop run (direct mode). Use extractStringFlag and extractBoolFlag — check existing CLI code for the exact utility names. Error messages should show relative paths (path.relative(process.cwd(), absolutePath)).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/06-cli-web-integration.md"
+      ]
+    },
+    {
+      "id": "012",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add --backlog flag to CLI backlog, status, reset, log, and progress commands",
+      "description": "Add `--backlog` flag to all remaining CLI commands that operate on backlogs or state.\n\n1. In `packages/cli/src/backlog-commands.ts`:\n   - Add imports: `resolveBacklogRoot`, `resolveBacklogPaths`, `BacklogPaths` from `@ralph/core`\n   - Update ALL backlog handlers with the 3-line resolution preamble:\n     - `handleBacklogList`, `handleBacklogAdd`, `handleBacklogEdit`, `handleBacklogDelete`, `handleBacklogShow`, `handleBacklogRestore`, `handleBacklogSweep`, `handleBacklogReset`, `handleBacklogUnblock`\n   - Replace `readBacklog(resolved)` → `readBacklog(paths)` etc.\n   - See spec 06 section 2.5\n\n2. In `packages/cli/src/status-commands.ts`:\n   - Add imports including `scanActiveRoots`\n   - Update `handleStatus`:\n     - With `--backlog`: show status for that specific root only\n     - Without `--backlog`: show default root status + list active non-default roots via `scanActiveRoots`\n     - Each active root shown with relative path, state label, and current item\n     - Skip default root (.ralph) in the active roots list (already shown)\n   - Fix any inline `.ralph/progress.md` path references\n   - See spec 06 section 2.4\n\n3. In `packages/cli/src/status-commands.ts` (or wherever handleProgress/handleLog live):\n   - Update `handleProgress` to use `paths.progress` instead of hardcoded `.ralph/progress.md`\n   - Update `handleLog` to use `readLogTail(paths, lines)` instead of `readLogTail(resolved, lines)`\n   - Update `handleReset` to use `resetProject(paths, options)`\n   - See spec 06 sections 2.6-2.8",
+      "acceptanceCriteria": [
+        "ralph backlog list . --backlog specs/auth lists items from specs/auth/backlog.json",
+        "ralph backlog add . --backlog specs/auth adds to the correct backlog",
+        "ralph status . shows default root + lists active non-default roots",
+        "ralph status . --backlog specs/auth shows only that root's status",
+        "Active roots display includes relative path, loop state, and current item",
+        "ralph progress . --backlog specs/auth reads from specs/auth/.ralph/progress.md",
+        "ralph log . --backlog specs/auth reads from specs/auth/.ralph/ralph.log",
+        "ralph reset . --backlog specs/auth resets the correct root",
+        "pnpm typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["004", "005", "006"],
+      "notes": "Read spec 06-cli-web-integration.md sections 2.4-2.8 completely. The status command has the most complex logic — it shows the default root first, then scans for active non-default roots. Use chalk (imported as c) for colored output. The backlog commands are all mechanical — same 3-line preamble pattern. Check which file contains handleProgress and handleLog — they may be in status-commands.ts or their own files.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/06-cli-web-integration.md"
+      ],
+      "agentDelegation": {
+        "recommendedConcurrency": 2,
+        "strategy": "Split by command file. One subagent handles backlog-commands.ts, the other handles status-commands.ts and related handlers.",
+        "subtasks": [
+          "Update packages/cli/src/backlog-commands.ts: add resolveBacklogRoot/resolveBacklogPaths imports from @ralph/core. Add the 3-line --backlog resolution preamble to every handler: handleBacklogList, handleBacklogAdd, handleBacklogEdit, handleBacklogDelete, handleBacklogShow, handleBacklogRestore, handleBacklogSweep, handleBacklogReset, handleBacklogUnblock. Replace all readBacklog(resolved)/writeBacklog(resolved,...) calls with readBacklog(paths)/writeBacklog(paths,...) pattern.",
+          "Update packages/cli/src/status-commands.ts (and any file containing handleProgress, handleLog, handleReset): add scanActiveRoots import. Update handleStatus for --backlog flag: specific root when flag present, default root + scanActiveRoots listing when absent. Update handleProgress to use paths.progress, handleLog to use readLogTail(paths, lines), handleReset to use resetProject(paths, options). Fix any inline .ralph/progress.md path references."
+        ]
+      }
+    },
+    {
+      "id": "013",
+      "type": "feature",
+      "priority": 2,
+      "title": "Update web API routes and LoopManager for backlog root",
+      "description": "Add backlog root parameter support to the web API routes and re-key LoopManager's internal maps.\n\n1. In `packages/web/src/server/routes/loop.ts`:\n   - Add `backlogRoot: z.string().optional()` to `StartLoopBodySchema`\n   - In start handler: resolve `backlogRoot` from body using `resolveBacklogRoot`\n   - Pass resolved `backlogRoot` in LoopStartOptions\n   - In stop handler: accept `backlogRoot` in body, pass to `manager.stopLoop`\n   - See spec 06 section 3.1\n\n2. In web status and backlog routes:\n   - Accept `backlog` query parameter on GET endpoints: `/:id/status`, `/:id/backlog`, `/:id/backlog/:itemId`\n   - Accept `backlogRoot` in body for POST/PUT/DELETE endpoints\n   - Resolve backlog root from the parameter using `resolveBacklogRoot` + `resolveBacklogPaths`\n   - Pass `paths` to core functions\n\n3. In `packages/web/src/server/loop-manager.ts`:\n   - Re-key `activeLoops` map from `projectPath` to resolved `backlogRoot` path\n   - Re-key `listeners` map similarly\n   - Update `startLoop()` to use `LoopRunner.create()` static factory\n   - Update `stopLoop()` and `isRunning()` to accept optional `backlogRoot` parameter\n   - Default key: `path.join(projectPath, \".ralph\")` when backlogRoot not specified\n   - See spec 06 section 3.2",
+      "acceptanceCriteria": [
+        "POST /:id/loop/start accepts backlogRoot in request body",
+        "POST /:id/loop/stop accepts backlogRoot in request body",
+        "GET /:id/status accepts backlog query parameter",
+        "GET /:id/backlog accepts backlog query parameter",
+        "LoopManager keys active loops by backlog root path, not project path",
+        "Two concurrent loops on different roots do not conflict in LoopManager",
+        "Default backlog root is {projectPath}/.ralph when not specified",
+        "pnpm typecheck passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["009", "011"],
+      "notes": "Read spec 06-cli-web-integration.md section 3 completely. The web changes are intentionally minimal — no UI changes (out of scope per PRD). The LoopManager re-keying is the most important change: it enables multiple loops on different roots within the same project (future feature, but the data structure needs to support it now). Import resolveBacklogRoot from @ralph/core for path validation in routes.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/06-cli-web-integration.md"
+      ]
+    },
+    {
+      "id": "014",
+      "type": "chore",
+      "priority": 2,
+      "title": "Update test-sandbox for --backlog flag testing",
+      "description": "Add a multi-backlog test scenario to the test-sandbox and update scripts to support the `--backlog` flag.\n\n1. Create `test-sandbox/scenarios/multi-backlog/` directory with:\n   - `specs/feature-a/backlog.json` — a backlog with 1-2 simple items (e.g., create a file, echo a message)\n   - No `.ralph/` state dir pre-created (to test auto-creation via ensureStateDir)\n\n2. Update `test-sandbox/run.sh`:\n   - Accept an optional `--backlog <dir>` argument\n   - Pass it through to the `ralph loop run` command\n   - Example: `bash test-sandbox/run.sh stream-done --backlog specs/feature-a`\n\n3. Add to `test-sandbox/verify.sh`:\n   - New test case for multi-backlog scenario\n   - Assert state files written to `specs/feature-a/.ralph/` (not `.ralph/`)\n   - Assert `.loop.lock` was created during run and cleaned up after\n   - Assert `progress.md` written to `specs/feature-a/.ralph/progress.md`\n   - Assert `state.json` written to `specs/feature-a/.ralph/state.json`",
+      "acceptanceCriteria": [
+        "test-sandbox/scenarios/multi-backlog/ directory exists with specs/feature-a/backlog.json",
+        "test-sandbox/run.sh accepts --backlog flag and passes to ralph loop run",
+        "test-sandbox/verify.sh includes multi-backlog scenario assertions",
+        "State files are created in specs/feature-a/.ralph/ (not .ralph/)",
+        "bash test-sandbox/verify.sh passes (including multi-backlog scenario)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["011"],
+      "notes": "Read spec 07-testing-strategy.md section 4.2. The test-sandbox uses mock Claude scripts (not real API calls). Look at existing test-sandbox/scenarios/ for the pattern. The backlog items should be trivially completable by the mock scripts.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "015",
+      "type": "chore",
+      "priority": 2,
+      "title": "End-to-end verification and integration testing",
+      "description": "Run all verification checks to ensure the complete multi-backlog feature works end-to-end.\n\n1. Run the full test suite:\n   ```bash\n   pnpm test\n   ```\n   Fix any failures.\n\n2. Run type checking:\n   ```bash\n   pnpm typecheck\n   ```\n   Fix any errors.\n\n3. Run linting:\n   ```bash\n   pnpm lint\n   ```\n   Fix any violations.\n\n4. Run the test-sandbox verification:\n   ```bash\n   bash test-sandbox/verify.sh\n   ```\n\n5. Manual verification (if possible):\n   - `ralph backlog list . --backlog specs/multi-backlog` should list items from the multi-backlog feature's own backlog\n   - `ralph status .` should show default root status\n\n6. Check for any remaining hardcoded `.ralph/` path references that should have been updated:\n   - Search `packages/core/src/backlog.ts` for `.ralph` string literals\n   - Search `packages/core/src/status.ts` for `.ralph` string literals\n   - Search `packages/loop/src/` for `.ralph` string literals (excluding test files)\n   - Any found outside of test fixtures or the DEFAULT_ROOT_DIR constant are likely bugs\n\n7. Verify no circular dependencies between new and existing modules.",
+      "acceptanceCriteria": [
+        "pnpm test passes with no failures",
+        "pnpm typecheck passes with no errors",
+        "pnpm lint passes",
+        "bash test-sandbox/verify.sh passes",
+        "No hardcoded .ralph/ path references remain in core modules (outside of constants and test fixtures)",
+        "No circular dependencies between backlog-root.ts, lock.ts, and other core modules"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["011", "012", "013"],
+      "notes": "This is the final verification item. If tests fail, fix them in this iteration rather than creating new backlog items. The test-sandbox may not work if the ralph binary hasn't been rebuilt — run pnpm build first if needed.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/multi-backlog/07-testing-strategy.md"
+      ]
+    }
+  ]
+}

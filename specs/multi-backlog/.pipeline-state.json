@@ -2,7 +2,7 @@
   "feature": "multi-backlog",
   "pipelineStatus": "active",
   "createdAt": "2026-03-24T00:00:00Z",
-  "updatedAt": "2026-03-25T00:00:00Z",
+  "updatedAt": "2026-03-25T12:00:00Z",
   "currentStage": "forge-4-backlog",
   "stages": {
     "forge-1-prd": {
@@ -68,12 +68,16 @@
       "fixedAt": "2026-03-25T00:00:00Z"
     },
     "forge-4-backlog": {
-      "status": "pending",
-      "version": 0,
-      "artifacts": [],
+      "status": "in-progress",
+      "version": 1,
+      "artifacts": ["specs/multi-backlog/backlog.json"],
       "completedAt": null,
       "commitHash": null,
-      "basedOnVersions": {}
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      }
     },
     "forge-5-docs": {
       "status": "pending",
