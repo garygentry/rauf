@@ -117,7 +117,13 @@ ralph backlog list .    # List all backlog items
 ralph loop run .        # Run a loop iteration
 ```
 
-If you don't use direnv, you can achieve the same manually:
+For global availability outside the repo directory, run the install script to symlink into `~/.local/bin`:
+
+```bash
+bash scripts/install-global.sh
+```
+
+If you don't use direnv or the global symlink, you can add the PATH manually:
 
 ```bash
 export PATH="$(pwd)/scripts/bin:$PATH"
