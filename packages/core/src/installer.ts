@@ -25,7 +25,7 @@ import { getEmbeddedArtifact } from "./embedded-artifacts.js";
 
 // Avoid circular import by not importing VERSION from index.ts
 // This will be set to match the version in index.ts
-const TOOL_VERSION = "0.1.0";
+import { VERSION as TOOL_VERSION } from "./version.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 

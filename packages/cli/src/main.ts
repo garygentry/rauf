@@ -3,13 +3,27 @@
 // Extracted from index.ts so the unified binary entry point can
 // call runCli() without side effects on import.
 
+import { VERSION } from "@ralph/core";
 import { parseArgs } from "./parser.js";
-import { configureOutput, detectColorSupport, error, c, info } from "./formatter.js";
+import { configureOutput, detectColorSupport, error, c, info, print, outputJson } from "./formatter.js";
 import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 
 export async function runCli(): Promise<number> {
   const argv = process.argv.slice(2);
+
+  // Intercept --version / -V before full parsing
+  if (argv.includes("--version") || argv.includes("-V")) {
+    const wantJson = argv.includes("--json");
+    const autoColor = detectColorSupport();
+    configureOutput({ noColor: !autoColor, quiet: false, json: wantJson });
+    if (wantJson) {
+      outputJson({ version: VERSION });
+    } else {
+      print(`ralph v${VERSION}`);
+    }
+    return ExitCode.SUCCESS;
+  }
 
   // First pass: parse to get command name and global flags
   const preparse = parseArgs(argv);

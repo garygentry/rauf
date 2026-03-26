@@ -1,7 +1,7 @@
 // @ralph/core — Shared business logic
 // Modules will be added as backlog items are completed
 
-export const VERSION = "0.1.0";
+export { VERSION } from "./version.js";
 
 export * from "./schemas.js";
 export * from "./errors.js";
