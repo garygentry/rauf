@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // ─── Enums & Primitives ────────────────────────────────────────────
 
-export const BacklogItemTypeSchema = z.enum(["bug", "refactor", "feature", "chore"]);
+export const BacklogItemTypeSchema = z.enum(["bug", "bugfix", "refactor", "feature", "chore", "test"]);
 
 export const BacklogItemStatusSchema = z.enum(["pending", "in_progress", "done", "blocked"]);
 

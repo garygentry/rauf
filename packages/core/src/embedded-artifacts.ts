@@ -178,9 +178,11 @@ RALPH_DONE
             "type": "string",
             "enum": [
               "bug",
+              "bugfix",
               "refactor",
               "feature",
-              "chore"
+              "chore",
+              "test"
             ],
             "description": "Work category"
           },
