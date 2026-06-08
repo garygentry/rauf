@@ -9,7 +9,8 @@
       "Bash(git commit:*)"
     ],
     "additionalDirectories": [
-      "/home/gary/workspace/agent-plugins/plugins/feature-forge"
+      "/home/gary/workspace/agent-plugins/plugins/feature-forge",
+      "/home/gary/workspace/agent-plugins"
     ]
   }
 }
