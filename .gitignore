@@ -2,24 +2,24 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
-.ralph/ralph.log
-.ralph/state.json
-.ralph/DONE
-.ralph/backlog.json.bak
+.rauf/rauf.log
+.rauf/state.json
+.rauf/DONE
+.rauf/backlog.json.bak
 *.tmp
 .DS_Store
-ralph-bin
-~/.ralph/
+rauf-bin
+~/.rauf/
 .worktrees/
 .playwright-mcp/
 
 # Test sandbox transient files
-test-sandbox/.ralph/ralph.log
-test-sandbox/.ralph/state.json
-test-sandbox/.ralph/DONE
-test-sandbox/.ralph/CANCEL
-test-sandbox/.ralph/iteration-status.json
-test-sandbox/.ralph/backlog.json.bak
+test-sandbox/.rauf/rauf.log
+test-sandbox/.rauf/state.json
+test-sandbox/.rauf/DONE
+test-sandbox/.rauf/CANCEL
+test-sandbox/.rauf/iteration-status.json
+test-sandbox/.rauf/backlog.json.bak
 
 # Astro/Starlight generated (recreated by scripts/setup-docs.sh and astro dev/build)
 packages/docs/.astro/

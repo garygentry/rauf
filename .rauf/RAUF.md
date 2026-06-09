@@ -1,6 +1,6 @@
-# Ralph — Per-Iteration Instructions
+# Rauf — Per-Iteration Instructions
 
-<!-- ralph:managed:start -->
+<!-- rauf:managed:start -->
 
 ## Verification Commands
 
@@ -18,31 +18,31 @@ Individual commands:
 - Format: `pnpm format:check`
 
 If any command is not configured (empty), skip it.
-<!-- ralph:managed:end -->
+<!-- rauf:managed:end -->
 
 ## Workflow
 
 1. You are one iteration of an autonomous coding loop
-2. Read `.ralph/backlog.json` — your current task is the `in_progress` item
+2. Read `.rauf/backlog.json` — your current task is the `in_progress` item
 3. Read the item's `acceptanceCriteria` — each must pass
-4. Read `.ralph/progress.md` for context from previous iterations
+4. Read `.rauf/progress.md` for context from previous iterations
 5. Implement the task
 6. Run verification: `pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check`
-7. Commit with: `[ralph] <id>: <title>`
+7. Commit with: `[rauf] <id>: <title>`
 8. Output your exit signal:
-   - `RALPH_DONE` — all criteria met, verification passes
-   - `RALPH_BLOCKED:<reason>` — cannot proceed, explain why
-   - `RALPH_NEEDS_HUMAN:<reason>` — need human decision or input
+   - `RAUF_DONE` — all criteria met, verification passes
+   - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
+   - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
 
 ## Important Rules
 
 - Work on ONE item only — the current `in_progress` item
-- Do NOT modify `.ralph/backlog.json` status — the loop runner manages it
-- Do NOT modify `.ralph/state.json` — the loop runner manages it
-- DO read `.ralph/progress.md` for accumulated learnings
-- DO append new learnings to `.ralph/progress.md` if you discover important patterns
+- Do NOT modify `.rauf/backlog.json` status — the loop runner manages it
+- Do NOT modify `.rauf/state.json` — the loop runner manages it
+- DO read `.rauf/progress.md` for accumulated learnings
+- DO append new learnings to `.rauf/progress.md` if you discover important patterns
 - The backlog.json file is your source of truth for what to work on
 - Claude Code Tasks (if you use them internally) are your own planning — they don't affect the backlog
 
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive ralph update -->
+<!-- Add custom instructions below this line — they survive rauf update -->

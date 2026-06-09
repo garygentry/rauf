@@ -1,9 +1,8 @@
 {
-  "ralph": true,
   "version": "1",
   "variant": "backlog-json",
   "installedAt": "2026-02-21T23:20:19.145Z",
-  "installedBy": "ralph-manager@0.1.0",
+  "installedBy": "rauf-manager@0.1.0",
   "profile": {
     "stack": "node-typescript",
     "packageManager": "pnpm",
@@ -21,11 +20,12 @@
     "ralph.sh": "62c5064bf8cb3d1ef7a6837d28afdc9f439a8a3112b841b2999ef55aeb1facdb",
     "ralph-status.sh": "e39a3f2a69e655a9a919fd5bef14fa7ab518fac642949cfd5ede692c33e88483",
     "ralph-add.sh": "ad5b4e7bb5388993c291344eced743c99ad4d4f5ca161b4fe5bed598d9bf259f",
-    "RALPH.md": "555b435833e7d49831a20fb4bc7d6c44174a88cb2c8308742d51f94b4b620a8d"
+    "RAUF.md": "453c8fbb9911d187707d6d473b8e61c3524155b4118e16b036249345ec256455"
   },
   "options": {
     "ignoreInTool": false,
     "gitignoreScripts": false,
     "maxIterations": 100
-  }
+  },
+  "rauf": true
 }

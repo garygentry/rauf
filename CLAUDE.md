@@ -1,8 +1,8 @@
-# Ralph Manager
+# Rauf Manager
 
 ## Overview
 
-Ralph Manager is a CLI + web tool for installing, managing, and monitoring ralph autonomous coding loops across local software projects. It provides backlog CRUD, status dashboards, and installation wizards — all backed by a shared `packages/core` library.
+Rauf Manager is a CLI + web tool for installing, managing, and monitoring ralph autonomous coding loops across local software projects. It provides backlog CRUD, status dashboards, and installation wizards — all backed by a shared `packages/core` library.
 
 ## Repository Layout
 
@@ -17,7 +17,7 @@ ralph/
 │   └── variants/
 │       └── backlog-json/
 ├── docs/        — Specifications (ARCHITECTURE, SCHEMAS, SPEC-CORE, SPEC-CLI, SPEC-WEB, SPEC-ARTIFACTS)
-└── .ralph/      — This project's own ralph loop state (self-hosting)
+└── .rauf/      — This project's own ralph loop state (self-hosting)
 ```
 
 ## Tech Stack
@@ -34,8 +34,8 @@ ralph/
 
 1. **`packages/core` has ZERO imports from `cli` or `web`.** All filesystem logic lives in core.
 2. **All file writes use atomic write** (write .tmp → rename) with .bak backup for backlog.json.
-3. **Path sandboxing:** Never write outside ROOT_DIRECTORY or ~/.ralph/. Validate with `path.resolve()` + `startsWith()`.
-4. **The web server binds to 127.0.0.1 ONLY.** All mutation endpoints require `X-Ralph-Request: true` header.
+3. **Path sandboxing:** Never write outside ROOT_DIRECTORY or ~/.rauf/. Validate with `path.resolve()` + `startsWith()`.
+4. **The web server binds to 127.0.0.1 ONLY.** All mutation endpoints require `X-Rauf-Request: true` header.
 5. **Per-project artifacts are self-contained.** A project with ralph installed must work without the manager tool.
 6. **Status derivation reads files directly** — never invokes subprocesses for status.
 
@@ -48,7 +48,7 @@ Before implementing any feature, read the relevant spec:
 - **Core package logic:** `docs/SPEC-CORE.md`
 - **CLI commands & behavior:** `docs/SPEC-CLI.md`
 - **Web API & frontend:** `docs/SPEC-WEB.md`
-- **Artifact templates (RALPH.md, CLAUDE_ADDON.md, etc.):** `docs/SPEC-ARTIFACTS.md`
+- **Artifact templates (RAUF.md, CLAUDE_ADDON.md, etc.):** `docs/SPEC-ARTIFACTS.md`
 - **Claude Code Tasks integration notes:** `docs/CLAUDE-CODE-TASKS.md`
 
 ## Development Commands
@@ -141,9 +141,9 @@ Alternatively, `pnpm ralph <args>` also works (routes through `node_modules/.bin
 - JSON parsing: always wrap in try/catch, return structured errors
 - Tests: colocate with source as `*.test.ts`
 
-## Claude Code Tasks vs Ralph Backlog
+## Claude Code Tasks vs Rauf Backlog
 
-This project uses `.ralph/backlog.json` as the persistent task queue for the ralph loop. Claude Code's native Tasks system (`~/.claude/tasks/`) is a separate, session-scoped mechanism. **Do not confuse them:**
+This project uses `.rauf/backlog.json` as the persistent task queue for the ralph loop. Claude Code's native Tasks system (`~/.claude/tasks/`) is a separate, session-scoped mechanism. **Do not confuse them:**
 
 - **backlog.json** = What work items exist (human-managed, persistent, cross-session)
 - **Claude Code Tasks** = How the agent decomposes current work within a session (ephemeral)
@@ -152,20 +152,20 @@ This project uses `.ralph/backlog.json` as the persistent task queue for the ral
 
 ## Self-Hosting Note
 
-This repository IS a ralph-managed project. The `.ralph/` directory at the repo root is this project's own ralph loop state. Run the loop with `ralph loop run` (direct mode) or `ralph loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
+This repository IS a ralph-managed project. The `.rauf/` directory at the repo root is this project's own ralph loop state. Run the loop with `ralph loop run` (direct mode) or `ralph loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into OTHER projects. Do not confuse them.
 
 ---
 
-<!-- ralph:start -->
+<!-- rauf:start -->
 
-## Autonomous Loop (Ralph)
+## Autonomous Loop (Rauf)
 
-When running as a ralph loop iteration, follow these operational rules:
+When running as a rauf loop iteration, follow these operational rules:
 
 ### Reading Your Task
 
-1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
-2. Read `.ralph/backlog.json` — find the current `in_progress` item
+1. Read `.rauf/RAUF.md` for detailed per-iteration instructions
+2. Read `.rauf/backlog.json` — find the current `in_progress` item
 3. The item's `acceptanceCriteria` define "done" for this iteration
 
 ### Working
@@ -176,16 +176,16 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ### Completing
 
-7. If all acceptance criteria pass: output `RALPH_DONE` as your final line
-8. If blocked (missing dependency, unclear requirement): output `RALPH_BLOCKED:<reason>`
-9. If human input needed (API key, design decision): output `RALPH_NEEDS_HUMAN:<reason>`
-10. Commit your changes with message: `[ralph] <item-id>: <title>`
+7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
+8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
+9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
+10. Commit your changes with message: `[rauf] <item-id>: <title>`
 
 ### Rules
 
 - ONE item per iteration — do not work on multiple items
-- Do not modify `.ralph/backlog.json` — the loop runner manages status
-- Do not modify `.ralph/state.json` — the loop runner manages state
-- Read `.ralph/progress.md` for accumulated project learnings
-- Append new learnings to `.ralph/progress.md` if you discover important patterns
-<!-- ralph:end -->
+- Do not modify `.rauf/backlog.json` — the loop runner manages status
+- Do not modify `.rauf/state.json` — the loop runner manages state
+- Read `.rauf/progress.md` for accumulated project learnings
+- Append new learnings to `.rauf/progress.md` if you discover important patterns
+<!-- rauf:end -->
