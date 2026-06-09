@@ -5,7 +5,15 @@
 
 import { VERSION } from "@ralph/core";
 import { parseArgs } from "./parser.js";
-import { configureOutput, detectColorSupport, error, c, info, print, outputJson } from "./formatter.js";
+import {
+  configureOutput,
+  detectColorSupport,
+  error,
+  c,
+  info,
+  print,
+  outputJson,
+} from "./formatter.js";
 import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 

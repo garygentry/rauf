@@ -1,9 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { VERSION } from "@ralph/core";
 import { runCli } from "./main.js";
 
 // Helper to capture stdout and mock argv
-function withArgv(args: string[], fn: () => Promise<void>): Promise<{ stdout: string; stderr: string }> {
+function withArgv(
+  args: string[],
+  fn: () => Promise<void>,
+): Promise<{ stdout: string; stderr: string }> {
   const origArgv = process.argv;
   process.argv = ["node", "ralph", ...args];
 
