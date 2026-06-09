@@ -47,6 +47,7 @@ import {
   handleLoopReview,
   handleLoopWatch,
 } from "./loop-commands.js";
+import { handleMigrate } from "./migrate-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -164,6 +165,13 @@ export const COMMANDS: CommandDef[] = [
     description: "Remove ralph from a project",
     usage: "ralph uninstall <path> [--yes] [--keep-data]",
     handler: handleUninstall,
+  },
+  {
+    name: "migrate",
+    description: "Migrate a legacy ralph project to rauf",
+    usage:
+      "ralph migrate <path> [--dry-run] [--no-backup] [--clean-backups] | ralph migrate --global",
+    handler: handleMigrate,
   },
   {
     name: "backlog",
