@@ -72,6 +72,7 @@ export function createMultiRootProject(options?: {
   const defaultDir = path.join(projectPath, ".rauf");
   fs.mkdirSync(defaultDir, { recursive: true });
   writeBacklogFile(path.join(defaultDir, "backlog.json"), {
+    schemaVersion: "1",
     project: "test",
     description: "",
     items: [],
@@ -91,6 +92,7 @@ export function createMultiRootProject(options?: {
 
     // Write backlog.json
     const backlogContent: Backlog = {
+      schemaVersion: "1",
       project: root.backlog?.project ?? "test",
       description: root.backlog?.description ?? "",
       items: root.backlog?.items ?? [],

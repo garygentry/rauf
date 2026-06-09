@@ -48,6 +48,7 @@ afterEach(() => {
 /** Create a minimal valid Backlog object */
 function makeBacklog(items: BacklogItem[] = [], overrides: Partial<Backlog> = {}): Backlog {
   return {
+    schemaVersion: "1",
     project: "test-project",
     description: "A test project",
     items,

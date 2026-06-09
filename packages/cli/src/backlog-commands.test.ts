@@ -11,6 +11,7 @@ import {
   handleBacklogShow,
   handleBacklogRestore,
   handleBacklogReset,
+  handleBacklogValidate,
 } from "./backlog-commands.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -375,6 +376,25 @@ describe("handleBacklogAdd", () => {
     expect(parsed.type).toBe("feature");
     expect(parsed.id).toBeDefined();
     expect(parsed.id).toMatch(/^\d{3,}$/);
+  });
+
+  // The CLI's accepted types must track the Zod source of truth
+  // (BacklogItemTypeSchema). `bugfix` and `test` are valid there but were
+  // wrongly rejected by a hardcoded VALID_TYPES set.
+  it.each(["bugfix", "test"])("accepts --type %s (matches the Zod schema)", async (type) => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, []);
+
+    const ctx = makeCtx({
+      args: [projectDir],
+      flags: new Map<string, string | true>([
+        ["title", `A ${type} item`],
+        ["type", type],
+      ]),
+    });
+
+    const code = await handleBacklogAdd(ctx);
+    expect(code).toBe(ExitCode.SUCCESS);
   });
 
   it("--ac flag is repeatable and adds multiple criteria", async () => {
@@ -1059,10 +1079,11 @@ describe("backlog command registry handlers", () => {
 
     const subcommands = backlog!.subcommands!;
     const withHandlers = subcommands.filter((sc) => sc.handler !== undefined);
-    expect(withHandlers).toHaveLength(10);
+    expect(withHandlers).toHaveLength(11);
 
     const names = withHandlers.map((sc) => sc.name);
     expect(names).toContain("list");
+    expect(names).toContain("validate");
     expect(names).toContain("add");
     expect(names).toContain("edit");
     expect(names).toContain("delete");
@@ -1158,5 +1179,66 @@ describe("handleBacklogReset", () => {
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items).toHaveLength(0);
     expect(backlog.project).toBe("test-project");
+  });
+});
+
+// ─── handleBacklogValidate ─────────────────────────────────────────
+
+describe("handleBacklogValidate", () => {
+  const validItem = {
+    id: "001",
+    type: "bugfix",
+    priority: 1,
+    title: "A task",
+    description: "desc",
+    status: "in_progress",
+    completedAt: null,
+    acceptanceCriteria: ["verify passes"],
+  };
+
+  it("exits 0 (SUCCESS) for a rauf-valid backlog", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, [validItem]);
+
+    const code = await handleBacklogValidate(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.SUCCESS);
+  });
+
+  it("exits 1 (findings) for status:'complete' — the bug the Python validator missed", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, [{ ...validItem, status: "complete" }]);
+
+    const code = await handleBacklogValidate(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.ERROR); // 1 = validation findings
+  });
+
+  it("exits 2 (usage/IO) for malformed JSON", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(path.join(raufDir, "backlog.json"), "{ not valid json");
+
+    const code = await handleBacklogValidate(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.INVALID_ARGS); // 2 = usage/IO error
+  });
+
+  it("--json emits { valid, findings }", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, [{ ...validItem, status: "complete" }]);
+
+    configureOutput({ noColor: true, quiet: false, json: true });
+    const ctx = makeCtx({
+      args: [projectDir],
+      globalFlags: { json: true, noColor: true, quiet: false, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      await handleBacklogValidate(ctx);
+    });
+
+    const parsed = JSON.parse(output.stdout);
+    expect(parsed.valid).toBe(false);
+    expect(Array.isArray(parsed.findings)).toBe(true);
+    expect(parsed.findings.length).toBeGreaterThan(0);
   });
 });

@@ -391,6 +391,7 @@ export function ensureBacklog(paths: BacklogPaths): Result<void> {
   const projectName = path.basename(paths.projectPath);
 
   const emptyBacklog: Backlog = {
+    schemaVersion: "1",
     project: projectName,
     description: "",
     items: [],

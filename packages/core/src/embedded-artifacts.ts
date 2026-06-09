@@ -156,6 +156,10 @@ RAUF_DONE
     `{
   "type": "object",
   "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "default": "1"
+    },
     "project": {
       "type": "string",
       "description": "Project name (human-readable)"

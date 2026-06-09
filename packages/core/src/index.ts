@@ -14,6 +14,7 @@ export * from "./claude-md.js";
 export * from "./backlog-root.js";
 export * from "./lock.js";
 export * from "./backlog.js";
+export * from "./backlog-validate.js";
 export * from "./archive.js";
 export * from "./status.js";
 export * from "./installer.js";

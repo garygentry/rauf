@@ -54,6 +54,12 @@ export const BacklogItemSchema = z.object({
 // ─── Backlog ───────────────────────────────────────────────────────
 
 export const BacklogSchema = z.object({
+  /**
+   * Backlog contract version. Optional-with-default so existing backlogs
+   * (which predate this field) keep validating — the default is stamped on
+   * read. Never list this in the generated JSON Schema's `required` array.
+   */
+  schemaVersion: z.string().default("1"),
   project: z.string(),
   description: z.string(),
   items: z.array(BacklogItemSchema),

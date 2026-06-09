@@ -91,6 +91,7 @@ describe("COMMANDS registry", () => {
     const subNames = backlog!.subcommands!.map((s) => s.name);
     expect(subNames).toEqual([
       "list",
+      "validate",
       "add",
       "edit",
       "delete",

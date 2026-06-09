@@ -20,6 +20,7 @@ import {
   handleBacklogArchiveDispatch,
   handleBacklogReset,
   handleBacklogUnblock,
+  handleBacklogValidate,
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import {
@@ -179,6 +180,12 @@ export const COMMANDS: CommandDef[] = [
     usage: "rauf backlog <subcommand> <path>",
     subcommands: [
       { name: "list", description: "List backlog items", handler: handleBacklogList },
+      {
+        name: "validate",
+        description: "Validate a backlog against the schema + semantic checks",
+        usage: "rauf backlog validate <path> [--backlog <dir>] [--specs-dir <dir>] [--json]",
+        handler: handleBacklogValidate,
+      },
       { name: "add", description: "Add a new backlog item", handler: handleBacklogAdd },
       { name: "edit", description: "Edit an existing item", handler: handleBacklogEdit },
       { name: "delete", description: "Delete a backlog item", handler: handleBacklogDelete },

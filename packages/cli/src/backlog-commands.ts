@@ -19,7 +19,10 @@ import {
   unblockItems,
   resolveBacklogRoot,
   resolveBacklogPaths,
+  validateBacklog,
   ErrorCodes,
+  BacklogItemTypeSchema,
+  BacklogItemStatusSchema,
   type BacklogItem,
   type BacklogItemType,
   type BacklogItemStatus,
@@ -50,8 +53,10 @@ import type { TableColumn } from "./formatter.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
-const VALID_TYPES = new Set<string>(["bug", "refactor", "feature", "chore"]);
-const VALID_STATUSES = new Set<string>(["pending", "in_progress", "done", "blocked"]);
+// Derived from the Zod source of truth so the CLI can never drift from the
+// schema (the hardcoded list previously omitted `bugfix` and `test`).
+const VALID_TYPES = new Set<string>(BacklogItemTypeSchema.options);
+const VALID_STATUSES = new Set<string>(BacklogItemStatusSchema.options);
 
 // ─── handleBacklogList ───────────────────────────────────────────
 
@@ -425,6 +430,82 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
 
   printItemDetail(item);
   return ExitCode.SUCCESS;
+}
+
+// ─── handleBacklogValidate ───────────────────────────────────────
+//
+// rauf backlog validate <path> [--backlog <dir>] [--specs-dir <dir>] [--json]
+//
+// Exit codes (contract — see SPEC-BACKLOG-TOOL-CONTRACT.md):
+//   0 = valid (no error findings; warnings allowed)
+//   1 = validation findings (one or more errors)
+//   2 = usage / IO error (missing path, unreadable file, bad JSON)
+
+export async function handleBacklogValidate(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  if (!targetPath) {
+    error("Missing required argument: <path>");
+    info("Usage: rauf backlog validate <path> [--backlog <dir>] [--specs-dir <dir>] [--json]");
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    if (ctx.globalFlags.json) outputJson({ error: backlogRootResult.error });
+    else error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    // e.g. no backlog.json found → usage/IO error
+    if (ctx.globalFlags.json) outputJson({ error: pathsResult.error });
+    else error(pathsResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const paths = pathsResult.value;
+
+  // --specs-dir is resolved relative to the target project path. When absent,
+  // specReferences-existence is skipped (the repo-wide ad-hoc flow has no specs).
+  const specsDirFlag = extractStringFlag(ctx.flags, "specs-dir");
+  const specsDir = specsDirFlag ? path.resolve(resolved, specsDirFlag) : undefined;
+
+  const result = validateBacklog(paths, { specsDir });
+  if (!result.ok) {
+    // IO / JSON-parse failure → usage/IO exit code (2), NOT a validation finding.
+    if (ctx.globalFlags.json) outputJson({ error: result.error });
+    else error(result.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+
+  const { valid, findings } = result.value;
+
+  if (ctx.globalFlags.json) {
+    outputJson({ valid, findings });
+    return valid ? ExitCode.SUCCESS : ExitCode.ERROR;
+  }
+
+  for (const f of findings) {
+    const loc = f.itemId ? ` [${f.itemId}]` : f.path ? ` [${f.path}]` : "";
+    const line = `${f.code}${loc}: ${f.message}`;
+    if (f.severity === "error") error(line);
+    else warn(line);
+  }
+
+  if (valid) {
+    const warnCount = findings.length;
+    success(
+      warnCount > 0
+        ? `Backlog is valid (${warnCount} warning${warnCount === 1 ? "" : "s"}).`
+        : "Backlog is valid.",
+    );
+    return ExitCode.SUCCESS;
+  }
+
+  const errCount = findings.filter((f) => f.severity === "error").length;
+  error(`Backlog is invalid: ${errCount} error${errCount === 1 ? "" : "s"}.`);
+  return ExitCode.ERROR;
 }
 
 // ─── handleBacklogRestore ────────────────────────────────────────

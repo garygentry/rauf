@@ -392,6 +392,23 @@ describe("BacklogSchema", () => {
   it("rejects missing project field", () => {
     expect(() => BacklogSchema.parse({ description: "test", items: [] })).toThrow();
   });
+
+  it("stamps schemaVersion default '1' when absent", () => {
+    // An existing backlog with no schemaVersion field must keep validating;
+    // the default is applied on parse so old files are never rejected.
+    const result = BacklogSchema.parse({ project: "p", description: "d", items: [] });
+    expect(result.schemaVersion).toBe("1");
+  });
+
+  it("preserves an explicit schemaVersion", () => {
+    const result = BacklogSchema.parse({
+      project: "p",
+      description: "d",
+      items: [],
+      schemaVersion: "2",
+    });
+    expect(result.schemaVersion).toBe("2");
+  });
 });
 
 // ─── normalizeBacklogItems ────────────────────────────────────────

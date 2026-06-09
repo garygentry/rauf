@@ -49,7 +49,11 @@ export function atomicWrite(filePath: string, content: string): Result<void> {
 
 export function readJsonFile<T>(
   filePath: string,
-  schema: z.ZodType<T>,
+  // Input is left free (`unknown`) so T binds to the schema's OUTPUT type.
+  // This matters for schemas with `.default()` (e.g. BacklogSchema's
+  // schemaVersion), whose input and output types differ — without this, T
+  // would infer the optional input shape and lose the stamped default.
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   preprocess?: (data: unknown) => unknown,
 ): Result<T> {
   const resolved = path.resolve(filePath);

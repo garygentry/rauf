@@ -19,6 +19,8 @@
     "build:docs": "pnpm --filter @rauf/docs build",
     "compile": "pnpm build && bun build --compile scripts/binary-entry.ts --outfile rauf-bin",
     "clean": "pnpm -r clean",
+    "generate:schemas": "bun run scripts/generate-json-schemas.ts",
+    "schema:check": "bun run scripts/generate-json-schemas.ts --check",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
     "rauf": "rauf"
   },
