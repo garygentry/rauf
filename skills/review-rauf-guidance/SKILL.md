@@ -5,9 +5,9 @@ description: >
   in a rauf-managed project to ensure it's accurate for the target project.
   Use this skill when the user asks to "review rauf guidance", "check rauf config",
   "audit rauf files", "update RAUF.md", "fix my rauf setup", or asks whether
-  .rauf/RAUF.md is correct for their project. Also use when the user
-  reports that the rauf loop is using wrong verification commands, missing project
-  context, or behaving as if it doesn't understand the project.
+  .rauf/RAUF.md is correct for their project. Also use when the user reports that the
+  rauf loop is using wrong verification commands, missing project context, or
+  behaving as if it doesn't understand the project.
 ---
 
 # Review Rauf Guidance
@@ -19,10 +19,10 @@ When rauf is installed into a project, it creates `.rauf/RAUF.md` — the primar
 This file contains:
 
 1. **Verification commands** (inside `<!-- rauf:managed:start -->` / `<!-- rauf:managed:end -->` sentinels) — the test/typecheck/lint/build/format commands the agent runs before marking work complete. These are overwritten by `rauf update`.
-2. **Workflow** — step-by-step iteration process (read backlog → implement → verify → commit → signal). Note: the verify command in workflow step 6 is outside the managed sentinels — it is NOT auto-updated.
-3. **Agent delegation** — instructions for using sub-agents when `agentDelegation` is present on a backlog item
-4. **Important rules** — constraints like "work on ONE item only" and "don't modify backlog.json"
-5. **Project-specific instructions** — a section at the bottom where custom guidance can be added. This section survives `rauf update`.
+2. **Workflow** — step-by-step iteration process (read backlog → implement → verify → commit → signal). Note: the verify command in workflow step 6 is **outside** the managed sentinels — it is NOT auto-updated.
+3. **Agent delegation** — instructions for using sub-agents when `agentDelegation` is present on a backlog item.
+4. **Important rules** — constraints like "work on ONE item only" and "don't modify backlog.json".
+5. **Project-specific instructions** — a section at the bottom for custom guidance. This section survives `rauf update`.
 
 ## Review Process
 
@@ -37,42 +37,41 @@ The marker file's `profile` field shows what rauf detected during installation �
 
 ### Step 2: Check .rauf.json ↔ RAUF.md sync
 
-Compare the commands in `.rauf.json` `profile.commands` and `profile.verify` against the rendered commands in RAUF.md's managed section. They should match exactly. If they don't, the files are out of sync — likely someone ran `rauf profile set` without `rauf update` afterward. Flag this as a **critical issue** before proceeding.
+Compare the commands in `.rauf.json` (`profile.commands` and `profile.verify`) against the rendered commands in RAUF.md's managed section. They should match exactly. If they don't, the files are out of sync — likely someone ran `rauf profile set` without `rauf update` afterward. Flag this as a **critical issue** before proceeding.
 
 ### Step 3: Verify each command by running it
 
 This is the most important step. For each non-empty command in the managed section, **actually run it** and record pass/fail:
 
-1. Run the `Test` command — does it execute the project's test suite? Watch for: wrong package manager prefix, "command not found", test framework not installed
-2. Run the `Typecheck` command — is there a tsconfig.json? If the project isn't TypeScript, this should be empty
-3. Run the `Lint` command — does the linter run? Does it use the right config?
-4. Run the `Build` command — does it succeed? (May not exist for all projects)
+1. Run the `Test` command — does it execute the project's test suite? Watch for: wrong package manager prefix, "command not found", test framework not installed.
+2. Run the `Typecheck` command — is there a `tsconfig.json`? If the project isn't TypeScript, this should be empty.
+3. Run the `Lint` command — does the linter run with the right config?
+4. Run the `Build` command — does it succeed? (May not exist for all projects.)
 5. Run the `Format` command — does the format check pass?
-6. Run the full `verify` command — the `&&`-chained pipeline. Verify the exit code is 0
+6. Run the full `verify` command — the `&&`-chained pipeline. Verify the exit code is 0.
 
 If a command is empty in the managed section, confirm it's also absent from the full verify chain.
 
 Record results:
 
-- **Pass** — command runs and exits 0 (or exits non-zero with expected test failures, not "command not found")
-- **Fail** — command not found, wrong framework, crashes, or exits non-zero unexpectedly
-- **Missing** — command is empty but should exist (e.g., project has TypeScript but no typecheck command)
+- **Pass** — command runs and exits 0 (or exits non-zero with expected test failures, not "command not found").
+- **Fail** — command not found, wrong framework, crashes, or exits non-zero unexpectedly.
+- **Missing** — command is empty but should exist (e.g. the project has TypeScript but no typecheck command).
 
 ### Step 4: Fix wrong commands
 
 If any commands are wrong:
 
-**If `rauf` CLI is available:**
+**If the `rauf` CLI is available:**
 
 ```bash
 rauf profile set . <key> <value>   # Updates .rauf.json AND auto-syncs RAUF.md
 ```
 
-**If `rauf` CLI is not available:**
-Edit both files to keep them in sync:
+**If the `rauf` CLI is not available:** edit both files to keep them in sync:
 
-1. Edit `.rauf.json` — update `profile.commands.<key>` and recalculate `profile.verify` (the `&&`-joined chain of all non-null commands)
-2. Edit `.rauf/RAUF.md` — update the corresponding entries in the managed section between `<!-- rauf:managed:start -->` and `<!-- rauf:managed:end -->`
+1. Edit `.rauf.json` — update `profile.commands.<key>` and recalculate `profile.verify` (the `&&`-joined chain of all non-null commands).
+2. Edit `.rauf/RAUF.md` — update the corresponding entries in the managed section between `<!-- rauf:managed:start -->` and `<!-- rauf:managed:end -->`.
 
 ### Step 5: Check workflow step 6
 
@@ -82,11 +81,11 @@ The verify command in workflow step 6 (`Run verification: \`...\``) is **outside
 
 The section below `## Project-Specific Instructions` is where project-specific guidance goes — and it survives `rauf update`. Consider adding:
 
-- Key architectural constraints ("never import from X into Y")
-- Testing patterns specific to this project ("use factory functions from tests/helpers/")
-- Common pitfalls ("the database migration must run before tests")
-- File organization rules ("components go in src/components/, not src/pages/")
-- Any project conventions that the agent wouldn't know from reading code alone
+- Key architectural constraints ("never import from X into Y").
+- Testing patterns specific to this project ("use factory functions from tests/helpers/").
+- Common pitfalls ("the database migration must run before tests").
+- File organization rules ("components go in src/components/, not src/pages/").
+- Any project conventions the agent wouldn't know from reading code alone.
 
 If this section is empty (just the HTML comment placeholder), that's a missed opportunity. Help the user populate it with the most impactful guidance for their project.
 
@@ -94,9 +93,9 @@ If this section is empty (just the HTML comment placeholder), that's a missed op
 
 Present findings organized as:
 
-1. **Critical issues** — things that will cause the loop to fail (wrong verify commands, .rauf.json/RAUF.md out of sync, broken sentinels)
-2. **Improvements** — things that would make the loop more effective (empty project-specific instructions, missing architectural context)
-3. **Looks good** — things that are correctly configured
+1. **Critical issues** — things that will cause the loop to fail (wrong verify commands, `.rauf.json`/RAUF.md out of sync, broken sentinels).
+2. **Improvements** — things that would make the loop more effective (empty project-specific instructions, missing architectural context).
+3. **Looks good** — things that are correctly configured.
 
 For each issue, explain what's wrong and propose the fix. Apply fixes only after the user confirms.
 
@@ -113,6 +112,6 @@ For each issue, explain what's wrong and propose the fix. Apply fixes only after
 
 ## Important: What NOT to change
 
-- Don't modify content inside `<!-- rauf:managed:start/end -->` if you want changes to persist — update `.rauf.json` profile instead (via `rauf profile set` or direct edit) and run `rauf update`
-- Don't remove the sentinel markers themselves — rauf uses these to find and update its sections
-- Don't add rauf-loop-specific instructions to CLAUDE.md outside its sentinels — put them in RAUF.md's project-specific section instead, because CLAUDE.md is read by ALL agent sessions (not just the loop)
+- Don't modify content inside `<!-- rauf:managed:start/end -->` if you want changes to persist — update `.rauf.json` profile instead (via `rauf profile set` or direct edit) and run `rauf update`.
+- Don't remove the sentinel markers themselves — rauf uses these to find and update its sections.
+- Don't add rauf-loop-specific instructions to CLAUDE.md outside its sentinels — put them in RAUF.md's project-specific section instead, because CLAUDE.md is read by ALL agent sessions (not just the loop).

@@ -1,0 +1,9 @@
+{
+  "name": "rauf",
+  "version": "0.2.0",
+  "description": "Authoring, review, and guidance skills for rauf autonomous coding loops. rauf owns the backlog contract; these skills serve both the repo-wide ad-hoc flow and feature-pipeline tools that delegate to them.",
+  "author": {
+    "name": "Gary Gentry"
+  },
+  "keywords": ["rauf", "backlog", "autonomous", "loop", "ralph", "agent"]
+}

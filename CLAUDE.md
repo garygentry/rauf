@@ -73,7 +73,7 @@ bash test-sandbox/run.sh stream-blocked   # Specific scenario
 bash test-sandbox/verify.sh               # All scenarios with assertions
 ```
 
-When modifying `packages/loop/` or loop CLI commands, use the sandbox to verify changes. See the `test-rauf-loop` skill for detailed guidance.
+When modifying `packages/loop/` or loop CLI commands, use the sandbox to verify changes. See `test-sandbox/README.md` for detailed guidance (scenarios, mock Claude, stream/signal parsing).
 
 ## Dev Environment Setup
 

@@ -1,0 +1,14 @@
+{
+  "name": "rauf",
+  "owner": {
+    "name": "Gary Gentry"
+  },
+  "plugins": [
+    {
+      "name": "rauf",
+      "source": ".",
+      "description": "Authoring, review, and guidance skills for rauf autonomous coding loops (backlog authoring/validation/review + RAUF.md guidance review).",
+      "version": "0.2.0"
+    }
+  ]
+}

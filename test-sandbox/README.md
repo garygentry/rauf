@@ -1,16 +1,3 @@
----
-name: test-rauf-loop
-description: >
-  Interactive testing of the rauf loop runner, stream parser, signal parser,
-  or CLI loop commands using the test-sandbox with mock Claude scripts.
-  Use this skill when working on code in packages/loop/ or
-  packages/cli/src/loop-commands.ts and need to verify changes interactively.
-  Trigger phrases: "test my loop changes", "run the sandbox", "try the mock claude",
-  "verify stream parsing works", "test the runner". Also use proactively when
-  you've modified runner.ts, stream-parser.ts, signal-parser.ts, claude-process.ts,
-  status-line.ts, or loop-commands.ts and want to confirm behavior before committing.
----
-
 # Test Rauf Loop — Sandbox Guide
 
 ## What This Sandbox Is

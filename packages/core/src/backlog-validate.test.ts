@@ -98,10 +98,7 @@ describe("validateBacklog", () => {
 
   it("detects a dependency cycle", () => {
     writeRaw(
-      backlog([
-        item({ id: "001", dependsOn: ["002"] }),
-        item({ id: "002", dependsOn: ["001"] }),
-      ]),
+      backlog([item({ id: "001", dependsOn: ["002"] }), item({ id: "002", dependsOn: ["001"] })]),
     );
     const result = validateBacklog(paths);
     expect(result.ok).toBe(true);
@@ -117,9 +114,9 @@ describe("validateBacklog", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.valid).toBe(true); // warning only
-      expect(result.value.findings.some((f) => f.code === "EMPTY_AC" && f.severity === "warning")).toBe(
-        true,
-      );
+      expect(
+        result.value.findings.some((f) => f.code === "EMPTY_AC" && f.severity === "warning"),
+      ).toBe(true);
     }
   });
 
