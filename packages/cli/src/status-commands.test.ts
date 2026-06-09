@@ -21,23 +21,23 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-/** Create a minimal project dir with .ralph directory */
-function createRalphProject(projectDir: string): string {
-  const ralphDir = path.join(projectDir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
-  return ralphDir;
+/** Create a minimal project dir with .rauf directory */
+function createRaufProject(projectDir: string): string {
+  const raufDir = path.join(projectDir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+  return raufDir;
 }
 
-/** Create a valid backlog.json in the .ralph directory */
-function createBacklog(ralphDir: string, items: object[] = []): void {
+/** Create a valid backlog.json in the .rauf directory */
+function createBacklog(raufDir: string, items: object[] = []): void {
   fs.writeFileSync(
-    path.join(ralphDir, "backlog.json"),
+    path.join(raufDir, "backlog.json"),
     JSON.stringify({ project: "test", description: "test", items }, null, 2),
   );
 }
 
-/** Create a state.json in the .ralph directory */
-function createStateJson(ralphDir: string, overrides: Record<string, unknown> = {}): void {
+/** Create a state.json in the .rauf directory */
+function createStateJson(raufDir: string, overrides: Record<string, unknown> = {}): void {
   // All required fields per LoopStateSchema
   const state = {
     status: "running",
@@ -53,7 +53,7 @@ function createStateJson(ralphDir: string, overrides: Record<string, unknown> = 
     pid: 12345,
     ...overrides,
   };
-  fs.writeFileSync(path.join(ralphDir, "state.json"), JSON.stringify(state, null, 2));
+  fs.writeFileSync(path.join(raufDir, "state.json"), JSON.stringify(state, null, 2));
 }
 
 /** Build a CommandContext for testing */
@@ -84,7 +84,7 @@ describe("handleStatus", () => {
     expect(code).toBe(ExitCode.INVALID_ARGS);
   });
 
-  it("returns 0 (idle/complete) when .ralph directory does not exist", async () => {
+  it("returns 0 (idle/complete) when .rauf directory does not exist", async () => {
     const projectDir = path.join(tmpDir, "no-ralph");
     fs.mkdirSync(projectDir);
     const ctx = makeCtx([projectDir]);
@@ -95,8 +95,8 @@ describe("handleStatus", () => {
 
   it("returns 0 when loop is IDLE (no state.json, no log)", async () => {
     const projectDir = path.join(tmpDir, "idle-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     expect(code).toBe(0);
@@ -104,9 +104,9 @@ describe("handleStatus", () => {
 
   it("returns 1 when loop is RUNNING (state.json with running status)", async () => {
     const projectDir = path.join(tmpDir, "running-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, { status: "running" });
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "running" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     expect(code).toBe(1);
@@ -114,9 +114,9 @@ describe("handleStatus", () => {
 
   it("returns 0 when loop is COMPLETE", async () => {
     const projectDir = path.join(tmpDir, "complete-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, { status: "complete" });
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "complete" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     expect(code).toBe(0);
@@ -124,9 +124,9 @@ describe("handleStatus", () => {
 
   it("returns 2 when loop is PAUSED_HUMAN", async () => {
     const projectDir = path.join(tmpDir, "human-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, { status: "paused_human" });
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "paused_human" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     expect(code).toBe(2);
@@ -134,9 +134,9 @@ describe("handleStatus", () => {
 
   it("returns 3 when loop is LIMIT_REACHED", async () => {
     const projectDir = path.join(tmpDir, "limit-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, { status: "limit_reached" });
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "limit_reached" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     expect(code).toBe(3);
@@ -144,9 +144,9 @@ describe("handleStatus", () => {
 
   it("returns 0 and SLEEPING_LIMIT loopState for sleeping_limit status", async () => {
     const projectDir = path.join(tmpDir, "sleeping-limit-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, {
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, {
       status: "sleeping_limit",
       currentItem: null,
       lastSignal: "error",
@@ -176,9 +176,9 @@ describe("handleStatus", () => {
 
   it("returns 0 and WEEKLY_LIMIT loopState for weekly_limit status", async () => {
     const projectDir = path.join(tmpDir, "weekly-limit-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, {
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, {
       status: "weekly_limit",
       currentItem: null,
       lastSignal: "error",
@@ -208,10 +208,10 @@ describe("handleStatus", () => {
 
   it("shows sleeping limit information in text output", async () => {
     const projectDir = path.join(tmpDir, "sleeping-text-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const sleepUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-    createStateJson(ralphDir, {
+    createStateJson(raufDir, {
       status: "sleeping_limit",
       currentItem: null,
       lastSignal: "error",
@@ -239,9 +239,9 @@ describe("handleStatus", () => {
 
   it("shows weekly limit information in text output", async () => {
     const projectDir = path.join(tmpDir, "weekly-text-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, {
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, {
       status: "weekly_limit",
       currentItem: null,
       lastSignal: "error",
@@ -269,9 +269,9 @@ describe("handleStatus", () => {
 
   it("returns 0 when loop is PAUSED", async () => {
     const projectDir = path.join(tmpDir, "paused-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, { status: "paused" });
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "paused" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     expect(code).toBe(0);
@@ -279,9 +279,9 @@ describe("handleStatus", () => {
 
   it("returns JSON output when --json flag is set", async () => {
     const projectDir = path.join(tmpDir, "json-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    createStateJson(ralphDir, { status: "running" });
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "running" });
 
     let output = "";
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -306,8 +306,8 @@ describe("handleStatus", () => {
 
   it("includes backlog summary counts", async () => {
     const projectDir = path.join(tmpDir, "summary-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir, [
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir, [
       {
         id: "001",
         type: "feature",
@@ -329,7 +329,7 @@ describe("handleStatus", () => {
         acceptanceCriteria: ["pending"],
       },
     ]);
-    createStateJson(ralphDir, { status: "running" });
+    createStateJson(raufDir, { status: "running" });
 
     let output = "";
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -353,11 +353,11 @@ describe("handleStatus", () => {
 
   it("handles stale running state (>5min) as PAUSED", async () => {
     const projectDir = path.join(tmpDir, "stale-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     // updatedAt 10 minutes ago
     const oldTime = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-    createStateJson(ralphDir, { status: "running", updatedAt: oldTime });
+    createStateJson(raufDir, { status: "running", updatedAt: oldTime });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
     // PAUSED → exit 0
@@ -376,8 +376,8 @@ describe("handleLog", () => {
 
   it("returns SUCCESS with empty info when no log exists", async () => {
     const projectDir = path.join(tmpDir, "no-log");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const ctx = makeCtx([projectDir]);
     const code = await handleLog(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
@@ -385,10 +385,10 @@ describe("handleLog", () => {
 
   it("prints last N lines of log file", async () => {
     const projectDir = path.join(tmpDir, "log-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
-    fs.writeFileSync(path.join(ralphDir, "ralph.log"), lines.join("\n") + "\n");
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), lines.join("\n") + "\n");
 
     const output: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -413,10 +413,10 @@ describe("handleLog", () => {
 
   it("uses default tail of 20 lines", async () => {
     const projectDir = path.join(tmpDir, "default-tail");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`);
-    fs.writeFileSync(path.join(ralphDir, "ralph.log"), lines.join("\n") + "\n");
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), lines.join("\n") + "\n");
 
     const output: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -441,9 +441,9 @@ describe("handleLog", () => {
 
   it("returns all lines when log has fewer lines than tail", async () => {
     const projectDir = path.join(tmpDir, "short-log");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    fs.writeFileSync(path.join(ralphDir, "ralph.log"), "line 1\nline 2\nline 3\n");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), "line 1\nline 2\nline 3\n");
 
     const output: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -475,8 +475,8 @@ describe("handleProgress", () => {
 
   it("returns SUCCESS with info message when progress.md is missing", async () => {
     const projectDir = path.join(tmpDir, "no-progress");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const ctx = makeCtx([projectDir]);
     const code = await handleProgress(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
@@ -484,10 +484,10 @@ describe("handleProgress", () => {
 
   it("prints progress.md content", async () => {
     const projectDir = path.join(tmpDir, "progress-project");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
     const content = "# Progress\n\n- Step 1 done\n- Step 2 in progress\n";
-    fs.writeFileSync(path.join(ralphDir, "progress.md"), content);
+    fs.writeFileSync(path.join(raufDir, "progress.md"), content);
 
     const output: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -510,9 +510,9 @@ describe("handleProgress", () => {
 
   it("outputs JSON with content when --json flag is set", async () => {
     const projectDir = path.join(tmpDir, "json-progress");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    fs.writeFileSync(path.join(ralphDir, "progress.md"), "# Progress\n\nSome notes.");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    fs.writeFileSync(path.join(raufDir, "progress.md"), "# Progress\n\nSome notes.");
 
     let output = "";
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -536,8 +536,8 @@ describe("handleProgress", () => {
 
   it("outputs JSON with null content when progress.md missing", async () => {
     const projectDir = path.join(tmpDir, "no-progress-json");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
 
     let output = "";
     const origWrite = process.stdout.write.bind(process.stdout);
@@ -560,9 +560,9 @@ describe("handleProgress", () => {
 
   it("handles empty progress.md gracefully", async () => {
     const projectDir = path.join(tmpDir, "empty-progress");
-    const ralphDir = createRalphProject(projectDir);
-    createBacklog(ralphDir);
-    fs.writeFileSync(path.join(ralphDir, "progress.md"), "");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    fs.writeFileSync(path.join(raufDir, "progress.md"), "");
     const ctx = makeCtx([projectDir]);
     const code = await handleProgress(ctx);
     expect(code).toBe(ExitCode.SUCCESS);

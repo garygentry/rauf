@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ProjectProfile, InstallationReport, ProfileOverrides } from "@ralph/core";
-import { ralphFetchJson } from "../lib/fetch";
+import { raufFetchJson } from "../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -183,7 +183,7 @@ function StepSelectTarget({
         Select Target Directory
       </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Enter the path to an existing project where you want to install Ralph. Use an absolute path
+        Enter the path to an existing project where you want to install Rauf. Use an absolute path
         or a directory name within your root directory.
       </p>
 
@@ -252,7 +252,7 @@ function StepPreflight({
 }) {
   const mutation = useMutation({
     mutationFn: () =>
-      ralphFetchJson<PreflightData>("/api/projects/preflight", {
+      raufFetchJson<PreflightData>("/api/projects/preflight", {
         method: "POST",
         body: JSON.stringify({ targetPath: state.targetPath }),
       }),
@@ -577,7 +577,7 @@ function StepConfigure({
         Configure Installation
       </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Customize project settings for the Ralph loop.
+        Customize project settings for the Rauf loop.
       </p>
 
       <div className="space-y-5">
@@ -599,7 +599,7 @@ function StepConfigure({
             }}
           />
           <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
-            Used in the backlog.json project field and RALPH.md template.
+            Used in the backlog.json project field and RAUF.md template.
           </p>
         </div>
 
@@ -641,7 +641,7 @@ function StepConfigure({
               Update .gitignore
             </p>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-              Add ralph runtime files (state.json, ralph.log, DONE) to .gitignore.
+              Add ralph runtime files (state.json, rauf.log, DONE) to .gitignore.
             </p>
           </div>
           <button
@@ -696,20 +696,20 @@ function StepReview({
   }
 
   const FILES_TO_CREATE = [
-    { file: ".ralph/RALPH.md", location: ".ralph/", description: "Per-iteration instructions" },
+    { file: ".rauf/RAUF.md", location: ".rauf/", description: "Per-iteration instructions" },
     {
-      file: ".ralph/backlog.json",
-      location: ".ralph/",
+      file: ".rauf/backlog.json",
+      location: ".rauf/",
       description: "Task queue (created if missing)",
     },
     {
-      file: ".ralph/progress.md",
-      location: ".ralph/",
+      file: ".rauf/progress.md",
+      location: ".rauf/",
       description: "Accumulated learnings log",
     },
     { file: "CLAUDE.md", location: "project root", description: "Smart-merged ralph section" },
     {
-      file: ".ralph.json",
+      file: ".rauf.json",
       location: "project root",
       description: "Marker file with profile & hashes",
     },
@@ -721,7 +721,7 @@ function StepReview({
         Review Installation
       </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Review the configuration before installing Ralph into your project.
+        Review the configuration before installing Rauf into your project.
       </p>
 
       {/* Summary */}
@@ -781,9 +781,9 @@ function StepReview({
         </div>
       </div>
 
-      {/* RALPH.md Verification Section */}
+      {/* RAUF.md Verification Section */}
       <h3 className="mb-2 text-sm font-semibold" style={{ color: "var(--color-text)" }}>
-        RALPH.md Verification Commands
+        RAUF.md Verification Commands
       </h3>
       <div
         className="mb-5 overflow-x-auto rounded-md border p-3 font-mono text-xs"
@@ -841,7 +841,7 @@ function StepReview({
         ))}
       </div>
 
-      <WizardNav onBack={onBack} onNext={onNext} nextLabel="Install Ralph" loading={loading} />
+      <WizardNav onBack={onBack} onNext={onNext} nextLabel="Install Rauf" loading={loading} />
     </div>
   );
 }
@@ -876,7 +876,7 @@ function StepResult({ state }: { state: WizardState }) {
             Installation Complete
           </h2>
           <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Ralph has been installed in{" "}
+            Rauf has been installed in{" "}
             <span className="font-mono text-xs" style={{ color: "var(--color-text)" }}>
               {report.projectPath}
             </span>
@@ -1044,7 +1044,7 @@ export function InstallWizard() {
     mutationFn: () => {
       const resolvedPath = state.preflightData?.resolvedPath ?? state.targetPath;
       const projectId = resolvedPath.split("/").pop() ?? "";
-      return ralphFetchJson<InstallationReport>(
+      return raufFetchJson<InstallationReport>(
         `/api/projects/${encodeURIComponent(projectId)}/install`,
         {
           method: "POST",
@@ -1068,10 +1068,10 @@ export function InstallWizard() {
     <div className="p-6">
       <div className="mx-auto max-w-2xl">
         <h1 className="mb-1 text-2xl font-semibold" style={{ color: "var(--color-text)" }}>
-          Install Ralph
+          Install Rauf
         </h1>
         <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Install Ralph into an existing project directory.
+          Install Rauf into an existing project directory.
         </p>
 
         <StepIndicator current={state.step} total={STEP_LABELS.length} />

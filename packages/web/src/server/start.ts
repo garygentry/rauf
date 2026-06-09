@@ -19,9 +19,9 @@ import { getLoopManager } from "./loop-manager.js";
 
 // ─── Server state file paths (shared with CLI package) ──────────
 
-const RALPH_CONFIG_DIR = path.join(os.homedir(), ".ralph");
-const SERVER_STATE_FILE = path.join(RALPH_CONFIG_DIR, "server.json");
-const SERVER_ERROR_FILE = path.join(RALPH_CONFIG_DIR, "server.error");
+const RAUF_CONFIG_DIR = path.join(os.homedir(), ".rauf");
+const SERVER_STATE_FILE = path.join(RAUF_CONFIG_DIR, "server.json");
+const SERVER_ERROR_FILE = path.join(RAUF_CONFIG_DIR, "server.error");
 
 export interface StartServerOptions {
   /** Override port (default: from config or 5173) */
@@ -29,7 +29,7 @@ export interface StartServerOptions {
 }
 
 /**
- * Start the Ralph web server.
+ * Start the Rauf web server.
  * Binds to 127.0.0.1 ONLY. Serves API routes and embedded frontend assets.
  */
 export function startServer(options?: StartServerOptions): void {
@@ -88,7 +88,7 @@ export function startServer(options?: StartServerOptions): void {
 
     // Write structured error for CLI to read
     try {
-      fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
+      fs.mkdirSync(RAUF_CONFIG_DIR, { recursive: true });
       fs.writeFileSync(SERVER_ERROR_FILE, JSON.stringify(errorData), "utf-8");
     } catch {
       // Best-effort — if we can't write the error file, the log still has it
@@ -105,7 +105,7 @@ export function startServer(options?: StartServerOptions): void {
     // No stale error file — fine
   }
 
-  console.log(`Ralph web server running at http://127.0.0.1:${port}`);
+  console.log(`Rauf web server running at http://127.0.0.1:${port}`);
 
   // ── Recover stale loops on startup ────────────────────────────
   const rootDirectory = configResult.ok ? configResult.value.rootDirectory : resolveRootDirectory();

@@ -1,6 +1,6 @@
 // ─── Iteration Status ───────────────────────────────────────────
 //
-// Manages .ralph/iteration-status.json — a live file written during
+// Manages .rauf/iteration-status.json — a live file written during
 // Claude invocations to expose tool activity, token counts, and
 // stuckness to watchers (CLI, web dashboard, `ralph loop watch`).
 

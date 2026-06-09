@@ -8,7 +8,7 @@ import {
   initProject,
   parseBacklogSeed,
   GITIGNORE_TEMPLATES,
-  RALPH_GITIGNORE,
+  RAUF_GITIGNORE,
   MARKDOWN_ITEM_RE,
   type InitOptions,
 } from "./greenfield.js";
@@ -85,7 +85,7 @@ describe("initProject", () => {
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("node_modules/");
     expect(gitignore).toContain("*.tsbuildinfo");
-    expect(gitignore).toContain(".ralph/state.json");
+    expect(gitignore).toContain(".rauf/state.json");
   });
 
   it("generates stack-appropriate .gitignore for python", () => {
@@ -95,7 +95,7 @@ describe("initProject", () => {
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("__pycache__/");
     expect(gitignore).toContain(".venv/");
-    expect(gitignore).toContain(".ralph/state.json");
+    expect(gitignore).toContain(".rauf/state.json");
   });
 
   it("generates stack-appropriate .gitignore for go", () => {
@@ -104,7 +104,7 @@ describe("initProject", () => {
 
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("bin/");
-    expect(gitignore).toContain(".ralph/DONE");
+    expect(gitignore).toContain(".rauf/DONE");
   });
 
   it("generates stack-appropriate .gitignore for rust", () => {
@@ -122,8 +122,8 @@ describe("initProject", () => {
 
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     // Should still have ralph entries
-    expect(gitignore).toContain(".ralph/state.json");
-    expect(gitignore).toContain(".ralph/ralph.log");
+    expect(gitignore).toContain(".rauf/state.json");
+    expect(gitignore).toContain(".rauf/rauf.log");
   });
 
   it("scaffolds CLAUDE.md from greenfield template", () => {
@@ -156,10 +156,10 @@ describe("initProject", () => {
     expect(fileExists(path.join(projectDir, "ralph-add.sh"))).toBe(false);
     expect(fileExists(path.join(projectDir, "ralph-status.sh"))).toBe(false);
 
-    // Check .ralph/ contents
-    expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);
-    expect(fileExists(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
-    expect(fileExists(path.join(projectDir, ".ralph", "progress.md"))).toBe(true);
+    // Check .rauf/ contents
+    expect(fileExists(path.join(projectDir, ".rauf", "RAUF.md"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "progress.md"))).toBe(true);
 
     // Check marker file
     expect(fileExists(path.join(projectDir, MARKER_FILENAME))).toBe(true);
@@ -724,13 +724,13 @@ describe("GITIGNORE_TEMPLATES", () => {
   });
 });
 
-// ─── RALPH_GITIGNORE ─────────────────────────────────────────────
+// ─── RAUF_GITIGNORE ─────────────────────────────────────────────
 
-describe("RALPH_GITIGNORE", () => {
-  it("includes state.json, DONE, and ralph.log", () => {
-    expect(RALPH_GITIGNORE).toContain(".ralph/state.json");
-    expect(RALPH_GITIGNORE).toContain(".ralph/DONE");
-    expect(RALPH_GITIGNORE).toContain(".ralph/ralph.log");
+describe("RAUF_GITIGNORE", () => {
+  it("includes state.json, DONE, and rauf.log", () => {
+    expect(RAUF_GITIGNORE).toContain(".rauf/state.json");
+    expect(RAUF_GITIGNORE).toContain(".rauf/DONE");
+    expect(RAUF_GITIGNORE).toContain(".rauf/rauf.log");
   });
 });
 

@@ -11,7 +11,7 @@ echo '{"type":"content_block_start","index":2,"content_block":{"type":"tool_use"
 sleep 0.3
 echo '{"type":"content_block_stop","index":2}'
 echo '{"type":"content_block_start","index":3,"content_block":{"type":"text"}}'
-echo '{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"All changes complete.\n\nRALPH_DONE"}}'
+echo '{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"All changes complete.\n\nRAUF_DONE"}}'
 echo '{"type":"content_block_stop","index":3}'
 echo '{"type":"message_delta","usage":{"output_tokens":2500}}'
 echo '{"type":"message_stop"}'

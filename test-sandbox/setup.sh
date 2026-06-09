@@ -3,14 +3,14 @@
 cd "$(dirname "$0")"
 
 # Remove transient state files
-rm -f .ralph/state.json .ralph/ralph.log .ralph/DONE .ralph/CANCEL
-rm -f .ralph/iteration-status.json .ralph/backlog.json.bak
+rm -f .rauf/state.json .rauf/rauf.log .rauf/DONE .rauf/CANCEL
+rm -f .rauf/iteration-status.json .rauf/backlog.json.bak
 
 # Restore backlog to original (all pending)
-cp backlog-template.json .ralph/backlog.json
+cp backlog-template.json .rauf/backlog.json
 
 # Clean up multi-backlog scenario state
-rm -rf specs/feature-a/.ralph
+rm -rf specs/feature-a/.rauf
 rm -rf specs/feature-a
 
 # Set up multi-backlog scenario if the directory exists in scenarios/

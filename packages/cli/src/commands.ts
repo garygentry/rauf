@@ -186,7 +186,7 @@ export const COMMANDS: CommandDef[] = [
       { name: "restore", description: "Restore from backup", handler: handleBacklogRestore },
       {
         name: "sweep",
-        description: "Archive done items into .ralph/archive/",
+        description: "Archive done items into .rauf/archive/",
         handler: handleBacklogSweep,
       },
       {
@@ -314,7 +314,7 @@ function showGeneralHelp(ctx: CommandContext): number {
   }
 
   const lines: string[] = [
-    `${c.bold("ralph")} v${VERSION} ${c.dim("\u2014 Management tool for ralph autonomous coding loops")}`,
+    `${c.bold("rauf")} v${VERSION} ${c.dim("\u2014 Management tool for ralph autonomous coding loops")}`,
     "",
     `${c.bold("Usage:")} ralph <command> [options]`,
     "",

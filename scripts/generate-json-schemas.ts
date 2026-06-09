@@ -7,7 +7,7 @@
  *
  * Outputs:
  *   schemas/backlog.schema.json         — committed to repo for GitHub hosting
- *   artifacts/variants/backlog-json/.ralph/backlog.schema.json — embedded & installed locally
+ *   artifacts/variants/backlog-json/.rauf/backlog.schema.json — embedded & installed locally
  *
  * Usage: bun run scripts/generate-json-schemas.ts
  */
@@ -61,7 +61,7 @@ const schema = zodToJsonSchema(BacklogSchema, {
 
 schema["$schema"] = "http://json-schema.org/draft-07/schema#";
 schema["$id"] = schemaId;
-schema["title"] = "Ralph Backlog";
+schema["title"] = "Rauf Backlog";
 schema["description"] = "Task backlog for a ralph autonomous coding loop project";
 
 // Post-process: add descriptions to top-level properties
@@ -110,7 +110,7 @@ writeFileSync(resolve(REPO_ROOT, "schemas/backlog.schema.json"), output);
 
 // Write to artifacts/ (for local installation alongside backlog.json)
 writeFileSync(
-  resolve(REPO_ROOT, "artifacts/variants/backlog-json/.ralph/backlog.schema.json"),
+  resolve(REPO_ROOT, "artifacts/variants/backlog-json/.rauf/backlog.schema.json"),
   output,
 );
 

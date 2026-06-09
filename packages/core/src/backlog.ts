@@ -296,7 +296,7 @@ export function deleteItem(paths: BacklogPaths, itemId: string): Result<void> {
 
 // ─── restoreFromBackup ──────────────────────────────────────────
 //
-// Copy .ralph/backlog.json.bak → .ralph/backlog.json if backup exists.
+// Copy .rauf/backlog.json.bak → .rauf/backlog.json if backup exists.
 
 export function restoreFromBackup(paths: BacklogPaths): Result<void> {
   const bakPath = `${paths.backlog}.bak`;
@@ -372,18 +372,18 @@ export function resetStalledItems(paths: BacklogPaths): Result<{ resetCount: num
 
 // ─── ensureBacklog ────────────────────────────────────────────────
 //
-// If .ralph/ exists but backlog.json does not, create an empty one.
-// Returns NOT_INSTALLED if .ralph/ itself is missing.
+// If .rauf/ exists but backlog.json does not, create an empty one.
+// Returns NOT_INSTALLED if .rauf/ itself is missing.
 
 export function ensureBacklog(paths: BacklogPaths): Result<void> {
   // If backlog already exists, nothing to do
   if (fileExists(paths.backlog)) return ok(undefined);
 
-  // For default root: check if .ralph/ dir exists — NOT_INSTALLED if missing
-  if (path.basename(paths.root) === ".ralph" && !fileExists(paths.root)) {
+  // For default root: check if .rauf/ dir exists — NOT_INSTALLED if missing
+  if (path.basename(paths.root) === ".rauf" && !fileExists(paths.root)) {
     return err({
       code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed at ${paths.projectPath}`,
+      message: `Rauf is not installed at ${paths.projectPath}`,
     });
   }
 

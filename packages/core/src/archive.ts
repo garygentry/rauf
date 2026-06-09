@@ -1,7 +1,7 @@
 // ─── Archive / Sweep Module ──────────────────────────────────────
 //
 // Moves "done" backlog items into monthly archive files under
-// .ralph/archive/YYYY-MM.json, keeping the active backlog lean.
+// .rauf/archive/YYYY-MM.json, keeping the active backlog lean.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

@@ -120,10 +120,10 @@ export const MarkerOptionsSchema = z.object({
   providerConfig: z.record(z.string(), z.unknown()).optional(),
 });
 
-// ─── MarkerFile (.ralph.json) ──────────────────────────────────────
+// ─── MarkerFile (.rauf.json) ──────────────────────────────────────
 
 export const MarkerFileSchema = z.object({
-  ralph: z.literal(true),
+  rauf: z.literal(true),
   version: z.string(),
   variant: z.literal("backlog-json"),
   installedAt: z.string(),
@@ -165,7 +165,7 @@ export const LoopStateSchema = z.object({
   sleepUntil: z.string().nullable().optional(),
 });
 
-// ─── ToolConfig (~/.ralph/config.json) ─────────────────────────────
+// ─── ToolConfig (~/.rauf/config.json) ─────────────────────────────
 
 export const ToolConfigThemeSchema = z.enum(["light", "dark", "system"]);
 
@@ -255,7 +255,7 @@ export function apiSuccessSchema<T extends z.ZodTypeAny>(dataSchema: T) {
 
 // ─── Result Type (core internal) ───────────────────────────────────
 
-export const RalphErrorSchema = z.object({
+export const RaufErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
   details: z.record(z.string(), z.unknown()).optional(),
@@ -483,7 +483,7 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   LlmStuckWarningSchema,
 ]);
 
-// ─── Review Payload (parsed from RALPH_REVIEW signal) ─────────────
+// ─── Review Payload (parsed from RAUF_REVIEW signal) ─────────────
 
 export const ReviewItemSchema = z.object({
   type: BacklogItemTypeSchema,
@@ -498,7 +498,7 @@ export const ReviewPayloadSchema = z.object({
   summary: z.string(),
 });
 
-// ─── IterationStatus (.ralph/iteration-status.json) ───────────────
+// ─── IterationStatus (.rauf/iteration-status.json) ───────────────
 
 export const IterationStatusSchema = z.object({
   itemId: z.string(),
@@ -537,7 +537,7 @@ export type DiscoveredProject = z.infer<typeof DiscoveredProjectSchema>;
 export type InstallAction = z.infer<typeof InstallActionSchema>;
 export type InstallationReport = z.infer<typeof InstallationReportSchema>;
 export type ApiError = z.infer<typeof ApiErrorSchema>;
-export type RalphError = z.infer<typeof RalphErrorSchema>;
+export type RaufError = z.infer<typeof RaufErrorSchema>;
 export type ArchiveMonth = z.infer<typeof ArchiveMonthSchema>;
 export type SweepResult = z.infer<typeof SweepResultSchema>;
 export type BacklogItemSource = z.infer<typeof BacklogItemSourceSchema>;

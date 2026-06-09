@@ -125,10 +125,10 @@ describe("handleInstall", () => {
     expect(code).toBe(ExitCode.SUCCESS);
 
     // Verify artifacts deployed
-    expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(false);
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "RAUF.md"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
   });
 
   it("install --yes skips confirmations and succeeds", async () => {
@@ -142,7 +142,7 @@ describe("handleInstall", () => {
 
     const code = await handleInstall(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
-    expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(true);
   });
 
   it("outputs JSON report with --json flag", async () => {
@@ -184,9 +184,7 @@ describe("handleInstall", () => {
     expect(code).toBe(ExitCode.SUCCESS);
 
     // Read marker to check profile was overridden
-    const markerContent = JSON.parse(
-      fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"),
-    );
+    const markerContent = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(markerContent.profile.commands.test).toBe("npm test");
     expect(markerContent.profile.commands.build).toBe("npm run build");
   });
@@ -204,9 +202,7 @@ describe("handleInstall", () => {
     const code = await handleInstall(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    const markerContent = JSON.parse(
-      fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"),
-    );
+    const markerContent = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(markerContent.options.gitignoreScripts).toBe(true);
   });
 });
@@ -238,10 +234,10 @@ describe("handleInit", () => {
     expect(fs.existsSync(projectDir)).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".git"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, ".gitignore"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, "ralph.sh"))).toBe(false);
     expect(fs.existsSync(path.join(projectDir, "CLAUDE.md"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
   });
 
   it("--name and --description are reflected in output", async () => {
@@ -279,10 +275,10 @@ describe("handleInit", () => {
     expect(code).toBe(ExitCode.INVALID_ARGS);
   });
 
-  it("returns CONFLICT if path already has .ralph.json", async () => {
+  it("returns CONFLICT if path already has .rauf.json", async () => {
     const projectDir = path.join(tmpDir, "existing-ralph");
     fs.mkdirSync(projectDir, { recursive: true });
-    fs.writeFileSync(path.join(projectDir, ".ralph.json"), JSON.stringify({ ralph: true }));
+    fs.writeFileSync(path.join(projectDir, ".rauf.json"), JSON.stringify({ rauf: true }));
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleInit(ctx);
@@ -310,7 +306,7 @@ describe("handleInit", () => {
 
     // Check backlog has seeded items
     const backlog = JSON.parse(
-      fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8"),
+      fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8"),
     );
     expect(backlog.items.length).toBe(2);
     expect(backlog.items[0].title).toBe("Build the thing");
@@ -374,7 +370,7 @@ describe("handleUpdate", () => {
     expect(updateCode).toBe(ExitCode.SUCCESS);
 
     // Marker file should still exist
-    expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(true);
   });
 
   it("outputs JSON report with --json flag", async () => {
@@ -436,7 +432,7 @@ describe("handleUninstall", () => {
     await handleInstall(installCtx);
 
     // Verify installed
-    expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(true);
 
     // Uninstall
     const uninstallCtx = makeCtx({
@@ -447,7 +443,7 @@ describe("handleUninstall", () => {
     expect(code).toBe(ExitCode.SUCCESS);
 
     // Verify marker removed
-    expect(fs.existsSync(path.join(projectDir, ".ralph.json"))).toBe(false);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(false);
   });
 
   it("preserves backlog and progress by default", async () => {
@@ -462,8 +458,8 @@ describe("handleUninstall", () => {
     await handleInstall(installCtx);
 
     // Verify data files exist
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "progress.md"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "progress.md"))).toBe(true);
 
     // Uninstall
     const uninstallCtx = makeCtx({
@@ -474,8 +470,8 @@ describe("handleUninstall", () => {
     expect(code).toBe(ExitCode.SUCCESS);
 
     // Data files should be preserved
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
-    expect(fs.existsSync(path.join(projectDir, ".ralph", "progress.md"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "progress.md"))).toBe(true);
   });
 
   it("outputs JSON with --json flag", async () => {

@@ -49,7 +49,7 @@ export function resetProject(
   paths: BacklogPaths,
   options?: ResetProjectOptions,
 ): Result<ResetProjectResult> {
-  // 0. Ensure backlog.json exists (create empty if .ralph/ dir is present)
+  // 0. Ensure backlog.json exists (create empty if .rauf/ dir is present)
   const ensureResult = ensureBacklog(paths);
   if (!ensureResult.ok) return ensureResult;
 
@@ -108,7 +108,7 @@ export function resetProject(
     }
   }
 
-  // 7. Archive ralph.log when clearing backlog (unless --keep-log)
+  // 7. Archive rauf.log when clearing backlog (unless --keep-log)
   let logArchived = false;
   if (options?.clearBacklog && !options?.keepLog) {
     const logPath = paths.log;
@@ -117,7 +117,7 @@ export function resetProject(
       const ensureResult = ensureDir(archiveDir);
       if (!ensureResult.ok) return ensureResult;
 
-      const archivePath = path.join(archiveDir, `${ts}-ralph.log`);
+      const archivePath = path.join(archiveDir, `${ts}-rauf.log`);
       try {
         fs.renameSync(logPath, archivePath);
         logArchived = true;
@@ -125,7 +125,7 @@ export function resetProject(
         if (e instanceof Error) {
           return err({
             code: ErrorCodes.FILE_NOT_FOUND,
-            message: `Failed to archive ralph.log: ${e.message}`,
+            message: `Failed to archive rauf.log: ${e.message}`,
             details: { path: logPath },
           });
         }

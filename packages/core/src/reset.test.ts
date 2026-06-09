@@ -16,7 +16,7 @@ let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-reset-"));
-  fs.mkdirSync(path.join(tmpDir, ".ralph"));
+  fs.mkdirSync(path.join(tmpDir, ".rauf"));
   paths = defaultBacklogPaths(tmpDir);
 });
 
@@ -48,19 +48,19 @@ function writeSeedBacklog(items: BacklogItem[]): void {
 }
 
 function writeStateJson(data: object): void {
-  fs.writeFileSync(path.join(tmpDir, ".ralph", "state.json"), JSON.stringify(data, null, 2));
+  fs.writeFileSync(path.join(tmpDir, ".rauf", "state.json"), JSON.stringify(data, null, 2));
 }
 
 function writeDoneMarker(content: string = "complete"): void {
-  fs.writeFileSync(path.join(tmpDir, ".ralph", "DONE"), content);
+  fs.writeFileSync(path.join(tmpDir, ".rauf", "DONE"), content);
 }
 
 function writeCancelMarker(): void {
-  fs.writeFileSync(path.join(tmpDir, ".ralph", "CANCEL"), "cancelled");
+  fs.writeFileSync(path.join(tmpDir, ".rauf", "CANCEL"), "cancelled");
 }
 
 function readBacklogFile(): Backlog {
-  const raw = fs.readFileSync(path.join(tmpDir, ".ralph", "backlog.json"), "utf-8");
+  const raw = fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8");
   return JSON.parse(raw) as Backlog;
 }
 
@@ -123,14 +123,14 @@ describe("resetProject", () => {
     expect(backlog.items[1]!.status).toBe("pending"); // was already pending
 
     // Verify state.json deleted
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "state.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "state.json"))).toBe(false);
 
     // Verify markers deleted
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "CANCEL"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "CANCEL"))).toBe(false);
 
     // Verify archive created
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-01.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive", "2026-01.json"))).toBe(true);
   });
 
   it("with clearBacklog: true — empties backlog items, preserves metadata", () => {
@@ -166,8 +166,8 @@ describe("resetProject", () => {
     expect(result.value.progressArchived).toBe(false);
   });
 
-  it("auto-creates backlog.json when .ralph/ exists but backlog.json missing", () => {
-    // No backlog.json written — just the .ralph dir
+  it("auto-creates backlog.json when .rauf/ exists but backlog.json missing", () => {
+    // No backlog.json written — just the .rauf dir
     const result = resetProject(paths);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -183,7 +183,7 @@ describe("resetProject", () => {
 
   it("clearBacklog with progress.md — archives it and deploys fresh template", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
-    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
+    const progressPath = path.join(tmpDir, ".rauf", "progress.md");
     fs.writeFileSync(progressPath, "# Old learnings\n\nSome accumulated context.");
 
     const result = resetProject(paths, { clearBacklog: true });
@@ -193,7 +193,7 @@ describe("resetProject", () => {
     expect(result.value.progressArchived).toBe(true);
 
     // Verify archive file exists with old content (timestamp-based name)
-    const archiveDir = path.join(tmpDir, ".ralph", "archive");
+    const archiveDir = path.join(tmpDir, ".rauf", "archive");
     const progressArchive = findArchiveFile(archiveDir, "-progress.md");
     expect(progressArchive).toBeDefined();
     expect(progressArchive).toMatch(/^\d{8}-\d{6}-progress\.md$/);
@@ -221,7 +221,7 @@ describe("resetProject", () => {
 
   it("no clearBacklog with progress.md — file untouched", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
-    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
+    const progressPath = path.join(tmpDir, ".rauf", "progress.md");
     fs.writeFileSync(progressPath, "# Existing learnings");
 
     const result = resetProject(paths);
@@ -234,9 +234,9 @@ describe("resetProject", () => {
 
   // ─── Log archiving tests ────────────────────────────────────────
 
-  it("clearBacklog with ralph.log — archives it", () => {
+  it("clearBacklog with rauf.log — archives it", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
-    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    const logPath = path.join(tmpDir, ".rauf", "rauf.log");
     fs.writeFileSync(logPath, "2026-03-01 some log entry\n2026-03-02 another entry\n");
 
     const result = resetProject(paths, { clearBacklog: true });
@@ -246,10 +246,10 @@ describe("resetProject", () => {
     expect(result.value.logArchived).toBe(true);
 
     // Verify archive file exists with old content (timestamp-based name)
-    const archiveDir = path.join(tmpDir, ".ralph", "archive");
-    const logArchive = findArchiveFile(archiveDir, "-ralph.log");
+    const archiveDir = path.join(tmpDir, ".rauf", "archive");
+    const logArchive = findArchiveFile(archiveDir, "-rauf.log");
     expect(logArchive).toBeDefined();
-    expect(logArchive).toMatch(/^\d{8}-\d{6}-ralph\.log$/);
+    expect(logArchive).toMatch(/^\d{8}-\d{6}-rauf\.log$/);
     expect(fs.readFileSync(path.join(archiveDir, logArchive!), "utf-8")).toContain(
       "some log entry",
     );
@@ -258,7 +258,7 @@ describe("resetProject", () => {
     expect(fs.existsSync(logPath)).toBe(false);
   });
 
-  it("clearBacklog without ralph.log — logArchived false, no error", () => {
+  it("clearBacklog without rauf.log — logArchived false, no error", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
 
     const result = resetProject(paths, { clearBacklog: true });
@@ -268,9 +268,9 @@ describe("resetProject", () => {
     expect(result.value.logArchived).toBe(false);
   });
 
-  it("no clearBacklog with ralph.log — file untouched", () => {
+  it("no clearBacklog with rauf.log — file untouched", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
-    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    const logPath = path.join(tmpDir, ".rauf", "rauf.log");
     fs.writeFileSync(logPath, "existing log data");
 
     const result = resetProject(paths);
@@ -285,8 +285,8 @@ describe("resetProject", () => {
 
   it("clearBacklog with keepProgress — log archived, progress untouched", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
-    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
-    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    const progressPath = path.join(tmpDir, ".rauf", "progress.md");
+    const logPath = path.join(tmpDir, ".rauf", "rauf.log");
     fs.writeFileSync(progressPath, "# Keep me");
     fs.writeFileSync(logPath, "archive me\n");
 
@@ -302,8 +302,8 @@ describe("resetProject", () => {
 
   it("clearBacklog with keepLog — progress archived, log untouched", () => {
     writeSeedBacklog([makeItem({ id: "001", status: "pending" })]);
-    const progressPath = path.join(tmpDir, ".ralph", "progress.md");
-    const logPath = path.join(tmpDir, ".ralph", "ralph.log");
+    const progressPath = path.join(tmpDir, ".rauf", "progress.md");
+    const logPath = path.join(tmpDir, ".rauf", "rauf.log");
     fs.writeFileSync(progressPath, "# Archive me");
     fs.writeFileSync(logPath, "keep me\n");
 
@@ -322,7 +322,7 @@ describe("resetProject", () => {
   it("works with non-default root paths", () => {
     // Create custom root structure
     const customRoot = path.join(tmpDir, "specs", "auth");
-    const customStateDir = path.join(customRoot, ".ralph");
+    const customStateDir = path.join(customRoot, ".rauf");
     fs.mkdirSync(customStateDir, { recursive: true });
 
     const customPaths: BacklogPaths = {
@@ -331,7 +331,7 @@ describe("resetProject", () => {
       stateDir: customStateDir,
       backlog: path.join(customRoot, "backlog.json"),
       state: path.join(customStateDir, "state.json"),
-      log: path.join(customStateDir, "ralph.log"),
+      log: path.join(customStateDir, "rauf.log"),
       done: path.join(customStateDir, "DONE"),
       cancel: path.join(customStateDir, "CANCEL"),
       progress: path.join(customStateDir, "progress.md"),

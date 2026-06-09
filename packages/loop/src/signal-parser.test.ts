@@ -3,32 +3,32 @@ import { describe, expect, it } from "vitest";
 import { parseSignal } from "./signal-parser.js";
 
 describe("parseSignal", () => {
-  describe("RALPH_DONE", () => {
-    it("returns done when RALPH_DONE is the only line", () => {
-      expect(parseSignal("RALPH_DONE")).toEqual({ signal: "done" });
+  describe("RAUF_DONE", () => {
+    it("returns done when RAUF_DONE is the only line", () => {
+      expect(parseSignal("RAUF_DONE")).toEqual({ signal: "done" });
     });
 
-    it("returns done when RALPH_DONE is the last non-empty line", () => {
-      const stdout = "Some output\nMore output\nRALPH_DONE\n";
+    it("returns done when RAUF_DONE is the last non-empty line", () => {
+      const stdout = "Some output\nMore output\nRAUF_DONE\n";
       expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
 
-    it("returns done when RALPH_DONE is followed by whitespace lines", () => {
-      const stdout = "Output here\nRALPH_DONE\n  \n\n";
+    it("returns done when RAUF_DONE is followed by whitespace lines", () => {
+      const stdout = "Output here\nRAUF_DONE\n  \n\n";
       expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
   });
 
-  describe("RALPH_BLOCKED", () => {
+  describe("RAUF_BLOCKED", () => {
     it("returns blocked with reason", () => {
-      expect(parseSignal("RALPH_BLOCKED:missing dependency")).toEqual({
+      expect(parseSignal("RAUF_BLOCKED:missing dependency")).toEqual({
         signal: "blocked",
         reason: "missing dependency",
       });
     });
 
     it("returns blocked when on last non-empty line of multi-line output", () => {
-      const stdout = "Working on task...\nDid some stuff\nRALPH_BLOCKED:unclear requirement\n";
+      const stdout = "Working on task...\nDid some stuff\nRAUF_BLOCKED:unclear requirement\n";
       expect(parseSignal(stdout)).toEqual({
         signal: "blocked",
         reason: "unclear requirement",
@@ -36,30 +36,30 @@ describe("parseSignal", () => {
     });
 
     it("returns blocked with empty reason when colon has no text after it", () => {
-      expect(parseSignal("RALPH_BLOCKED:")).toEqual({
+      expect(parseSignal("RAUF_BLOCKED:")).toEqual({
         signal: "blocked",
         reason: "",
       });
     });
 
     it("preserves colons in reason text", () => {
-      expect(parseSignal("RALPH_BLOCKED:error: file not found: foo.ts")).toEqual({
+      expect(parseSignal("RAUF_BLOCKED:error: file not found: foo.ts")).toEqual({
         signal: "blocked",
         reason: "error: file not found: foo.ts",
       });
     });
   });
 
-  describe("RALPH_NEEDS_HUMAN", () => {
+  describe("RAUF_NEEDS_HUMAN", () => {
     it("returns needs_human with reason", () => {
-      expect(parseSignal("RALPH_NEEDS_HUMAN:need API key")).toEqual({
+      expect(parseSignal("RAUF_NEEDS_HUMAN:need API key")).toEqual({
         signal: "needs_human",
         reason: "need API key",
       });
     });
 
     it("returns needs_human when on last non-empty line", () => {
-      const stdout = "Some work done\nRALPH_NEEDS_HUMAN:design decision needed\n";
+      const stdout = "Some work done\nRAUF_NEEDS_HUMAN:design decision needed\n";
       expect(parseSignal(stdout)).toEqual({
         signal: "needs_human",
         reason: "design decision needed",
@@ -67,14 +67,14 @@ describe("parseSignal", () => {
     });
 
     it("returns needs_human with empty reason", () => {
-      expect(parseSignal("RALPH_NEEDS_HUMAN:")).toEqual({
+      expect(parseSignal("RAUF_NEEDS_HUMAN:")).toEqual({
         signal: "needs_human",
         reason: "",
       });
     });
 
     it("preserves colons in reason text", () => {
-      expect(parseSignal("RALPH_NEEDS_HUMAN:choose: option A or option B")).toEqual({
+      expect(parseSignal("RAUF_NEEDS_HUMAN:choose: option A or option B")).toEqual({
         signal: "needs_human",
         reason: "choose: option A or option B",
       });
@@ -101,21 +101,21 @@ describe("parseSignal", () => {
       expect(parseSignal(stdout)).toEqual({ signal: "none" });
     });
 
-    it("returns done when RALPH_DONE is followed by non-signal text", () => {
-      const stdout = "RALPH_DONE\nSome other output after";
+    it("returns done when RAUF_DONE is followed by non-signal text", () => {
+      const stdout = "RAUF_DONE\nSome other output after";
       expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
 
     it("returns none for partial signal match", () => {
-      expect(parseSignal("RALPH_DON")).toEqual({ signal: "none" });
+      expect(parseSignal("RAUF_DON")).toEqual({ signal: "none" });
     });
 
-    it("returns none for RALPH_DONE with extra text (not a signal)", () => {
-      expect(parseSignal("RALPH_DONE extra text")).toEqual({ signal: "none" });
+    it("returns none for RAUF_DONE with extra text (not a signal)", () => {
+      expect(parseSignal("RAUF_DONE extra text")).toEqual({ signal: "none" });
     });
   });
 
-  describe("RALPH_REVIEW", () => {
+  describe("RAUF_REVIEW", () => {
     it("returns review with valid JSON payload", () => {
       const payload = JSON.stringify({
         items: [
@@ -129,7 +129,7 @@ describe("parseSignal", () => {
         ],
         summary: "Found 1 issue",
       });
-      const result = parseSignal(`RALPH_REVIEW:${payload}`);
+      const result = parseSignal(`RAUF_REVIEW:${payload}`);
       expect(result.signal).toBe("review");
       expect(result.reviewPayload).toBeDefined();
       expect(result.reviewPayload!.items).toHaveLength(1);
@@ -157,19 +157,19 @@ describe("parseSignal", () => {
         ],
         summary: "Found 2 issues",
       });
-      const result = parseSignal(`RALPH_REVIEW:${payload}`);
+      const result = parseSignal(`RAUF_REVIEW:${payload}`);
       expect(result.signal).toBe("review");
       expect(result.reviewPayload!.items).toHaveLength(2);
     });
 
     it("returns none for malformed JSON", () => {
-      expect(parseSignal("RALPH_REVIEW:{invalid json}")).toEqual({ signal: "none" });
+      expect(parseSignal("RAUF_REVIEW:{invalid json}")).toEqual({ signal: "none" });
     });
 
     it("returns none for valid JSON but invalid schema (missing required fields)", () => {
       const payload = JSON.stringify({ items: [], summary: "empty" });
       // items must have at least 1 item
-      expect(parseSignal(`RALPH_REVIEW:${payload}`)).toEqual({ signal: "none" });
+      expect(parseSignal(`RAUF_REVIEW:${payload}`)).toEqual({ signal: "none" });
     });
 
     it("returns none for valid JSON but missing summary", () => {
@@ -178,12 +178,12 @@ describe("parseSignal", () => {
           { type: "bug", priority: 2, title: "Fix", description: "d", acceptanceCriteria: ["ac"] },
         ],
       });
-      expect(parseSignal(`RALPH_REVIEW:${payload}`)).toEqual({ signal: "none" });
+      expect(parseSignal(`RAUF_REVIEW:${payload}`)).toEqual({ signal: "none" });
     });
 
     it("returns none for empty items array", () => {
       const payload = JSON.stringify({ items: [], summary: "none" });
-      expect(parseSignal(`RALPH_REVIEW:${payload}`)).toEqual({ signal: "none" });
+      expect(parseSignal(`RAUF_REVIEW:${payload}`)).toEqual({ signal: "none" });
     });
 
     it("returns review when on last non-empty line of multi-line output", () => {
@@ -193,7 +193,7 @@ describe("parseSignal", () => {
         ],
         summary: "1 issue",
       });
-      const stdout = `Some review output\nAnalyzing...\nRALPH_REVIEW:${payload}\n`;
+      const stdout = `Some review output\nAnalyzing...\nRAUF_REVIEW:${payload}\n`;
       const result = parseSignal(stdout);
       expect(result.signal).toBe("review");
       expect(result.reviewPayload!.items).toHaveLength(1);
@@ -201,23 +201,23 @@ describe("parseSignal", () => {
   });
 
   describe("signal followed by trailing text (multi-turn)", () => {
-    it("finds RALPH_DONE when followed by commit message", () => {
+    it("finds RAUF_DONE when followed by commit message", () => {
       const stdout = [
         "Reading backlog...",
         "Implementing changes...",
         "All verification passes.",
         "",
-        "RALPH_DONE",
+        "RAUF_DONE",
         "",
         "Committed as [ralph] 001: Scaffold packages/ai",
       ].join("\n");
       expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
 
-    it("finds RALPH_BLOCKED when followed by summary text", () => {
+    it("finds RAUF_BLOCKED when followed by summary text", () => {
       const stdout = [
         "Analyzing task...",
-        "RALPH_BLOCKED:missing API key configuration",
+        "RAUF_BLOCKED:missing API key configuration",
         "I was unable to complete the task because the API key is not set.",
       ].join("\n");
       expect(parseSignal(stdout)).toEqual({
@@ -226,10 +226,10 @@ describe("parseSignal", () => {
       });
     });
 
-    it("finds RALPH_NEEDS_HUMAN when followed by explanation", () => {
+    it("finds RAUF_NEEDS_HUMAN when followed by explanation", () => {
       const stdout = [
         "Found the issue.",
-        "RALPH_NEEDS_HUMAN:design decision needed",
+        "RAUF_NEEDS_HUMAN:design decision needed",
         "Please decide between option A and option B.",
       ].join("\n");
       expect(parseSignal(stdout)).toEqual({
@@ -241,7 +241,7 @@ describe("parseSignal", () => {
     it("finds signal among many trailing lines", () => {
       const stdout = [
         "Working...",
-        "RALPH_DONE",
+        "RAUF_DONE",
         "Successfully committed.",
         "Updated progress.md",
         "Cleaning up temporary files.",
@@ -253,17 +253,17 @@ describe("parseSignal", () => {
 
   describe("edge cases", () => {
     it("handles signal with leading/trailing whitespace on the line", () => {
-      expect(parseSignal("  RALPH_DONE  ")).toEqual({ signal: "done" });
+      expect(parseSignal("  RAUF_DONE  ")).toEqual({ signal: "done" });
     });
 
     it("handles Windows-style line endings", () => {
-      const stdout = "Output\r\nRALPH_DONE\r\n";
+      const stdout = "Output\r\nRAUF_DONE\r\n";
       expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });
 
     it("handles very long output with signal at end", () => {
       const lines = Array.from({ length: 1000 }, (_, i) => `Line ${i}`);
-      lines.push("RALPH_BLOCKED:too many errors");
+      lines.push("RAUF_BLOCKED:too many errors");
       lines.push("");
       expect(parseSignal(lines.join("\n"))).toEqual({
         signal: "blocked",

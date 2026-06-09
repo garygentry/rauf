@@ -31,7 +31,7 @@ assert_item_status() {
   local item_id="$1"
   local expected="$2"
   local actual
-  actual=$(jq -r ".items[] | select(.id == \"$item_id\") | .status" "$SANDBOX_DIR/.ralph/backlog.json")
+  actual=$(jq -r ".items[] | select(.id == \"$item_id\") | .status" "$SANDBOX_DIR/.rauf/backlog.json")
   if [ "$actual" = "$expected" ]; then
     pass "item $item_id status = $expected"
   else
@@ -40,7 +40,7 @@ assert_item_status() {
 }
 
 assert_no_iteration_status() {
-  if [ ! -f "$SANDBOX_DIR/.ralph/iteration-status.json" ]; then
+  if [ ! -f "$SANDBOX_DIR/.rauf/iteration-status.json" ]; then
     pass "no iteration-status.json"
   else
     fail "iteration-status.json still exists"
@@ -48,7 +48,7 @@ assert_no_iteration_status() {
 }
 
 assert_done_file_exists() {
-  if [ -f "$SANDBOX_DIR/.ralph/DONE" ]; then
+  if [ -f "$SANDBOX_DIR/.rauf/DONE" ]; then
     pass "DONE file exists"
   else
     fail "DONE file missing"
@@ -57,7 +57,7 @@ assert_done_file_exists() {
 
 assert_done_file_contains() {
   local pattern="$1"
-  if [ -f "$SANDBOX_DIR/.ralph/DONE" ] && grep -q "$pattern" "$SANDBOX_DIR/.ralph/DONE"; then
+  if [ -f "$SANDBOX_DIR/.rauf/DONE" ] && grep -q "$pattern" "$SANDBOX_DIR/.rauf/DONE"; then
     pass "DONE file contains '$pattern'"
   else
     fail "DONE file missing or doesn't contain '$pattern'"
@@ -66,12 +66,12 @@ assert_done_file_contains() {
 
 assert_state_status() {
   local expected="$1"
-  if [ ! -f "$SANDBOX_DIR/.ralph/state.json" ]; then
+  if [ ! -f "$SANDBOX_DIR/.rauf/state.json" ]; then
     fail "state.json missing"
     return
   fi
   local actual
-  actual=$(jq -r '.status' "$SANDBOX_DIR/.ralph/state.json")
+  actual=$(jq -r '.status' "$SANDBOX_DIR/.rauf/state.json")
   if [ "$actual" = "$expected" ]; then
     pass "state status = $expected"
   else
@@ -160,21 +160,21 @@ run_scenario() {
 
 # ─── Test cases ───────────────────────────────────────────────────────
 
-# 1. stream-done: RALPH_DONE marks item done
+# 1. stream-done: RAUF_DONE marks item done
 run_scenario "stream-done"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
 assert_state_status "limit_reached"
 
-# 2. stream-blocked: RALPH_BLOCKED marks item blocked
+# 2. stream-blocked: RAUF_BLOCKED marks item blocked
 run_scenario "stream-blocked"
 assert_item_status "001" "blocked"
 assert_no_iteration_status
 assert_done_file_exists
 assert_state_status "limit_reached"
 
-# 3. stream-tools: Multi-tool RALPH_DONE works
+# 3. stream-tools: Multi-tool RAUF_DONE works
 run_scenario "stream-tools"
 assert_item_status "001" "done"
 assert_no_iteration_status
@@ -188,7 +188,7 @@ assert_no_iteration_status
 assert_done_file_exists
 assert_state_status "limit_reached"
 
-# 5. stream-needs-human: RALPH_NEEDS_HUMAN leaves in_progress
+# 5. stream-needs-human: RAUF_NEEDS_HUMAN leaves in_progress
 run_scenario "stream-needs-human"
 assert_item_status "001" "in_progress"
 assert_no_iteration_status
@@ -213,27 +213,27 @@ assert_file_exists "$SANDBOX_DIR/specs/feature-a/backlog.json" "specs/feature-a/
 # Run with --backlog flag
 ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --backlog specs/feature-a >/dev/null 2>&1 || true
 
-# Assert state dir was auto-created at specs/feature-a/.ralph/
-assert_dir_exists "$SANDBOX_DIR/specs/feature-a/.ralph" "specs/feature-a/.ralph state dir"
+# Assert state dir was auto-created at specs/feature-a/.rauf/
+assert_dir_exists "$SANDBOX_DIR/specs/feature-a/.rauf" "specs/feature-a/.rauf state dir"
 
 # Assert state.json written to custom root state dir
-assert_file_exists "$SANDBOX_DIR/specs/feature-a/.ralph/state.json" "specs/feature-a/.ralph/state.json"
-assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.ralph/state.json" "limit_reached"
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "specs/feature-a/.rauf/state.json"
+assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "limit_reached"
 
-# Assert ralph.log written to custom root state dir
-assert_file_exists "$SANDBOX_DIR/specs/feature-a/.ralph/ralph.log" "specs/feature-a/.ralph/ralph.log"
+# Assert rauf.log written to custom root state dir
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/rauf.log" "specs/feature-a/.rauf/rauf.log"
 
 # Assert DONE file written to custom root state dir
-assert_file_exists "$SANDBOX_DIR/specs/feature-a/.ralph/DONE" "specs/feature-a/.ralph/DONE"
+assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/DONE" "specs/feature-a/.rauf/DONE"
 
 # Assert backlog item was picked up and marked done
 assert_item_status_at "$SANDBOX_DIR/specs/feature-a/backlog.json" "001" "done"
 
 # Assert .loop.lock was cleaned up after run
-assert_file_not_exists "$SANDBOX_DIR/specs/feature-a/.ralph/.loop.lock" "specs/feature-a/.ralph/.loop.lock (cleaned up)"
+assert_file_not_exists "$SANDBOX_DIR/specs/feature-a/.rauf/.loop.lock" "specs/feature-a/.rauf/.loop.lock (cleaned up)"
 
-# Assert default .ralph/ was NOT modified (state.json should not exist from this run)
-# Note: default .ralph/state.json might exist from setup, but shouldn't have been updated
+# Assert default .rauf/ was NOT modified (state.json should not exist from this run)
+# Note: default .rauf/state.json might exist from setup, but shouldn't have been updated
 # We verify the custom root got the state, which is the key assertion
 
 # ─── Summary ─────────────────────────────────────────────────────────

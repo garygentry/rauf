@@ -25,7 +25,7 @@ let originalPath: string;
 
 function writeMarker(dir: string): void {
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -40,27 +40,27 @@ function writeMarker(dir: string): void {
     artifactHashes: {},
     options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
 function writeBacklog(dir: string, items: unknown[] = []): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
   const backlog = { project: "test", description: "test project", items };
-  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 }
 
-function writeRalphMd(dir: string): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, "RALPH.md"), "# Test\nVerify: echo ok\n");
+function writeRaufMd(dir: string): void {
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+  fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test\nVerify: echo ok\n");
 }
 
 /**
  * Create a mock `claude` executable that immediately exits with
- * RALPH_DONE or another signal on stdout.
+ * RAUF_DONE or another signal on stdout.
  */
-function setupMockClaude(signal = "RALPH_DONE"): void {
+function setupMockClaude(signal = "RAUF_DONE"): void {
   const mockBinDir = path.join(tmpDir, "mock-bin");
   fs.mkdirSync(mockBinDir, { recursive: true });
   const script = `#!/bin/bash\necho "${signal}"\nexit 0\n`;
@@ -90,7 +90,7 @@ describe("LoopManager", () => {
       const manager = new LoopManager();
       writeMarker(projectPath);
       writeBacklog(projectPath);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       setupMockClaude();
 
       const result = manager.startLoop(projectPath, {
@@ -107,7 +107,7 @@ describe("LoopManager", () => {
       const manager = new LoopManager();
       writeMarker(projectPath);
       writeBacklog(projectPath);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       setupMockClaude();
 
       manager.startLoop(projectPath, {
@@ -150,7 +150,7 @@ describe("LoopManager", () => {
           completedAt: null,
         },
       ]);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       // Use a claude that sleeps so we can cancel it
       const mockBinDir = path.join(tmpDir, "mock-bin");
       fs.mkdirSync(mockBinDir, { recursive: true });
@@ -187,7 +187,7 @@ describe("LoopManager", () => {
           completedAt: null,
         },
       ]);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       setupMockClaude();
 
       const events: LoopEvent[] = [];
@@ -257,7 +257,7 @@ describe("LoopManager", () => {
       await manager.recoverStaleLoops(tmpDir);
 
       // Read backlog and verify item was reset to pending
-      const backlogPath = path.join(projectPath, ".ralph", "backlog.json");
+      const backlogPath = path.join(projectPath, ".rauf", "backlog.json");
       const backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8")) as {
         items: Array<{ status: string }>;
       };
@@ -292,7 +292,7 @@ describe("LoopManager", () => {
           completedAt: null,
         },
       ]);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       // Use a long-running mock claude
       const mockBinDir = path.join(tmpDir, "mock-bin");
       fs.mkdirSync(mockBinDir, { recursive: true });
@@ -329,7 +329,7 @@ describe("LoopManager", () => {
           completedAt: null,
         },
       ]);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       setupMockClaude();
 
       manager.startLoop(projectPath, {
@@ -371,7 +371,7 @@ describe("LoopManager", () => {
       // Start a loop and push fake events through fanOut
       writeMarker(projectPath);
       writeBacklog(projectPath);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       setupMockClaude();
 
       // Instead of starting a loop, we'll test via a second subscriber
@@ -399,8 +399,8 @@ describe("LoopManager", () => {
         buf.push({ ...baseEvent, iteration: i + 1 });
       }
 
-      // Set the buffer directly for testing — key is backlog root (projectPath + .ralph)
-      const bufferKey = path.join("/test-project", ".ralph");
+      // Set the buffer directly for testing — key is backlog root (projectPath + .rauf)
+      const bufferKey = path.join("/test-project", ".rauf");
       (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> }).eventBuffers.set(
         bufferKey,
         buf.slice(),
@@ -456,7 +456,7 @@ describe("LoopManager", () => {
           completedAt: null,
         },
       ]);
-      writeRalphMd(projectPath);
+      writeRaufMd(projectPath);
       setupMockClaude();
 
       manager.startLoop(projectPath, {
@@ -476,7 +476,7 @@ describe("LoopManager", () => {
       });
 
       // Buffer should exist immediately after completion — key is backlog root
-      const bufferKey = path.join(projectPath, ".ralph");
+      const bufferKey = path.join(projectPath, ".rauf");
       const buffers = (manager as unknown as { eventBuffers: Map<string, LoopEvent[]> })
         .eventBuffers;
       expect(buffers.has(bufferKey)).toBe(true);

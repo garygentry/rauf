@@ -3,7 +3,7 @@
 // Parses Claude CLI NDJSON stream (--output-format stream-json) line
 // by line, emitting typed events for tool use, token counts, and
 // message lifecycle. Also reconstructs the plain text output so
-// signal parsing (RALPH_DONE etc.) continues to work.
+// signal parsing (RAUF_DONE etc.) continues to work.
 
 // ─── Types ──────────────────────────────────────────────────────
 

@@ -68,7 +68,7 @@ export class LoopManager {
 
   /** Resolve the map key from projectPath + optional backlogRoot */
   private resolveKey(projectPath: string, backlogRoot?: string): string {
-    return backlogRoot ?? path.join(projectPath, ".ralph");
+    return backlogRoot ?? path.join(projectPath, ".rauf");
   }
 
   /**

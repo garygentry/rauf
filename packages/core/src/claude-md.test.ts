@@ -5,7 +5,7 @@ import * as os from "node:os";
 
 import {
   mergeClaudeMd,
-  extractRalphBlock,
+  extractRaufBlock,
   CLAUDE_MD_FILENAME,
   CLAUDE_MD_SENTINEL_START,
   CLAUDE_MD_SENTINEL_END,
@@ -15,17 +15,17 @@ import {
 
 let tmpDir: string;
 
-const SAMPLE_RALPH_BLOCK = [
-  "## Autonomous Loop (Ralph)",
+const SAMPLE_RAUF_BLOCK = [
+  "## Autonomous Loop (Rauf)",
   "",
   "When running as a ralph loop iteration, follow these rules:",
   "",
-  "1. Read `.ralph/RALPH.md` for instructions",
-  "2. Read `.ralph/backlog.json` for the current task",
+  "1. Read `.rauf/RAUF.md` for instructions",
+  "2. Read `.rauf/backlog.json` for the current task",
 ].join("\n");
 
-const DIFFERENT_RALPH_BLOCK = [
-  "## Autonomous Loop (Ralph) v2",
+const DIFFERENT_RAUF_BLOCK = [
+  "## Autonomous Loop (Rauf) v2",
   "",
   "Updated instructions for the ralph loop.",
 ].join("\n");
@@ -42,7 +42,7 @@ afterEach(() => {
 
 describe("mergeClaudeMd — scenario 1: create", () => {
   it("creates CLAUDE.md with ralph section when file does not exist", () => {
-    const result = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const result = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -53,17 +53,17 @@ describe("mergeClaudeMd — scenario 1: create", () => {
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     expect(content).toContain(CLAUDE_MD_SENTINEL_START);
     expect(content).toContain(CLAUDE_MD_SENTINEL_END);
-    expect(content).toContain("## Autonomous Loop (Ralph)");
+    expect(content).toContain("## Autonomous Loop (Rauf)");
   });
 
   it("created file has correct sentinel structure", () => {
-    mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
     // Should be: sentinel_start\n<content>\nsentinel_end\n
     const expected =
-      CLAUDE_MD_SENTINEL_START + "\n" + SAMPLE_RALPH_BLOCK + "\n" + CLAUDE_MD_SENTINEL_END + "\n";
+      CLAUDE_MD_SENTINEL_START + "\n" + SAMPLE_RAUF_BLOCK + "\n" + CLAUDE_MD_SENTINEL_END + "\n";
     expect(content).toBe(expected);
   });
 });
@@ -75,7 +75,7 @@ describe("mergeClaudeMd — scenario 2: append", () => {
     const existingContent = "# My Project\n\nExisting instructions here.\n";
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    const result = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const result = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -87,21 +87,21 @@ describe("mergeClaudeMd — scenario 2: append", () => {
     const existingContent = "# My Project\n\nExisting instructions here.\n";
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     expect(content).toContain("# My Project");
     expect(content).toContain("Existing instructions here.");
     expect(content).toContain(CLAUDE_MD_SENTINEL_START);
     expect(content).toContain(CLAUDE_MD_SENTINEL_END);
-    expect(content).toContain("## Autonomous Loop (Ralph)");
+    expect(content).toContain("## Autonomous Loop (Rauf)");
   });
 
   it("existing content comes before ralph block", () => {
     const existingContent = "# My Project\n";
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
     const projectIdx = content.indexOf("# My Project");
@@ -118,13 +118,13 @@ describe("mergeClaudeMd — scenario 3: skip", () => {
       "# My Project",
       "",
       CLAUDE_MD_SENTINEL_START,
-      SAMPLE_RALPH_BLOCK,
+      SAMPLE_RAUF_BLOCK,
       CLAUDE_MD_SENTINEL_END,
       "",
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    const result = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const result = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -137,13 +137,13 @@ describe("mergeClaudeMd — scenario 3: skip", () => {
       "# My Project",
       "",
       CLAUDE_MD_SENTINEL_START,
-      SAMPLE_RALPH_BLOCK,
+      SAMPLE_RAUF_BLOCK,
       CLAUDE_MD_SENTINEL_END,
       "",
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     const contentAfter = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
     expect(contentAfter).toBe(existingContent);
@@ -156,14 +156,14 @@ describe("mergeClaudeMd — scenario 3: skip", () => {
       "",
       CLAUDE_MD_SENTINEL_START,
       "",
-      SAMPLE_RALPH_BLOCK,
+      SAMPLE_RAUF_BLOCK,
       "",
       CLAUDE_MD_SENTINEL_END,
       "",
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    const result = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const result = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -187,7 +187,7 @@ describe("mergeClaudeMd — scenario 4: replace", () => {
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    const result = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const result = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -211,7 +211,7 @@ describe("mergeClaudeMd — scenario 4: replace", () => {
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
@@ -225,19 +225,19 @@ describe("mergeClaudeMd — scenario 4: replace", () => {
     expect(content).not.toContain("old ralph content");
 
     // New content present
-    expect(content).toContain("## Autonomous Loop (Ralph)");
-    expect(content).toContain("Read `.ralph/RALPH.md` for instructions");
+    expect(content).toContain("## Autonomous Loop (Rauf)");
+    expect(content).toContain("Read `.rauf/RAUF.md` for instructions");
   });
 
   it("replaces with different content versions correctly", () => {
     const existingContent = [
       CLAUDE_MD_SENTINEL_START,
-      SAMPLE_RALPH_BLOCK,
+      SAMPLE_RAUF_BLOCK,
       CLAUDE_MD_SENTINEL_END,
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    const result = mergeClaudeMd(tmpDir, DIFFERENT_RALPH_BLOCK);
+    const result = mergeClaudeMd(tmpDir, DIFFERENT_RAUF_BLOCK);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -245,9 +245,9 @@ describe("mergeClaudeMd — scenario 4: replace", () => {
     expect(result.value.action).toBe("updated");
 
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
-    expect(content).toContain("## Autonomous Loop (Ralph) v2");
+    expect(content).toContain("## Autonomous Loop (Rauf) v2");
     expect(content).toContain("Updated instructions for the ralph loop.");
-    expect(content).not.toContain("Read `.ralph/RALPH.md` for instructions");
+    expect(content).not.toContain("Read `.rauf/RAUF.md` for instructions");
   });
 });
 
@@ -280,7 +280,7 @@ describe("mergeClaudeMd — content preservation", () => {
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existingContent);
 
-    mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
 
     const content = fs.readFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "utf-8");
 
@@ -293,19 +293,19 @@ describe("mergeClaudeMd — content preservation", () => {
     expect(content).toContain("## Security");
     expect(content).toContain("- Never commit secrets");
 
-    // Ralph section updated
-    expect(content).toContain("## Autonomous Loop (Ralph)");
+    // Rauf section updated
+    expect(content).toContain("## Autonomous Loop (Rauf)");
     expect(content).not.toContain("old ralph section");
   });
 
   it("idempotent: create then merge again results in skip", () => {
     // First call: create
-    const r1 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const r1 = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     expect(r1.ok).toBe(true);
     if (r1.ok) expect(r1.value.action).toBe("created");
 
     // Second call: skip (same content)
-    const r2 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const r2 = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     expect(r2.ok).toBe(true);
     if (r2.ok) expect(r2.value.action).toBe("skipped");
   });
@@ -315,12 +315,12 @@ describe("mergeClaudeMd — content preservation", () => {
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), "# Existing\n");
 
     // First call: merge (append)
-    const r1 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const r1 = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     expect(r1.ok).toBe(true);
     if (r1.ok) expect(r1.value.action).toBe("merged");
 
     // Second call: skip (sentinels now exist, content matches)
-    const r2 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const r2 = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     expect(r2.ok).toBe(true);
     if (r2.ok) expect(r2.value.action).toBe("skipped");
   });
@@ -331,31 +331,31 @@ describe("mergeClaudeMd — content preservation", () => {
     fs.writeFileSync(path.join(tmpDir, CLAUDE_MD_FILENAME), existing);
 
     // First call: update (replace)
-    const r1 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const r1 = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     expect(r1.ok).toBe(true);
     if (r1.ok) expect(r1.value.action).toBe("updated");
 
     // Second call: skip
-    const r2 = mergeClaudeMd(tmpDir, SAMPLE_RALPH_BLOCK);
+    const r2 = mergeClaudeMd(tmpDir, SAMPLE_RAUF_BLOCK);
     expect(r2.ok).toBe(true);
     if (r2.ok) expect(r2.value.action).toBe("skipped");
   });
 });
 
-// ─── extractRalphBlock ───────────────────────────────────────────
+// ─── extractRaufBlock ───────────────────────────────────────────
 
-describe("extractRalphBlock", () => {
+describe("extractRaufBlock", () => {
   it("extracts content between sentinels", () => {
     const addon = [
       CLAUDE_MD_SENTINEL_START,
-      "## Ralph Section",
+      "## Rauf Section",
       "",
       "Some instructions.",
       CLAUDE_MD_SENTINEL_END,
     ].join("\n");
 
-    const block = extractRalphBlock(addon);
-    expect(block).toBe("## Ralph Section\n\nSome instructions.");
+    const block = extractRaufBlock(addon);
+    expect(block).toBe("## Rauf Section\n\nSome instructions.");
   });
 
   it("trims whitespace from extracted content", () => {
@@ -367,26 +367,26 @@ describe("extractRalphBlock", () => {
       CLAUDE_MD_SENTINEL_END,
     ].join("\n");
 
-    const block = extractRalphBlock(addon);
+    const block = extractRaufBlock(addon);
     expect(block).toBe("content with spaces");
   });
 
   it("returns trimmed full content when no sentinels present", () => {
     const content = "  just raw content  ";
-    expect(extractRalphBlock(content)).toBe("just raw content");
+    expect(extractRaufBlock(content)).toBe("just raw content");
   });
 
   it("works with the real CLAUDE_ADDON.md format", () => {
     const addon = [
       CLAUDE_MD_SENTINEL_START,
-      "## Autonomous Loop (Ralph)",
+      "## Autonomous Loop (Rauf)",
       "",
       "When running as a ralph loop iteration, follow these rules:",
       CLAUDE_MD_SENTINEL_END,
     ].join("\n");
 
-    const block = extractRalphBlock(addon);
-    expect(block).toContain("## Autonomous Loop (Ralph)");
+    const block = extractRaufBlock(addon);
+    expect(block).toContain("## Autonomous Loop (Rauf)");
     expect(block).not.toContain(CLAUDE_MD_SENTINEL_START);
     expect(block).not.toContain(CLAUDE_MD_SENTINEL_END);
   });
@@ -396,7 +396,7 @@ describe("extractRalphBlock", () => {
 
 describe("mergeClaudeMd — error handling", () => {
   it("returns error for non-existent project directory", () => {
-    const result = mergeClaudeMd(path.join(tmpDir, "nonexistent-project"), SAMPLE_RALPH_BLOCK);
+    const result = mergeClaudeMd(path.join(tmpDir, "nonexistent-project"), SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(false);
   });

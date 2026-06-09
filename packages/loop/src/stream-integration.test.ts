@@ -15,19 +15,19 @@ function createTmpDir(): string {
 }
 
 function setupProject(tmpDir: string, items: Backlog["items"]) {
-  const ralphDir = path.join(tmpDir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(tmpDir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
 
   const backlog: Backlog = {
     project: "test-project",
     description: "Test project",
     items,
   };
-  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
-  fs.writeFileSync(path.join(ralphDir, "RALPH.md"), "# Test RALPH.md\nVerification: pnpm test\n");
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2));
+  fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test RAUF.md\nVerification: pnpm test\n");
 
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "0.1.0",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -48,7 +48,7 @@ function setupProject(tmpDir: string, items: Backlog["items"]) {
     artifactHashes: {},
     options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
-  fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(tmpDir, ".rauf.json"), JSON.stringify(marker, null, 2));
 
   // git init for gitCommit to work — uses only static commands, no user input
   try {
@@ -114,7 +114,7 @@ function writeMockClaudeNDJSON(
 ): void {
   const {
     tools = [],
-    textChunks = ["RALPH_DONE"],
+    textChunks = ["RAUF_DONE"],
     inputTokens = 10000,
     outputTokens = 1500,
     exitCode = 0,
@@ -190,9 +190,9 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     fs.rmSync(binDir, { recursive: true, force: true });
   });
 
-  it("1: RALPH_DONE via reconstructed text", async () => {
+  it("1: RAUF_DONE via reconstructed text", async () => {
     setupProject(tmpDir, [pendingItem("001", "Stream task")]);
-    writeMockClaudeNDJSON(binDir, { textChunks: ["RALPH_DONE"] });
+    writeMockClaudeNDJSON(binDir, { textChunks: ["RAUF_DONE"] });
 
     const events: LoopEvent[] = [];
     const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -214,7 +214,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
   it("2: Tool activity events emitted", async () => {
     setupProject(tmpDir, [pendingItem("001", "Tool task")]);
     writeMockClaudeNDJSON(binDir, {
-      textChunks: ["RALPH_DONE"],
+      textChunks: ["RAUF_DONE"],
       tools: [{ name: "Read" }, { name: "Edit" }, { name: "Bash" }],
     });
 
@@ -247,7 +247,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
   it("3: Token update events", async () => {
     setupProject(tmpDir, [pendingItem("001", "Token task")]);
     writeMockClaudeNDJSON(binDir, {
-      textChunks: ["RALPH_DONE"],
+      textChunks: ["RAUF_DONE"],
       inputTokens: 25000,
       outputTokens: 3000,
     });
@@ -267,7 +267,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
   it("4: iteration-status.json lifecycle", async () => {
     setupProject(tmpDir, [pendingItem("001", "Status task")]);
     writeMockClaudeNDJSON(binDir, {
-      textChunks: ["RALPH_DONE"],
+      textChunks: ["RAUF_DONE"],
       tools: [{ name: "Read" }],
     });
 
@@ -289,10 +289,10 @@ describe("Stream Integration (NDJSON pipeline)", () => {
     expect(readIterationStatus(defaultBacklogPaths(tmpDir))).toBeNull();
   });
 
-  it("5: RALPH_BLOCKED via reconstructed text", async () => {
+  it("5: RAUF_BLOCKED via reconstructed text", async () => {
     setupProject(tmpDir, [pendingItem("001", "Blocked task")]);
     writeMockClaudeNDJSON(binDir, {
-      textChunks: ["Cannot proceed.\\n\\nRALPH_BLOCKED:Missing API key"],
+      textChunks: ["Cannot proceed.\\n\\nRAUF_BLOCKED:Missing API key"],
     });
 
     const events: LoopEvent[] = [];
@@ -313,7 +313,7 @@ describe("Stream Integration (NDJSON pipeline)", () => {
   it("6: Multi-chunk text reconstruction", async () => {
     setupProject(tmpDir, [pendingItem("001", "Multi-chunk task")]);
     writeMockClaudeNDJSON(binDir, {
-      textChunks: ["Let me ", "work.\\n\\n", "RALPH_DONE"],
+      textChunks: ["Let me ", "work.\\n\\n", "RAUF_DONE"],
     });
 
     const result = await createRunner(tmpDir, DEFAULT_OPTIONS).start();
@@ -337,7 +337,7 @@ echo '{"type":"content_block_stop","index":1}'
 echo '{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","name":"Edit"}}'
 echo '{"type":"content_block_stop","index":2}'
 echo '{"type":"content_block_start","index":3,"content_block":{"type":"text"}}'
-echo '{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"All done.\\n\\nRALPH_DONE"}}'
+echo '{"type":"content_block_delta","index":3,"delta":{"type":"text_delta","text":"All done.\\n\\nRAUF_DONE"}}'
 echo '{"type":"content_block_stop","index":3}'
 echo '{"type":"message_delta","usage":{"output_tokens":2000}}'
 echo '{"type":"message_stop"}'

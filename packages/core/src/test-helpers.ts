@@ -4,14 +4,14 @@ import * as path from "node:path";
 import type { Backlog, LoopState } from "./schemas.js";
 
 interface BacklogRootConfig {
-  /** Relative path from project root (e.g., "specs/auth", ".ralph") */
+  /** Relative path from project root (e.g., "specs/auth", ".rauf") */
   path: string;
   /** Backlog content. If omitted, creates a minimal empty backlog */
   backlog?: Partial<Backlog>;
   /** State.json content. If omitted, no state.json is created */
   state?: Partial<LoopState>;
-  /** Whether to create a RALPH.md in this root's state dir */
-  hasRalphMd?: boolean;
+  /** Whether to create a RAUF.md in this root's state dir */
+  hasRaufMd?: boolean;
   /** Whether to create a REVIEW.md in this root's state dir */
   hasReviewMd?: boolean;
   /** Whether to place backlog.json in the root (true) or stateDir (false). Default: true */
@@ -29,15 +29,15 @@ interface MultiRootProject {
  * Create a temporary project directory with multi-root structure.
  *
  * Always creates:
- * - .ralph.json marker file
- * - .ralph/ default root with empty backlog.json
- * - .ralph/RALPH.md (project-level instructions)
+ * - .rauf.json marker file
+ * - .rauf/ default root with empty backlog.json
+ * - .rauf/RAUF.md (project-level instructions)
  *
  * Additional roots are created per the `roots` array. For each root:
  * - Creates the root directory
- * - Creates .ralph/ state subdirectory (unless root IS .ralph/)
+ * - Creates .rauf/ state subdirectory (unless root IS .rauf/)
  * - Writes backlog.json (in root or stateDir per backlogInRoot flag)
- * - Optionally writes state.json, RALPH.md, REVIEW.md
+ * - Optionally writes state.json, RAUF.md, REVIEW.md
  *
  * @param options - Root configurations (default root is always created)
  * @returns Project path and cleanup function
@@ -47,11 +47,11 @@ export function createMultiRootProject(options?: {
 }): MultiRootProject {
   const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-test-"));
 
-  // Create .ralph.json marker
+  // Create .rauf.json marker
   fs.writeFileSync(
-    path.join(projectPath, ".ralph.json"),
+    path.join(projectPath, ".rauf.json"),
     JSON.stringify({
-      ralph: true,
+      rauf: true,
       version: "0.1.0",
       variant: "backlog-json",
       installedAt: new Date().toISOString(),
@@ -68,25 +68,25 @@ export function createMultiRootProject(options?: {
     }),
   );
 
-  // Create default root (.ralph/) with empty backlog and RALPH.md
-  const defaultDir = path.join(projectPath, ".ralph");
+  // Create default root (.rauf/) with empty backlog and RAUF.md
+  const defaultDir = path.join(projectPath, ".rauf");
   fs.mkdirSync(defaultDir, { recursive: true });
   writeBacklogFile(path.join(defaultDir, "backlog.json"), {
     project: "test",
     description: "",
     items: [],
   });
-  fs.writeFileSync(path.join(defaultDir, "RALPH.md"), "# Default RALPH.md\n");
+  fs.writeFileSync(path.join(defaultDir, "RAUF.md"), "# Default RAUF.md\n");
 
   // Create additional roots
   for (const root of options?.roots ?? []) {
-    if (root.path === ".ralph") continue; // default already created
+    if (root.path === ".rauf") continue; // default already created
 
     const rootDir = path.join(projectPath, root.path);
     fs.mkdirSync(rootDir, { recursive: true });
 
     // Determine state dir
-    const stateDir = path.basename(rootDir) === ".ralph" ? rootDir : path.join(rootDir, ".ralph");
+    const stateDir = path.basename(rootDir) === ".rauf" ? rootDir : path.join(rootDir, ".rauf");
     fs.mkdirSync(stateDir, { recursive: true });
 
     // Write backlog.json
@@ -120,8 +120,8 @@ export function createMultiRootProject(options?: {
     }
 
     // Write instruction files if requested
-    if (root.hasRalphMd) {
-      fs.writeFileSync(path.join(stateDir, "RALPH.md"), `# RALPH.md for ${root.path}\n`);
+    if (root.hasRaufMd) {
+      fs.writeFileSync(path.join(stateDir, "RAUF.md"), `# RAUF.md for ${root.path}\n`);
     }
     if (root.hasReviewMd) {
       fs.writeFileSync(path.join(stateDir, "REVIEW.md"), `# REVIEW.md for ${root.path}\n`);

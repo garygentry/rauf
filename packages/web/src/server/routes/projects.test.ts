@@ -17,10 +17,10 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
-/** Create a minimal valid .ralph.json (MarkerFile) in a directory. */
+/** Create a minimal valid .rauf.json (MarkerFile) in a directory. */
 function writeMarker(dir: string): void {
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -41,11 +41,11 @@ function writeMarker(dir: string): void {
     artifactHashes: {},
     options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
 /** CSRF headers for mutation requests. */
-const csrfHeaders = { "X-Ralph-Request": "true", "Content-Type": "application/json" };
+const csrfHeaders = { "X-Rauf-Request": "true", "Content-Type": "application/json" };
 
 // ─── Setup ───────────────────────────────────────────────────────
 
@@ -88,7 +88,7 @@ describe("GET /api/projects", () => {
   it("separates ignored projects into the ignored array", async () => {
     // Create a project with ignoreInTool: true
     writeMarker(projectDir);
-    const markerPath = path.join(projectDir, ".ralph.json");
+    const markerPath = path.join(projectDir, ".rauf.json");
     const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8")) as Record<string, unknown>;
     (marker.options as Record<string, unknown>).ignoreInTool = true;
     fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
@@ -142,9 +142,9 @@ describe("GET /api/projects/:id", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns 404 for existing directory without .ralph.json", async () => {
+  it("returns 404 for existing directory without .rauf.json", async () => {
     const app = makeApp(tmpDir);
-    // projectDir exists but has no .ralph.json
+    // projectDir exists but has no .rauf.json
     const res = await app.request("/api/projects/my-project");
     expect(res.status).toBe(404);
   });
@@ -179,7 +179,7 @@ describe("GET /api/projects/:id", () => {
 // ─── POST /api/projects/:id/install ──────────────────────────────
 
 describe("POST /api/projects/:id/install", () => {
-  it("returns 403 without X-Ralph-Request header", async () => {
+  it("returns 403 without X-Rauf-Request header", async () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/install", {
       method: "POST",
@@ -215,7 +215,7 @@ describe("POST /api/projects/:id/install", () => {
 // ─── POST /api/projects/init ─────────────────────────────────────
 
 describe("POST /api/projects/init", () => {
-  it("returns 403 without X-Ralph-Request header", async () => {
+  it("returns 403 without X-Rauf-Request header", async () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/init", {
       method: "POST",
@@ -241,7 +241,7 @@ describe("POST /api/projects/init", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/init", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true", "Content-Type": "text/plain" },
+      headers: { "X-Rauf-Request": "true", "Content-Type": "text/plain" },
       body: "not json",
     });
     expect(res.status).toBe(400);
@@ -269,7 +269,7 @@ describe("POST /api/projects/init", () => {
 // ─── POST /api/projects/:id/update ───────────────────────────────
 
 describe("POST /api/projects/:id/update", () => {
-  it("returns 403 without X-Ralph-Request header", async () => {
+  it("returns 403 without X-Rauf-Request header", async () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/update", {
       method: "POST",
@@ -301,7 +301,7 @@ describe("POST /api/projects/:id/update", () => {
 // ─── POST /api/projects/:id/uninstall ────────────────────────────
 
 describe("POST /api/projects/:id/uninstall", () => {
-  it("returns 403 without X-Ralph-Request header", async () => {
+  it("returns 403 without X-Rauf-Request header", async () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/uninstall", {
       method: "POST",

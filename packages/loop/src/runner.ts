@@ -92,10 +92,10 @@ export class LoopRunner extends TypedEventEmitter {
 
   /**
    * Create a new LoopRunner for the given project and options.
-   * Resolves BacklogPaths from options.backlogRoot (or default .ralph/).
+   * Resolves BacklogPaths from options.backlogRoot (or default .rauf/).
    */
   static create(projectPath: string, options: LoopStartOptions): Result<LoopRunner> {
-    const backlogRoot = options.backlogRoot ?? path.join(projectPath, ".ralph");
+    const backlogRoot = options.backlogRoot ?? path.join(projectPath, ".rauf");
     const pathsResult = resolveBacklogPaths(projectPath, backlogRoot);
     if (!pathsResult.ok) {
       return pathsResult;
@@ -151,9 +151,9 @@ export class LoopRunner extends TypedEventEmitter {
 
       // (5) Log which backlog root is active
       const relativeRoot = path.relative(this.projectPath, this.paths.root);
-      appendLog(this.paths, `Loop started (backlog root: ${relativeRoot || ".ralph"})`);
+      appendLog(this.paths, `Loop started (backlog root: ${relativeRoot || ".rauf"})`);
 
-      // (6) Read .ralph.json marker for project-level options
+      // (6) Read .rauf.json marker for project-level options
       const markerResult = readMarkerFile(this.projectPath);
       let autoSweep = false;
       let sweepMinAgeDays = 0;

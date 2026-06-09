@@ -7,9 +7,9 @@ import type { BacklogItem, Backlog, MarkerFile, BacklogPaths, InstructionPaths }
 import { defaultBacklogPaths } from "@ralph/core";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 
-const RALPH_DIR = ".ralph";
+const RAUF_DIR = ".rauf";
 
-/** Build BacklogPaths for the default .ralph root in a test dir */
+/** Build BacklogPaths for the default .rauf root in a test dir */
 function testPaths(tmpDir: string): BacklogPaths {
   return defaultBacklogPaths(tmpDir);
 }
@@ -17,14 +17,14 @@ function testPaths(tmpDir: string): BacklogPaths {
 /** Build BacklogPaths for a non-default root */
 function nonDefaultPaths(tmpDir: string, rootRel: string): BacklogPaths {
   const root = path.join(tmpDir, rootRel);
-  const stateDir = path.join(root, ".ralph");
+  const stateDir = path.join(root, ".rauf");
   return {
     projectPath: tmpDir,
     root,
     stateDir,
     backlog: path.join(root, "backlog.json"),
     state: path.join(stateDir, "state.json"),
-    log: path.join(stateDir, "ralph.log"),
+    log: path.join(stateDir, "rauf.log"),
     done: path.join(stateDir, "DONE"),
     cancel: path.join(stateDir, "CANCEL"),
     progress: path.join(stateDir, "progress.md"),
@@ -34,12 +34,12 @@ function nonDefaultPaths(tmpDir: string, rootRel: string): BacklogPaths {
   };
 }
 
-/** Build InstructionPaths for the default .ralph root in a test dir */
+/** Build InstructionPaths for the default .rauf root in a test dir */
 function testInstructionPaths(tmpDir: string): InstructionPaths {
-  const ralphMd = path.join(tmpDir, RALPH_DIR, "RALPH.md");
-  const reviewMd = path.join(tmpDir, RALPH_DIR, "REVIEW.md");
+  const raufMd = path.join(tmpDir, RAUF_DIR, "RAUF.md");
+  const reviewMd = path.join(tmpDir, RAUF_DIR, "REVIEW.md");
   return {
-    ralphMd: fs.existsSync(ralphMd) ? ralphMd : null,
+    raufMd: fs.existsSync(raufMd) ? raufMd : null,
     reviewMd: fs.existsSync(reviewMd) ? reviewMd : null,
   };
 }
@@ -51,21 +51,21 @@ function createTmpDir(): string {
 function setupProject(
   tmpDir: string,
   opts: {
-    ralphMd?: string;
+    raufMd?: string;
     progressMd?: string | null;
     /** Optional: set up files in a non-default state directory */
     stateDir?: string;
   } = {},
 ): void {
-  const ralphDir = opts.stateDir ?? path.join(tmpDir, RALPH_DIR);
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = opts.stateDir ?? path.join(tmpDir, RAUF_DIR);
+  fs.mkdirSync(raufDir, { recursive: true });
 
-  if (opts.ralphMd !== undefined) {
-    fs.writeFileSync(path.join(ralphDir, "RALPH.md"), opts.ralphMd);
+  if (opts.raufMd !== undefined) {
+    fs.writeFileSync(path.join(raufDir, "RAUF.md"), opts.raufMd);
   }
 
   if (opts.progressMd !== undefined && opts.progressMd !== null) {
-    fs.writeFileSync(path.join(ralphDir, "progress.md"), opts.progressMd);
+    fs.writeFileSync(path.join(raufDir, "progress.md"), opts.progressMd);
   }
 }
 
@@ -113,7 +113,7 @@ describe("buildPrompt", () => {
   describe("basic prompt structure", () => {
     it("returns ok with the complete prompt string", () => {
       setupProject(tmpDir, {
-        ralphMd: "# RALPH Instructions\nDo the work.",
+        raufMd: "# RAUF Instructions\nDo the work.",
         progressMd: "# Progress\nLearning 1",
       });
       const item = makeItem();
@@ -128,9 +128,9 @@ describe("buildPrompt", () => {
       }
     });
 
-    it("includes RALPH.md content as system context", () => {
-      const ralphContent = "## Verification Commands\n\nRun pnpm test && pnpm typecheck";
-      setupProject(tmpDir, { ralphMd: ralphContent });
+    it("includes RAUF.md content as system context", () => {
+      const raufContent = "## Verification Commands\n\nRun pnpm test && pnpm typecheck";
+      setupProject(tmpDir, { raufMd: raufContent });
 
       const result = buildPrompt(
         testPaths(tmpDir),
@@ -141,13 +141,13 @@ describe("buildPrompt", () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value).toContain(ralphContent);
-        expect(result.value).toContain("# Ralph — Per-Iteration Instructions");
+        expect(result.value).toContain(raufContent);
+        expect(result.value).toContain("# Rauf — Per-Iteration Instructions");
       }
     });
 
     it("includes the current item as formatted JSON", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ id: "042", title: "Special Task" });
 
       const result = buildPrompt(
@@ -171,7 +171,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes acceptance criteria as a bulleted list", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({
         acceptanceCriteria: ["Tests pass", "Types check", "Lint clean"],
       });
@@ -193,7 +193,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes dependencies section", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ dependsOn: ["001", "003"] });
 
       const result = buildPrompt(
@@ -211,7 +211,7 @@ describe("buildPrompt", () => {
     });
 
     it("shows 'No dependencies' when dependsOn is absent", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem();
       delete (item as Record<string, unknown>).dependsOn;
 
@@ -229,7 +229,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes notes section", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ notes: "Check the API docs first" });
 
       const result = buildPrompt(
@@ -247,7 +247,7 @@ describe("buildPrompt", () => {
     });
 
     it("shows 'No additional notes' when notes absent", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem();
 
       const result = buildPrompt(
@@ -264,7 +264,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes spec references when present", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({
         specReferences: ["docs/SPEC-CORE.md", "docs/ARCHITECTURE.md"],
       });
@@ -285,7 +285,7 @@ describe("buildPrompt", () => {
     });
 
     it("shows 'No spec references' when specReferences absent", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem();
 
       const result = buildPrompt(
@@ -302,7 +302,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes the important reminder with relative paths", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ id: "007" });
 
       const result = buildPrompt(
@@ -315,13 +315,13 @@ describe("buildPrompt", () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toContain(
-          "**IMPORTANT:** You are working on item 007 ONLY. Do NOT modify .ralph/backlog.json or .ralph/state.json",
+          "**IMPORTANT:** You are working on item 007 ONLY. Do NOT modify .rauf/backlog.json or .rauf/state.json",
         );
       }
     });
 
     it("includes current task header with item id and title", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ id: "012", title: "Build the widget" });
 
       const result = buildPrompt(
@@ -341,7 +341,7 @@ describe("buildPrompt", () => {
 
   describe("backlog summary", () => {
     it("includes counts of pending/in_progress/blocked/done items", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const items: BacklogItem[] = [
         makeItem({ id: "001", status: "done", completedAt: "2026-01-01" }),
         makeItem({ id: "002", status: "done", completedAt: "2026-01-02" }),
@@ -368,7 +368,7 @@ describe("buildPrompt", () => {
     });
 
     it("lists blocked item titles", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const items: BacklogItem[] = [
         makeItem({ id: "001", status: "blocked", title: "Blocked Task A" }),
         makeItem({ id: "002", status: "blocked", title: "Blocked Task B" }),
@@ -392,7 +392,7 @@ describe("buildPrompt", () => {
     });
 
     it("does not list blocked items section when none blocked", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const items: BacklogItem[] = [
         makeItem({ id: "001", status: "done", completedAt: "2026-01-01" }),
         makeItem({ id: "002", status: "in_progress" }),
@@ -418,7 +418,7 @@ describe("buildPrompt", () => {
     it("includes progress.md content when file exists", () => {
       const progressContent = "# Progress\n## Iteration 1\n- Learned about the codebase structure";
       setupProject(tmpDir, {
-        ralphMd: "instructions",
+        raufMd: "instructions",
         progressMd: progressContent,
       });
 
@@ -438,7 +438,7 @@ describe("buildPrompt", () => {
 
     it("omits progress section when file does not exist", () => {
       setupProject(tmpDir, {
-        ralphMd: "instructions",
+        raufMd: "instructions",
         progressMd: null,
       });
 
@@ -458,7 +458,7 @@ describe("buildPrompt", () => {
 
   describe("agent delegation", () => {
     it("includes agent delegation hint when estimatedIterations > 1", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ estimatedIterations: 3 });
 
       const result = buildPrompt(
@@ -476,7 +476,7 @@ describe("buildPrompt", () => {
     });
 
     it("does not include delegation hint when estimatedIterations is 1", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ estimatedIterations: 1 });
 
       const result = buildPrompt(
@@ -493,7 +493,7 @@ describe("buildPrompt", () => {
     });
 
     it("does not include delegation hint when estimatedIterations is absent", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem();
 
       const result = buildPrompt(
@@ -510,7 +510,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes full agent delegation section when agentDelegation is set", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({
         agentDelegation: {
           strategy: "parallel-subtasks",
@@ -539,7 +539,7 @@ describe("buildPrompt", () => {
     });
 
     it("handles agent delegation with only strategy", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({
         agentDelegation: {
           strategy: "sequential",
@@ -563,10 +563,10 @@ describe("buildPrompt", () => {
     });
   });
 
-  describe("missing RALPH.md", () => {
-    it("returns err when RALPH.md does not exist", () => {
-      // Create .ralph dir but no RALPH.md
-      fs.mkdirSync(path.join(tmpDir, RALPH_DIR), { recursive: true });
+  describe("missing RAUF.md", () => {
+    it("returns err when RAUF.md does not exist", () => {
+      // Create .rauf dir but no RAUF.md
+      fs.mkdirSync(path.join(tmpDir, RAUF_DIR), { recursive: true });
 
       const result = buildPrompt(
         testPaths(tmpDir),
@@ -578,11 +578,11 @@ describe("buildPrompt", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("FILE_NOT_FOUND");
-        expect(result.error.message).toContain("RALPH.md");
+        expect(result.error.message).toContain("RAUF.md");
       }
     });
 
-    it("returns err when .ralph directory does not exist", () => {
+    it("returns err when .rauf directory does not exist", () => {
       const result = buildPrompt(
         testPaths(tmpDir),
         testInstructionPaths(tmpDir),
@@ -600,7 +600,7 @@ describe("buildPrompt", () => {
   describe("section delimiters", () => {
     it("has clearly delimited sections with headers", () => {
       setupProject(tmpDir, {
-        ralphMd: "System instructions here",
+        raufMd: "System instructions here",
         progressMd: "Some progress",
       });
 
@@ -614,7 +614,7 @@ describe("buildPrompt", () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         // Check for distinct section headers
-        expect(result.value).toContain("# Ralph — Per-Iteration Instructions");
+        expect(result.value).toContain("# Rauf — Per-Iteration Instructions");
         expect(result.value).toContain("## Your Current Task");
         expect(result.value).toContain("### Acceptance Criteria");
         expect(result.value).toContain("### Dependencies");
@@ -628,7 +628,7 @@ describe("buildPrompt", () => {
     });
 
     it("includes full backlog as JSON", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const backlog = makeBacklog();
 
       const result = buildPrompt(
@@ -649,7 +649,7 @@ describe("buildPrompt", () => {
 
   describe("edge cases", () => {
     it("handles empty backlog items array", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const backlog: Backlog = { project: "empty", description: "empty project", items: [] };
 
       const result = buildPrompt(
@@ -669,7 +669,7 @@ describe("buildPrompt", () => {
     });
 
     it("handles item with empty acceptance criteria", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ acceptanceCriteria: [] });
 
       const result = buildPrompt(
@@ -687,7 +687,7 @@ describe("buildPrompt", () => {
 
     it("handles empty progress.md file", () => {
       setupProject(tmpDir, {
-        ralphMd: "instructions",
+        raufMd: "instructions",
         progressMd: "",
       });
 
@@ -708,7 +708,7 @@ describe("buildPrompt", () => {
 
   describe("Active Backlog Root section", () => {
     it("is always injected for default root", () => {
-      setupProject(tmpDir, { ralphMd: "instructions" });
+      setupProject(tmpDir, { raufMd: "instructions" });
 
       const result = buildPrompt(
         testPaths(tmpDir),
@@ -721,10 +721,10 @@ describe("buildPrompt", () => {
       if (result.ok) {
         expect(result.value).toContain("## Active Backlog Root");
         expect(result.value).toContain(
-          "You are working against the backlog at: .ralph/backlog.json",
+          "You are working against the backlog at: .rauf/backlog.json",
         );
-        expect(result.value).toContain("State directory: .ralph/");
-        expect(result.value).toContain("Progress log: .ralph/progress.md");
+        expect(result.value).toContain("State directory: .rauf/");
+        expect(result.value).toContain("Progress log: .rauf/progress.md");
         expect(result.value).toContain("Do NOT modify files outside this state directory.");
       }
     });
@@ -733,10 +733,10 @@ describe("buildPrompt", () => {
       const paths = nonDefaultPaths(tmpDir, "specs/auth");
       const stateDir = paths.stateDir;
       fs.mkdirSync(stateDir, { recursive: true });
-      fs.writeFileSync(path.join(stateDir, "RALPH.md"), "instructions");
+      fs.writeFileSync(path.join(stateDir, "RAUF.md"), "instructions");
 
       const instrPaths: InstructionPaths = {
-        ralphMd: path.join(stateDir, "RALPH.md"),
+        raufMd: path.join(stateDir, "RAUF.md"),
         reviewMd: null,
       };
 
@@ -748,20 +748,20 @@ describe("buildPrompt", () => {
         expect(result.value).toContain(
           "You are working against the backlog at: specs/auth/backlog.json",
         );
-        expect(result.value).toContain("State directory: specs/auth/.ralph/");
-        expect(result.value).toContain("Progress log: specs/auth/.ralph/progress.md");
+        expect(result.value).toContain("State directory: specs/auth/.rauf/");
+        expect(result.value).toContain("Progress log: specs/auth/.rauf/progress.md");
       }
     });
   });
 
   describe("non-default root handling", () => {
-    it("reads RALPH.md from per-root stateDir", () => {
+    it("reads RAUF.md from per-root stateDir", () => {
       const paths = nonDefaultPaths(tmpDir, "specs/auth");
       fs.mkdirSync(paths.stateDir, { recursive: true });
-      fs.writeFileSync(path.join(paths.stateDir, "RALPH.md"), "per-root instructions");
+      fs.writeFileSync(path.join(paths.stateDir, "RAUF.md"), "per-root instructions");
 
       const instrPaths: InstructionPaths = {
-        ralphMd: path.join(paths.stateDir, "RALPH.md"),
+        raufMd: path.join(paths.stateDir, "RAUF.md"),
         reviewMd: null,
       };
 
@@ -773,15 +773,15 @@ describe("buildPrompt", () => {
       }
     });
 
-    it("reads RALPH.md from project-level fallback", () => {
-      // Set up project-level RALPH.md
-      setupProject(tmpDir, { ralphMd: "project-level instructions" });
+    it("reads RAUF.md from project-level fallback", () => {
+      // Set up project-level RAUF.md
+      setupProject(tmpDir, { raufMd: "project-level instructions" });
       const paths = nonDefaultPaths(tmpDir, "specs/auth");
       fs.mkdirSync(paths.stateDir, { recursive: true });
 
       // instructionPaths resolved to project-level fallback
       const instrPaths: InstructionPaths = {
-        ralphMd: path.join(tmpDir, ".ralph", "RALPH.md"),
+        raufMd: path.join(tmpDir, ".rauf", "RAUF.md"),
         reviewMd: null,
       };
 
@@ -793,29 +793,29 @@ describe("buildPrompt", () => {
       }
     });
 
-    it("returns error when RALPH.md missing everywhere", () => {
+    it("returns error when RAUF.md missing everywhere", () => {
       const paths = nonDefaultPaths(tmpDir, "specs/auth");
       fs.mkdirSync(paths.stateDir, { recursive: true });
 
-      const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: null };
+      const instrPaths: InstructionPaths = { raufMd: null, reviewMd: null };
 
       const result = buildPrompt(paths, instrPaths, makeItem(), makeBacklog());
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.error.code).toBe("FILE_NOT_FOUND");
-        expect(result.error.message).toContain("RALPH.md");
+        expect(result.error.message).toContain("RAUF.md");
       }
     });
 
     it("reads progress.md always from stateDir", () => {
       const paths = nonDefaultPaths(tmpDir, "specs/auth");
       fs.mkdirSync(paths.stateDir, { recursive: true });
-      fs.writeFileSync(path.join(paths.stateDir, "RALPH.md"), "instructions");
+      fs.writeFileSync(path.join(paths.stateDir, "RAUF.md"), "instructions");
       fs.writeFileSync(path.join(paths.stateDir, "progress.md"), "per-root progress");
 
       const instrPaths: InstructionPaths = {
-        ralphMd: path.join(paths.stateDir, "RALPH.md"),
+        raufMd: path.join(paths.stateDir, "RAUF.md"),
         reviewMd: null,
       };
 
@@ -830,10 +830,10 @@ describe("buildPrompt", () => {
     it("uses relative paths in the important reminder for non-default root", () => {
       const paths = nonDefaultPaths(tmpDir, "specs/auth");
       fs.mkdirSync(paths.stateDir, { recursive: true });
-      fs.writeFileSync(path.join(paths.stateDir, "RALPH.md"), "instructions");
+      fs.writeFileSync(path.join(paths.stateDir, "RAUF.md"), "instructions");
 
       const instrPaths: InstructionPaths = {
-        ralphMd: path.join(paths.stateDir, "RALPH.md"),
+        raufMd: path.join(paths.stateDir, "RAUF.md"),
         reviewMd: null,
       };
 
@@ -842,7 +842,7 @@ describe("buildPrompt", () => {
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.value).toContain(
-          "Do NOT modify specs/auth/backlog.json or specs/auth/.ralph/state.json",
+          "Do NOT modify specs/auth/backlog.json or specs/auth/.rauf/state.json",
         );
       }
     });
@@ -858,20 +858,20 @@ describe("buildReviewPrompt", () => {
       markerFile?: boolean;
     } = {},
   ): void {
-    const ralphDir = path.join(dir, RALPH_DIR);
-    fs.mkdirSync(ralphDir, { recursive: true });
+    const raufDir = path.join(dir, RAUF_DIR);
+    fs.mkdirSync(raufDir, { recursive: true });
 
     if (opts.reviewMd !== undefined) {
-      fs.writeFileSync(path.join(ralphDir, "REVIEW.md"), opts.reviewMd);
+      fs.writeFileSync(path.join(raufDir, "REVIEW.md"), opts.reviewMd);
     }
 
     if (opts.progressMd !== undefined && opts.progressMd !== null) {
-      fs.writeFileSync(path.join(ralphDir, "progress.md"), opts.progressMd);
+      fs.writeFileSync(path.join(raufDir, "progress.md"), opts.progressMd);
     }
 
     if (opts.markerFile !== false) {
       const marker: MarkerFile = {
-        ralph: true,
+        rauf: true,
         version: "1",
         variant: "backlog-json",
         installedAt: "2026-01-01T00:00:00Z",
@@ -892,7 +892,7 @@ describe("buildReviewPrompt", () => {
         artifactHashes: {},
         options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
       };
-      fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+      fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
     }
   }
 
@@ -1009,7 +1009,7 @@ describe("buildReviewPrompt", () => {
 
     // Write marker file at project root
     const marker: MarkerFile = {
-      ralph: true,
+      rauf: true,
       version: "1",
       variant: "backlog-json",
       installedAt: "2026-01-01T00:00:00Z",
@@ -1024,9 +1024,9 @@ describe("buildReviewPrompt", () => {
       artifactHashes: {},
       options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
     };
-    fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(marker));
+    fs.writeFileSync(path.join(tmpDir, ".rauf.json"), JSON.stringify(marker));
 
-    const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: reviewPath };
+    const instrPaths: InstructionPaths = { raufMd: null, reviewMd: reviewPath };
     const items = [
       makeItem({ id: "001", title: "Auth", status: "done", completedAt: "2026-01-01" }),
     ];
@@ -1043,7 +1043,7 @@ describe("buildReviewPrompt", () => {
 
   it("falls back to embedded template when reviewMd is null", () => {
     setupReviewProject(tmpDir);
-    const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: null };
+    const instrPaths: InstructionPaths = { raufMd: null, reviewMd: null };
     const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
 
     const result = buildReviewPrompt(testPaths(tmpDir), instrPaths, items, "some diff");
@@ -1062,7 +1062,7 @@ describe("buildReviewPrompt", () => {
 
     // Write marker file at project root
     const marker: MarkerFile = {
-      ralph: true,
+      rauf: true,
       version: "1",
       variant: "backlog-json",
       installedAt: "2026-01-01T00:00:00Z",
@@ -1077,9 +1077,9 @@ describe("buildReviewPrompt", () => {
       artifactHashes: {},
       options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
     };
-    fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(marker));
+    fs.writeFileSync(path.join(tmpDir, ".rauf.json"), JSON.stringify(marker));
 
-    const instrPaths: InstructionPaths = { ralphMd: null, reviewMd: null };
+    const instrPaths: InstructionPaths = { raufMd: null, reviewMd: null };
     const items = [makeItem({ id: "001", title: "X", status: "done", completedAt: "2026-01-01" })];
 
     const result = buildReviewPrompt(paths, instrPaths, items, "");

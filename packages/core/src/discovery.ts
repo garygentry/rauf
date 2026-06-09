@@ -4,24 +4,25 @@ import * as path from "node:path";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile } from "./fs-utils.js";
 import { MarkerFileSchema, type DiscoveredProject } from "./schemas.js";
+import { detectMigrationState } from "./migrate.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface DiscoveryResult {
-  /** Projects with valid .ralph.json and ignoreInTool !== true */
+  /** Projects with valid .rauf.json and ignoreInTool !== true */
   projects: DiscoveredProject[];
   /** Projects with ignoreInTool === true */
   ignored: DiscoveredProject[];
-  /** Warnings from invalid .ralph.json files or read errors */
+  /** Warnings from invalid .rauf.json files or read errors */
   warnings: string[];
 }
 
 // ─── discoverProjects ────────────────────────────────────────────
 //
-// Scan rootDir at depth=1 for directories containing .ralph.json.
-// - rootDir itself is included if it has a .ralph.json
+// Scan rootDir at depth=1 for directories containing .rauf.json.
+// - rootDir itself is included if it has a .rauf.json
 // - Paths containing /artifacts/ are excluded
-// - Invalid .ralph.json files are skipped with warnings
+// - Invalid .rauf.json files are skipped with warnings
 // - Returns projects sorted by name, with ignored projects separate
 
 export function discoverProjects(rootDir: string): Result<DiscoveryResult> {
@@ -79,20 +80,28 @@ export function discoverProjects(rootDir: string): Result<DiscoveryResult> {
       continue;
     }
 
-    const markerPath = path.join(candidatePath, ".ralph.json");
+    const markerPath = path.join(candidatePath, ".rauf.json");
 
-    // Check if .ralph.json exists
+    // Check if .rauf.json exists
     try {
       fs.accessSync(markerPath, fs.constants.F_OK);
     } catch {
-      continue; // No marker file, skip
+      // No rauf marker — but surface legacy ralph installs so the user
+      // knows to migrate them (instead of silently treating as absent).
+      const legacy = detectMigrationState(candidatePath);
+      if (legacy.ok && (legacy.value === "legacy_ralph" || legacy.value === "partial")) {
+        warnings.push(
+          `Legacy ralph project at ${candidatePath} — run 'rauf migrate ${candidatePath}' to migrate it.`,
+        );
+      }
+      continue; // No rauf marker, skip
     }
 
-    // Parse and validate .ralph.json
+    // Parse and validate .rauf.json
     const markerResult = readJsonFile(markerPath, MarkerFileSchema);
     if (!markerResult.ok) {
       warnings.push(
-        `Skipping ${candidatePath}: invalid .ralph.json — ${markerResult.error.message}`,
+        `Skipping ${candidatePath}: invalid .rauf.json — ${markerResult.error.message}`,
       );
       continue;
     }

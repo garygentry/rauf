@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { DiscoveredProject, DerivedStatus } from "@ralph/core";
-import { ralphFetchJson } from "../../lib/fetch";
+import { raufFetchJson } from "../../lib/fetch";
 
 // ─── API shape ────────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ function ProjectCard({ project, muted = false }: { project: DiscoveredProject; m
   const { data: status, isLoading: statusLoading } = useQuery({
     queryKey: ["projects", project.id, "status"],
     queryFn: () =>
-      ralphFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(project.id)}/status`),
+      raufFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(project.id)}/status`),
     refetchInterval: 30_000,
   });
 
@@ -241,7 +241,7 @@ function EmptyState() {
         No projects found
       </p>
       <p className="mt-2 max-w-sm text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Configure your root directory in Settings, then install Ralph on an existing project or
+        Configure your root directory in Settings, then install Rauf on an existing project or
         initialize a new one.
       </p>
       <div className="mt-6 flex items-center gap-3">
@@ -254,7 +254,7 @@ function EmptyState() {
             backgroundColor: "var(--color-surface-raised)",
           }}
         >
-          Install Ralph
+          Install Rauf
         </Link>
         <Link
           to="/init"
@@ -275,7 +275,7 @@ export function ProjectsDashboard() {
 
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ["projects"],
-    queryFn: () => ralphFetchJson<ProjectListData>("/api/projects"),
+    queryFn: () => raufFetchJson<ProjectListData>("/api/projects"),
     refetchInterval: 30_000,
   });
 
@@ -324,7 +324,7 @@ export function ProjectsDashboard() {
               backgroundColor: "var(--color-surface-raised)",
             }}
           >
-            Install Ralph
+            Install Rauf
           </Link>
           <Link
             to="/init"

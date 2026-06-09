@@ -47,7 +47,7 @@ describe("ClaudeCliProvider", () => {
     it("delegates to spawnClaude with correct option mapping", async () => {
       const spawnResult: SpawnClaudeResult = {
         exitCode: 0,
-        stdout: "RALPH_DONE",
+        stdout: "RAUF_DONE",
         stderr: "",
         timedOut: false,
         durationMs: 5000,

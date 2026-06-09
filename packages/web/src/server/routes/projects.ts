@@ -3,7 +3,7 @@
 // /api/projects:  list, detail, install, init, update, uninstall
 //
 // :id = directory name (URL-encoded), resolved to ROOT_DIRECTORY/<id>.
-// All mutations require X-Ralph-Request: true (enforced by app-level CSRF
+// All mutations require X-Rauf-Request: true (enforced by app-level CSRF
 // middleware — not repeated here).
 //
 // Artifacts are embedded in @ralph/core at build time — no filesystem
@@ -524,7 +524,7 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
 
   // ── POST /:id/backlog/sweep ───────────────────────────────────
   //
-  // Sweep done items into .ralph/archive/. Registered before /:id/backlog/:itemId
+  // Sweep done items into .rauf/archive/. Registered before /:id/backlog/:itemId
   // so "sweep" is never mismatched as an itemId.
 
   router.post("/:id/backlog/sweep", async (c) => {

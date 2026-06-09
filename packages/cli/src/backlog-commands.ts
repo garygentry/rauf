@@ -845,7 +845,7 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     parts.push("archived progress.md");
   }
   if (r.logArchived) {
-    parts.push("archived ralph.log");
+    parts.push("archived rauf.log");
   }
 
   if (parts.length === 0) {
@@ -921,7 +921,7 @@ function handleCoreError(
       case ErrorCodes.FILE_NOT_FOUND:
       case ErrorCodes.NOT_INSTALLED:
         info(
-          `Ralph is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+          `Rauf is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
         );
         break;
       case ErrorCodes.INVALID_JSON:

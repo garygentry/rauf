@@ -41,7 +41,7 @@ describe("CSRF middleware", () => {
     app.get("/api/test", (c) => c.json({ data: "ok" }));
   });
 
-  it("POST without X-Ralph-Request returns 403", async () => {
+  it("POST without X-Rauf-Request returns 403", async () => {
     const res = await app.request("/api/test", { method: "POST" });
     expect(res.status).toBe(403);
     const body = await json(res);
@@ -50,65 +50,65 @@ describe("CSRF middleware", () => {
     });
   });
 
-  it("PUT without X-Ralph-Request returns 403", async () => {
+  it("PUT without X-Rauf-Request returns 403", async () => {
     const res = await app.request("/api/test", { method: "PUT" });
     expect(res.status).toBe(403);
     const body = await json(res);
     expect(body).toMatchObject({ error: { code: "FORBIDDEN" } });
   });
 
-  it("DELETE without X-Ralph-Request returns 403", async () => {
+  it("DELETE without X-Rauf-Request returns 403", async () => {
     const res = await app.request("/api/test", { method: "DELETE" });
     expect(res.status).toBe(403);
     const body = await json(res);
     expect(body).toMatchObject({ error: { code: "FORBIDDEN" } });
   });
 
-  it("POST with X-Ralph-Request: true proceeds normally", async () => {
+  it("POST with X-Rauf-Request: true proceeds normally", async () => {
     const res = await app.request("/api/test", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body).toEqual({ data: "ok" });
   });
 
-  it("PUT with X-Ralph-Request: true proceeds normally", async () => {
+  it("PUT with X-Rauf-Request: true proceeds normally", async () => {
     const res = await app.request("/api/test", {
       method: "PUT",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
     expect(res.status).toBe(200);
   });
 
-  it("DELETE with X-Ralph-Request: true proceeds normally", async () => {
+  it("DELETE with X-Rauf-Request: true proceeds normally", async () => {
     const res = await app.request("/api/test", {
       method: "DELETE",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
     expect(res.status).toBe(200);
   });
 
-  it("GET does not require X-Ralph-Request header", async () => {
+  it("GET does not require X-Rauf-Request header", async () => {
     const res = await app.request("/api/test", { method: "GET" });
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body).toEqual({ data: "ok" });
   });
 
-  it("X-Ralph-Request: false is rejected (must be 'true' string)", async () => {
+  it("X-Rauf-Request: false is rejected (must be 'true' string)", async () => {
     const res = await app.request("/api/test", {
       method: "POST",
-      headers: { "X-Ralph-Request": "false" },
+      headers: { "X-Rauf-Request": "false" },
     });
     expect(res.status).toBe(403);
   });
 
-  it("X-Ralph-Request: 1 is rejected (must be exact string 'true')", async () => {
+  it("X-Rauf-Request: 1 is rejected (must be exact string 'true')", async () => {
     const res = await app.request("/api/test", {
       method: "POST",
-      headers: { "X-Ralph-Request": "1" },
+      headers: { "X-Rauf-Request": "1" },
     });
     expect(res.status).toBe(403);
   });
@@ -167,7 +167,7 @@ describe("GET /api/health", () => {
     expect(body.data.uptime).toBeGreaterThanOrEqual(1);
   });
 
-  it("does not require X-Ralph-Request header (GET is read-only)", async () => {
+  it("does not require X-Rauf-Request header (GET is read-only)", async () => {
     const app = makeApp();
     const res = await app.request("/api/health");
     expect(res.status).toBe(200);

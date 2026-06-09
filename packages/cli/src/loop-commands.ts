@@ -26,6 +26,7 @@ import {
   resolveBacklogPaths,
   checkLock,
   forceClearLock,
+  detectMigrationState,
   type BacklogPaths,
 } from "@ralph/core";
 import ports from "../../../config/ports.json";
@@ -161,7 +162,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Ralph-Request": "true",
+        "X-Rauf-Request": "true",
       },
       body: JSON.stringify(body),
     });
@@ -234,7 +235,7 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Ralph-Request": "true",
+        "X-Rauf-Request": "true",
       },
       body: JSON.stringify(stopBody),
     });
@@ -370,7 +371,7 @@ const TERMINAL_LOOP_STATES: ReadonlySet<string> = new Set([
 const DIRECT_MODE_POLL_MS = 2000;
 
 /**
- * Follow loop output in direct mode by tailing .ralph/ralph.log
+ * Follow loop output in direct mode by tailing .rauf/rauf.log
  * and polling deriveStatus() to detect when the loop stops.
  */
 async function followDirectMode(projectPath: string, paths?: BacklogPaths): Promise<number> {
@@ -559,6 +560,20 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const force = extractBoolFlag(ctx.flags, "force");
+
+  // Refuse to run a loop on an unmigrated legacy ralph project — its
+  // RALPH.md would instruct Claude to emit RALPH_* signals the new parser
+  // rejects. Migration is required first (decision #3).
+  const migrationState = detectMigrationState(projectPath);
+  if (
+    migrationState.ok &&
+    (migrationState.value === "legacy_ralph" || migrationState.value === "partial")
+  ) {
+    error(
+      `This is a legacy ralph project. Run: ${c.cyan(`rauf migrate ${projectPath}`)} before running the loop.`,
+    );
+    return ExitCode.ERROR;
+  }
 
   // Resolve backlog paths
   const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);

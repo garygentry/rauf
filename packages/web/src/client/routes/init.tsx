@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { InstallationReport, ProfileOverrides, BacklogItemType } from "@ralph/core";
-import { ralphFetchJson } from "../lib/fetch";
+import { raufFetchJson } from "../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -243,7 +243,7 @@ function StepProjectInfo({
         Project Info
       </h2>
       <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Create a new project from scratch. Ralph will initialize git, generate CLAUDE.md, and set up
+        Create a new project from scratch. Rauf will initialize git, generate CLAUDE.md, and set up
         the loop infrastructure.
       </p>
 
@@ -343,14 +343,14 @@ function StepProjectInfo({
           color: "var(--color-text-muted)",
         }}
       >
-        <strong style={{ color: "var(--color-text)" }}>Tip:</strong> For installing Ralph into an
+        <strong style={{ color: "var(--color-text)" }}>Tip:</strong> For installing Rauf into an
         existing project, use{" "}
         <Link
           to="/install"
           className="font-medium underline"
           style={{ color: "var(--color-accent)" }}
         >
-          Install Ralph
+          Install Rauf
         </Link>{" "}
         instead.
       </div>
@@ -759,10 +759,10 @@ function StepReview({
   const FILES_TO_CREATE = [
     { file: "CLAUDE.md", description: "Project instructions with ralph loop section" },
     { file: ".gitignore", description: "Stack-appropriate gitignore" },
-    { file: ".ralph/RALPH.md", description: "Per-iteration instructions" },
-    { file: ".ralph/backlog.json", description: "Task queue" },
-    { file: ".ralph/progress.md", description: "Accumulated learnings log" },
-    { file: ".ralph.json", description: "Marker file with profile & hashes" },
+    { file: ".rauf/RAUF.md", description: "Per-iteration instructions" },
+    { file: ".rauf/backlog.json", description: "Task queue" },
+    { file: ".rauf/progress.md", description: "Accumulated learnings log" },
+    { file: ".rauf.json", description: "Marker file with profile & hashes" },
   ];
 
   return (
@@ -1202,7 +1202,7 @@ export function InitWizard() {
   // Init mutation
   const initMutation = useMutation({
     mutationFn: () =>
-      ralphFetchJson<InstallationReport>("/api/projects/init", {
+      raufFetchJson<InstallationReport>("/api/projects/init", {
         method: "POST",
         body: JSON.stringify({
           targetPath: state.targetPath,

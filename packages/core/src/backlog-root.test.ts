@@ -24,18 +24,18 @@ afterEach(() => {
 // ─── resolveBacklogRoot ──────────────────────────────────────────
 
 describe("resolveBacklogRoot", () => {
-  it("returns {projectPath}/.ralph when no flag is provided", () => {
+  it("returns {projectPath}/.rauf when no flag is provided", () => {
     const result = resolveBacklogRoot(project.projectPath);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unexpected");
-    expect(result.value).toBe(path.join(project.projectPath, ".ralph"));
+    expect(result.value).toBe(path.join(project.projectPath, ".rauf"));
   });
 
-  it("returns {projectPath}/.ralph when flag is empty string", () => {
+  it("returns {projectPath}/.rauf when flag is empty string", () => {
     const result = resolveBacklogRoot(project.projectPath, "");
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unexpected");
-    expect(result.value).toBe(path.join(project.projectPath, ".ralph"));
+    expect(result.value).toBe(path.join(project.projectPath, ".rauf"));
   });
 
   it("resolves a custom path relative to projectPath", () => {
@@ -56,14 +56,14 @@ describe("resolveBacklogRoot", () => {
 // ─── resolveStateDir ─────────────────────────────────────────────
 
 describe("resolveStateDir", () => {
-  it("returns same directory when basename is .ralph (no nesting)", () => {
-    const input = path.join(project.projectPath, ".ralph");
+  it("returns same directory when basename is .rauf (no nesting)", () => {
+    const input = path.join(project.projectPath, ".rauf");
     expect(resolveStateDir(input)).toBe(input);
   });
 
-  it("returns {root}/.ralph for custom root basename", () => {
+  it("returns {root}/.rauf for custom root basename", () => {
     const input = path.join(project.projectPath, "specs", "auth");
-    expect(resolveStateDir(input)).toBe(path.join(input, ".ralph"));
+    expect(resolveStateDir(input)).toBe(path.join(input, ".rauf"));
   });
 });
 
@@ -90,7 +90,7 @@ describe("resolveBacklogPaths", () => {
     const result = resolveBacklogPaths(p.projectPath, root);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unexpected");
-    expect(result.value.backlog).toBe(path.join(root, ".ralph", "backlog.json"));
+    expect(result.value.backlog).toBe(path.join(root, ".rauf", "backlog.json"));
     p.cleanup();
   });
 
@@ -120,7 +120,7 @@ describe("resolveBacklogPaths", () => {
   });
 
   it("all path fields are absolute", () => {
-    const root = path.join(project.projectPath, ".ralph");
+    const root = path.join(project.projectPath, ".rauf");
     const result = resolveBacklogPaths(project.projectPath, root);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unexpected");
@@ -140,7 +140,7 @@ describe("resolveBacklogPaths", () => {
   });
 
   it("default root has stateDir equal to root", () => {
-    const root = path.join(project.projectPath, ".ralph");
+    const root = path.join(project.projectPath, ".rauf");
     const result = resolveBacklogPaths(project.projectPath, root);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("unexpected");
@@ -151,9 +151,9 @@ describe("resolveBacklogPaths", () => {
 // ─── resolveInstructionPaths ─────────────────────────────────────
 
 describe("resolveInstructionPaths", () => {
-  it("finds per-root RALPH.md when present", () => {
+  it("finds per-root RAUF.md when present", () => {
     const p = createMultiRootProject({
-      roots: [{ path: "specs/auth", hasRalphMd: true }],
+      roots: [{ path: "specs/auth", hasRaufMd: true }],
     });
     const root = path.join(p.projectPath, "specs/auth");
     const pathsResult = resolveBacklogPaths(p.projectPath, root);
@@ -161,13 +161,13 @@ describe("resolveInstructionPaths", () => {
     if (!pathsResult.ok) throw new Error("unexpected");
 
     const instructions = resolveInstructionPaths(pathsResult.value);
-    expect(instructions.ralphMd).toBe(path.join(root, ".ralph", "RALPH.md"));
+    expect(instructions.raufMd).toBe(path.join(root, ".rauf", "RAUF.md"));
     p.cleanup();
   });
 
-  it("falls back to project-level RALPH.md", () => {
+  it("falls back to project-level RAUF.md", () => {
     const p = createMultiRootProject({
-      roots: [{ path: "specs/auth", hasRalphMd: false }],
+      roots: [{ path: "specs/auth", hasRaufMd: false }],
     });
     const root = path.join(p.projectPath, "specs/auth");
     const pathsResult = resolveBacklogPaths(p.projectPath, root);
@@ -175,17 +175,17 @@ describe("resolveInstructionPaths", () => {
     if (!pathsResult.ok) throw new Error("unexpected");
 
     const instructions = resolveInstructionPaths(pathsResult.value);
-    // Falls back to project-level .ralph/RALPH.md (created by default)
-    expect(instructions.ralphMd).toBe(path.join(p.projectPath, ".ralph", "RALPH.md"));
+    // Falls back to project-level .rauf/RAUF.md (created by default)
+    expect(instructions.raufMd).toBe(path.join(p.projectPath, ".rauf", "RAUF.md"));
     p.cleanup();
   });
 
-  it("returns null when RALPH.md missing everywhere", () => {
+  it("returns null when RAUF.md missing everywhere", () => {
     const p = createMultiRootProject({
-      roots: [{ path: "specs/auth", hasRalphMd: false }],
+      roots: [{ path: "specs/auth", hasRaufMd: false }],
     });
-    // Remove the project-level RALPH.md too
-    fs.unlinkSync(path.join(p.projectPath, ".ralph", "RALPH.md"));
+    // Remove the project-level RAUF.md too
+    fs.unlinkSync(path.join(p.projectPath, ".rauf", "RAUF.md"));
 
     const root = path.join(p.projectPath, "specs/auth");
     const pathsResult = resolveBacklogPaths(p.projectPath, root);
@@ -193,23 +193,23 @@ describe("resolveInstructionPaths", () => {
     if (!pathsResult.ok) throw new Error("unexpected");
 
     const instructions = resolveInstructionPaths(pathsResult.value);
-    expect(instructions.ralphMd).toBeNull();
+    expect(instructions.raufMd).toBeNull();
     p.cleanup();
   });
 
-  it("does not fall back for default root (stateDir === project .ralph/)", () => {
-    // Default root: stateDir IS .ralph/, so no fallback path exists
-    const root = path.join(project.projectPath, ".ralph");
+  it("does not fall back for default root (stateDir === project .rauf/)", () => {
+    // Default root: stateDir IS .rauf/, so no fallback path exists
+    const root = path.join(project.projectPath, ".rauf");
     const pathsResult = resolveBacklogPaths(project.projectPath, root);
     expect(pathsResult.ok).toBe(true);
     if (!pathsResult.ok) throw new Error("unexpected");
 
-    // Remove RALPH.md from default root
-    fs.unlinkSync(path.join(project.projectPath, ".ralph", "RALPH.md"));
+    // Remove RAUF.md from default root
+    fs.unlinkSync(path.join(project.projectPath, ".rauf", "RAUF.md"));
 
     const instructions = resolveInstructionPaths(pathsResult.value);
-    // Should be null — no fallback since stateDir === projectRalphDir
-    expect(instructions.ralphMd).toBeNull();
+    // Should be null — no fallback since stateDir === projectRaufDir
+    expect(instructions.raufMd).toBeNull();
   });
 });
 
@@ -237,7 +237,7 @@ describe("ensureStateDir", () => {
   });
 
   it("is a no-op when directory already exists", () => {
-    const root = path.join(project.projectPath, ".ralph");
+    const root = path.join(project.projectPath, ".rauf");
     const pathsResult = resolveBacklogPaths(project.projectPath, root);
     expect(pathsResult.ok).toBe(true);
     if (!pathsResult.ok) throw new Error("unexpected");

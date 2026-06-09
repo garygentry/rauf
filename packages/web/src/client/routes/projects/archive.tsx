@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ArchiveMonth, BacklogItem } from "@ralph/core";
-import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
+import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ function MonthRow({ entry, projectId }: { entry: ArchiveListEntry; projectId: st
   const { data: archiveData, isLoading: isLoadingItems } = useQuery({
     queryKey: ["projects", projectId, "archive", entry.month],
     queryFn: () =>
-      ralphFetchJson<ArchiveMonth>(
+      raufFetchJson<ArchiveMonth>(
         `/api/projects/${encodeURIComponent(projectId)}/archive/${entry.month}`,
       ),
     enabled: expanded,
@@ -38,7 +38,7 @@ function MonthRow({ entry, projectId }: { entry: ArchiveListEntry; projectId: st
 
   const purgeMutation = useMutation({
     mutationFn: async () => {
-      const res = await ralphFetch(
+      const res = await raufFetch(
         `/api/projects/${encodeURIComponent(projectId)}/archive/${entry.month}`,
         { method: "DELETE" },
       );
@@ -202,7 +202,7 @@ export function ArchiveView() {
   } = useQuery({
     queryKey: ["projects", projectId, "archive"],
     queryFn: () =>
-      ralphFetchJson<{ months: ArchiveListEntry[] }>(
+      raufFetchJson<{ months: ArchiveListEntry[] }>(
         `/api/projects/${encodeURIComponent(projectId)}/archive`,
       ),
     enabled: !!projectId,

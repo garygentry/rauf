@@ -16,7 +16,7 @@ function createMockProvider(id: string, displayName: string): LLMProvider {
       return {
         ok: true as const,
         value: {
-          stdout: "RALPH_DONE",
+          stdout: "RAUF_DONE",
           stderr: "",
           exitCode: 0,
           timedOut: false,
@@ -133,7 +133,7 @@ describe("provider registry", () => {
 
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.value.stdout).toBe("RALPH_DONE");
+        expect(result.value.stdout).toBe("RAUF_DONE");
         expect(result.value.stderr).toBe("");
         expect(result.value.exitCode).toBe(0);
         expect(result.value.timedOut).toBe(false);

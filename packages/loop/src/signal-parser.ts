@@ -17,10 +17,10 @@ export interface ParsedSignal {
  * so we scan all lines from the end looking for the first signal match.
  *
  * Recognizes:
- * - RALPH_DONE → { signal: 'done' }
- * - RALPH_BLOCKED:<reason> → { signal: 'blocked', reason }
- * - RALPH_NEEDS_HUMAN:<reason> → { signal: 'needs_human', reason }
- * - RALPH_REVIEW:{json} → { signal: 'review', reviewPayload }
+ * - RAUF_DONE → { signal: 'done' }
+ * - RAUF_BLOCKED:<reason> → { signal: 'blocked', reason }
+ * - RAUF_NEEDS_HUMAN:<reason> → { signal: 'needs_human', reason }
+ * - RAUF_REVIEW:{json} → { signal: 'review', reviewPayload }
  *
  * Returns { signal: 'none' } if no recognized signal found.
  */
@@ -38,22 +38,22 @@ export function parseSignal(stdout: string): ParsedSignal {
 }
 
 function matchSignal(line: string): ParsedSignal | null {
-  if (line === "RALPH_DONE") {
+  if (line === "RAUF_DONE") {
     return { signal: "done" };
   }
 
-  if (line.startsWith("RALPH_BLOCKED:")) {
-    const reason = line.slice("RALPH_BLOCKED:".length);
+  if (line.startsWith("RAUF_BLOCKED:")) {
+    const reason = line.slice("RAUF_BLOCKED:".length);
     return { signal: "blocked", reason };
   }
 
-  if (line.startsWith("RALPH_NEEDS_HUMAN:")) {
-    const reason = line.slice("RALPH_NEEDS_HUMAN:".length);
+  if (line.startsWith("RAUF_NEEDS_HUMAN:")) {
+    const reason = line.slice("RAUF_NEEDS_HUMAN:".length);
     return { signal: "needs_human", reason };
   }
 
-  if (line.startsWith("RALPH_REVIEW:")) {
-    const jsonStr = line.slice("RALPH_REVIEW:".length);
+  if (line.startsWith("RAUF_REVIEW:")) {
+    const jsonStr = line.slice("RAUF_REVIEW:".length);
     try {
       const parsed = JSON.parse(jsonStr);
       const result = ReviewPayloadSchema.safeParse(parsed);

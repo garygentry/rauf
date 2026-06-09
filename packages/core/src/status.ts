@@ -295,7 +295,7 @@ export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus> {
 
 // ─── readLogTail ────────────────────────────────────────────────
 //
-// Read last N lines of ralph.log. Cap at MAX_LOG_TAIL_LINES.
+// Read last N lines of rauf.log. Cap at MAX_LOG_TAIL_LINES.
 
 export function readLogTail(paths: BacklogPaths, lines: number = 50): Result<string[]> {
   const logPath = paths.log;
@@ -326,7 +326,7 @@ export function readLogTail(paths: BacklogPaths, lines: number = 50): Result<str
 
 // ─── watchLog ───────────────────────────────────────────────────
 //
-// Watch ralph.log for changes using fs.watch. Calls callback with
+// Watch rauf.log for changes using fs.watch. Calls callback with
 // new lines as they appear. Returns cleanup function to stop watching.
 
 export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => void): () => void {
@@ -410,7 +410,7 @@ export function writeLoopState(
 
 // ─── appendLog ───────────────────────────────────────────────────
 //
-// Append a timestamped line to ralph.log.
+// Append a timestamped line to rauf.log.
 // Format: [YYYY-MM-DD HH:MM:SS] message\n
 
 export function appendLog(paths: BacklogPaths, message: string): Result<void> {
@@ -531,14 +531,14 @@ function walkForStateFiles(dir: string, projectPath: string, results: ActiveRoot
 
     const fullPath = path.join(dir, name);
 
-    if (name === ".ralph") {
-      // Check for state.json in this .ralph dir
+    if (name === ".rauf") {
+      // Check for state.json in this .rauf dir
       const statePath = path.join(fullPath, "state.json");
       try {
         const raw = fs.readFileSync(statePath, "utf-8");
         const parsed = LoopStateSchema.safeParse(JSON.parse(raw));
         if (parsed.success && parsed.data.status !== "idle") {
-          // Determine backlog root: if parent has backlog.json, root is parent; else root is .ralph dir
+          // Determine backlog root: if parent has backlog.json, root is parent; else root is .rauf dir
           const parentDir = dir;
           const parentHasBacklog = fileExists(path.join(parentDir, "backlog.json"));
           const backlogRoot = parentHasBacklog ? parentDir : fullPath;
@@ -569,11 +569,11 @@ function walkForStateFiles(dir: string, projectPath: string, results: ActiveRoot
         }
       }
 
-      // Don't recurse into .ralph dirs
+      // Don't recurse into .rauf dirs
       continue;
     }
 
-    // Recurse into non-.ralph directories
+    // Recurse into non-.rauf directories
     walkForStateFiles(fullPath, projectPath, results);
   }
 }
@@ -581,7 +581,7 @@ function walkForStateFiles(dir: string, projectPath: string, results: ActiveRoot
 /**
  * Scan the project for backlog roots with active (non-idle) loops.
  *
- * Walks the project directory looking for state.json files inside .ralph/
+ * Walks the project directory looking for state.json files inside .rauf/
  * directories. For each found, reads the state and returns roots with
  * non-idle status. Also detects .loop.lock files as activity indicators.
  *

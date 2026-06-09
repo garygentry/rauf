@@ -14,6 +14,7 @@ import {
   resolveBacklogRoot,
   resolveBacklogPaths,
   scanActiveRoots,
+  detectMigrationState,
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
@@ -22,7 +23,7 @@ import {
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
-import { c, info, print, error, outputJson } from "./formatter.js";
+import { c, info, print, error, warn, outputJson } from "./formatter.js";
 
 // ─── handleStatus ─────────────────────────────────────────────────
 //
@@ -79,8 +80,22 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     return statusExitCode(result.value.loopState);
   } else {
     // Default root + list active non-default roots
-    const defaultRoot = path.join(resolved, ".ralph");
+    const defaultRoot = path.join(resolved, ".rauf");
     const defaultPathsResult = resolveBacklogPaths(resolved, defaultRoot);
+
+    // Tolerate legacy ralph projects: warn to migrate rather than implying "not installed".
+    if (!defaultPathsResult.ok) {
+      const legacy = detectMigrationState(resolved);
+      if (legacy.ok && (legacy.value === "legacy_ralph" || legacy.value === "partial")) {
+        if (ctx.globalFlags.json) {
+          outputJson({ legacy: true, message: `Run 'rauf migrate ${resolved}' to migrate.` });
+        } else {
+          warn(`Legacy ralph project detected.`);
+          info(`Run: ${c.cyan(`rauf migrate ${resolved}`)} to migrate it to rauf.`);
+        }
+        return ExitCode.ERROR;
+      }
+    }
 
     if (defaultPathsResult.ok) {
       const result = deriveStatus(defaultPathsResult.value);
@@ -106,7 +121,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     // Scan for active non-default roots
     const activeRootsResult = scanActiveRoots(resolved);
     if (activeRootsResult.ok && activeRootsResult.value.length > 0) {
-      const nonDefault = activeRootsResult.value.filter((r) => r.relativePath !== ".ralph");
+      const nonDefault = activeRootsResult.value.filter((r) => r.relativePath !== ".rauf");
       if (nonDefault.length > 0) {
         print("");
         print(c.bold("Active backlog roots:"));
@@ -128,7 +143,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 
 // ─── handleLog ────────────────────────────────────────────────────
 //
-// Print the last N lines of ralph.log. With --follow, stream until Ctrl+C.
+// Print the last N lines of rauf.log. With --follow, stream until Ctrl+C.
 
 export async function handleLog(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
@@ -183,7 +198,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
 
 // ─── handleProgress ───────────────────────────────────────────────
 //
-// Print the contents of .ralph/progress.md.
+// Print the contents of .rauf/progress.md.
 
 export async function handleProgress(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];

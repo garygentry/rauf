@@ -17,10 +17,10 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
-/** Create a minimal valid .ralph.json (MarkerFile). */
+/** Create a minimal valid .rauf.json (MarkerFile). */
 function writeMarker(dir: string): void {
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -41,7 +41,7 @@ function writeMarker(dir: string): void {
     artifactHashes: {},
     options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
 /** Write a minimal backlog.json with the given items. */
@@ -50,15 +50,15 @@ function writeBacklog(
   items: unknown[] = [],
   extra: Record<string, unknown> = {},
 ): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
   const backlog = {
     project: "test-project",
     description: "Test project",
     items,
     ...extra,
   };
-  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 }
 
 function makeItem(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -76,7 +76,7 @@ function makeItem(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 /** CSRF headers for mutation requests. */
-const csrfHeaders = { "X-Ralph-Request": "true", "Content-Type": "application/json" };
+const csrfHeaders = { "X-Rauf-Request": "true", "Content-Type": "application/json" };
 
 // ─── Setup ───────────────────────────────────────────────────────
 
@@ -313,7 +313,7 @@ describe("POST /api/projects/:id/backlog", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/backlog", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true", "Content-Type": "text/plain" },
+      headers: { "X-Rauf-Request": "true", "Content-Type": "text/plain" },
       body: "not json",
     });
     expect(res.status).toBe(400);
@@ -509,7 +509,7 @@ describe("PUT /api/projects/:id/backlog/:itemId", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/backlog/001", {
       method: "PUT",
-      headers: { "X-Ralph-Request": "true", "Content-Type": "text/plain" },
+      headers: { "X-Rauf-Request": "true", "Content-Type": "text/plain" },
       body: "not json",
     });
     expect(res.status).toBe(400);
@@ -573,7 +573,7 @@ describe("DELETE /api/projects/:id/backlog/:itemId", () => {
     writeMarker(projectDir);
     writeBacklog(projectDir, [makeItem({ id: "001", status: "in_progress" })]);
     // Write a state.json showing the loop is running (must match LoopStateSchema)
-    const stateDir = path.join(projectDir, ".ralph");
+    const stateDir = path.join(projectDir, ".rauf");
     const state = {
       status: "running",
       currentItem: "001",
@@ -639,8 +639,8 @@ describe("POST /api/projects/:id/backlog/restore", () => {
     writeMarker(projectDir);
     writeBacklog(projectDir, [makeItem({ id: "001" })]);
     // Create a .bak file (simulating what atomicWrite does)
-    const ralphDir = path.join(projectDir, ".ralph");
-    const backlogPath = path.join(ralphDir, "backlog.json");
+    const raufDir = path.join(projectDir, ".rauf");
+    const backlogPath = path.join(raufDir, "backlog.json");
     const bakPath = `${backlogPath}.bak`;
     const backup = {
       project: "test-project",
@@ -672,19 +672,16 @@ describe("POST /api/projects/:id/backlog/restore", () => {
 
 describe("Edge cases: corrupt backlog.json", () => {
   function writeCorruptBacklog(dir: string): void {
-    const ralphDir = path.join(dir, ".ralph");
-    fs.mkdirSync(ralphDir, { recursive: true });
-    fs.writeFileSync(path.join(ralphDir, "backlog.json"), "{ invalid json }");
+    const raufDir = path.join(dir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(path.join(raufDir, "backlog.json"), "{ invalid json }");
   }
 
   function writeInvalidSchemaBacklog(dir: string): void {
-    const ralphDir = path.join(dir, ".ralph");
-    fs.mkdirSync(ralphDir, { recursive: true });
+    const raufDir = path.join(dir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
     // Valid JSON but wrong schema (items is a string, not an array)
-    fs.writeFileSync(
-      path.join(ralphDir, "backlog.json"),
-      JSON.stringify({ items: "not-an-array" }),
-    );
+    fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify({ items: "not-an-array" }));
   }
 
   it("GET /backlog returns 500 with INVALID_JSON code for corrupt file", async () => {

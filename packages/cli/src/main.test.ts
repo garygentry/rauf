@@ -8,7 +8,7 @@ function withArgv(
   fn: () => Promise<void>,
 ): Promise<{ stdout: string; stderr: string }> {
   const origArgv = process.argv;
-  process.argv = ["node", "ralph", ...args];
+  process.argv = ["node", "rauf", ...args];
 
   const stdout: string[] = [];
   const stderr: string[] = [];

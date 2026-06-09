@@ -23,7 +23,7 @@ describe("lock", () => {
     projectPath = project.projectPath;
     cleanup = project.cleanup;
 
-    const result = resolveBacklogPaths(projectPath, path.join(projectPath, ".ralph"));
+    const result = resolveBacklogPaths(projectPath, path.join(projectPath, ".rauf"));
     if (!result.ok) throw new Error(`resolveBacklogPaths failed: ${result.error.message}`);
     paths = result.value;
 

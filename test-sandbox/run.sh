@@ -45,11 +45,11 @@ echo "=== Post-run state ==="
 
 # Determine state directory based on --backlog flag
 if [ -n "$BACKLOG_DIR" ]; then
-  STATE_DIR="$SANDBOX_DIR/$BACKLOG_DIR/.ralph"
+  STATE_DIR="$SANDBOX_DIR/$BACKLOG_DIR/.rauf"
   BACKLOG_FILE="$SANDBOX_DIR/$BACKLOG_DIR/backlog.json"
 else
-  STATE_DIR="$SANDBOX_DIR/.ralph"
-  BACKLOG_FILE="$SANDBOX_DIR/.ralph/backlog.json"
+  STATE_DIR="$SANDBOX_DIR/.rauf"
+  BACKLOG_FILE="$SANDBOX_DIR/.rauf/backlog.json"
 fi
 
 # Show backlog item statuses

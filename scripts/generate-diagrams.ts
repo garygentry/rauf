@@ -114,7 +114,7 @@ const boxes: Box[] = [
     id: "fs",
     label: "ROOT_DIRECTORY filesystem",
     sublabel:
-      "~/workspace/ \u2014 project-a/.ralph.json, .ralph/ \u2026  project-b/.ralph.json, .ralph/ \u2026",
+      "~/workspace/ \u2014 project-a/.rauf.json, .rauf/ \u2026  project-b/.rauf.json, .rauf/ \u2026",
     x: 40,
     y: 310,
     w: 560,
@@ -122,10 +122,10 @@ const boxes: Box[] = [
     style: "secondary",
   },
 
-  // ~/.ralph/
+  // ~/.rauf/
   {
     id: "dotralph",
-    label: "~/.ralph/",
+    label: "~/.rauf/",
     sublabel: "Tool config, server PID, logs",
     x: 40,
     y: 404,

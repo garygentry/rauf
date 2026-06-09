@@ -1,16 +1,16 @@
-export async function ralphFetch(url: string, options?: RequestInit): Promise<Response> {
+export async function raufFetch(url: string, options?: RequestInit): Promise<Response> {
   return fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
-      "X-Ralph-Request": "true",
+      "X-Rauf-Request": "true",
     },
   });
 }
 
-export async function ralphFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await ralphFetch(url, options);
+export async function raufFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await raufFetch(url, options);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const message =

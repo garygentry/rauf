@@ -127,7 +127,7 @@ describe("StreamParser", () => {
       JSON.stringify({
         type: "content_block_delta",
         index: 0,
-        delta: { type: "text_delta", text: "Let me edit that file.\n\nRALPH_DONE" },
+        delta: { type: "text_delta", text: "Let me edit that file.\n\nRAUF_DONE" },
       }),
     );
     parser.feed(JSON.stringify({ type: "content_block_stop", index: 0 }));
@@ -153,7 +153,7 @@ describe("StreamParser", () => {
     // message_stop
     parser.feed(JSON.stringify({ type: "message_stop" }));
 
-    expect(parser.getReconstructedText()).toBe("Let me edit that file.\n\nRALPH_DONE");
+    expect(parser.getReconstructedText()).toBe("Let me edit that file.\n\nRAUF_DONE");
 
     const toolStarts = events.filter((e) => e.type === "tool_start");
     expect(toolStarts).toHaveLength(1);
@@ -188,13 +188,13 @@ describe("StreamParser", () => {
         JSON.stringify({
           type: "assistant",
           message: {
-            content: [{ type: "text", text: "Hello world!\n\nRALPH_DONE" }],
+            content: [{ type: "text", text: "Hello world!\n\nRAUF_DONE" }],
             usage: { input_tokens: 5000, output_tokens: 100 },
           },
         }),
       );
 
-      expect(parser.getReconstructedText()).toBe("Hello world!\n\nRALPH_DONE");
+      expect(parser.getReconstructedText()).toBe("Hello world!\n\nRAUF_DONE");
     });
 
     it("extracts tool use from assistant event", () => {
@@ -244,12 +244,12 @@ describe("StreamParser", () => {
       parser.feed(
         JSON.stringify({
           type: "result",
-          result: "RALPH_DONE",
+          result: "RAUF_DONE",
           usage: { input_tokens: 1000, output_tokens: 20 },
         }),
       );
 
-      expect(parser.getReconstructedText()).toBe("RALPH_DONE");
+      expect(parser.getReconstructedText()).toBe("RAUF_DONE");
     });
 
     it("does not overwrite text from assistant events with result", () => {
@@ -258,7 +258,7 @@ describe("StreamParser", () => {
         JSON.stringify({
           type: "assistant",
           message: {
-            content: [{ type: "text", text: "Detailed work...\n\nRALPH_DONE" }],
+            content: [{ type: "text", text: "Detailed work...\n\nRAUF_DONE" }],
             usage: { input_tokens: 100, output_tokens: 50 },
           },
         }),
@@ -266,13 +266,13 @@ describe("StreamParser", () => {
       parser.feed(
         JSON.stringify({
           type: "result",
-          result: "RALPH_DONE",
+          result: "RAUF_DONE",
           usage: { input_tokens: 100, output_tokens: 50 },
         }),
       );
 
       // Should keep the more detailed text from assistant, not the truncated result
-      expect(parser.getReconstructedText()).toBe("Detailed work...\n\nRALPH_DONE");
+      expect(parser.getReconstructedText()).toBe("Detailed work...\n\nRAUF_DONE");
     });
 
     it("emits message_stop from result event", () => {
@@ -313,7 +313,7 @@ describe("StreamParser", () => {
         JSON.stringify({
           type: "assistant",
           message: {
-            content: [{ type: "text", text: "\n\nRALPH_DONE" }],
+            content: [{ type: "text", text: "\n\nRAUF_DONE" }],
             usage: { input_tokens: 25000, output_tokens: 250 },
           },
         }),
@@ -324,12 +324,12 @@ describe("StreamParser", () => {
         JSON.stringify({
           type: "result",
           subtype: "success",
-          result: "RALPH_DONE",
+          result: "RAUF_DONE",
           usage: { input_tokens: 25000, output_tokens: 250 },
         }),
       );
 
-      expect(parser.getReconstructedText()).toBe("Let me scaffold the package.\n\nRALPH_DONE");
+      expect(parser.getReconstructedText()).toBe("Let me scaffold the package.\n\nRAUF_DONE");
 
       const toolStarts = events.filter((e) => e.type === "tool_start");
       expect(toolStarts).toHaveLength(1);

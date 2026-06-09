@@ -68,7 +68,7 @@ export function Sidebar() {
           className="text-lg font-bold"
           style={{ color: resolvedTheme === "dark" ? "#a5b4fc" : "#818cf8" }}
         >
-          Ralph
+          Rauf
         </span>
         <span
           className="text-xs font-medium"

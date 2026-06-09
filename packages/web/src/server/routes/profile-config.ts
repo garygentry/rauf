@@ -10,7 +10,7 @@
 //   GET  /                    → { data: ToolConfig }
 //   PUT  /                    → { data: ToolConfig }
 //
-// Profile mutations (PUT, POST) require X-Ralph-Request: true
+// Profile mutations (PUT, POST) require X-Rauf-Request: true
 // (enforced by app-level CSRF middleware).
 
 import { Hono } from "hono";
@@ -65,7 +65,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
 
   // ── GET /:id/profile ──────────────────────────────────────────
   //
-  // Returns the ProjectProfile stored in .ralph.json.
+  // Returns the ProjectProfile stored in .rauf.json.
   // 404 when the project doesn't have ralph installed.
 
   router.get("/:id/profile", (c) => {
@@ -114,7 +114,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
 
   // ── PUT /:id/profile ──────────────────────────────────────────
   //
-  // Replace the ProjectProfile in .ralph.json with the body.
+  // Replace the ProjectProfile in .rauf.json with the body.
   // Body must conform to ProjectProfileSchema.
   // Returns the saved profile on success.
 
@@ -159,7 +159,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
 
   // ── PUT /:id/options ────────────────────────────────────────────
   //
-  // Replace the MarkerOptions in .ralph.json with the body.
+  // Replace the MarkerOptions in .rauf.json with the body.
   // Body must conform to MarkerOptionsSchema.
   // Returns the saved options on success.
 
@@ -208,7 +208,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
 // ─── createConfigRouter ──────────────────────────────────────────
 //
 // Returns a Hono router for /api/config routes.
-// No project path involved — reads/writes ~/.ralph/config.json.
+// No project path involved — reads/writes ~/.rauf/config.json.
 
 export function createConfigRouter(): Hono {
   const router = new Hono();
@@ -216,7 +216,7 @@ export function createConfigRouter(): Hono {
   // ── GET / ─────────────────────────────────────────────────────
   //
   // Returns the current ToolConfig. Returns defaults when
-  // ~/.ralph/config.json doesn't exist.
+  // ~/.rauf/config.json doesn't exist.
 
   router.get("/", (c) => {
     const result = readToolConfig();

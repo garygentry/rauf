@@ -10,7 +10,7 @@ import type {
   ArtifactStalenessReport,
   ArtifactFileStatus,
 } from "@ralph/core";
-import { ralphFetchJson } from "../../lib/fetch";
+import { raufFetchJson } from "../../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ export function ProjectSettings() {
   } = useQuery({
     queryKey: ["projects", projectId],
     queryFn: () =>
-      ralphFetchJson<DiscoveredProject & { marker: MarkerFile }>(
+      raufFetchJson<DiscoveredProject & { marker: MarkerFile }>(
         `/api/projects/${encodeURIComponent(projectId)}`,
       ),
     enabled: !!projectId,
@@ -89,7 +89,7 @@ export function ProjectSettings() {
 
   const profileMutation = useMutation({
     mutationFn: (updated: ProjectProfile) =>
-      ralphFetchJson<ProjectProfile>(`/api/projects/${encodeURIComponent(projectId)}/profile`, {
+      raufFetchJson<ProjectProfile>(`/api/projects/${encodeURIComponent(projectId)}/profile`, {
         method: "PUT",
         body: JSON.stringify(updated),
       }),
@@ -103,7 +103,7 @@ export function ProjectSettings() {
 
   const optionsMutation = useMutation({
     mutationFn: (updated: MarkerOptions) =>
-      ralphFetchJson<MarkerOptions>(`/api/projects/${encodeURIComponent(projectId)}/options`, {
+      raufFetchJson<MarkerOptions>(`/api/projects/${encodeURIComponent(projectId)}/options`, {
         method: "PUT",
         body: JSON.stringify(updated),
       }),
@@ -117,7 +117,7 @@ export function ProjectSettings() {
 
   const detectMutation = useMutation({
     mutationFn: () =>
-      ralphFetchJson<ProjectProfile>(
+      raufFetchJson<ProjectProfile>(
         `/api/projects/${encodeURIComponent(projectId)}/profile/detect`,
         { method: "POST" },
       ),
@@ -131,7 +131,7 @@ export function ProjectSettings() {
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      ralphFetchJson<InstallationReport>(`/api/projects/${encodeURIComponent(projectId)}/update`, {
+      raufFetchJson<InstallationReport>(`/api/projects/${encodeURIComponent(projectId)}/update`, {
         method: "POST",
       }),
     onSuccess: () => {
@@ -145,7 +145,7 @@ export function ProjectSettings() {
   const stalenessQuery = useQuery({
     queryKey: ["projects", projectId, "artifact-status"],
     queryFn: () =>
-      ralphFetchJson<ArtifactStalenessReport>(
+      raufFetchJson<ArtifactStalenessReport>(
         `/api/projects/${encodeURIComponent(projectId)}/artifact-status`,
       ),
     enabled: !!projectId,
@@ -257,7 +257,7 @@ export function ProjectSettings() {
         <span className="font-mono font-medium" style={{ color: "var(--color-text)" }}>
           {projectId}
         </span>{" "}
-        — stored in .ralph.json
+        — stored in .rauf.json
       </p>
 
       {/* Global mutation feedback */}
@@ -481,10 +481,7 @@ export function ProjectSettings() {
         </SettingsSection>
 
         {/* ── Metadata ────────────────────────────────────────── */}
-        <SettingsSection
-          title="Installation Info"
-          description="Read-only metadata from .ralph.json"
-        >
+        <SettingsSection title="Installation Info" description="Read-only metadata from .rauf.json">
           <div className="space-y-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
             <MetaRow label="Version" value={marker.version} />
             <MetaRow label="Variant" value={marker.variant} />

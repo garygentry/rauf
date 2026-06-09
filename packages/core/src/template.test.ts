@@ -163,8 +163,8 @@ describe("renderTemplateFile", () => {
 // ─── updateSentinelBlock ─────────────────────────────────────────
 
 describe("updateSentinelBlock", () => {
-  const START = "<!-- ralph:start -->";
-  const END = "<!-- ralph:end -->";
+  const START = "<!-- rauf:start -->";
+  const END = "<!-- rauf:end -->";
 
   it("replaces content between existing sentinels", () => {
     const content = [
@@ -227,9 +227,9 @@ describe("updateSentinelBlock", () => {
     );
   });
 
-  it("works with RALPH.md managed sentinels", () => {
-    const managedStart = "<!-- ralph:managed:start -->";
-    const managedEnd = "<!-- ralph:managed:end -->";
+  it("works with RAUF.md managed sentinels", () => {
+    const managedStart = "<!-- rauf:managed:start -->";
+    const managedEnd = "<!-- rauf:managed:end -->";
 
     const content = [
       "## Verification Commands",

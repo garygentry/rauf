@@ -17,7 +17,7 @@ let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-archive-"));
-  fs.mkdirSync(path.join(tmpDir, ".ralph"));
+  fs.mkdirSync(path.join(tmpDir, ".rauf"));
   paths = defaultBacklogPaths(tmpDir);
 });
 
@@ -49,12 +49,12 @@ function writeSeedBacklog(items: BacklogItem[]): void {
 }
 
 function readBacklogFile(): Backlog {
-  const raw = fs.readFileSync(path.join(tmpDir, ".ralph", "backlog.json"), "utf-8");
+  const raw = fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8");
   return JSON.parse(raw) as Backlog;
 }
 
 function readArchiveFile(month: string): unknown {
-  const raw = fs.readFileSync(path.join(tmpDir, ".ralph", "archive", `${month}.json`), "utf-8");
+  const raw = fs.readFileSync(path.join(tmpDir, ".rauf", "archive", `${month}.json`), "utf-8");
   return JSON.parse(raw);
 }
 
@@ -75,7 +75,7 @@ describe("sweepBacklog", () => {
     expect(result.value.archivedMonths).toEqual([]);
 
     // Archive dir should not exist
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive"))).toBe(false);
     // Backlog unchanged
     expect(readBacklogFile().items).toHaveLength(2);
   });
@@ -262,8 +262,8 @@ describe("purgeArchive", () => {
     expect(result.value.purgedMonths).toEqual(["2026-01"]);
 
     // Only 2026-01 deleted; 2026-02 still exists
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-01.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-02.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive", "2026-01.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive", "2026-02.json"))).toBe(true);
   });
 
   it("12. purge all → all files deleted", () => {
@@ -280,8 +280,8 @@ describe("purgeArchive", () => {
     expect(result.value.purgedCount).toBe(2);
     expect(result.value.purgedMonths).toEqual(["2026-01", "2026-02"]);
 
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-01.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-02.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive", "2026-01.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive", "2026-02.json"))).toBe(false);
   });
 
   it("13. non-existent month → ok with purgedCount: 0", () => {
@@ -300,7 +300,7 @@ describe("non-default root", () => {
   it("sweepBacklog operates on custom root archive directory", () => {
     // Create custom root structure
     const customRoot = path.join(tmpDir, "specs", "auth");
-    const customStateDir = path.join(customRoot, ".ralph");
+    const customStateDir = path.join(customRoot, ".rauf");
     const customArchiveDir = path.join(customStateDir, "archive");
     fs.mkdirSync(customStateDir, { recursive: true });
 
@@ -310,7 +310,7 @@ describe("non-default root", () => {
       stateDir: customStateDir,
       backlog: path.join(customRoot, "backlog.json"),
       state: path.join(customStateDir, "state.json"),
-      log: path.join(customStateDir, "ralph.log"),
+      log: path.join(customStateDir, "rauf.log"),
       done: path.join(customStateDir, "DONE"),
       cancel: path.join(customStateDir, "CANCEL"),
       progress: path.join(customStateDir, "progress.md"),
@@ -334,6 +334,6 @@ describe("non-default root", () => {
 
     // Archive written to custom path, not default
     expect(fs.existsSync(path.join(customArchiveDir, "2026-03.json"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".ralph", "archive", "2026-03.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".rauf", "archive", "2026-03.json"))).toBe(false);
   });
 });

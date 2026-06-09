@@ -36,7 +36,7 @@ let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-backlog-"));
-  // Create .ralph directory
+  // Create .rauf directory
   fs.mkdirSync(path.join(tmpDir, DEFAULT_ROOT_DIR));
   paths = defaultBacklogPaths(tmpDir);
 });
@@ -80,15 +80,15 @@ function writeStateJson(state: LoopState): void {
   fs.writeFileSync(paths.state, JSON.stringify(state, null, 2) + "\n");
 }
 
-/** Write a .ralph.json marker file (for smart default tests) */
+/** Write a .rauf.json marker file (for smart default tests) */
 function writeMarkerFile(marker: MarkerFile): void {
-  const filePath = path.join(tmpDir, ".ralph.json");
+  const filePath = path.join(tmpDir, ".rauf.json");
   fs.writeFileSync(filePath, JSON.stringify(marker, null, 2) + "\n");
 }
 
 function makeMarker(verify = "pnpm test && pnpm typecheck"): MarkerFile {
   return {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: "2026-01-01T00:00:00Z",
@@ -160,7 +160,7 @@ describe("readBacklog", () => {
 
   it("returns FILE_NOT_FOUND when backlog.json is missing", () => {
     const result = readBacklog(paths);
-    // Remove the file (only .ralph dir exists)
+    // Remove the file (only .rauf dir exists)
     expect(result.ok).toBe(false);
     if (result.ok) return;
 
@@ -819,7 +819,7 @@ describe("addItem", () => {
   });
 
   it("returns error when backlog.json is missing", () => {
-    // Don't write backlog.json — .ralph dir exists but no file
+    // Don't write backlog.json — .rauf dir exists but no file
     const input: CreateItemInput = {
       type: "feature",
       priority: 1,
@@ -1554,7 +1554,7 @@ describe("resetStalledItems", () => {
   });
 
   it("returns error when backlog.json is missing", () => {
-    // .ralph dir exists but no backlog.json
+    // .rauf dir exists but no backlog.json
     const result = resetStalledItems(paths);
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -1596,8 +1596,8 @@ describe("ensureBacklog", () => {
     expect(read.value.items[0]!.title).toBe("Test item");
   });
 
-  it("creates empty backlog.json when .ralph/ exists but backlog.json missing", () => {
-    // .ralph/ dir created by beforeEach, no backlog.json
+  it("creates empty backlog.json when .rauf/ exists but backlog.json missing", () => {
+    // .rauf/ dir created by beforeEach, no backlog.json
     const result = ensureBacklog(paths);
     expect(result.ok).toBe(true);
 
@@ -1619,8 +1619,8 @@ describe("ensureBacklog", () => {
     expect(read.value.description).toBe("");
   });
 
-  it("returns NOT_INSTALLED when .ralph/ dir does not exist", () => {
-    // Use a path without .ralph/ dir
+  it("returns NOT_INSTALLED when .rauf/ dir does not exist", () => {
+    // Use a path without .rauf/ dir
     const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-no-install-"));
     try {
       const emptyPaths = defaultBacklogPaths(emptyDir);
@@ -1634,12 +1634,12 @@ describe("ensureBacklog", () => {
   });
 
   it("does not return NOT_INSTALLED for non-default root", () => {
-    // Non-default root: basename is not ".ralph"
+    // Non-default root: basename is not ".rauf"
     const nonDefaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-nondefault-"));
     try {
       const specsDir = path.join(nonDefaultDir, "specs", "auth");
       fs.mkdirSync(specsDir, { recursive: true });
-      const stateDir = path.join(specsDir, ".ralph");
+      const stateDir = path.join(specsDir, ".rauf");
       fs.mkdirSync(stateDir, { recursive: true });
 
       const nonDefaultPaths: BacklogPaths = {
@@ -1648,7 +1648,7 @@ describe("ensureBacklog", () => {
         stateDir,
         backlog: path.join(specsDir, BACKLOG_FILENAME),
         state: path.join(stateDir, STATE_FILENAME),
-        log: path.join(stateDir, "ralph.log"),
+        log: path.join(stateDir, "rauf.log"),
         done: path.join(stateDir, "DONE"),
         cancel: path.join(stateDir, "CANCEL"),
         progress: path.join(stateDir, "progress.md"),
@@ -1785,14 +1785,14 @@ describe("non-default root", () => {
 
     try {
       const authRoot = path.join(multiProjectPath, "specs", "auth");
-      const authStateDir = path.join(authRoot, ".ralph");
+      const authStateDir = path.join(authRoot, ".rauf");
       const authPaths: BacklogPaths = {
         projectPath: multiProjectPath,
         root: authRoot,
         stateDir: authStateDir,
         backlog: path.join(authRoot, BACKLOG_FILENAME),
         state: path.join(authStateDir, STATE_FILENAME),
-        log: path.join(authStateDir, "ralph.log"),
+        log: path.join(authStateDir, "rauf.log"),
         done: path.join(authStateDir, "DONE"),
         cancel: path.join(authStateDir, "CANCEL"),
         progress: path.join(authStateDir, "progress.md"),

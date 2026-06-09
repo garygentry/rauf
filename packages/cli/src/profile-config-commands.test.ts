@@ -23,7 +23,7 @@ import ports from "../../../config/ports.json";
 // ─── Fixtures ──────────────────────────────────────────────────────
 
 let tmpDir: string;
-const TOOL_CONFIG_PATH = path.join(os.homedir(), ".ralph", "config.json");
+const TOOL_CONFIG_PATH = path.join(os.homedir(), ".rauf", "config.json");
 let savedConfig: string | null = null;
 
 beforeEach(() => {
@@ -94,10 +94,10 @@ function captureStdout(fn: () => Promise<void>): Promise<string> {
   });
 }
 
-/** Create a minimal .ralph.json (marker file) in a project dir */
+/** Create a minimal .rauf.json (marker file) in a project dir */
 function createMarkerFile(projectDir: string, overrides: Record<string, unknown> = {}): void {
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "1.0.0",
     variant: "backlog-json",
     installedAt: "2026-01-01T00:00:00Z",
@@ -123,7 +123,7 @@ function createMarkerFile(projectDir: string, overrides: Record<string, unknown>
     },
     ...overrides,
   };
-  fs.writeFileSync(path.join(projectDir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(projectDir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
 /** Write a test tool config */
@@ -141,7 +141,7 @@ describe("handleProfileShow", () => {
     expect(code).toBe(ExitCode.INVALID_ARGS);
   });
 
-  it("returns NOT_FOUND when .ralph.json does not exist", async () => {
+  it("returns NOT_FOUND when .rauf.json does not exist", async () => {
     const projectDir = path.join(tmpDir, "no-marker");
     fs.mkdirSync(projectDir);
     const ctx = makeCtx([projectDir]);
@@ -236,15 +236,15 @@ describe("handleProfileDetect", () => {
     expect(parsed).toHaveProperty("packageManager", "pnpm");
   });
 
-  it("does NOT write to .ralph.json (read-only)", async () => {
+  it("does NOT write to .rauf.json (read-only)", async () => {
     const projectDir = path.join(tmpDir, "readonly-project");
     fs.mkdirSync(projectDir);
     createMarkerFile(projectDir);
 
-    const markerBefore = fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8");
+    const markerBefore = fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8");
     const ctx = makeCtx([projectDir]);
     await handleProfileDetect(ctx);
-    const markerAfter = fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8");
+    const markerAfter = fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8");
 
     expect(markerBefore).toBe(markerAfter);
   });
@@ -277,7 +277,7 @@ describe("handleProfileSet", () => {
     const code = await handleProfileSet(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"));
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(marker.profile.commands.test).toBe("bun test --run");
     expect(marker.profile.verify).toContain("bun test --run");
   });
@@ -291,7 +291,7 @@ describe("handleProfileSet", () => {
     const code = await handleProfileSet(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"));
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(marker.profile.commands.format).toBeNull();
   });
 
@@ -304,7 +304,7 @@ describe("handleProfileSet", () => {
     const code = await handleProfileSet(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"));
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(marker.profile.stack).toBe("python");
   });
 
@@ -317,7 +317,7 @@ describe("handleProfileSet", () => {
     const code = await handleProfileSet(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
 
-    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"));
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(marker.profile.monorepo).toBe(false);
   });
 
@@ -363,11 +363,11 @@ describe("handleProfileSet", () => {
     const ctx = makeCtx([projectDir, "build", "bun build"]);
     await handleProfileSet(ctx);
 
-    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8"));
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(marker.profile.verify).toContain("bun build");
   });
 
-  it("returns NOT_FOUND when .ralph.json does not exist", async () => {
+  it("returns NOT_FOUND when .rauf.json does not exist", async () => {
     const projectDir = path.join(tmpDir, "no-marker-set");
     fs.mkdirSync(projectDir);
     const ctx = makeCtx([projectDir, "stack", "go"]);
@@ -679,11 +679,11 @@ describe("handleProjectsStatus", () => {
     fs.mkdirSync(projectDir, { recursive: true });
     createMarkerFile(projectDir);
 
-    // Add a .ralph dir so deriveStatus can compute backlog summary
-    const ralphDir = path.join(projectDir, ".ralph");
-    fs.mkdirSync(ralphDir);
+    // Add a .rauf dir so deriveStatus can compute backlog summary
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir);
     fs.writeFileSync(
-      path.join(ralphDir, "backlog.json"),
+      path.join(raufDir, "backlog.json"),
       JSON.stringify({ project: "project-x", description: "desc", items: [] }),
     );
 

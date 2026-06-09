@@ -24,9 +24,9 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
-/** A minimal valid .ralph.json (MarkerFile). */
+/** A minimal valid .rauf.json (MarkerFile). */
 const MARKER_TEMPLATE = {
-  ralph: true,
+  rauf: true,
   version: "1",
   variant: "backlog-json",
   installedAt: new Date().toISOString(),
@@ -48,19 +48,19 @@ const MARKER_TEMPLATE = {
   options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
 };
 
-/** Write a valid .ralph.json to the given project directory. */
+/** Write a valid .rauf.json to the given project directory. */
 function writeMarker(dir: string, profileOverride?: Record<string, unknown>): void {
   const marker = {
     ...MARKER_TEMPLATE,
     ...(profileOverride ? { profile: { ...MARKER_TEMPLATE.profile, ...profileOverride } } : {}),
   };
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
 /** Standard request headers for mutation endpoints. */
 const MUTATION_HEADERS = {
   "Content-Type": "application/json",
-  "X-Ralph-Request": "true",
+  "X-Rauf-Request": "true",
 };
 
 // ─── Setup ───────────────────────────────────────────────────────
@@ -68,9 +68,9 @@ const MUTATION_HEADERS = {
 let tmpDir: string;
 let projectDir: string;
 
-// Save and restore ~/.ralph/config.json to avoid side effects
+// Save and restore ~/.rauf/config.json to avoid side effects
 let savedConfig: string | null = null;
-const CONFIG_PATH = path.join(os.homedir(), ".ralph", "config.json");
+const CONFIG_PATH = path.join(os.homedir(), ".rauf", "config.json");
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-profile-config-test-"));
@@ -104,7 +104,7 @@ afterEach(() => {
 // ─── GET /api/projects/:id/profile ───────────────────────────────
 
 describe("GET /api/projects/:id/profile", () => {
-  it("returns the profile from .ralph.json", async () => {
+  it("returns the profile from .rauf.json", async () => {
     writeMarker(projectDir);
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/profile");
@@ -125,7 +125,7 @@ describe("GET /api/projects/:id/profile", () => {
     });
   });
 
-  it("returns 404 when .ralph.json is missing", async () => {
+  it("returns 404 when .rauf.json is missing", async () => {
     // No marker file — project not ralph-installed
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/profile");
@@ -156,7 +156,7 @@ describe("GET /api/projects/:id/profile", () => {
 // ─── PUT /api/projects/:id/profile ───────────────────────────────
 
 describe("PUT /api/projects/:id/profile", () => {
-  it("updates the profile in .ralph.json", async () => {
+  it("updates the profile in .rauf.json", async () => {
     writeMarker(projectDir);
     const app = makeApp(tmpDir);
 
@@ -216,7 +216,7 @@ describe("PUT /api/projects/:id/profile", () => {
     expect(body.data.stack).toBe("go");
   });
 
-  it("returns 404 when .ralph.json is missing", async () => {
+  it("returns 404 when .rauf.json is missing", async () => {
     const app = makeApp(tmpDir);
     const newProfile = {
       stack: "node-typescript",
@@ -300,11 +300,11 @@ describe("PUT /api/projects/:id/profile", () => {
     });
 
     // Read the raw marker file to verify other fields are preserved
-    const raw = JSON.parse(fs.readFileSync(path.join(projectDir, ".ralph.json"), "utf-8")) as {
-      ralph: boolean;
+    const raw = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8")) as {
+      rauf: boolean;
       options: { maxIterations: number };
     };
-    expect(raw.ralph).toBe(true);
+    expect(raw.rauf).toBe(true);
     expect(raw.options.maxIterations).toBe(20);
   });
 });
@@ -357,7 +357,7 @@ describe("POST /api/projects/:id/profile/detect", () => {
       headers: MUTATION_HEADERS,
     });
 
-    // GET should still return the original profile from .ralph.json
+    // GET should still return the original profile from .rauf.json
     const res = await app.request("/api/projects/my-project/profile");
     expect(res.status).toBe(200);
     const body = (await json(res)) as { data: { stack: string } };
@@ -519,7 +519,7 @@ describe("PUT /api/config", () => {
 
     const res = await app.request("/api/config", {
       method: "PUT",
-      headers: { "X-Ralph-Request": "true" }, // no Content-Type
+      headers: { "X-Rauf-Request": "true" }, // no Content-Type
     });
 
     expect(res.status).toBe(400);

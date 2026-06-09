@@ -4,8 +4,8 @@
 //
 // Server lifecycle:
 //   --foreground: inherit stdio, block until exit (default in TTY)
-//   --daemon:     spawn detached, write state to ~/.ralph/server.json,
-//                 redirect stdio to ~/.ralph/server.log
+//   --daemon:     spawn detached, write state to ~/.rauf/server.json,
+//                 redirect stdio to ~/.rauf/server.log
 //
 // Process health:
 //   State file check + process.kill(pid, 0) for liveness
@@ -27,11 +27,11 @@ import { c, info, print, error, outputJson } from "./formatter.js";
 
 // ─── Constants ───────────────────────────────────────────────────
 
-const RALPH_CONFIG_DIR = path.join(os.homedir(), ".ralph");
-export const SERVER_STATE_FILE = path.join(RALPH_CONFIG_DIR, "server.json");
-export const SERVER_LOG_FILE = path.join(RALPH_CONFIG_DIR, "server.log");
-export const SERVER_ERROR_FILE = path.join(RALPH_CONFIG_DIR, "server.error");
-const LEGACY_PID_FILE = path.join(RALPH_CONFIG_DIR, "server.pid");
+const RAUF_CONFIG_DIR = path.join(os.homedir(), ".rauf");
+export const SERVER_STATE_FILE = path.join(RAUF_CONFIG_DIR, "server.json");
+export const SERVER_LOG_FILE = path.join(RAUF_CONFIG_DIR, "server.log");
+export const SERVER_ERROR_FILE = path.join(RAUF_CONFIG_DIR, "server.error");
+const LEGACY_PID_FILE = path.join(RAUF_CONFIG_DIR, "server.pid");
 const SIGTERM_TIMEOUT_MS = 5000;
 const HEALTH_PING_TIMEOUT_MS = 2000;
 const DAEMON_READY_TIMEOUT_MS = 10_000;
@@ -85,7 +85,7 @@ function getServerSpawnArgs(port: number | undefined): { cmd: string; args: stri
 
 // ─── Server state file helpers ───────────────────────────────────
 
-/** Structured server state persisted to ~/.ralph/server.json */
+/** Structured server state persisted to ~/.rauf/server.json */
 export interface ServerState {
   pid: number;
   port: number;
@@ -123,9 +123,9 @@ export function readServerState(): ServerState | null {
   return null;
 }
 
-/** Write server state atomically, creating ~/.ralph/ if needed. */
+/** Write server state atomically, creating ~/.rauf/ if needed. */
 export function writeServerState(state: ServerState): void {
-  fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
+  fs.mkdirSync(RAUF_CONFIG_DIR, { recursive: true });
   const tmpFile = SERVER_STATE_FILE + ".tmp";
   fs.writeFileSync(tmpFile, JSON.stringify(state), "utf-8");
   fs.renameSync(tmpFile, SERVER_STATE_FILE);
@@ -333,7 +333,7 @@ async function killProcess(pid: number): Promise<boolean> {
 //
 // Start the ralph web server.
 // --foreground (default in TTY): inherit stdio, block until process exits.
-// --daemon: spawn detached, write state file, log to ~/.ralph/server.log.
+// --daemon: spawn detached, write state file, log to ~/.rauf/server.log.
 
 export async function handleServerStart(ctx: CommandContext): Promise<number> {
   const foreground = extractBoolFlag(ctx.flags, "foreground");
@@ -402,7 +402,7 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
 /** Start in foreground: spawn with inherited stdio, block until exit. */
 function startForeground(port: number, ctx: CommandContext): number {
   if (!ctx.globalFlags.quiet) {
-    print(`Starting Ralph server at ${c.cyan(`http://127.0.0.1:${port}`)}`);
+    print(`Starting Rauf server at ${c.cyan(`http://127.0.0.1:${port}`)}`);
     print(c.dim("Press Ctrl+C to stop."));
   }
 
@@ -422,9 +422,9 @@ function startForeground(port: number, ctx: CommandContext): number {
 
 /** Start as daemon: spawn detached, redirect output to log file, write state, wait for readiness. */
 async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
-  // Ensure ~/.ralph/ directory exists
+  // Ensure ~/.rauf/ directory exists
   try {
-    fs.mkdirSync(RALPH_CONFIG_DIR, { recursive: true });
+    fs.mkdirSync(RAUF_CONFIG_DIR, { recursive: true });
   } catch (e) {
     error(`Failed to create config directory: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
@@ -482,7 +482,7 @@ async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
           logFile: SERVER_LOG_FILE,
         });
       } else {
-        print(`${c.green("\u2713")} Ralph server started (PID ${child.pid})`);
+        print(`${c.green("\u2713")} Rauf server started (PID ${child.pid})`);
         print(`  URL:  ${c.cyan(`http://127.0.0.1:${port}`)}`);
         print(`  Log:  ${SERVER_LOG_FILE}`);
         print(`  PID:  ${child.pid}`);
@@ -543,7 +543,7 @@ async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
 // ─── handleServerStop ────────────────────────────────────────────
 //
 // Stop the running server.
-// Reads state from ~/.ralph/server.json, sends SIGTERM,
+// Reads state from ~/.rauf/server.json, sends SIGTERM,
 // waits up to 5s, then SIGKILL if still alive.
 
 export async function handleServerStop(ctx: CommandContext): Promise<number> {
@@ -672,7 +672,7 @@ export async function handleServerStatus(ctx: CommandContext): Promise<number> {
 
 // ─── handleServerLogs ────────────────────────────────────────────
 //
-// Show last N lines of ~/.ralph/server.log.
+// Show last N lines of ~/.rauf/server.log.
 
 export async function handleServerLogs(ctx: CommandContext): Promise<number> {
   const tailN = extractNumberFlag(ctx.flags, "tail") ?? 50;

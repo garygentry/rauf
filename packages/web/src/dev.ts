@@ -79,7 +79,7 @@ pipeWithPrefix(viteProc.stderr, VITE_PREFIX);
 // --- Startup banner ---
 
 console.log();
-console.log(`${BOLD}  Ralph Dev Server${RESET}`);
+console.log(`${BOLD}  Rauf Dev Server${RESET}`);
 console.log(`${DIM}  ─────────────────────────────${RESET}`);
 console.log(`  ${CYAN}API${RESET}      http://${ports.serverHost}:${ports.serverPort}`);
 console.log(`  ${MAGENTA}Frontend${RESET} http://localhost:${ports.vitePort}`);

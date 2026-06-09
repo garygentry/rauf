@@ -24,8 +24,8 @@ function setupProject(
     createProgressMd?: boolean;
   },
 ) {
-  const ralphDir = path.join(tmpDir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(tmpDir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
 
   // backlog.json
   const backlog: Backlog = {
@@ -33,14 +33,14 @@ function setupProject(
     description: "Test project",
     items,
   };
-  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 
-  // RALPH.md
-  fs.writeFileSync(path.join(ralphDir, "RALPH.md"), "# Test RALPH.md\nVerification: pnpm test\n");
+  // RAUF.md
+  fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test RAUF.md\nVerification: pnpm test\n");
 
-  // .ralph.json marker
+  // .rauf.json marker
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "0.1.0",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -70,11 +70,11 @@ function setupProject(
       ...(options?.model !== undefined ? { model: options.model } : {}),
     },
   };
-  fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(tmpDir, ".rauf.json"), JSON.stringify(marker, null, 2));
 
   // progress.md
   if (options?.createProgressMd) {
-    fs.writeFileSync(path.join(ralphDir, "progress.md"), "# Progress\n\n- Test learning\n");
+    fs.writeFileSync(path.join(raufDir, "progress.md"), "# Progress\n\n- Test learning\n");
   }
 
   // git init for gitCommit to work
@@ -183,10 +183,10 @@ describe("LoopRunner", () => {
     it("clears DONE and CANCEL files at startup", async () => {
       setupProject(tmpDir, []);
       // Create pre-existing DONE and CANCEL files
-      fs.writeFileSync(path.join(tmpDir, ".ralph", "DONE"), "old");
-      fs.writeFileSync(path.join(tmpDir, ".ralph", "CANCEL"), "old");
+      fs.writeFileSync(path.join(tmpDir, ".rauf", "DONE"), "old");
+      fs.writeFileSync(path.join(tmpDir, ".rauf", "CANCEL"), "old");
 
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
@@ -194,10 +194,10 @@ describe("LoopRunner", () => {
       // DONE should be written again with summary (loop complete), but
       // the old DONE was cleared first. We verify by checking DONE exists
       // with new content (not "old")
-      const doneContent = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).not.toBe("old");
       // CANCEL file should not exist
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "CANCEL"))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "CANCEL"))).toBe(false);
     });
 
     it("reads marker options for autoSweep, sweepMinAgeDays, model", async () => {
@@ -206,7 +206,7 @@ describe("LoopRunner", () => {
         sweepMinAgeDays: 7,
         model: "claude-sonnet-4-6",
       });
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -214,15 +214,15 @@ describe("LoopRunner", () => {
       await runner.start();
 
       // Loop should have started (no crash from reading marker)
-      const logContent = fs.readFileSync(path.join(tmpDir, ".ralph", "ralph.log"), "utf-8");
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       expect(logContent).toContain("Auto-sweep enabled");
     });
   });
 
   describe("start() — main loop lifecycle", () => {
-    it("completes a single item with RALPH_DONE signal", async () => {
+    it("completes a single item with RAUF_DONE signal", async () => {
       setupProject(tmpDir, [pendingItem("001", "Test task")]);
-      writeMockClaude(binDir, 'echo "Some output"\necho "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "Some output"\necho "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -256,7 +256,7 @@ describe("LoopRunner", () => {
 
     it("processes multiple items sequentially", async () => {
       setupProject(tmpDir, [pendingItem("001", "First task"), pendingItem("002", "Second task")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
@@ -267,24 +267,24 @@ describe("LoopRunner", () => {
 
     it("stops when no more eligible items exist", async () => {
       setupProject(tmpDir, [pendingItem("001", "Only task")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
 
       expect(result.completedCount).toBe(1);
       // DONE file written
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
     });
 
     it("writes DONE file on completion with summary", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task one")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
-      const doneContent = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).toContain("completed=1");
       // iterations=2 because the loop increments the counter when checking
       // for more items and finds none on the second pass
@@ -293,9 +293,9 @@ describe("LoopRunner", () => {
   });
 
   describe("signal handling", () => {
-    it("handles RALPH_BLOCKED signal", async () => {
+    it("handles RAUF_BLOCKED signal", async () => {
       setupProject(tmpDir, [pendingItem("001", "Blocked task")]);
-      writeMockClaude(binDir, 'echo "RALPH_BLOCKED:Missing dependency"');
+      writeMockClaude(binDir, 'echo "RAUF_BLOCKED:Missing dependency"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -314,14 +314,14 @@ describe("LoopRunner", () => {
 
       // Item should be blocked in backlog
       const backlog = JSON.parse(
-        fs.readFileSync(path.join(tmpDir, ".ralph", "backlog.json"), "utf-8"),
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       );
       expect(backlog.items[0].status).toBe("blocked");
     });
 
-    it("handles RALPH_NEEDS_HUMAN signal — leaves item in_progress", async () => {
+    it("handles RAUF_NEEDS_HUMAN signal — leaves item in_progress", async () => {
       setupProject(tmpDir, [pendingItem("001", "Human needed task")]);
-      writeMockClaude(binDir, 'echo "RALPH_NEEDS_HUMAN:Need API key"');
+      writeMockClaude(binDir, 'echo "RAUF_NEEDS_HUMAN:Need API key"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -334,16 +334,16 @@ describe("LoopRunner", () => {
 
       // Item should remain in_progress (NOT reset to pending)
       const backlog = JSON.parse(
-        fs.readFileSync(path.join(tmpDir, ".ralph", "backlog.json"), "utf-8"),
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       );
       expect(backlog.items[0].status).toBe("in_progress");
 
       // State should be paused_human
-      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".ralph", "state.json"), "utf-8"));
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.status).toBe("paused_human");
 
       // DONE file written with needs_human
-      const doneContent = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).toContain("needs_human");
 
       // Event emitted
@@ -380,7 +380,7 @@ describe("LoopRunner", () => {
     it("uses item.model over options.model", async () => {
       setupProject(tmpDir, [pendingItem("001", "Model task", { model: "claude-opus-4-6" })]);
       // Script echoes args to stderr so we can verify, stdout emits signal
-      writeMockClaude(binDir, 'echo "$@" >&2\necho "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "$@" >&2\necho "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, {
@@ -400,7 +400,7 @@ describe("LoopRunner", () => {
 
     it("falls back to options.model when item has no model", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
-      writeMockClaude(binDir, 'echo "$@" >&2\necho "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "$@" >&2\necho "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, {
@@ -427,7 +427,7 @@ describe("LoopRunner", () => {
         pendingItem("003", "Task 3"),
         pendingItem("004", "Task 4"),
       ]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, {
@@ -441,11 +441,11 @@ describe("LoopRunner", () => {
       expect(result.completedCount).toBe(2);
 
       // State should be limit_reached
-      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".ralph", "state.json"), "utf-8"));
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.status).toBe("limit_reached");
 
       // DONE file written
-      const doneContent = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).toContain("completed=2");
       expect(doneContent).toContain("iterations=2");
     });
@@ -470,7 +470,7 @@ describe("LoopRunner", () => {
       expect(result.cancelled).toBe(true);
 
       // DONE file should say 'cancel'
-      const doneContent = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).toBe("cancel");
     }, 15_000);
 
@@ -479,8 +479,8 @@ describe("LoopRunner", () => {
       // First call creates CANCEL file then completes — cancel detected at next iteration boundary
       writeMockClaude(
         binDir,
-        `touch "${tmpDir}/.ralph/CANCEL"
-echo "RALPH_DONE"`,
+        `touch "${tmpDir}/.rauf/CANCEL"
+echo "RAUF_DONE"`,
       );
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -515,7 +515,7 @@ echo "RALPH_DONE"`,
 
       // Item should be reset to pending (not completed/blocked)
       const backlog = JSON.parse(
-        fs.readFileSync(path.join(tmpDir, ".ralph", "backlog.json"), "utf-8"),
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       );
       expect(backlog.items[0].status).toBe("pending");
     }, 15_000);
@@ -561,7 +561,7 @@ echo "RALPH_DONE"`,
     it("does not trigger on exit 0 even with limit text in stderr", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       // Exit 0 with usage limit text in stderr — should NOT trigger usage limit path
-      writeMockClaude(binDir, 'echo "usage limit warning" >&2\necho "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "usage limit warning" >&2\necho "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -580,16 +580,16 @@ echo "RALPH_DONE"`,
     });
   });
 
-  describe("state.json and ralph.log", () => {
+  describe("state.json and rauf.log", () => {
     it("writes state.json throughout lifecycle", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       // state.json should exist with terminal state
-      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".ralph", "state.json"), "utf-8"));
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.status).toBe("complete");
       expect(state.completedItems).toContain("001");
       // Iteration is 2: the loop incremented to try for more items,
@@ -597,14 +597,14 @@ echo "RALPH_DONE"`,
       expect(state.iteration).toBe(2);
     });
 
-    it("appends to ralph.log for key events", async () => {
+    it("appends to rauf.log for key events", async () => {
       setupProject(tmpDir, [pendingItem("001", "Log test task")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
-      const logContent = fs.readFileSync(path.join(tmpDir, ".ralph", "ralph.log"), "utf-8");
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       expect(logContent).toContain("Loop started");
       expect(logContent).toContain("--- Iteration 1 / 10 ---");
       expect(logContent).toContain("Selected item 001");
@@ -617,7 +617,7 @@ echo "RALPH_DONE"`,
   describe("event emission", () => {
     it("emits all core event types during successful lifecycle", async () => {
       setupProject(tmpDir, [pendingItem("001", "Event test")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const eventTypes: string[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -646,7 +646,7 @@ echo "RALPH_DONE"`,
 
     it("emits events with correct base fields (timestamp, projectPath)", async () => {
       setupProject(tmpDir, [pendingItem("001", "Base fields test")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -664,30 +664,30 @@ echo "RALPH_DONE"`,
   describe("DONE file on all terminal paths", () => {
     it("writes DONE on normal completion", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
     });
 
     it("writes DONE on cancel", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
-      writeMockClaude(binDir, 'sleep 1\necho "RALPH_DONE"');
+      writeMockClaude(binDir, 'sleep 1\necho "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       setTimeout(() => runner.cancel(), 100);
       await runner.start();
 
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
-      const content = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
+      const content = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(content).toBe("cancel");
     }, 15_000);
 
     it("writes DONE on maxIterations", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, {
         ...DEFAULT_OPTIONS,
@@ -695,20 +695,20 @@ echo "RALPH_DONE"`,
       });
       await runner.start();
 
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
-      const content = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
+      const content = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(content).toContain("completed=1");
     });
 
-    it("writes DONE on RALPH_NEEDS_HUMAN", async () => {
+    it("writes DONE on RAUF_NEEDS_HUMAN", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
-      writeMockClaude(binDir, 'echo "RALPH_NEEDS_HUMAN:Need decision"');
+      writeMockClaude(binDir, 'echo "RAUF_NEEDS_HUMAN:Need decision"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
-      const content = fs.readFileSync(path.join(tmpDir, ".ralph", "DONE"), "utf-8");
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
+      const content = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(content).toContain("needs_human");
     });
   });
@@ -716,10 +716,10 @@ echo "RALPH_DONE"`,
   describe("crash cleanup", () => {
     it("resets in_progress item to pending on unexpected error", async () => {
       setupProject(tmpDir, [pendingItem("001", "Crash task")]);
-      // Create a scenario where we'll get an error: remove RALPH.md mid-run
+      // Create a scenario where we'll get an error: remove RAUF.md mid-run
       // Actually, let's use a simpler approach: write a claude that exits, then
       // corrupt the backlog before the next read
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       // Test the try/finally by checking the reset logic works for the
       // "no items" path — verify state.json shows complete
@@ -727,7 +727,7 @@ echo "RALPH_DONE"`,
       await runner.start();
 
       // After normal completion, currentItemId should be null (cleaned up)
-      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".ralph", "state.json"), "utf-8"));
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.currentItem).toBeNull();
     });
   });
@@ -738,7 +738,7 @@ echo "RALPH_DONE"`,
         pendingItem("001", "Base task"),
         pendingItem("002", "Dependent task", { dependsOn: ["001"] }),
       ]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
@@ -755,16 +755,16 @@ echo "RALPH_DONE"`,
     });
   });
 
-  describe("git commit on RALPH_DONE", () => {
+  describe("git commit on RAUF_DONE", () => {
     it("auto-commits on completed item", async () => {
       setupProject(tmpDir, [pendingItem("001", "Commit test")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
       // Check log for commit message
-      const logContent = fs.readFileSync(path.join(tmpDir, ".ralph", "ralph.log"), "utf-8");
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       // gitCommit may succeed or fail depending on git setup — verify it was attempted
       expect(logContent).toMatch(/Committed:|Item 001 completed/);
     });
@@ -773,7 +773,7 @@ echo "RALPH_DONE"`,
   describe("LoopResult", () => {
     it("returns correct counts on normal completion", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
@@ -787,15 +787,15 @@ echo "RALPH_DONE"`,
 
     it("returns mixed counts", async () => {
       setupProject(tmpDir, [pendingItem("001", "Done task"), pendingItem("002", "Blocked task")]);
-      // First call returns RALPH_DONE, second returns RALPH_BLOCKED
+      // First call returns RAUF_DONE, second returns RAUF_BLOCKED
       writeMockClaude(
         binDir,
-        `COUNT_FILE="${tmpDir}/.ralph/.claude_calls"
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
 if [ ! -f "$COUNT_FILE" ]; then
   echo 1 > "$COUNT_FILE"
-  echo "RALPH_DONE"
+  echo "RAUF_DONE"
 else
-  echo "RALPH_BLOCKED:Cannot proceed"
+  echo "RAUF_BLOCKED:Cannot proceed"
 fi`,
       );
 
@@ -811,7 +811,7 @@ fi`,
   describe("sessionTimeoutMinutes", () => {
     it("passes sessionTimeoutMinutes to spawnClaude", async () => {
       setupProject(tmpDir, [pendingItem("001", "Timeout test")]);
-      writeMockClaude(binDir, 'echo "RALPH_DONE"');
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, {
@@ -842,7 +842,7 @@ fi`,
       expect(result.cancelled).toBe(false);
 
       // DONE file should exist
-      expect(fs.existsSync(path.join(tmpDir, ".ralph", "DONE"))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
     });
   });
 });

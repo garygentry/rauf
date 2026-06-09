@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ok, err, ErrorCodes, type Result } from "./errors.js";
-import type { RalphError } from "./schemas.js";
+import type { RaufError } from "./schemas.js";
 
 describe("ok()", () => {
   it("creates a success result with a value", () => {
@@ -40,7 +40,7 @@ describe("ok()", () => {
 
 describe("err()", () => {
   it("creates a failure result with an error", () => {
-    const error: RalphError = {
+    const error: RaufError = {
       code: ErrorCodes.FILE_NOT_FOUND,
       message: "not found",
     };
@@ -52,7 +52,7 @@ describe("err()", () => {
   });
 
   it("includes optional details", () => {
-    const error: RalphError = {
+    const error: RaufError = {
       code: ErrorCodes.VALIDATION_ERROR,
       message: "bad data",
       details: { path: "/tmp/test.json", field: "name" },
@@ -88,7 +88,7 @@ describe("Result type narrowing", () => {
 
     const failure = doWork(false);
     if (!failure.ok) {
-      // TypeScript narrows to { ok: false; error: RalphError }
+      // TypeScript narrows to { ok: false; error: RaufError }
       expect(failure.error.code).toBe(ErrorCodes.CONFLICT);
     }
   });

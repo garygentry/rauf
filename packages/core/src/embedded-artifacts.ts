@@ -7,10 +7,10 @@
  */
 export const EMBEDDED_ARTIFACTS: ReadonlyMap<string, string> = new Map([
   [
-    ".ralph/RALPH.md.tmpl",
-    `# Ralph — Per-Iteration Instructions
+    ".rauf/RAUF.md.tmpl",
+    `# Rauf — Per-Iteration Instructions
 
-<!-- ralph:managed:start -->
+<!-- rauf:managed:start -->
 
 ## Verification Commands
 
@@ -28,7 +28,7 @@ Individual commands:
 - Format: \`{{formatCommand}}\`
 
 If any command is not configured (empty), skip it.
-<!-- ralph:managed:end -->
+<!-- rauf:managed:end -->
 
 ## Workflow
 
@@ -41,9 +41,9 @@ If any command is not configured (empty), skip it.
 6. Run verification: \`{{verifyCommand}}\`
 7. Commit with: \`[ralph] <id>: <title>\`
 8. Output your exit signal:
-   - \`RALPH_DONE\` — all criteria met, verification passes
-   - \`RALPH_BLOCKED:<reason>\` — cannot proceed, explain why
-   - \`RALPH_NEEDS_HUMAN:<reason>\` — need human decision or input
+   - \`RAUF_DONE\` — all criteria met, verification passes
+   - \`RAUF_BLOCKED:<reason>\` — cannot proceed, explain why
+   - \`RAUF_NEEDS_HUMAN:<reason>\` — need human decision or input
 
 ## Agent Delegation
 
@@ -53,7 +53,7 @@ When present:
 - Follow the \`strategy\` and \`recommendedConcurrency\` hints
 - Give each sub-agent clear, self-contained instructions including relevant file paths
 - Wait for **all** sub-agents to complete before running final verification
-- You (the main agent) own the exit signal — sub-agents do not emit RALPH_DONE/RALPH_BLOCKED
+- You (the main agent) own the exit signal — sub-agents do not emit RAUF_DONE/RAUF_BLOCKED
 - If any sub-agent fails, assess whether the overall task can still be completed
 
 Items may also include a \`specReferences\` field listing paths to specification documents. Read these before starting work.
@@ -73,8 +73,8 @@ Items may also include a \`specReferences\` field listing paths to specification
 `,
   ],
   [
-    ".ralph/REVIEW.md.tmpl",
-    `# Ralph — Post-Loop Review Pass
+    ".rauf/REVIEW.md.tmpl",
+    `# Rauf — Post-Loop Review Pass
 
 You are a review agent auditing work completed by an autonomous coding loop. Your job is to verify that completed items genuinely meet their acceptance criteria and that no issues were introduced.
 
@@ -122,7 +122,7 @@ Run the full verification pipeline first:
 If you find issues that need fixing, output on a single line:
 
 \`\`\`
-RALPH_REVIEW:{"items":[{"type":"bug","priority":2,"title":"Fix: <short description>","description":"<detailed description of what's wrong and how to fix it>","acceptanceCriteria":["<specific criterion>"]}],"summary":"<1-2 sentence summary of all issues found>"}
+RAUF_REVIEW:{"items":[{"type":"bug","priority":2,"title":"Fix: <short description>","description":"<detailed description of what's wrong and how to fix it>","acceptanceCriteria":["<specific criterion>"]}],"summary":"<1-2 sentence summary of all issues found>"}
 \`\`\`
 
 Each item in the \`items\` array must have:
@@ -135,14 +135,14 @@ Each item in the \`items\` array must have:
 If everything looks good and all checks pass, output:
 
 \`\`\`
-RALPH_DONE
+RAUF_DONE
 \`\`\`
 
 **IMPORTANT:** Be thorough but pragmatic. Only create fix items for genuine issues — not style preferences or minor nitpicks. Focus on correctness, test coverage gaps, and integration problems.
 `,
   ],
   [
-    ".ralph/backlog.json",
+    ".rauf/backlog.json",
     `{
   "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "project": "",
@@ -152,7 +152,7 @@ RALPH_DONE
 `,
   ],
   [
-    ".ralph/backlog.schema.json",
+    ".rauf/backlog.schema.json",
     `{
   "type": "object",
   "properties": {
@@ -310,13 +310,13 @@ RALPH_DONE
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
-  "title": "Ralph Backlog",
+  "title": "Rauf Backlog",
   "description": "Task backlog for a ralph autonomous coding loop project"
 }
 `,
   ],
   [
-    ".ralph/progress.md",
+    ".rauf/progress.md",
     `# Progress & Learnings
 
 ## Codebase Patterns
@@ -328,14 +328,14 @@ RALPH_DONE
   ],
   [
     "CLAUDE_ADDON.md",
-    `<!-- ralph:start -->
+    `<!-- rauf:start -->
 
-## Autonomous Loop (Ralph)
+## Autonomous Loop (Rauf)
 
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
-1. Read \`RALPH.md\` for detailed per-iteration instructions
+1. Read \`RAUF.md\` for detailed per-iteration instructions
 2. Read the backlog — find the current \`in_progress\` item
 3. The item's \`acceptanceCriteria\` define "done" for this iteration
 
@@ -345,9 +345,9 @@ When running as a ralph loop iteration, follow these operational rules:
 6. Run the verification command before considering work complete
 
 ### Completing
-7. If all acceptance criteria pass: output \`RALPH_DONE\` as your final line
-8. If blocked (missing dependency, unclear requirement): output \`RALPH_BLOCKED:<reason>\`
-9. If human input needed (API key, design decision): output \`RALPH_NEEDS_HUMAN:<reason>\`
+7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
+8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
+9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
 10. Commit your changes with message: \`[ralph] <item-id>: <title>\`
 
 ### Rules
@@ -356,7 +356,7 @@ When running as a ralph loop iteration, follow these operational rules:
 - Do not modify \`state.json\` — the loop runner manages state
 - Read \`progress.md\` for accumulated project learnings
 - Append new learnings to \`progress.md\` if you discover important patterns
-<!-- ralph:end -->
+<!-- rauf:end -->
 `,
   ],
   [
@@ -387,14 +387,14 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ---
 
-<!-- ralph:start -->
+<!-- rauf:start -->
 
-## Autonomous Loop (Ralph)
+## Autonomous Loop (Rauf)
 
 When running as a ralph loop iteration, follow these operational rules:
 
 ### Reading Your Task
-1. Read \`RALPH.md\` for detailed per-iteration instructions
+1. Read \`RAUF.md\` for detailed per-iteration instructions
 2. Read the backlog — find the current \`in_progress\` item
 3. The item's \`acceptanceCriteria\` define "done" for this iteration
 
@@ -404,9 +404,9 @@ When running as a ralph loop iteration, follow these operational rules:
 6. Run the verification command before considering work complete
 
 ### Completing
-7. If all acceptance criteria pass: output \`RALPH_DONE\` as your final line
-8. If blocked (missing dependency, unclear requirement): output \`RALPH_BLOCKED:<reason>\`
-9. If human input needed (API key, design decision): output \`RALPH_NEEDS_HUMAN:<reason>\`
+7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
+8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
+9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
 10. Commit your changes with message: \`[ralph] <item-id>: <title>\`
 
 ### Rules
@@ -415,7 +415,7 @@ When running as a ralph loop iteration, follow these operational rules:
 - Do not modify \`state.json\` — the loop runner manages state
 - Read \`progress.md\` for accumulated project learnings
 - Append new learnings to \`progress.md\` if you discover important patterns
-<!-- ralph:end -->
+<!-- rauf:end -->
 `,
   ],
 ]);

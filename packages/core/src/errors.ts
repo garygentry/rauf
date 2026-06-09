@@ -2,17 +2,17 @@
 //
 // Core error-handling pattern for @ralph/core.
 // All public functions return Result<T, E> instead of throwing.
-// RalphError shape is defined by the Zod schema in schemas.ts.
+// RaufError shape is defined by the Zod schema in schemas.ts.
 
-import type { RalphError } from "./schemas.js";
+import type { RaufError } from "./schemas.js";
 
-export type Result<T, E = RalphError> = { ok: true; value: T } | { ok: false; error: E };
+export type Result<T, E = RaufError> = { ok: true; value: T } | { ok: false; error: E };
 
 export function ok<T>(value: T): Result<T, never> {
   return { ok: true, value };
 }
 
-export function err<E = RalphError>(error: E): Result<never, E> {
+export function err<E = RaufError>(error: E): Result<never, E> {
   return { ok: false, error };
 }
 

@@ -22,7 +22,7 @@ afterEach(() => {
 /** Create a valid MarkerFile object for testing */
 function makeMarker(overrides: Partial<MarkerFile> = {}): MarkerFile {
   return {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: "2026-01-01T00:00:00Z",
@@ -50,19 +50,19 @@ function makeMarker(overrides: Partial<MarkerFile> = {}): MarkerFile {
   };
 }
 
-/** Create a project directory with a .ralph.json marker */
+/** Create a project directory with a .rauf.json marker */
 function createProject(name: string, marker?: MarkerFile, parent?: string): string {
   const dir = path.join(parent ?? tmpDir, name);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker ?? makeMarker(), null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker ?? makeMarker(), null, 2));
   return dir;
 }
 
 // ─── discoverProjects ─────────────────────────────────────────────
 
 describe("discoverProjects", () => {
-  it("returns empty when no projects have .ralph.json", () => {
-    // Create some directories without .ralph.json
+  it("returns empty when no projects have .rauf.json", () => {
+    // Create some directories without .rauf.json
     fs.mkdirSync(path.join(tmpDir, "project-a"));
     fs.mkdirSync(path.join(tmpDir, "project-b"));
 
@@ -75,7 +75,7 @@ describe("discoverProjects", () => {
     expect(result.value.warnings).toHaveLength(0);
   });
 
-  it("discovers child directories with valid .ralph.json", () => {
+  it("discovers child directories with valid .rauf.json", () => {
     createProject("alpha");
     createProject("beta");
     fs.mkdirSync(path.join(tmpDir, "no-marker"));
@@ -89,9 +89,9 @@ describe("discoverProjects", () => {
     expect(result.value.projects[1]!.name).toBe("beta");
   });
 
-  it("includes rootDir itself if it has .ralph.json", () => {
+  it("includes rootDir itself if it has .rauf.json", () => {
     // Place a marker in the root directory itself
-    fs.writeFileSync(path.join(tmpDir, ".ralph.json"), JSON.stringify(makeMarker()));
+    fs.writeFileSync(path.join(tmpDir, ".rauf.json"), JSON.stringify(makeMarker()));
     createProject("child-project");
 
     const result = discoverProjects(tmpDir);
@@ -117,7 +117,7 @@ describe("discoverProjects", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    // "parent" has no .ralph.json, "nested" is too deep
+    // "parent" has no .rauf.json, "nested" is too deep
     expect(result.value.projects).toHaveLength(0);
   });
 
@@ -125,7 +125,7 @@ describe("discoverProjects", () => {
     // Create artifacts directory (simulating ralph's own artifact templates)
     const artifactsDir = path.join(tmpDir, "artifacts");
     fs.mkdirSync(artifactsDir, { recursive: true });
-    fs.writeFileSync(path.join(artifactsDir, ".ralph.json"), JSON.stringify(makeMarker()));
+    fs.writeFileSync(path.join(artifactsDir, ".rauf.json"), JSON.stringify(makeMarker()));
 
     createProject("real-project");
 
@@ -137,7 +137,7 @@ describe("discoverProjects", () => {
     expect(result.value.projects[0]!.name).toBe("real-project");
   });
 
-  it("skips invalid .ralph.json with warning", () => {
+  it("skips invalid .rauf.json with warning", () => {
     // Valid project
     createProject("good-project");
 
@@ -145,8 +145,8 @@ describe("discoverProjects", () => {
     const badDir = path.join(tmpDir, "bad-project");
     fs.mkdirSync(badDir);
     fs.writeFileSync(
-      path.join(badDir, ".ralph.json"),
-      JSON.stringify({ ralph: false, garbage: true }),
+      path.join(badDir, ".rauf.json"),
+      JSON.stringify({ rauf: false, garbage: true }),
     );
 
     const result = discoverProjects(tmpDir);
@@ -159,10 +159,10 @@ describe("discoverProjects", () => {
     expect(result.value.warnings[0]).toContain("bad-project");
   });
 
-  it("skips .ralph.json with invalid JSON with warning", () => {
+  it("skips .rauf.json with invalid JSON with warning", () => {
     const badDir = path.join(tmpDir, "corrupt");
     fs.mkdirSync(badDir);
-    fs.writeFileSync(path.join(badDir, ".ralph.json"), "{ not valid json }}}");
+    fs.writeFileSync(path.join(badDir, ".rauf.json"), "{ not valid json }}}");
 
     const result = discoverProjects(tmpDir);
     expect(result.ok).toBe(true);
@@ -219,7 +219,7 @@ describe("discoverProjects", () => {
     expect(project.id).toBe("my-app");
     expect(project.path).toBe(path.join(tmpDir, "my-app"));
     expect(project.name).toBe("my-app");
-    expect(project.marker.ralph).toBe(true);
+    expect(project.marker.rauf).toBe(true);
     expect(project.marker.profile.stack).toBe("node-typescript");
   });
 
@@ -269,7 +269,7 @@ describe("discoverProjects", () => {
     // Invalid marker
     const badDir = path.join(tmpDir, "broken-d");
     fs.mkdirSync(badDir);
-    fs.writeFileSync(path.join(badDir, ".ralph.json"), "{}");
+    fs.writeFileSync(path.join(badDir, ".rauf.json"), "{}");
     // No marker
     fs.mkdirSync(path.join(tmpDir, "empty-e"));
 
@@ -280,5 +280,25 @@ describe("discoverProjects", () => {
     expect(result.value.projects).toHaveLength(2);
     expect(result.value.ignored).toHaveLength(1);
     expect(result.value.warnings).toHaveLength(1);
+  });
+
+  it("warns about a legacy ralph project (no .rauf.json, has legacy .ralph.json)", () => {
+    const legacyDir = path.join(tmpDir, "legacy-proj");
+    fs.mkdirSync(legacyDir);
+    fs.writeFileSync(
+      path.join(legacyDir, ".ralph.json"),
+      JSON.stringify({ ralph: true, version: "0.1.0", variant: "backlog-json" }),
+    );
+
+    const result = discoverProjects(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.projects).toHaveLength(0);
+    expect(
+      result.value.warnings.some(
+        (w) => w.includes("Legacy ralph project") && w.includes("rauf migrate"),
+      ),
+    ).toBe(true);
   });
 });

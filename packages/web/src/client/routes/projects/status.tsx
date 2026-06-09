@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { BacklogItem, DerivedStatus } from "@ralph/core";
-import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
+import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
 // ─── Loop state badge config ──────────────────────────────────────
 
@@ -461,14 +461,13 @@ function LogPanel({ projectId }: { projectId: string }) {
 
 // ─── ProgressViewer ───────────────────────────────────────────────
 //
-// Fetches .ralph/progress.md and renders it as formatted markdown.
+// Fetches .rauf/progress.md and renders it as formatted markdown.
 // Shows nothing when the file is missing (empty string response).
 
 function ProgressViewer({ projectId }: { projectId: string }) {
   const { data: markdown, isLoading } = useQuery({
     queryKey: ["projects", projectId, "progress"],
-    queryFn: () =>
-      ralphFetchJson<string>(`/api/projects/${encodeURIComponent(projectId)}/progress`),
+    queryFn: () => raufFetchJson<string>(`/api/projects/${encodeURIComponent(projectId)}/progress`),
     enabled: !!projectId,
     // Refresh every 60s — progress.md changes less frequently than status
     refetchInterval: 60_000,
@@ -495,7 +494,7 @@ function ProgressViewer({ projectId }: { projectId: string }) {
       }}
     >
       <SectionHeading>Progress Notes</SectionHeading>
-      <div className="ralph-prose">
+      <div className="rauf-prose">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
       </div>
     </div>
@@ -517,7 +516,7 @@ export function StatusView() {
   } = useQuery({
     queryKey: ["projects", projectId, "status"],
     queryFn: () =>
-      ralphFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
+      raufFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
     enabled: !!projectId,
     // Refresh faster when the loop is actively running
     refetchInterval: (query) => (query.state.data?.loopState === "RUNNING" ? 10_000 : 30_000),
@@ -526,7 +525,7 @@ export function StatusView() {
   const { data: allItems } = useQuery({
     queryKey: ["projects", projectId, "backlog"],
     queryFn: () =>
-      ralphFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
+      raufFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
     enabled: !!projectId,
     refetchInterval: () => {
       // Align with status refresh rate
@@ -540,7 +539,7 @@ export function StatusView() {
 
   const startMutation = useMutation({
     mutationFn: async () => {
-      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/start`, {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/start`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -561,7 +560,7 @@ export function StatusView() {
 
   const stopMutation = useMutation({
     mutationFn: async () => {
-      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/stop`, {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/stop`, {
         method: "POST",
       });
       if (!res.ok) {
@@ -898,7 +897,7 @@ export function StatusView() {
                 color: "var(--color-text-muted)",
               }}
             >
-              <p className="text-base font-medium">Ralph is not installed in this project</p>
+              <p className="text-base font-medium">Rauf is not installed in this project</p>
               <p className="mt-1 text-sm">
                 Use the <span className="font-mono text-xs">ralph install</span> command or the
                 Install wizard to get started.

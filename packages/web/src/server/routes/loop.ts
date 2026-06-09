@@ -4,7 +4,7 @@
 // POST /api/projects/:id/loop/stop   → Graceful cancel
 // GET  /api/projects/:id/loop/events → SSE stream of LoopEvent
 //
-// All mutation routes require X-Ralph-Request: true (enforced by
+// All mutation routes require X-Rauf-Request: true (enforced by
 // app-level CSRF middleware).
 
 import { Hono } from "hono";

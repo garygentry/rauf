@@ -1,6 +1,6 @@
-# Ralph — Per-Iteration Instructions
+# Rauf — Per-Iteration Instructions
 
-<!-- ralph:managed:start -->
+<!-- rauf:managed:start -->
 
 ## Verification Commands
 
@@ -18,7 +18,7 @@ Individual commands:
 - Format: `{{formatCommand}}`
 
 If any command is not configured (empty), skip it.
-<!-- ralph:managed:end -->
+<!-- rauf:managed:end -->
 
 ## Workflow
 
@@ -31,9 +31,9 @@ If any command is not configured (empty), skip it.
 6. Run verification: `{{verifyCommand}}`
 7. Commit with: `[ralph] <id>: <title>`
 8. Output your exit signal:
-   - `RALPH_DONE` — all criteria met, verification passes
-   - `RALPH_BLOCKED:<reason>` — cannot proceed, explain why
-   - `RALPH_NEEDS_HUMAN:<reason>` — need human decision or input
+   - `RAUF_DONE` — all criteria met, verification passes
+   - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
+   - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
 
 ## Agent Delegation
 
@@ -43,7 +43,7 @@ When present:
 - Follow the `strategy` and `recommendedConcurrency` hints
 - Give each sub-agent clear, self-contained instructions including relevant file paths
 - Wait for **all** sub-agents to complete before running final verification
-- You (the main agent) own the exit signal — sub-agents do not emit RALPH_DONE/RALPH_BLOCKED
+- You (the main agent) own the exit signal — sub-agents do not emit RAUF_DONE/RAUF_BLOCKED
 - If any sub-agent fails, assess whether the overall task can still be completed
 
 Items may also include a `specReferences` field listing paths to specification documents. Read these before starting work.

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ToolConfig } from "@ralph/core";
 import { useTheme } from "../components/ThemeProvider";
-import { ralphFetchJson } from "../lib/fetch";
+import { raufFetchJson } from "../lib/fetch";
 
 // ─── Theme option config ─────────────────────────────────────────
 
@@ -26,7 +26,7 @@ export function GlobalSettings() {
     isError,
   } = useQuery({
     queryKey: ["config"],
-    queryFn: () => ralphFetchJson<ToolConfig>("/api/config"),
+    queryFn: () => raufFetchJson<ToolConfig>("/api/config"),
   });
 
   const [rootDir, setRootDir] = useState("");
@@ -42,7 +42,7 @@ export function GlobalSettings() {
 
   const configMutation = useMutation({
     mutationFn: (updated: ToolConfig) =>
-      ralphFetchJson<ToolConfig>("/api/config", {
+      raufFetchJson<ToolConfig>("/api/config", {
         method: "PUT",
         body: JSON.stringify(updated),
       }),
@@ -123,7 +123,7 @@ export function GlobalSettings() {
         Settings
       </h1>
       <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Global configuration stored in ~/.ralph/config.json
+        Global configuration stored in ~/.rauf/config.json
       </p>
 
       {/* Mutation feedback */}
@@ -220,7 +220,7 @@ export function GlobalSettings() {
         {/* ── Server Port ────────────────────────────────────── */}
         <SettingsSection
           title="Server Port"
-          description="The port the Ralph web server listens on. Changes take effect after server restart."
+          description="The port the Rauf web server listens on. Changes take effect after server restart."
         >
           <div className="flex gap-2">
             <input

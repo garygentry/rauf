@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "ralph": "dist/index.js"
+    "rauf": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",

@@ -29,10 +29,10 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-/** Create a project dir with a populated .ralph/backlog.json */
+/** Create a project dir with a populated .rauf/backlog.json */
 function createProjectWithBacklog(projectDir: string, items: object[] = []): void {
-  const ralphDir = path.join(projectDir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(projectDir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
 
   const backlog = {
     project: "test-project",
@@ -40,7 +40,7 @@ function createProjectWithBacklog(projectDir: string, items: object[] = []): voi
     items,
   };
 
-  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 }
 
 /** Sample backlog items for testing — must match BacklogItemSchema (description required) */
@@ -442,7 +442,7 @@ describe("handleBacklogAdd", () => {
     expect(output.stderr).toContain("smart default");
 
     // Verify the item was created with an AC (smart default)
-    const backlogRaw = fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8");
+    const backlogRaw = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items).toHaveLength(1);
     expect(backlog.items[0].acceptanceCriteria.length).toBeGreaterThan(0);
@@ -689,7 +689,7 @@ describe("handleBacklogDelete", () => {
     expect(output.stdout).toContain("001");
 
     // Verify item removed from backlog
-    const backlogRaw = fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8");
+    const backlogRaw = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items.find((i: { id: string }) => i.id === "001")).toBeUndefined();
   });
@@ -835,7 +835,7 @@ describe("handleBacklogRestore", () => {
     const projectDir = path.join(tmpDir, "project");
     createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
 
-    const ralphDir = path.join(projectDir, ".ralph");
+    const raufDir = path.join(projectDir, ".rauf");
 
     // Create a backup file (simulating what atomicWrite does for backlog.json)
     const backupBacklog = {
@@ -855,7 +855,7 @@ describe("handleBacklogRestore", () => {
     };
 
     fs.writeFileSync(
-      path.join(ralphDir, "backlog.json.bak"),
+      path.join(raufDir, "backlog.json.bak"),
       JSON.stringify(backupBacklog, null, 2),
     );
 
@@ -873,7 +873,7 @@ describe("handleBacklogRestore", () => {
     expect(output.stdout).toContain("restored");
 
     // Verify the backlog now contains backup content
-    const restored = JSON.parse(fs.readFileSync(path.join(ralphDir, "backlog.json"), "utf-8"));
+    const restored = JSON.parse(fs.readFileSync(path.join(raufDir, "backlog.json"), "utf-8"));
     expect(restored.items).toHaveLength(1);
     expect(restored.items[0].title).toBe("Backup item");
   });
@@ -883,8 +883,8 @@ describe("handleBacklogRestore", () => {
     createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
 
     // Create a .bak file
-    const ralphDir = path.join(projectDir, ".ralph");
-    fs.copyFileSync(path.join(ralphDir, "backlog.json"), path.join(ralphDir, "backlog.json.bak"));
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.copyFileSync(path.join(raufDir, "backlog.json"), path.join(raufDir, "backlog.json.bak"));
 
     configureOutput({ noColor: true, quiet: false, json: true });
     const ctx = makeCtx({
@@ -924,9 +924,9 @@ describe("handleBacklogRestore", () => {
 describe("error handling and recovery messages", () => {
   it("malformed backlog.json returns VALIDATION (not ERROR)", async () => {
     const projectDir = path.join(tmpDir, "corrupt-project");
-    const ralphDir = path.join(projectDir, ".ralph");
-    fs.mkdirSync(ralphDir, { recursive: true });
-    fs.writeFileSync(path.join(ralphDir, "backlog.json"), "{ invalid json {{{");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(path.join(raufDir, "backlog.json"), "{ invalid json {{{");
 
     configureOutput({ noColor: true, quiet: false, json: false });
     const ctx = makeCtx({ args: [projectDir] });
@@ -937,9 +937,9 @@ describe("error handling and recovery messages", () => {
 
   it("malformed backlog.json includes recovery suggestion on stdout", async () => {
     const projectDir = path.join(tmpDir, "corrupt-project");
-    const ralphDir = path.join(projectDir, ".ralph");
-    fs.mkdirSync(ralphDir, { recursive: true });
-    fs.writeFileSync(path.join(ralphDir, "backlog.json"), "{ invalid json {{{");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(path.join(raufDir, "backlog.json"), "{ invalid json {{{");
 
     configureOutput({ noColor: true, quiet: false, json: false });
     const ctx = makeCtx({ args: [projectDir] });
@@ -1097,9 +1097,9 @@ describe("handleBacklogReset", () => {
     createProjectWithBacklog(projectDir, SAMPLE_ITEMS);
 
     // Add state.json and DONE marker
-    const ralphDir = path.join(projectDir, ".ralph");
+    const raufDir = path.join(projectDir, ".rauf");
     fs.writeFileSync(
-      path.join(ralphDir, "state.json"),
+      path.join(raufDir, "state.json"),
       JSON.stringify({
         status: "complete",
         iteration: 3,
@@ -1110,7 +1110,7 @@ describe("handleBacklogReset", () => {
         updatedAt: "2026-01-15T12:00:00.000Z",
       }),
     );
-    fs.writeFileSync(path.join(ralphDir, "DONE"), "complete");
+    fs.writeFileSync(path.join(raufDir, "DONE"), "complete");
 
     configureOutput({ noColor: true, quiet: false, json: false });
     const ctx = makeCtx({
@@ -1126,9 +1126,9 @@ describe("handleBacklogReset", () => {
     expect(output.stdout).toContain("Reset complete");
 
     // state.json should be deleted
-    expect(fs.existsSync(path.join(ralphDir, "state.json"))).toBe(false);
+    expect(fs.existsSync(path.join(raufDir, "state.json"))).toBe(false);
     // DONE should be deleted
-    expect(fs.existsSync(path.join(ralphDir, "DONE"))).toBe(false);
+    expect(fs.existsSync(path.join(raufDir, "DONE"))).toBe(false);
   });
 
   it("--clear empties backlog items", async () => {
@@ -1154,7 +1154,7 @@ describe("handleBacklogReset", () => {
     expect(parsed.backlogCleared).toBe(true);
 
     // Verify backlog is empty but metadata preserved
-    const backlogRaw = fs.readFileSync(path.join(projectDir, ".ralph", "backlog.json"), "utf-8");
+    const backlogRaw = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
     const backlog = JSON.parse(backlogRaw);
     expect(backlog.items).toHaveLength(0);
     expect(backlog.project).toBe("test-project");

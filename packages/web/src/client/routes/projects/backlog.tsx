@@ -8,7 +8,7 @@ import type {
   DerivedStatus,
   SweepResult,
 } from "@ralph/core";
-import { ralphFetch, ralphFetchJson } from "../../lib/fetch";
+import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
 // Mirrors VALID_STATUS_TRANSITIONS from @ralph/core/schemas — inlined to avoid
 // bundling Node.js modules into the browser bundle (core imports node:fs etc.)
@@ -408,7 +408,7 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
 
   const createMutation = useMutation({
     mutationFn: async (data: unknown) => {
-      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/backlog`, {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/backlog`, {
         method: "POST",
         body: JSON.stringify(data),
       });
@@ -431,7 +431,7 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
 
   const updateMutation = useMutation({
     mutationFn: async (data: unknown) => {
-      const res = await ralphFetch(
+      const res = await raufFetch(
         `/api/projects/${encodeURIComponent(projectId)}/backlog/${item!.id}`,
         { method: "PUT", body: JSON.stringify(data) },
       );
@@ -454,7 +454,7 @@ function BacklogPanel({ mode, item, projectId, allItems, onClose }: BacklogPanel
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const res = await ralphFetch(
+      const res = await raufFetch(
         `/api/projects/${encodeURIComponent(projectId)}/backlog/${item!.id}`,
         { method: "DELETE" },
       );
@@ -976,7 +976,7 @@ export function BacklogView() {
   } = useQuery({
     queryKey: ["projects", projectId, "backlog"],
     queryFn: () =>
-      ralphFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
+      raufFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
     enabled: !!projectId,
     refetchInterval: 30_000,
   });
@@ -984,7 +984,7 @@ export function BacklogView() {
   const { data: status } = useQuery({
     queryKey: ["projects", projectId, "status"],
     queryFn: () =>
-      ralphFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
+      raufFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
     enabled: !!projectId,
     refetchInterval: 30_000,
   });
@@ -1041,7 +1041,7 @@ export function BacklogView() {
 
   const sweepMutation = useMutation({
     mutationFn: async () => {
-      const res = await ralphFetch(`/api/projects/${encodeURIComponent(projectId)}/backlog/sweep`, {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/backlog/sweep`, {
         method: "POST",
         body: JSON.stringify({}),
       });
@@ -1116,7 +1116,7 @@ export function BacklogView() {
               color: "var(--color-text-muted)",
               backgroundColor: "transparent",
             }}
-            title="Archive all done items into .ralph/archive/"
+            title="Archive all done items into .rauf/archive/"
           >
             {sweepMutation.isPending ? "Sweeping…" : "↓ Sweep"}
           </button>

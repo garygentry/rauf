@@ -85,7 +85,7 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
 
 // ─── PROFILE SET ───────────────────────────────────────────────────
 //
-// Update a single profile field in .ralph.json.
+// Update a single profile field in .rauf.json.
 // Usage: ralph profile set <path> <key> <value>
 //
 // Supported keys:
@@ -146,12 +146,12 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
     return handleCoreError(writeResult.error, ctx, resolved);
   }
 
-  // Auto-sync RALPH.md with the updated profile
+  // Auto-sync RAUF.md with the updated profile
   const updateResult = update(resolved);
   if (!updateResult.ok) {
-    // Non-fatal — profile was saved, just warn that RALPH.md wasn't re-rendered
+    // Non-fatal — profile was saved, just warn that RAUF.md wasn't re-rendered
     if (!ctx.globalFlags.json) {
-      info(`Profile saved but RALPH.md could not be updated: ${updateResult.error.message}`);
+      info(`Profile saved but RAUF.md could not be updated: ${updateResult.error.message}`);
       info(`Run 'ralph update ${targetPath}' manually to sync.`);
     }
   }
@@ -165,7 +165,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
     `Profile updated: ${c.bold(key)} = ${value === "" ? c.dim("(disabled)") : c.cyan(value)}`,
   );
   if (updateResult.ok) {
-    info("RALPH.md verification commands synced.");
+    info("RAUF.md verification commands synced.");
   }
   return ExitCode.SUCCESS;
 }
@@ -426,7 +426,7 @@ function handleCoreError(
       case ErrorCodes.FILE_NOT_FOUND:
       case ErrorCodes.NOT_INSTALLED:
         if (projectPath) {
-          info(`Ralph is not installed here. Run: ${c.cyan(`ralph install ${projectPath}`)}`);
+          info(`Rauf is not installed here. Run: ${c.cyan(`ralph install ${projectPath}`)}`);
         } else {
           info("Ensure ralph is installed in the target directory.");
         }
@@ -438,7 +438,7 @@ function handleCoreError(
             `A project file may be corrupted. Try reinstalling: ${c.cyan(`ralph install ${projectPath} --yes`)}`,
           );
         } else {
-          info("A config file may be corrupted. Check ~/.ralph/config.json manually.");
+          info("A config file may be corrupted. Check ~/.rauf/config.json manually.");
         }
         break;
       case ErrorCodes.CONFLICT:

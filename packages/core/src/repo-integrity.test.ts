@@ -29,7 +29,7 @@ describe("repo integrity", () => {
 const ARTIFACTS_DIR = resolve(REPO_ROOT, "artifacts/variants/backlog-json");
 
 /** Variables that installer.ts's buildTemplateVars() provides */
-const RALPH_MD_VARS: Record<string, string> = {
+const RAUF_MD_VARS: Record<string, string> = {
   verifyCommand: "pnpm test && pnpm -r typecheck",
   testCommand: "pnpm test",
   typecheckCommand: "pnpm -r typecheck",
@@ -52,31 +52,31 @@ const GREENFIELD_VARS: Record<string, string> = {
 };
 
 describe("artifact templates", () => {
-  describe("RALPH.md.tmpl", () => {
-    const templatePath = join(ARTIFACTS_DIR, ".ralph/RALPH.md.tmpl");
+  describe("RAUF.md.tmpl", () => {
+    const templatePath = join(ARTIFACTS_DIR, ".rauf/RAUF.md.tmpl");
 
     it("file exists in the artifacts directory", () => {
-      expect(existsSync(templatePath), "RALPH.md.tmpl must exist").toBe(true);
+      expect(existsSync(templatePath), "RAUF.md.tmpl must exist").toBe(true);
     });
 
     it("contains all expected template variables", () => {
       const content = readFileSync(templatePath, "utf-8");
-      for (const varName of Object.keys(RALPH_MD_VARS)) {
-        expect(content, `RALPH.md.tmpl must contain {{${varName}}}`).toContain(`{{${varName}}}`);
+      for (const varName of Object.keys(RAUF_MD_VARS)) {
+        expect(content, `RAUF.md.tmpl must contain {{${varName}}}`).toContain(`{{${varName}}}`);
       }
     });
 
     it("renders correctly — no unresolved variables remain", () => {
       const content = readFileSync(templatePath, "utf-8");
-      const rendered = renderTemplate(content, RALPH_MD_VARS);
+      const rendered = renderTemplate(content, RAUF_MD_VARS);
       // No {{varName}} patterns should remain after rendering with all known vars
       expect(rendered).not.toMatch(/\{\{\w+\}\}/);
     });
 
     it("has properly formatted managed sentinel block", () => {
       const content = readFileSync(templatePath, "utf-8");
-      const startSentinel = "<!-- ralph:managed:start -->";
-      const endSentinel = "<!-- ralph:managed:end -->";
+      const startSentinel = "<!-- rauf:managed:start -->";
+      const endSentinel = "<!-- rauf:managed:end -->";
 
       expect(content, "must contain managed start sentinel").toContain(startSentinel);
       expect(content, "must contain managed end sentinel").toContain(endSentinel);
@@ -99,7 +99,7 @@ describe("artifact templates", () => {
 
     it("rendered output contains verification commands section", () => {
       const content = readFileSync(templatePath, "utf-8");
-      const rendered = renderTemplate(content, RALPH_MD_VARS);
+      const rendered = renderTemplate(content, RAUF_MD_VARS);
       expect(rendered).toContain("pnpm test && pnpm -r typecheck");
       expect(rendered).toContain("pnpm test");
     });
@@ -112,33 +112,33 @@ describe("artifact templates", () => {
       expect(existsSync(addonPath), "CLAUDE_ADDON.md must exist").toBe(true);
     });
 
-    it("has ralph:start sentinel", () => {
+    it("has rauf:start sentinel", () => {
       const content = readFileSync(addonPath, "utf-8");
-      expect(content).toContain("<!-- ralph:start -->");
+      expect(content).toContain("<!-- rauf:start -->");
     });
 
-    it("has ralph:end sentinel", () => {
+    it("has rauf:end sentinel", () => {
       const content = readFileSync(addonPath, "utf-8");
-      expect(content).toContain("<!-- ralph:end -->");
+      expect(content).toContain("<!-- rauf:end -->");
     });
 
     it("sentinels are properly ordered (start before end)", () => {
       const content = readFileSync(addonPath, "utf-8");
-      const startIdx = content.indexOf("<!-- ralph:start -->");
-      const endIdx = content.indexOf("<!-- ralph:end -->");
-      expect(startIdx, "ralph:start must come before ralph:end").toBeLessThan(endIdx);
+      const startIdx = content.indexOf("<!-- rauf:start -->");
+      const endIdx = content.indexOf("<!-- rauf:end -->");
+      expect(startIdx, "rauf:start must come before rauf:end").toBeLessThan(endIdx);
     });
 
     it("sentinels are on their own lines", () => {
       const content = readFileSync(addonPath, "utf-8");
       const lines = content.split("\n");
       expect(
-        lines.some((l) => l.trim() === "<!-- ralph:start -->"),
-        "ralph:start must be on its own line",
+        lines.some((l) => l.trim() === "<!-- rauf:start -->"),
+        "rauf:start must be on its own line",
       ).toBe(true);
       expect(
-        lines.some((l) => l.trim() === "<!-- ralph:end -->"),
-        "ralph:end must be on its own line",
+        lines.some((l) => l.trim() === "<!-- rauf:end -->"),
+        "rauf:end must be on its own line",
       ).toBe(true);
     });
 
@@ -149,9 +149,9 @@ describe("artifact templates", () => {
 
     it("contains the autonomous loop instructions", () => {
       const content = readFileSync(addonPath, "utf-8");
-      expect(content).toContain("RALPH_DONE");
-      expect(content).toContain("RALPH_BLOCKED");
-      expect(content).toContain("RALPH_NEEDS_HUMAN");
+      expect(content).toContain("RAUF_DONE");
+      expect(content).toContain("RAUF_BLOCKED");
+      expect(content).toContain("RAUF_NEEDS_HUMAN");
     });
   });
 
@@ -179,25 +179,25 @@ describe("artifact templates", () => {
 
     it("has properly formatted ralph sentinel block", () => {
       const content = readFileSync(templatePath, "utf-8");
-      const startSentinel = "<!-- ralph:start -->";
-      const endSentinel = "<!-- ralph:end -->";
+      const startSentinel = "<!-- rauf:start -->";
+      const endSentinel = "<!-- rauf:end -->";
 
-      expect(content, "must contain ralph:start sentinel").toContain(startSentinel);
-      expect(content, "must contain ralph:end sentinel").toContain(endSentinel);
+      expect(content, "must contain rauf:start sentinel").toContain(startSentinel);
+      expect(content, "must contain rauf:end sentinel").toContain(endSentinel);
 
       const startIdx = content.indexOf(startSentinel);
       const endIdx = content.indexOf(endSentinel);
-      expect(startIdx, "ralph:start must come before ralph:end").toBeLessThan(endIdx);
+      expect(startIdx, "rauf:start must come before rauf:end").toBeLessThan(endIdx);
 
       // Sentinels must be on their own lines
       const lines = content.split("\n");
       expect(
         lines.some((l) => l.trim() === startSentinel),
-        "ralph:start sentinel must be on its own line",
+        "rauf:start sentinel must be on its own line",
       ).toBe(true);
       expect(
         lines.some((l) => l.trim() === endSentinel),
-        "ralph:end sentinel must be on its own line",
+        "rauf:end sentinel must be on its own line",
       ).toBe(true);
     });
 
@@ -212,9 +212,9 @@ describe("artifact templates", () => {
     it("rendered output contains the autonomous loop section with signal keywords", () => {
       const content = readFileSync(templatePath, "utf-8");
       const rendered = renderTemplate(content, GREENFIELD_VARS);
-      expect(rendered).toContain("RALPH_DONE");
-      expect(rendered).toContain("RALPH_BLOCKED");
-      expect(rendered).toContain("RALPH_NEEDS_HUMAN");
+      expect(rendered).toContain("RAUF_DONE");
+      expect(rendered).toContain("RAUF_BLOCKED");
+      expect(rendered).toContain("RAUF_NEEDS_HUMAN");
     });
   });
 });

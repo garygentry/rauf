@@ -181,7 +181,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
 
       // ── Live log watching ───────────────────────────────────
       //
-      // watchLog uses fs.watch to detect new bytes in ralph.log.
+      // watchLog uses fs.watch to detect new bytes in rauf.log.
       // If the log file doesn't exist yet, fs.watch throws — catch and skip.
 
       try {
@@ -236,7 +236,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
 
   // ── GET /:id/log ──────────────────────────────────────────────
   //
-  // Returns last N lines from ralph.log. ?tail=N controls line count
+  // Returns last N lines from rauf.log. ?tail=N controls line count
   // (default 50, max 10,000). Returns empty array when log is missing.
 
   router.get("/:id/log", (c) => {
@@ -272,7 +272,7 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
 
   // ── GET /:id/progress ─────────────────────────────────────────
   //
-  // Returns the raw markdown content of .ralph/progress.md.
+  // Returns the raw markdown content of .rauf/progress.md.
   // Returns { data: "" } when the file is missing (graceful handling).
 
   router.get("/:id/progress", (c) => {

@@ -75,29 +75,29 @@ function createProject(
   }
 }
 
-/** Write a state.json into a project's .ralph/ directory. */
+/** Write a state.json into a project's .rauf/ directory. */
 function writeStateJson(projectPath: string, state: LoopState): void {
-  const ralphDir = path.join(projectPath, DEFAULT_ROOT_DIR);
-  fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, STATE_FILENAME), JSON.stringify(state, null, 2));
+  const raufDir = path.join(projectPath, DEFAULT_ROOT_DIR);
+  fs.mkdirSync(raufDir, { recursive: true });
+  fs.writeFileSync(path.join(raufDir, STATE_FILENAME), JSON.stringify(state, null, 2));
 }
 
-/** Write a ralph.log file into a project's .ralph/ directory. */
+/** Write a rauf.log file into a project's .rauf/ directory. */
 function writeLog(projectPath: string, content: string, mtimeOverride?: Date): void {
-  const ralphDir = path.join(projectPath, DEFAULT_ROOT_DIR);
-  fs.mkdirSync(ralphDir, { recursive: true });
-  const filePath = path.join(ralphDir, "ralph.log");
+  const raufDir = path.join(projectPath, DEFAULT_ROOT_DIR);
+  fs.mkdirSync(raufDir, { recursive: true });
+  const filePath = path.join(raufDir, "rauf.log");
   fs.writeFileSync(filePath, content);
   if (mtimeOverride) {
     fs.utimesSync(filePath, mtimeOverride, mtimeOverride);
   }
 }
 
-/** Write a DONE file into a project's .ralph/ directory. */
+/** Write a DONE file into a project's .rauf/ directory. */
 function writeDoneFile(projectPath: string, content: string = ""): void {
-  const ralphDir = path.join(projectPath, DEFAULT_ROOT_DIR);
-  fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, "DONE"), content);
+  const raufDir = path.join(projectPath, DEFAULT_ROOT_DIR);
+  fs.mkdirSync(raufDir, { recursive: true });
+  fs.writeFileSync(path.join(raufDir, "DONE"), content);
 }
 
 /** Create a valid LoopState object for testing. */
@@ -153,32 +153,32 @@ describe("Integration: install into fresh directory", () => {
     expect(fileExists(path.join(projectDir, "ralph-add.sh"))).toBe(false);
     expect(fileExists(path.join(projectDir, "ralph-status.sh"))).toBe(false);
 
-    // .ralph/ directory with data files
-    expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);
-    expect(fileExists(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
-    expect(fileExists(path.join(projectDir, ".ralph", "progress.md"))).toBe(true);
+    // .rauf/ directory with data files
+    expect(fileExists(path.join(projectDir, ".rauf", "RAUF.md"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "progress.md"))).toBe(true);
 
     // CLAUDE.md with sentinel blocks
     const claudeMd = fs.readFileSync(path.join(projectDir, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_END);
-    expect(claudeMd).toContain("Autonomous Loop (Ralph)");
+    expect(claudeMd).toContain("Autonomous Loop (Rauf)");
 
-    // .ralph.json marker file
+    // .rauf.json marker file
     const markerResult = readMarkerFile(projectDir);
     expect(markerResult.ok).toBe(true);
     if (!markerResult.ok) return;
 
-    expect(markerResult.value.ralph).toBe(true);
+    expect(markerResult.value.rauf).toBe(true);
     expect(markerResult.value.profile.stack).toBe("node-typescript");
     expect(markerResult.value.profile.packageManager).toBe("pnpm");
-    // Only RALPH.md hash (no script hashes)
+    // Only RAUF.md hash (no script hashes)
     expect(Object.keys(markerResult.value.artifactHashes).length).toBeGreaterThanOrEqual(1);
 
-    // RALPH.md contains rendered commands (not raw template vars)
-    const ralphMd = fs.readFileSync(path.join(projectDir, ".ralph", "RALPH.md"), "utf-8");
-    expect(ralphMd).not.toContain("{{");
-    expect(ralphMd).toContain("pnpm test");
+    // RAUF.md contains rendered commands (not raw template vars)
+    const raufMd = fs.readFileSync(path.join(projectDir, ".rauf", "RAUF.md"), "utf-8");
+    expect(raufMd).not.toContain("{{");
+    expect(raufMd).toContain("pnpm test");
 
     // Backlog is valid and empty
     const backlogResult = readBacklog(defaultBacklogPaths(projectDir));
@@ -218,10 +218,10 @@ describe("Integration: install into fresh directory", () => {
 
     // Verify removed
     expect(fileExists(path.join(projectDir, MARKER_FILENAME))).toBe(false);
-    expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(false);
+    expect(fileExists(path.join(projectDir, ".rauf", "RAUF.md"))).toBe(false);
 
     // Backlog preserved by default
-    expect(fileExists(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
   });
 
   it("install with profile overrides and CLAUDE.md merge", () => {
@@ -293,20 +293,20 @@ describe("Integration: greenfield init creates valid project", () => {
     expect(fileExists(path.join(projectDir, "ralph-add.sh"))).toBe(false);
     expect(fileExists(path.join(projectDir, "ralph-status.sh"))).toBe(false);
 
-    // .ralph/ data files
-    expect(fileExists(path.join(projectDir, ".ralph", "RALPH.md"))).toBe(true);
-    expect(fileExists(path.join(projectDir, ".ralph", "backlog.json"))).toBe(true);
-    expect(fileExists(path.join(projectDir, ".ralph", "progress.md"))).toBe(true);
+    // .rauf/ data files
+    expect(fileExists(path.join(projectDir, ".rauf", "RAUF.md"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
+    expect(fileExists(path.join(projectDir, ".rauf", "progress.md"))).toBe(true);
 
     // CLAUDE.md with ralph section
     const claudeMd = fs.readFileSync(path.join(projectDir, "CLAUDE.md"), "utf-8");
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
 
-    // .ralph.json marker is valid
+    // .rauf.json marker is valid
     const markerResult = readMarkerFile(projectDir);
     expect(markerResult.ok).toBe(true);
     if (!markerResult.ok) return;
-    expect(markerResult.value.ralph).toBe(true);
+    expect(markerResult.value.rauf).toBe(true);
 
     // Backlog is valid and empty (no seed provided)
     const backlogResult = readBacklog(defaultBacklogPaths(projectDir));
@@ -654,7 +654,7 @@ describe("Integration: status derivation with mock state.json", () => {
     writeLog(
       projectDir,
       [
-        "=== Ralph Loop Starting ===",
+        "=== Rauf Loop Starting ===",
         `Date: ${new Date().toISOString()}`,
         "--- Iteration 1 / 10 ---",
         "Processing item 001",
@@ -725,9 +725,9 @@ describe("Integration: status derivation with mock state.json", () => {
     expect(result.value[result.value.length - 1]).toBe("Line 100");
   });
 
-  it("returns IDLE when .ralph directory does not exist (caller handles NOT_INSTALLED)", () => {
+  it("returns IDLE when .rauf directory does not exist (caller handles NOT_INSTALLED)", () => {
     // Create a project without installing ralph.
-    // With BacklogPaths, deriveStatus no longer checks for .ralph dir existence —
+    // With BacklogPaths, deriveStatus no longer checks for .rauf dir existence —
     // the caller (CLI/web) is responsible for the NOT_INSTALLED check.
     const bareDir = path.join(tmpDir, "bare-project");
     createProject(bareDir, { git: true });

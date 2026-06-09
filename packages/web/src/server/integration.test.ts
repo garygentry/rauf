@@ -19,7 +19,7 @@ const ARTIFACTS_DIR = path.resolve(__dirname, "../../../../artifacts/variants/ba
 
 /** CSRF + JSON headers for mutation requests. */
 const MUTATION_HEADERS = {
-  "X-Ralph-Request": "true",
+  "X-Rauf-Request": "true",
   "Content-Type": "application/json",
 };
 
@@ -59,7 +59,7 @@ function createProject(
 }
 
 /** Install ralph into a project using core's install function. */
-function installRalph(projectDir: string, overrides: Partial<InstallOptions> = {}): void {
+function installRauf(projectDir: string, overrides: Partial<InstallOptions> = {}): void {
   const result = install(projectDir, {
     artifactsDir: ARTIFACTS_DIR,
     projectName: path.basename(projectDir),
@@ -70,8 +70,8 @@ function installRalph(projectDir: string, overrides: Partial<InstallOptions> = {
 
 /** Write a valid state.json for simulating loop state. */
 function writeStateJson(projectDir: string, overrides: Record<string, unknown> = {}): void {
-  const ralphDir = path.join(projectDir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(projectDir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
   const state = {
     status: "running",
     currentItem: "001",
@@ -85,7 +85,7 @@ function writeStateJson(projectDir: string, overrides: Record<string, unknown> =
     error: null,
     ...overrides,
   };
-  fs.writeFileSync(path.join(ralphDir, "state.json"), JSON.stringify(state, null, 2));
+  fs.writeFileSync(path.join(raufDir, "state.json"), JSON.stringify(state, null, 2));
 }
 
 // ─── Setup ──────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ beforeEach(() => {
   projectName = "test-project";
   projectDir = path.join(tmpDir, projectName);
   createProject(projectDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
-  installRalph(projectDir);
+  installRauf(projectDir);
 });
 
 afterEach(() => {
@@ -144,8 +144,8 @@ describe("API Integration: projects", () => {
     const res = await app.request(`/api/projects/${projectName}`);
     expect(res.status).toBe(200);
 
-    const body = (await json(res)) as { data: { name: string; marker: { ralph: boolean } } };
-    expect(body.data.marker.ralph).toBe(true);
+    const body = (await json(res)) as { data: { name: string; marker: { rauf: boolean } } };
+    expect(body.data.marker.rauf).toBe(true);
   });
 
   it("GET /api/projects/:id returns 404 for nonexistent project", async () => {
@@ -359,8 +359,8 @@ describe("API Integration: status round-trip", () => {
 
     // Write a log file
     const logContent = "Line 1\nLine 2\nLine 3\n";
-    const ralphDir = path.join(projectDir, ".ralph");
-    fs.writeFileSync(path.join(ralphDir, "ralph.log"), logContent);
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), logContent);
 
     const res = await app.request(`/api/projects/${projectName}/log?tail=2`);
     expect(res.status).toBe(200);
@@ -374,7 +374,7 @@ describe("API Integration: status round-trip", () => {
     const app = makeApp(tmpDir);
 
     // Remove progress.md that install creates
-    const progressPath = path.join(projectDir, ".ralph", "progress.md");
+    const progressPath = path.join(projectDir, ".rauf", "progress.md");
     if (fs.existsSync(progressPath)) fs.unlinkSync(progressPath);
 
     const res = await app.request(`/api/projects/${projectName}/progress`);
@@ -389,7 +389,7 @@ describe("API Integration: status round-trip", () => {
 
     // Write progress content
     fs.writeFileSync(
-      path.join(projectDir, ".ralph", "progress.md"),
+      path.join(projectDir, ".rauf", "progress.md"),
       "# Progress\n\n## Learnings\n\n- Pattern A works well\n",
     );
 
@@ -501,7 +501,7 @@ describe("API Integration: error handling", () => {
     const app = makeApp(tmpDir);
 
     // Corrupt the backlog file
-    fs.writeFileSync(path.join(projectDir, ".ralph", "backlog.json"), "{ broken json }");
+    fs.writeFileSync(path.join(projectDir, ".rauf", "backlog.json"), "{ broken json }");
 
     const res = await app.request(`/api/projects/${projectName}/backlog`);
     expect(res.status).toBe(500);

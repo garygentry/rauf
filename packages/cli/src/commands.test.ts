@@ -210,7 +210,7 @@ describe("help command", () => {
       const code = await cmd.handler!(makeCtx());
       expect(code).toBe(ExitCode.SUCCESS);
     });
-    expect(output.stdout).toContain("ralph");
+    expect(output.stdout).toContain("rauf");
     expect(output.stdout).toContain("Usage:");
     expect(output.stdout).toContain("Commands:");
     expect(output.stdout).toContain("--json");

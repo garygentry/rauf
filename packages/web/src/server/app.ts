@@ -42,7 +42,7 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
 
   // ── CSRF middleware ───────────────────────────────────────────
   //
-  // POST, PUT, DELETE require X-Ralph-Request: true.
+  // POST, PUT, DELETE require X-Rauf-Request: true.
   // Without it: 403 Forbidden.
   // No CORS headers are set — cross-origin reads are blocked by the
   // browser. The custom header adds a second layer of defense.
@@ -50,12 +50,12 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
   app.use("*", async (c, next) => {
     const method = c.req.method;
     if (method === "POST" || method === "PUT" || method === "DELETE") {
-      const header = c.req.header("X-Ralph-Request");
+      const header = c.req.header("X-Rauf-Request");
       if (header !== "true") {
         return c.json(
           errorResponse(
             "FORBIDDEN",
-            "X-Ralph-Request: true header is required for mutation requests",
+            "X-Rauf-Request: true header is required for mutation requests",
           ),
           403,
         );

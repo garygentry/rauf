@@ -1,12 +1,12 @@
 // ─── migrate Command Handler ─────────────────────────────────────
 //
-// CLI adapter for core's Ralph→Rauf migration.
+// CLI adapter for core's Rauf→Rauf migration.
 //
 //   rauf migrate <path>                 migrate a project in place
 //   rauf migrate <path> --dry-run       print the plan, write nothing
 //   rauf migrate <path> --no-backup     skip backup copies
 //   rauf migrate <path> --clean-backups remove backups left by a prior migrate
-//   rauf migrate --global               move ~/.ralph → ~/.rauf
+//   rauf migrate --global               move ~/.rauf → ~/.rauf
 //
 // Each handler: parse flags → resolve path → call core → format report.
 
@@ -108,9 +108,9 @@ export async function handleMigrate(ctx: CommandContext): Promise<number> {
 
 function handleCleanBackups(resolved: string, ctx: CommandContext): number {
   const candidates = [
-    path.join(resolved, ".ralph.bak"),
-    path.join(resolved, ".ralph.json.bak"),
-    path.join(resolved, "CLAUDE.md.ralphbak"),
+    path.join(resolved, ".rauf.bak"),
+    path.join(resolved, ".rauf.json.bak"),
+    path.join(resolved, "CLAUDE.md.raufbak"),
   ];
   const removed: string[] = [];
   for (const candidate of candidates) {
@@ -177,7 +177,7 @@ function printReport(report: MigrateReport, opts: { global?: boolean }): void {
   if (report.foreignConfigRefs.length > 0) {
     print("");
     warn(
-      `These non-rauf config/state files reference '.ralph' — update them by hand (NOT auto-rewritten):`,
+      `These non-rauf config/state files reference '.rauf' — update them by hand (NOT auto-rewritten):`,
     );
     for (const ref of report.foreignConfigRefs) {
       info(`  ${c.dim(`${ref.path}:${ref.line}`)} ${ref.text}`);

@@ -9,10 +9,10 @@ import ports from "../../../config/ports.json";
 
 // ─── Constants ───────────────────────────────────────────────────
 
-const MARKER_FILENAME = ".ralph.json";
-const TOOL_CONFIG_DIR = path.join(os.homedir(), ".ralph");
+const MARKER_FILENAME = ".rauf.json";
+const TOOL_CONFIG_DIR = path.join(os.homedir(), ".rauf");
 const TOOL_CONFIG_PATH = path.join(TOOL_CONFIG_DIR, "config.json");
-const RALPH_ROOT_ENV = "RALPH_ROOT";
+const RAUF_ROOT_ENV = "RAUF_ROOT";
 
 const DEFAULT_TOOL_CONFIG: ToolConfig = {
   rootDirectory: process.cwd(),
@@ -22,7 +22,7 @@ const DEFAULT_TOOL_CONFIG: ToolConfig = {
 
 // ─── readMarkerFile ──────────────────────────────────────────────
 //
-// Read and validate <projectPath>/.ralph.json.
+// Read and validate <projectPath>/.rauf.json.
 
 export function readMarkerFile(projectPath: string): Result<MarkerFile> {
   const markerPath = path.join(path.resolve(projectPath), MARKER_FILENAME);
@@ -31,7 +31,7 @@ export function readMarkerFile(projectPath: string): Result<MarkerFile> {
 
 // ─── writeMarkerFile ─────────────────────────────────────────────
 //
-// Atomic write of .ralph.json into projectPath.
+// Atomic write of .rauf.json into projectPath.
 
 export function writeMarkerFile(projectPath: string, marker: MarkerFile): Result<void> {
   const markerPath = path.join(path.resolve(projectPath), MARKER_FILENAME);
@@ -41,7 +41,7 @@ export function writeMarkerFile(projectPath: string, marker: MarkerFile): Result
 
 // ─── readToolConfig ──────────────────────────────────────────────
 //
-// Read ~/.ralph/config.json. Return defaults if file doesn't exist.
+// Read ~/.rauf/config.json. Return defaults if file doesn't exist.
 
 export function readToolConfig(): Result<ToolConfig> {
   const result = readJsonFile(TOOL_CONFIG_PATH, ToolConfigSchema);
@@ -61,10 +61,10 @@ export function readToolConfig(): Result<ToolConfig> {
 
 // ─── writeToolConfig ─────────────────────────────────────────────
 //
-// Write to ~/.ralph/config.json. Create ~/.ralph/ if needed.
+// Write to ~/.rauf/config.json. Create ~/.rauf/ if needed.
 
 export function writeToolConfig(config: ToolConfig): Result<void> {
-  // Ensure ~/.ralph/ directory exists
+  // Ensure ~/.rauf/ directory exists
   const dirResult = ensureDir(TOOL_CONFIG_DIR);
   if (!dirResult.ok) {
     return dirResult;
@@ -76,7 +76,7 @@ export function writeToolConfig(config: ToolConfig): Result<void> {
 
 // ─── resolveRootDirectory ────────────────────────────────────────
 //
-// Resolution order: cliRoot → RALPH_ROOT env → config file → cwd.
+// Resolution order: cliRoot → RAUF_ROOT env → config file → cwd.
 // Returns an absolute path.
 
 export function resolveRootDirectory(cliRoot?: string, envRoot?: string): string {
@@ -86,7 +86,7 @@ export function resolveRootDirectory(cliRoot?: string, envRoot?: string): string
   }
 
   // 2. Environment variable
-  const envValue = envRoot ?? process.env[RALPH_ROOT_ENV];
+  const envValue = envRoot ?? process.env[RAUF_ROOT_ENV];
   if (envValue) {
     return path.resolve(envValue);
   }
@@ -174,4 +174,4 @@ export function readClaudeOAuthToken(credentialsPathOverride?: string): Result<s
 
 // ─── Exported constants (for testing) ────────────────────────────
 
-export { MARKER_FILENAME, TOOL_CONFIG_DIR, TOOL_CONFIG_PATH, DEFAULT_TOOL_CONFIG, RALPH_ROOT_ENV };
+export { MARKER_FILENAME, TOOL_CONFIG_DIR, TOOL_CONFIG_PATH, DEFAULT_TOOL_CONFIG, RAUF_ROOT_ENV };

@@ -121,7 +121,7 @@ function formatAgentDelegation(item: BacklogItem): string {
   parts.push("- Use Task tool to create sub-agents for each subtask");
   parts.push("- Give each sub-agent clear, self-contained instructions");
   parts.push("- Wait for all sub-agents before running final verification");
-  parts.push("- You own the RALPH_DONE/RALPH_BLOCKED signal — sub-agents do not emit these");
+  parts.push("- You own the RAUF_DONE/RAUF_BLOCKED signal — sub-agents do not emit these");
 
   return parts.join("\n");
 }
@@ -138,11 +138,11 @@ function formatEstimatedIterationsHint(item: BacklogItem): string {
 /**
  * Builds the complete prompt string sent to `claude -p`.
  *
- * Reads RALPH.md and progress.md from the project's .ralph/ directory,
+ * Reads RAUF.md and progress.md from the project's .rauf/ directory,
  * formats the current backlog item and backlog summary, and assembles
  * them into a structured prompt with clear section headers.
  *
- * Returns Result err if RALPH.md is missing (required for the prompt).
+ * Returns Result err if RAUF.md is missing (required for the prompt).
  */
 export function buildPrompt(
   paths: BacklogPaths,
@@ -150,14 +150,14 @@ export function buildPrompt(
   item: BacklogItem,
   backlog: Backlog,
 ): Result<string> {
-  if (!instructionPaths.ralphMd) {
+  if (!instructionPaths.raufMd) {
     return err({
       code: ErrorCodes.FILE_NOT_FOUND,
-      message: "RALPH.md not found in backlog root state directory or project .ralph/",
+      message: "RAUF.md not found in backlog root state directory or project .rauf/",
     });
   }
 
-  const ralphMdContent = fs.readFileSync(instructionPaths.ralphMd, "utf-8");
+  const raufMdContent = fs.readFileSync(instructionPaths.raufMd, "utf-8");
   const progressContent = fileExists(paths.progress)
     ? fs.readFileSync(paths.progress, "utf-8")
     : null;
@@ -170,8 +170,8 @@ export function buildPrompt(
 
   const sections: string[] = [];
 
-  // Section 1: RALPH.md as system context
-  sections.push(`# Ralph — Per-Iteration Instructions\n\n${ralphMdContent}`);
+  // Section 1: RAUF.md as system context
+  sections.push(`# Rauf — Per-Iteration Instructions\n\n${raufMdContent}`);
 
   // Section 1.5: Active Backlog Root context (always injected)
   const relativeBacklog = path.relative(paths.projectPath, paths.backlog);
@@ -249,7 +249,7 @@ const MAX_DIFF_SIZE = 100_000;
 /**
  * Builds the review prompt sent to Claude for the post-loop review pass.
  *
- * Reads .ralph/REVIEW.md if it exists (user-customizable), otherwise
+ * Reads .rauf/REVIEW.md if it exists (user-customizable), otherwise
  * falls back to the embedded REVIEW.md.tmpl template.
  *
  * Template variables: verifyCommand, completedItemsDetail, gitDiff, progressContent
@@ -293,7 +293,7 @@ export function buildReviewPrompt(
   } else {
     // Fall back to embedded template
     try {
-      templateContent = getEmbeddedArtifact(".ralph/REVIEW.md.tmpl");
+      templateContent = getEmbeddedArtifact(".rauf/REVIEW.md.tmpl");
     } catch {
       return err({
         code: ErrorCodes.FILE_NOT_FOUND,

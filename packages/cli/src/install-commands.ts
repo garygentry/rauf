@@ -121,9 +121,9 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   }
 
   // Check target doesn't already exist as a ralph project
-  if (fs.existsSync(path.join(resolved, ".ralph.json"))) {
+  if (fs.existsSync(path.join(resolved, ".rauf.json"))) {
     error(
-      `Path "${resolved}" already has a .ralph.json. Use 'ralph install' for existing projects.`,
+      `Path "${resolved}" already has a .rauf.json. Use 'ralph install' for existing projects.`,
     );
     return ExitCode.CONFLICT;
   }
@@ -212,9 +212,9 @@ export async function handleUninstall(ctx: CommandContext): Promise<number> {
     return ExitCode.SUCCESS;
   }
 
-  success(`Ralph uninstalled from ${resolved}`);
+  success(`Rauf uninstalled from ${resolved}`);
   if (keepData) {
-    info("  Data files (backlog.json, progress.md, ralph.log) preserved.");
+    info("  Data files (backlog.json, progress.md, rauf.log) preserved.");
   } else {
     info("  Data files preserved by default. Use without --keep-data to see defaults.");
   }
@@ -265,7 +265,7 @@ function handleCoreError(
         break;
       case ErrorCodes.NOT_INSTALLED:
         info(
-          `Ralph is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+          `Rauf is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
         );
         break;
       case ErrorCodes.INVALID_JSON:
@@ -319,7 +319,7 @@ function printPreflightResults(
 
 /** Print installation report in human-readable format */
 function printInstallationReport(report: InstallationReport): void {
-  success(`Ralph installed in ${c.bold(report.projectName)}`);
+  success(`Rauf installed in ${c.bold(report.projectName)}`);
   info("");
 
   info(c.bold("Profile:"));
@@ -357,7 +357,7 @@ function printInitReport(report: InstallationReport): void {
 
 /** Print update report in human-readable format */
 function printUpdateReport(report: InstallationReport): void {
-  success(`Ralph artifacts updated in ${c.bold(report.projectName)}`);
+  success(`Rauf artifacts updated in ${c.bold(report.projectName)}`);
   info("");
 
   printActions(report.actions);

@@ -28,7 +28,7 @@ import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
 
 // ─── Constants (test-local) ────────────────────────────────────────
 
-const LOG_FILENAME = "ralph.log";
+const LOG_FILENAME = "rauf.log";
 const DONE_FILENAME = "DONE";
 const CANCEL_FILENAME = "CANCEL";
 
@@ -49,28 +49,28 @@ function makePaths(): BacklogPaths {
   return defaultBacklogPaths(tmpDir);
 }
 
-/** Create .ralph directory */
-function createRalphDir(): void {
+/** Create .rauf directory */
+function createRaufDir(): void {
   fs.mkdirSync(path.join(tmpDir, DEFAULT_ROOT_DIR), { recursive: true });
 }
 
 /** Write a state.json for test setup */
 function writeStateJson(state: LoopState): void {
-  createRalphDir();
+  createRaufDir();
   const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
   fs.writeFileSync(filePath, JSON.stringify(state, null, 2) + "\n");
 }
 
 /** Write a backlog.json for test setup */
 function writeBacklog(backlog: Backlog): void {
-  createRalphDir();
+  createRaufDir();
   const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json");
   fs.writeFileSync(filePath, JSON.stringify(backlog, null, 2) + "\n");
 }
 
-/** Write ralph.log with given content */
+/** Write rauf.log with given content */
 function writeLog(content: string, mtimeOverride?: Date): void {
-  createRalphDir();
+  createRaufDir();
   const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
   fs.writeFileSync(filePath, content);
   if (mtimeOverride) {
@@ -80,7 +80,7 @@ function writeLog(content: string, mtimeOverride?: Date): void {
 
 /** Write DONE file */
 function setupDoneFile(content: string = ""): void {
-  createRalphDir();
+  createRaufDir();
   const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
   fs.writeFileSync(filePath, content);
 }
@@ -130,8 +130,8 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 // ─── deriveStatus: Tier 1 (state.json) ──────────────────────────
 
 describe("deriveStatus — Tier 1: state.json", () => {
-  it("returns IDLE with stateSource 'none' when .ralph directory is missing", () => {
-    // With BacklogPaths, deriveStatus no longer checks for .ralph dir existence.
+  it("returns IDLE with stateSource 'none' when .rauf directory is missing", () => {
+    // With BacklogPaths, deriveStatus no longer checks for .rauf dir existence.
     // When state.json is missing and no log exists, it returns IDLE via tier 2.
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
@@ -306,7 +306,7 @@ describe("deriveStatus — Tier 1: state.json", () => {
 
 describe("deriveStatus — Tier 2: log parsing fallback", () => {
   it("returns IDLE with stateSource 'none' when no log exists", () => {
-    createRalphDir();
+    createRaufDir();
     // No state.json, no log
 
     const result = deriveStatus(makePaths());
@@ -447,7 +447,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
   });
 
   it("falls back to Tier 2 when state.json is invalid JSON", () => {
-    createRalphDir();
+    createRaufDir();
     const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, "not json at all");
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
@@ -460,7 +460,7 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
   });
 
   it("falls back to Tier 2 when state.json fails schema validation", () => {
-    createRalphDir();
+    createRaufDir();
     const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, JSON.stringify({ status: "invalid_status" }));
     writeLog("[2026-02-21 10:00:00] --- Iteration 1 / 10 ---\n");
@@ -538,7 +538,7 @@ describe("deriveStatus — BacklogSummary", () => {
   });
 
   it("returns zero counts when backlog.json is invalid", () => {
-    createRalphDir();
+    createRaufDir();
     const backlogPath = path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json");
     fs.writeFileSync(backlogPath, "not json");
     writeStateJson(makeLoopState());
@@ -555,7 +555,7 @@ describe("deriveStatus — BacklogSummary", () => {
 
 describe("readLogTail", () => {
   it("returns empty array when log file is missing", () => {
-    createRalphDir();
+    createRaufDir();
     const result = readLogTail(makePaths(), 10);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -602,7 +602,7 @@ describe("readLogTail", () => {
   });
 
   it("caps at 10000 lines maximum", () => {
-    createRalphDir();
+    createRaufDir();
     // We don't need to write 10001 lines — just test the cap logic
     const lines = Array.from({ length: 5 }, (_, i) => `Line ${i + 1}`);
     writeLog(lines.join("\n") + "\n");
@@ -638,7 +638,7 @@ describe("readLogTail", () => {
 
 describe("watchLog", () => {
   it("returns a cleanup function", () => {
-    createRalphDir();
+    createRaufDir();
     writeLog("Initial content\n");
 
     const cleanup = watchLog(makePaths(), () => {});
@@ -689,8 +689,8 @@ describe("watchLog", () => {
 // ─── Edge cases ─────────────────────────────────────────────────
 
 describe("deriveStatus — edge cases", () => {
-  it("handles .ralph dir exists but is completely empty", () => {
-    createRalphDir();
+  it("handles .rauf dir exists but is completely empty", () => {
+    createRaufDir();
 
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
@@ -700,7 +700,7 @@ describe("deriveStatus — edge cases", () => {
   });
 
   it("handles state.json with empty file", () => {
-    createRalphDir();
+    createRaufDir();
     const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, "");
 
@@ -843,7 +843,7 @@ describe("deriveStatus — usage limit states", () => {
 
 describe("writeLoopState", () => {
   it("writes valid state.json atomically", () => {
-    createRalphDir();
+    createRaufDir();
     const state = makeLoopState({ status: "running" });
 
     const result = writeLoopState(makePaths(), state);
@@ -857,7 +857,7 @@ describe("writeLoopState", () => {
   });
 
   it("auto-sets updatedAt to current ISO timestamp", () => {
-    createRalphDir();
+    createRaufDir();
     const state = makeLoopState({ status: "running" });
     const before = new Date().toISOString();
 
@@ -874,7 +874,7 @@ describe("writeLoopState", () => {
   });
 
   it("overwrites any provided updatedAt with current timestamp", () => {
-    createRalphDir();
+    createRaufDir();
     const oldTimestamp = "2020-01-01T00:00:00.000Z";
     const state = makeLoopState({ status: "running", updatedAt: oldTimestamp });
 
@@ -887,7 +887,7 @@ describe("writeLoopState", () => {
   });
 
   it("validates against LoopStateSchema before writing", () => {
-    createRalphDir();
+    createRaufDir();
     // Invalid state: status is not a valid enum value
     const invalidState = {
       status: "not_a_valid_status" as LoopState["status"],
@@ -909,7 +909,7 @@ describe("writeLoopState", () => {
   });
 
   it("returns validation error for missing required fields", () => {
-    createRalphDir();
+    createRaufDir();
     // Missing iteration and other required fields
     const partialState = {
       status: "running",
@@ -921,8 +921,8 @@ describe("writeLoopState", () => {
     expect(result.error.code).toBe("VALIDATION_ERROR");
   });
 
-  it("returns error when .ralph directory does not exist", () => {
-    // No createRalphDir() — directory missing
+  it("returns error when .rauf directory does not exist", () => {
+    // No createRaufDir() — directory missing
     const state = makeLoopState({ status: "running" });
 
     const result = writeLoopState(makePaths(), state);
@@ -930,7 +930,7 @@ describe("writeLoopState", () => {
   });
 
   it("writes valid JSON with pretty formatting", () => {
-    createRalphDir();
+    createRaufDir();
     const state = makeLoopState({ status: "complete" });
 
     writeLoopState(makePaths(), state);
@@ -948,8 +948,8 @@ describe("writeLoopState", () => {
 // ─── appendLog ───────────────────────────────────────────────────
 
 describe("appendLog", () => {
-  it("appends timestamped line to ralph.log", () => {
-    createRalphDir();
+  it("appends timestamped line to rauf.log", () => {
+    createRaufDir();
     // Create the log file first
     const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.writeFileSync(logPath, "");
@@ -963,7 +963,7 @@ describe("appendLog", () => {
   });
 
   it("appends multiple lines sequentially", () => {
-    createRalphDir();
+    createRaufDir();
     const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.writeFileSync(logPath, "");
 
@@ -978,7 +978,7 @@ describe("appendLog", () => {
   });
 
   it("creates log file if it does not exist (when directory exists)", () => {
-    createRalphDir();
+    createRaufDir();
 
     const result = appendLog(makePaths(), "New log");
     expect(result.ok).toBe(true);
@@ -989,7 +989,7 @@ describe("appendLog", () => {
     expect(content).toContain("New log");
   });
 
-  it("returns error when .ralph directory does not exist", () => {
+  it("returns error when .rauf directory does not exist", () => {
     const result = appendLog(makePaths(), "Should fail");
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -997,7 +997,7 @@ describe("appendLog", () => {
   });
 
   it("preserves existing log content when appending", () => {
-    createRalphDir();
+    createRaufDir();
     const logPath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOG_FILENAME);
     fs.writeFileSync(logPath, "[2026-02-27 10:00:00] Previous entry\n");
 
@@ -1013,7 +1013,7 @@ describe("appendLog", () => {
 
 describe("writeDoneFile", () => {
   it("writes content string to DONE file", () => {
-    createRalphDir();
+    createRaufDir();
 
     const result = writeDoneFile(makePaths(), "loop completed successfully");
     expect(result.ok).toBe(true);
@@ -1024,7 +1024,7 @@ describe("writeDoneFile", () => {
   });
 
   it("writes empty string to DONE file", () => {
-    createRalphDir();
+    createRaufDir();
 
     const result = writeDoneFile(makePaths(), "");
     expect(result.ok).toBe(true);
@@ -1035,7 +1035,7 @@ describe("writeDoneFile", () => {
   });
 
   it("overwrites existing DONE file", () => {
-    createRalphDir();
+    createRaufDir();
     const donePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
     fs.writeFileSync(donePath, "old content");
 
@@ -1046,7 +1046,7 @@ describe("writeDoneFile", () => {
     expect(content).toBe("new content");
   });
 
-  it("returns error when .ralph directory does not exist", () => {
+  it("returns error when .rauf directory does not exist", () => {
     const result = writeDoneFile(makePaths(), "should fail");
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -1058,7 +1058,7 @@ describe("writeDoneFile", () => {
 
 describe("clearDoneFile", () => {
   it("removes existing DONE file", () => {
-    createRalphDir();
+    createRaufDir();
     const donePath = path.join(tmpDir, DEFAULT_ROOT_DIR, DONE_FILENAME);
     fs.writeFileSync(donePath, "done");
 
@@ -1068,14 +1068,14 @@ describe("clearDoneFile", () => {
   });
 
   it("returns ok when DONE file does not exist", () => {
-    createRalphDir();
+    createRaufDir();
 
     const result = clearDoneFile(makePaths());
     expect(result.ok).toBe(true);
   });
 
-  it("returns ok even when .ralph directory does not exist", () => {
-    // No createRalphDir()
+  it("returns ok even when .rauf directory does not exist", () => {
+    // No createRaufDir()
     const result = clearDoneFile(makePaths());
     expect(result.ok).toBe(true);
   });
@@ -1085,7 +1085,7 @@ describe("clearDoneFile", () => {
 
 describe("checkCancelRequested", () => {
   it("returns true when CANCEL exists", () => {
-    createRalphDir();
+    createRaufDir();
     const cancelPath = path.join(tmpDir, DEFAULT_ROOT_DIR, CANCEL_FILENAME);
     fs.writeFileSync(cancelPath, "");
 
@@ -1093,17 +1093,17 @@ describe("checkCancelRequested", () => {
   });
 
   it("returns false when CANCEL does not exist", () => {
-    createRalphDir();
+    createRaufDir();
 
     expect(checkCancelRequested(makePaths())).toBe(false);
   });
 
-  it("returns false when .ralph directory does not exist", () => {
+  it("returns false when .rauf directory does not exist", () => {
     expect(checkCancelRequested(makePaths())).toBe(false);
   });
 
   it("returns true regardless of CANCEL file content", () => {
-    createRalphDir();
+    createRaufDir();
     const cancelPath = path.join(tmpDir, DEFAULT_ROOT_DIR, CANCEL_FILENAME);
     fs.writeFileSync(cancelPath, "user requested cancellation");
 
@@ -1115,7 +1115,7 @@ describe("checkCancelRequested", () => {
 
 describe("clearCancelFile", () => {
   it("removes CANCEL file and returns true when it existed", () => {
-    createRalphDir();
+    createRaufDir();
     const cancelPath = path.join(tmpDir, DEFAULT_ROOT_DIR, CANCEL_FILENAME);
     fs.writeFileSync(cancelPath, "");
 
@@ -1127,7 +1127,7 @@ describe("clearCancelFile", () => {
   });
 
   it("returns false when CANCEL file did not exist", () => {
-    createRalphDir();
+    createRaufDir();
 
     const result = clearCancelFile(makePaths());
     expect(result.ok).toBe(true);
@@ -1135,7 +1135,7 @@ describe("clearCancelFile", () => {
     expect(result.value).toBe(false);
   });
 
-  it("returns false when .ralph directory does not exist", () => {
+  it("returns false when .rauf directory does not exist", () => {
     const result = clearCancelFile(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -1147,7 +1147,7 @@ describe("clearCancelFile", () => {
 
 describe("scanActiveRoots", () => {
   it("returns empty array when no active roots exist", () => {
-    createRalphDir();
+    createRaufDir();
 
     const result = scanActiveRoots(tmpDir);
     expect(result.ok).toBe(true);
@@ -1157,7 +1157,7 @@ describe("scanActiveRoots", () => {
 
   it("returns active roots and skips idle ones", () => {
     // Create default root with running state
-    createRalphDir();
+    createRaufDir();
     const defaultState = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(
       defaultState,
@@ -1166,7 +1166,7 @@ describe("scanActiveRoots", () => {
 
     // Create specs/auth root with idle state
     const authDir = path.join(tmpDir, "specs", "auth");
-    const authStateDir = path.join(authDir, ".ralph");
+    const authStateDir = path.join(authDir, ".rauf");
     fs.mkdirSync(authStateDir, { recursive: true });
     fs.writeFileSync(
       path.join(authStateDir, STATE_FILENAME),
@@ -1175,7 +1175,7 @@ describe("scanActiveRoots", () => {
 
     // Create specs/billing root with running state
     const billingDir = path.join(tmpDir, "specs", "billing");
-    const billingStateDir = path.join(billingDir, ".ralph");
+    const billingStateDir = path.join(billingDir, ".rauf");
     fs.mkdirSync(billingStateDir, { recursive: true });
     fs.writeFileSync(
       path.join(billingDir, "backlog.json"),
@@ -1192,7 +1192,7 @@ describe("scanActiveRoots", () => {
 
     // Should find 2 active roots (default + billing), skip idle auth
     expect(result.value).toHaveLength(2);
-    expect(result.value[0]!.relativePath).toBe(".ralph");
+    expect(result.value[0]!.relativePath).toBe(".rauf");
     expect(result.value[0]!.loopState).toBe("RUNNING");
     expect(result.value[0]!.currentItem).toBe("001");
     expect(result.value[1]!.relativePath).toBe(path.join("specs", "billing"));
@@ -1201,11 +1201,11 @@ describe("scanActiveRoots", () => {
   });
 
   it("skips node_modules, .git, dist, build, coverage directories", () => {
-    createRalphDir();
+    createRaufDir();
 
-    // Create .ralph dirs inside skip directories
+    // Create .rauf dirs inside skip directories
     for (const skipDir of ["node_modules", ".git", "dist", "build", "coverage"]) {
-      const stateDir = path.join(tmpDir, skipDir, "some-pkg", ".ralph");
+      const stateDir = path.join(tmpDir, skipDir, "some-pkg", ".rauf");
       fs.mkdirSync(stateDir, { recursive: true });
       fs.writeFileSync(
         path.join(stateDir, STATE_FILENAME),
@@ -1221,11 +1221,11 @@ describe("scanActiveRoots", () => {
   });
 
   it("handles missing state.json gracefully", () => {
-    // Create .ralph dir without state.json
-    createRalphDir();
+    // Create .rauf dir without state.json
+    createRaufDir();
 
-    // Create another root with .ralph dir but no state.json
-    const otherStateDir = path.join(tmpDir, "specs", "api", ".ralph");
+    // Create another root with .rauf dir but no state.json
+    const otherStateDir = path.join(tmpDir, "specs", "api", ".rauf");
     fs.mkdirSync(otherStateDir, { recursive: true });
     // No state.json written
 
@@ -1236,7 +1236,7 @@ describe("scanActiveRoots", () => {
   });
 
   it("handles corrupt state.json gracefully", () => {
-    createRalphDir();
+    createRaufDir();
     const statePath = path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME);
     fs.writeFileSync(statePath, "not json at all");
 
@@ -1250,7 +1250,7 @@ describe("scanActiveRoots", () => {
     // Create multiple active roots in non-alphabetical order
     const roots = ["specs/zebra", "specs/alpha", "specs/middle"];
     for (const rootPath of roots) {
-      const stateDir = path.join(tmpDir, rootPath, ".ralph");
+      const stateDir = path.join(tmpDir, rootPath, ".rauf");
       fs.mkdirSync(stateDir, { recursive: true });
       fs.writeFileSync(
         path.join(tmpDir, rootPath, "backlog.json"),
@@ -1275,7 +1275,7 @@ describe("scanActiveRoots", () => {
   });
 
   it("detects lock file as activity indicator", () => {
-    createRalphDir();
+    createRaufDir();
     // No state.json, but has a lock file
     fs.writeFileSync(
       path.join(tmpDir, DEFAULT_ROOT_DIR, LOCK_FILENAME),
@@ -1286,13 +1286,13 @@ describe("scanActiveRoots", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toHaveLength(1);
-    expect(result.value[0]!.relativePath).toBe(".ralph");
+    expect(result.value[0]!.relativePath).toBe(".rauf");
     expect(result.value[0]!.loopState).toBe("RUNNING");
     expect(result.value[0]!.currentItem).toBeNull();
   });
 
   it("does not duplicate when both state.json and lock file exist", () => {
-    createRalphDir();
+    createRaufDir();
     fs.writeFileSync(
       path.join(tmpDir, DEFAULT_ROOT_DIR, STATE_FILENAME),
       JSON.stringify(makeLoopState({ status: "running", currentItem: "001" })),
@@ -1311,9 +1311,9 @@ describe("scanActiveRoots", () => {
   });
 
   it("works with non-default root (backlog.json in parent dir)", () => {
-    // Create specs/auth with backlog.json in root and running state in .ralph/
+    // Create specs/auth with backlog.json in root and running state in .rauf/
     const authDir = path.join(tmpDir, "specs", "auth");
-    const authStateDir = path.join(authDir, ".ralph");
+    const authStateDir = path.join(authDir, ".rauf");
     fs.mkdirSync(authStateDir, { recursive: true });
     fs.writeFileSync(
       path.join(authDir, "backlog.json"),

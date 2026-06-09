@@ -19,7 +19,7 @@ export const STATE_FILENAME = "state.json";
 export const BACKLOG_FILENAME = "backlog.json";
 
 /** Default backlog root directory name */
-export const DEFAULT_ROOT_DIR = ".ralph";
+export const DEFAULT_ROOT_DIR = ".rauf";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -32,21 +32,21 @@ export const DEFAULT_ROOT_DIR = ".ralph";
  * (except for backlog.json location probing).
  */
 export interface BacklogPaths {
-  /** The project root directory (contains .ralph.json marker) */
+  /** The project root directory (contains .rauf.json marker) */
   projectPath: string;
-  /** The backlog root directory (contains backlog.json or has .ralph/ subdir with it) */
+  /** The backlog root directory (contains backlog.json or has .rauf/ subdir with it) */
   root: string;
   /**
-   * Where state files live (state.json, ralph.log, progress.md, etc.).
-   * Same as `root` when root IS `.ralph/` (the default root case).
-   * Otherwise `root/.ralph/`.
+   * Where state files live (state.json, rauf.log, progress.md, etc.).
+   * Same as `root` when root IS `.rauf/` (the default root case).
+   * Otherwise `root/.rauf/`.
    */
   stateDir: string;
   /** Resolved path to backlog.json (found in root or stateDir) */
   backlog: string;
   /** Path to state.json */
   state: string;
-  /** Path to ralph.log */
+  /** Path to rauf.log */
   log: string;
   /** Path to DONE sentinel file */
   done: string;
@@ -65,13 +65,13 @@ export interface BacklogPaths {
 /**
  * Instruction file paths resolved with fallback.
  *
- * For RALPH.md and REVIEW.md: checks the backlog root's state directory first,
- * then falls back to the project-level `.ralph/` directory.
+ * For RAUF.md and REVIEW.md: checks the backlog root's state directory first,
+ * then falls back to the project-level `.rauf/` directory.
  * Returns `null` if neither location has the file.
  */
 export interface InstructionPaths {
-  /** Resolved RALPH.md path (per-root override or project-level fallback), or null if missing */
-  ralphMd: string | null;
+  /** Resolved RAUF.md path (per-root override or project-level fallback), or null if missing */
+  raufMd: string | null;
   /** Resolved REVIEW.md path (per-root override or project-level fallback), or null if missing */
   reviewMd: string | null;
 }
@@ -81,17 +81,17 @@ export interface InstructionPaths {
 /**
  * Resolve the absolute backlog root path from a project path and optional --backlog flag.
  *
- * When `backlogFlag` is omitted or undefined, returns the default root: `{projectPath}/.ralph`.
+ * When `backlogFlag` is omitted or undefined, returns the default root: `{projectPath}/.rauf`.
  * When provided, resolves relative to `projectPath` and validates that the result
  * is within the project root (path sandboxing per REQ-SEC-01).
  *
- * @param projectPath - Absolute path to the project root (directory containing .ralph.json)
+ * @param projectPath - Absolute path to the project root (directory containing .rauf.json)
  * @param backlogFlag - Optional --backlog flag value (relative directory path)
  * @returns Absolute path to the backlog root directory
  */
 export function resolveBacklogRoot(projectPath: string, backlogFlag?: string): Result<string> {
   if (backlogFlag === undefined || backlogFlag === "") {
-    return ok(path.join(path.resolve(projectPath), ".ralph"));
+    return ok(path.join(path.resolve(projectPath), ".rauf"));
   }
 
   const resolved = path.resolve(projectPath, backlogFlag);
@@ -108,15 +108,15 @@ export function resolveBacklogRoot(projectPath: string, backlogFlag?: string): R
 
 /**
  * Determine the state directory for a given backlog root.
- * If root basename is `.ralph`, returns root directly (no nesting).
- * Otherwise returns `root/.ralph/`.
+ * If root basename is `.rauf`, returns root directly (no nesting).
+ * Otherwise returns `root/.rauf/`.
  */
 export function resolveStateDir(backlogRoot: string): string {
   const resolved = path.resolve(backlogRoot);
-  if (path.basename(resolved) === ".ralph") {
+  if (path.basename(resolved) === ".rauf") {
     return resolved;
   }
-  return path.join(resolved, ".ralph");
+  return path.join(resolved, ".rauf");
 }
 
 /**
@@ -178,7 +178,7 @@ export function resolveBacklogPaths(
     stateDir,
     backlog: backlogPath,
     state: path.join(stateDir, "state.json"),
-    log: path.join(stateDir, "ralph.log"),
+    log: path.join(stateDir, "rauf.log"),
     done: path.join(stateDir, "DONE"),
     cancel: path.join(stateDir, "CANCEL"),
     progress: path.join(stateDir, "progress.md"),
@@ -189,19 +189,19 @@ export function resolveBacklogPaths(
 }
 
 /**
- * Resolve instruction file paths (RALPH.md, REVIEW.md) with per-root-then-project fallback.
+ * Resolve instruction file paths (RAUF.md, REVIEW.md) with per-root-then-project fallback.
  */
 export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths {
-  const projectRalphDir = path.join(paths.projectPath, ".ralph");
+  const projectRaufDir = path.join(paths.projectPath, ".rauf");
 
   function resolveWithFallback(filename: string): string | null {
     // 1. Per-root override
     const perRoot = path.join(paths.stateDir, filename);
     if (fileExists(perRoot)) return perRoot;
 
-    // 2. Project-level fallback (only if stateDir differs from project .ralph/)
-    if (paths.stateDir !== projectRalphDir) {
-      const projectLevel = path.join(projectRalphDir, filename);
+    // 2. Project-level fallback (only if stateDir differs from project .rauf/)
+    if (paths.stateDir !== projectRaufDir) {
+      const projectLevel = path.join(projectRaufDir, filename);
       if (fileExists(projectLevel)) return projectLevel;
     }
 
@@ -209,7 +209,7 @@ export function resolveInstructionPaths(paths: BacklogPaths): InstructionPaths {
   }
 
   return {
-    ralphMd: resolveWithFallback("RALPH.md"),
+    raufMd: resolveWithFallback("RAUF.md"),
     reviewMd: resolveWithFallback("REVIEW.md"),
   };
 }
@@ -222,20 +222,20 @@ export function ensureStateDir(paths: BacklogPaths): Result<void> {
 }
 
 /**
- * Construct BacklogPaths for the default root ({projectPath}/.ralph) without
+ * Construct BacklogPaths for the default root ({projectPath}/.rauf) without
  * any filesystem checks. Useful as a bridge for callers that don't yet resolve
  * paths via resolveBacklogPaths.
  */
 export function defaultBacklogPaths(projectPath: string): BacklogPaths {
   const resolved = path.resolve(projectPath);
-  const stateDir = path.join(resolved, ".ralph");
+  const stateDir = path.join(resolved, ".rauf");
   return {
     projectPath: resolved,
     root: stateDir,
     stateDir,
     backlog: path.join(stateDir, BACKLOG_FILENAME),
     state: path.join(stateDir, STATE_FILENAME),
-    log: path.join(stateDir, "ralph.log"),
+    log: path.join(stateDir, "rauf.log"),
     done: path.join(stateDir, "DONE"),
     cancel: path.join(stateDir, "CANCEL"),
     progress: path.join(stateDir, "progress.md"),

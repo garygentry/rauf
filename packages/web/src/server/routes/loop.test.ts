@@ -28,7 +28,7 @@ async function json(response: Response): Promise<unknown> {
 
 function writeMarker(dir: string): void {
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -43,23 +43,23 @@ function writeMarker(dir: string): void {
     artifactHashes: {},
     options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
 function writeBacklog(dir: string, items: unknown[] = []): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
   const backlog = { project: "test", description: "test project", items };
-  fs.writeFileSync(path.join(ralphDir, "backlog.json"), JSON.stringify(backlog, null, 2));
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2));
 }
 
-function writeRalphMd(dir: string): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, "RALPH.md"), "# Test\nVerify: echo ok\n");
+function writeRaufMd(dir: string): void {
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+  fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test\nVerify: echo ok\n");
 }
 
-function setupMockClaude(signal = "RALPH_DONE"): void {
+function setupMockClaude(signal = "RAUF_DONE"): void {
   const mockBinDir = path.join(tmpDir, "mock-bin");
   fs.mkdirSync(mockBinDir, { recursive: true });
   const script = `#!/bin/bash\necho "${signal}"\nexit 0\n`;
@@ -82,7 +82,7 @@ function createProject(name: string, items: unknown[] = []): string {
   fs.mkdirSync(projectPath, { recursive: true });
   writeMarker(projectPath);
   writeBacklog(projectPath, items);
-  writeRalphMd(projectPath);
+  writeRaufMd(projectPath);
   return projectPath;
 }
 
@@ -120,7 +120,7 @@ describe("POST /:id/loop/start", () => {
     const res = await app.request("/api/projects/test-project/loop/start", {
       method: "POST",
       headers: {
-        "X-Ralph-Request": "true",
+        "X-Rauf-Request": "true",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ maxIterations: 1 }),
@@ -140,7 +140,7 @@ describe("POST /:id/loop/start", () => {
     const res1 = await app.request("/api/projects/test-project/loop/start", {
       method: "POST",
       headers: {
-        "X-Ralph-Request": "true",
+        "X-Rauf-Request": "true",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ maxIterations: 5 }),
@@ -151,7 +151,7 @@ describe("POST /:id/loop/start", () => {
     const res2 = await app.request("/api/projects/test-project/loop/start", {
       method: "POST",
       headers: {
-        "X-Ralph-Request": "true",
+        "X-Rauf-Request": "true",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ maxIterations: 1 }),
@@ -169,7 +169,7 @@ describe("POST /:id/loop/start", () => {
 
     const res = await app.request("/api/projects/test-project/loop/start", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
 
     expect(res.status).toBe(200);
@@ -179,7 +179,7 @@ describe("POST /:id/loop/start", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/a%2Fb/loop/start", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
     expect(res.status).toBe(400);
   });
@@ -202,7 +202,7 @@ describe("POST /:id/loop/stop", () => {
 
     const res = await app.request("/api/projects/test-project/loop/stop", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
 
     expect(res.status).toBe(404);
@@ -219,7 +219,7 @@ describe("POST /:id/loop/stop", () => {
     await app.request("/api/projects/test-project/loop/start", {
       method: "POST",
       headers: {
-        "X-Ralph-Request": "true",
+        "X-Rauf-Request": "true",
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ maxIterations: 5 }),
@@ -228,7 +228,7 @@ describe("POST /:id/loop/stop", () => {
     // Stop it
     const res = await app.request("/api/projects/test-project/loop/stop", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
 
     expect(res.status).toBe(200);
@@ -240,7 +240,7 @@ describe("POST /:id/loop/stop", () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/a%2Fb/loop/stop", {
       method: "POST",
-      headers: { "X-Ralph-Request": "true" },
+      headers: { "X-Rauf-Request": "true" },
     });
     expect(res.status).toBe(400);
   });

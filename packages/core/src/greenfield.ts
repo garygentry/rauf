@@ -52,13 +52,13 @@ const GITIGNORE_TEMPLATES: Record<string, string> = {
   custom: "",
 };
 
-/** Ralph-specific entries appended to every .gitignore */
-const RALPH_GITIGNORE = [
+/** Rauf-specific entries appended to every .gitignore */
+const RAUF_GITIGNORE = [
   "",
-  "# Ralph loop state",
-  ".ralph/state.json",
-  ".ralph/DONE",
-  ".ralph/ralph.log",
+  "# Rauf loop state",
+  ".rauf/state.json",
+  ".rauf/DONE",
+  ".rauf/rauf.log",
 ].join("\n");
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -280,9 +280,9 @@ function initGitRepo(projectPath: string, preset: string): Result<InstallAction[
     env: {
       ...process.env,
       // Ensure git commit works in CI/headless environments
-      GIT_AUTHOR_NAME: process.env["GIT_AUTHOR_NAME"] || "Ralph",
+      GIT_AUTHOR_NAME: process.env["GIT_AUTHOR_NAME"] || "Rauf",
       GIT_AUTHOR_EMAIL: process.env["GIT_AUTHOR_EMAIL"] || "ralph@localhost",
-      GIT_COMMITTER_NAME: process.env["GIT_COMMITTER_NAME"] || "Ralph",
+      GIT_COMMITTER_NAME: process.env["GIT_COMMITTER_NAME"] || "Rauf",
       GIT_COMMITTER_EMAIL: process.env["GIT_COMMITTER_EMAIL"] || "ralph@localhost",
     },
   });
@@ -302,7 +302,7 @@ function initGitRepo(projectPath: string, preset: string): Result<InstallAction[
 
 function generateGitignore(preset: string): string {
   const base = GITIGNORE_TEMPLATES[preset] ?? GITIGNORE_TEMPLATES["custom"]!;
-  const parts = [base, RALPH_GITIGNORE].filter(Boolean);
+  const parts = [base, RAUF_GITIGNORE].filter(Boolean);
   return parts.join("\n") + "\n";
 }
 
@@ -406,7 +406,7 @@ function seedBacklog(
   }
 
   actions.push({
-    file: ".ralph/backlog.json",
+    file: ".rauf/backlog.json",
     action: "updated" as const,
     detail: `Seeded ${addedCount} backlog item${addedCount === 1 ? "" : "s"}`,
   });
@@ -550,4 +550,4 @@ function partialItemsToInputs(items: unknown[]): CreateItemInput[] {
 
 // ─── Exported constants (for testing) ─────────────────────────────
 
-export { CLAUDE_GREENFIELD_TEMPLATE, GITIGNORE_TEMPLATES, RALPH_GITIGNORE, MARKDOWN_ITEM_RE };
+export { CLAUDE_GREENFIELD_TEMPLATE, GITIGNORE_TEMPLATES, RAUF_GITIGNORE, MARKDOWN_ITEM_RE };

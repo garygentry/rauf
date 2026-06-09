@@ -17,7 +17,7 @@ let paths: BacklogPaths;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-iter-status-"));
-  fs.mkdirSync(path.join(tmpDir, ".ralph"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".rauf"), { recursive: true });
   paths = defaultBacklogPaths(tmpDir);
 });
 
@@ -109,8 +109,8 @@ describe("iteration-status", () => {
   });
 
   it("writes to a non-default root when BacklogPaths points elsewhere", () => {
-    // Create a custom backlog root at tmpDir/specs/auth/.ralph/
-    const customStateDir = path.join(tmpDir, "specs", "auth", ".ralph");
+    // Create a custom backlog root at tmpDir/specs/auth/.rauf/
+    const customStateDir = path.join(tmpDir, "specs", "auth", ".rauf");
     fs.mkdirSync(customStateDir, { recursive: true });
 
     const customPaths: BacklogPaths = {
@@ -119,7 +119,7 @@ describe("iteration-status", () => {
       stateDir: customStateDir,
       backlog: path.join(customStateDir, "backlog.json"),
       state: path.join(customStateDir, "state.json"),
-      log: path.join(customStateDir, "ralph.log"),
+      log: path.join(customStateDir, "rauf.log"),
       done: path.join(customStateDir, "DONE"),
       cancel: path.join(customStateDir, "CANCEL"),
       progress: path.join(customStateDir, "progress.md"),

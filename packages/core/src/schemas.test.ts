@@ -12,7 +12,7 @@ import {
   InstallationReportSchema,
   InstallActionSchema,
   ApiErrorSchema,
-  RalphErrorSchema,
+  RaufErrorSchema,
   BacklogItemIdSchema,
   BacklogItemPrioritySchema,
   BacklogItemTypeSchema,
@@ -52,7 +52,7 @@ const validMarkerOptions = {
 };
 
 const validMarkerFile = {
-  ralph: true as const,
+  rauf: true as const,
   version: "1",
   variant: "backlog-json" as const,
   installedAt: "2026-02-21T19:00:00Z",
@@ -74,7 +74,7 @@ const validBacklogItem = {
 };
 
 const validBacklog = {
-  project: "ralph",
+  project: "rauf",
   description: "A tool for managing coding loops",
   items: [validBacklogItem],
 };
@@ -377,7 +377,7 @@ describe("AgentDelegationSchema", () => {
 describe("BacklogSchema", () => {
   it("accepts a valid backlog", () => {
     const result = BacklogSchema.parse(validBacklog);
-    expect(result.project).toBe("ralph");
+    expect(result.project).toBe("rauf");
     expect(result.items).toHaveLength(1);
   });
 
@@ -434,17 +434,17 @@ describe("normalizeBacklogItems", () => {
 describe("MarkerFileSchema", () => {
   it("accepts a valid marker file", () => {
     const result = MarkerFileSchema.parse(validMarkerFile);
-    expect(result.ralph).toBe(true);
+    expect(result.rauf).toBe(true);
     expect(result.version).toBe("1");
     expect(result.variant).toBe("backlog-json");
   });
 
   it("rejects ralph !== true (sentinel check)", () => {
-    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, ralph: false })).toThrow();
+    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, rauf: false })).toThrow();
   });
 
   it("rejects ralph as a string", () => {
-    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, ralph: "true" })).toThrow();
+    expect(() => MarkerFileSchema.parse({ ...validMarkerFile, rauf: "true" })).toThrow();
   });
 
   it("rejects invalid variant", () => {
@@ -851,7 +851,7 @@ describe("InstallationReportSchema", () => {
         {
           file: "CLAUDE.md",
           action: "merged",
-          detail: "Ralph section added",
+          detail: "Rauf section added",
         },
       ],
       profile: validProfile,
@@ -906,11 +906,11 @@ describe("apiSuccessSchema", () => {
   });
 });
 
-// ─── RalphError ────────────────────────────────────────────────────
+// ─── RaufError ────────────────────────────────────────────────────
 
-describe("RalphErrorSchema", () => {
+describe("RaufErrorSchema", () => {
   it("accepts a valid error", () => {
-    const result = RalphErrorSchema.parse({
+    const result = RaufErrorSchema.parse({
       code: "FILE_NOT_FOUND",
       message: "Could not locate backlog.json",
     });

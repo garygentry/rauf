@@ -15,7 +15,7 @@ import {
   TOOL_CONFIG_DIR,
   TOOL_CONFIG_PATH,
   DEFAULT_TOOL_CONFIG,
-  RALPH_ROOT_ENV,
+  RAUF_ROOT_ENV,
 } from "./config.js";
 import { ErrorCodes } from "./errors.js";
 import type { MarkerFile, ToolConfig } from "./schemas.js";
@@ -36,7 +36,7 @@ afterEach(() => {
 /** Create a valid MarkerFile object for testing */
 function makeMarker(overrides: Partial<MarkerFile> = {}): MarkerFile {
   return {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: "2026-01-01T00:00:00Z",
@@ -67,7 +67,7 @@ function makeMarker(overrides: Partial<MarkerFile> = {}): MarkerFile {
 // ─── readMarkerFile ──────────────────────────────────────────────
 
 describe("readMarkerFile", () => {
-  it("reads and validates a valid .ralph.json", () => {
+  it("reads and validates a valid .rauf.json", () => {
     const marker = makeMarker();
     fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), JSON.stringify(marker, null, 2));
 
@@ -75,12 +75,12 @@ describe("readMarkerFile", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.ralph).toBe(true);
+    expect(result.value.rauf).toBe(true);
     expect(result.value.version).toBe("1");
     expect(result.value.profile.stack).toBe("node-typescript");
   });
 
-  it("returns FILE_NOT_FOUND when .ralph.json is missing", () => {
+  it("returns FILE_NOT_FOUND when .rauf.json is missing", () => {
     const result = readMarkerFile(tmpDir);
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -101,7 +101,7 @@ describe("readMarkerFile", () => {
   it("returns VALIDATION_ERROR for JSON that doesn't match schema", () => {
     fs.writeFileSync(
       path.join(tmpDir, MARKER_FILENAME),
-      JSON.stringify({ ralph: false, version: "1" }),
+      JSON.stringify({ rauf: false, version: "1" }),
     );
 
     const result = readMarkerFile(tmpDir);
@@ -112,7 +112,7 @@ describe("readMarkerFile", () => {
   });
 
   it("rejects marker with ralph !== true", () => {
-    const marker = { ...makeMarker(), ralph: "yes" };
+    const marker = { ...makeMarker(), rauf: "yes" };
     fs.writeFileSync(path.join(tmpDir, MARKER_FILENAME), JSON.stringify(marker));
 
     const result = readMarkerFile(tmpDir);
@@ -136,7 +136,7 @@ describe("readMarkerFile", () => {
 // ─── writeMarkerFile ─────────────────────────────────────────────
 
 describe("writeMarkerFile", () => {
-  it("writes a valid .ralph.json atomically", () => {
+  it("writes a valid .rauf.json atomically", () => {
     const marker = makeMarker();
 
     const result = writeMarkerFile(tmpDir, marker);
@@ -147,7 +147,7 @@ describe("writeMarkerFile", () => {
     expect(fs.existsSync(filePath)).toBe(true);
 
     const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    expect(content.ralph).toBe(true);
+    expect(content.rauf).toBe(true);
     expect(content.version).toBe("1");
   });
 
@@ -159,7 +159,7 @@ describe("writeMarkerFile", () => {
     expect(fs.existsSync(tmpFile)).toBe(false);
   });
 
-  it("overwrites existing .ralph.json", () => {
+  it("overwrites existing .rauf.json", () => {
     const original = makeMarker({ version: "1" });
     writeMarkerFile(tmpDir, original);
 
@@ -175,7 +175,7 @@ describe("writeMarkerFile", () => {
     const marker = makeMarker({
       artifactHashes: {
         "ralph.sh": "abc123",
-        "RALPH.md": "def456",
+        "RAUF.md": "def456",
       },
     });
 
@@ -209,7 +209,7 @@ describe("writeMarkerFile", () => {
 
 describe("readToolConfig", () => {
   // These tests mock the config file path by writing to the real
-  // ~/.ralph/config.json location. To avoid affecting the real config,
+  // ~/.rauf/config.json location. To avoid affecting the real config,
   // we intercept at the readJsonFile level.
 
   it("returns defaults when config file does not exist", () => {
@@ -247,8 +247,8 @@ describe("readToolConfig", () => {
     });
   });
 
-  it("TOOL_CONFIG_PATH is under ~/.ralph/", () => {
-    expect(TOOL_CONFIG_PATH).toBe(path.join(os.homedir(), ".ralph", "config.json"));
+  it("TOOL_CONFIG_PATH is under ~/.rauf/", () => {
+    expect(TOOL_CONFIG_PATH).toBe(path.join(os.homedir(), ".rauf", "config.json"));
   });
 });
 
@@ -300,8 +300,8 @@ describe("writeToolConfig / readToolConfig round-trip", () => {
     expect(readResult.value.theme).toBe("dark");
   });
 
-  it("creates ~/.ralph/ directory if needed", () => {
-    // If ~/.ralph/ already exists (likely), this is a no-op for ensureDir.
+  it("creates ~/.rauf/ directory if needed", () => {
+    // If ~/.rauf/ already exists (likely), this is a no-op for ensureDir.
     // The important thing is writeToolConfig doesn't fail.
     const config: ToolConfig = {
       rootDirectory: "/tmp/test",
@@ -353,8 +353,8 @@ describe("resolveRootDirectory", () => {
     } catch {
       savedConfig = null;
     }
-    originalEnv = process.env[RALPH_ROOT_ENV];
-    delete process.env[RALPH_ROOT_ENV];
+    originalEnv = process.env[RAUF_ROOT_ENV];
+    delete process.env[RAUF_ROOT_ENV];
   });
 
   afterEach(() => {
@@ -369,14 +369,14 @@ describe("resolveRootDirectory", () => {
       }
     }
     if (originalEnv !== undefined) {
-      process.env[RALPH_ROOT_ENV] = originalEnv;
+      process.env[RAUF_ROOT_ENV] = originalEnv;
     } else {
-      delete process.env[RALPH_ROOT_ENV];
+      delete process.env[RAUF_ROOT_ENV];
     }
   });
 
   it("returns cliRoot when provided (highest priority)", () => {
-    process.env[RALPH_ROOT_ENV] = "/from-env";
+    process.env[RAUF_ROOT_ENV] = "/from-env";
 
     const result = resolveRootDirectory("/from-cli");
     expect(result).toBe(path.resolve("/from-cli"));
@@ -387,8 +387,8 @@ describe("resolveRootDirectory", () => {
     expect(result).toBe(path.resolve("/from-env-param"));
   });
 
-  it("reads RALPH_ROOT env var when no explicit args", () => {
-    process.env[RALPH_ROOT_ENV] = "/from-env-var";
+  it("reads RAUF_ROOT env var when no explicit args", () => {
+    process.env[RAUF_ROOT_ENV] = "/from-env-var";
 
     const result = resolveRootDirectory();
     expect(result).toBe(path.resolve("/from-env-var"));
@@ -424,8 +424,8 @@ describe("resolveRootDirectory", () => {
     expect(result).toBe(path.resolve("/from-cli"));
   });
 
-  it("envRoot param takes priority over RALPH_ROOT env var", () => {
-    process.env[RALPH_ROOT_ENV] = "/from-env-var";
+  it("envRoot param takes priority over RAUF_ROOT env var", () => {
+    process.env[RAUF_ROOT_ENV] = "/from-env-var";
 
     const result = resolveRootDirectory(undefined, "/from-param");
     expect(result).toBe(path.resolve("/from-param"));
@@ -438,7 +438,7 @@ describe("resolveRootDirectory", () => {
   });
 
   it("ignores empty string cliRoot (falls through)", () => {
-    process.env[RALPH_ROOT_ENV] = "/from-env";
+    process.env[RAUF_ROOT_ENV] = "/from-env";
 
     // Empty string is falsy, should fall through to env
     const result = resolveRootDirectory("");
@@ -466,7 +466,7 @@ describe("resolveRootDirectory", () => {
       theme: "system",
     };
     writeToolConfig(config);
-    process.env[RALPH_ROOT_ENV] = "/from-env-var";
+    process.env[RAUF_ROOT_ENV] = "/from-env-var";
 
     // Flag wins
     expect(resolveRootDirectory("/from-flag")).toBe(path.resolve("/from-flag"));
@@ -480,7 +480,7 @@ describe("resolveRootDirectory", () => {
     expect(resolveRootDirectory()).toBe(path.resolve("/from-env-var"));
 
     // Without env var, config wins
-    delete process.env[RALPH_ROOT_ENV];
+    delete process.env[RAUF_ROOT_ENV];
     expect(resolveRootDirectory()).toBe(path.resolve("/from-config"));
 
     // Without config, cwd wins

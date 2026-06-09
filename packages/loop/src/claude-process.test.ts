@@ -251,7 +251,7 @@ describe("spawnClaude", () => {
 
   describe("multi-line output", () => {
     it("captures multi-line stdout including signal on last line", async () => {
-      writeMockClaude('echo "Line 1"\necho "Line 2"\necho "RALPH_DONE"');
+      writeMockClaude('echo "Line 1"\necho "Line 2"\necho "RAUF_DONE"');
 
       const result = await spawnClaude("test", {
         sessionTimeoutMinutes: 1,
@@ -261,7 +261,7 @@ describe("spawnClaude", () => {
       if (!result.ok) return;
       expect(result.value.stdout).toContain("Line 1");
       expect(result.value.stdout).toContain("Line 2");
-      expect(result.value.stdout).toContain("RALPH_DONE");
+      expect(result.value.stdout).toContain("RAUF_DONE");
     });
   });
 });

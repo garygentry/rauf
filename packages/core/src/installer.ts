@@ -17,7 +17,7 @@ import { detectProfile, mergeProfileOverrides, type ProfileOverrides } from "./p
 import { renderTemplate, updateSentinelBlock } from "./template.js";
 import {
   mergeClaudeMd,
-  extractRalphBlock,
+  extractRaufBlock,
   CLAUDE_MD_SENTINEL_START,
   CLAUDE_MD_SENTINEL_END,
 } from "./claude-md.js";
@@ -29,26 +29,26 @@ import { VERSION as TOOL_VERSION } from "./version.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
-/** Name of the .ralph directory — duplicated here to avoid circular imports with status.ts */
-const DOT_RALPH = ".ralph";
+/** Name of the .rauf directory — duplicated here to avoid circular imports with status.ts */
+const DOT_RAUF = ".rauf";
 
-/** Files deployed inside .ralph/ */
+/** Files deployed inside .rauf/ */
 const DIR_FILES = {
-  ralphMd: "RALPH.md",
-  ralphMdTemplate: ".ralph/RALPH.md.tmpl",
+  raufMd: "RAUF.md",
+  raufMdTemplate: ".rauf/RAUF.md.tmpl",
   reviewMd: "REVIEW.md",
-  reviewMdTemplate: ".ralph/REVIEW.md.tmpl",
-  backlog: ".ralph/backlog.json",
-  progress: ".ralph/progress.md",
-  backlogSchema: ".ralph/backlog.schema.json",
+  reviewMdTemplate: ".rauf/REVIEW.md.tmpl",
+  backlog: ".rauf/backlog.json",
+  progress: ".rauf/progress.md",
+  backlogSchema: ".rauf/backlog.schema.json",
 } as const;
 
 /** Template used for CLAUDE.md merge — not deployed directly */
 const CLAUDE_ADDON_FILE = "CLAUDE_ADDON.md";
 
-/** Sentinels for the managed block in RALPH.md */
-const RALPH_MD_MANAGED_START = "<!-- ralph:managed:start -->";
-const RALPH_MD_MANAGED_END = "<!-- ralph:managed:end -->";
+/** Sentinels for the managed block in RAUF.md */
+const RAUF_MD_MANAGED_START = "<!-- rauf:managed:start -->";
+const RAUF_MD_MANAGED_END = "<!-- rauf:managed:end -->";
 
 // ─── Artifact reading ─────────────────────────────────────────────
 
@@ -103,11 +103,11 @@ export interface UpdateOptions {
 }
 
 export interface UninstallOptions {
-  /** Keep .ralph/backlog.json (default: true) */
+  /** Keep .rauf/backlog.json (default: true) */
   keepBacklog?: boolean;
-  /** Keep .ralph/progress.md (default: true) */
+  /** Keep .rauf/progress.md (default: true) */
   keepProgress?: boolean;
-  /** Keep .ralph/ralph.log (default: true) */
+  /** Keep .rauf/rauf.log (default: true) */
   keepLog?: boolean;
   /** Remove ralph section from CLAUDE.md (default: true) */
   removeClaudeMdSection?: boolean;
@@ -160,7 +160,7 @@ export function preflight(projectPath: string): PreflightResult {
     name: "not_already_installed",
     passed: !alreadyInstalled,
     message: alreadyInstalled
-      ? "Ralph is already installed (.ralph.json exists). Use update() instead."
+      ? "Rauf is already installed (.rauf.json exists). Use update() instead."
       : "No existing installation found",
     severity: "error",
   });
@@ -231,35 +231,35 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     ? mergeProfileOverrides(detectProfile(resolved), options.profileOverrides)
     : detectProfile(resolved);
 
-  // 3. Create .ralph/ directory
-  const ralphDir = path.join(resolved, DOT_RALPH);
-  const dirResult = ensureDir(ralphDir);
+  // 3. Create .rauf/ directory
+  const raufDir = path.join(resolved, DOT_RAUF);
+  const dirResult = ensureDir(raufDir);
   if (!dirResult.ok) return dirResult;
 
   // 4. Prepare artifact tracking
   const artifactHashes: Record<string, string> = {};
 
-  // 5. Render RALPH.md from template
+  // 5. Render RAUF.md from template
   const templateVars = buildTemplateVars(profile);
-  const ralphMdResult = deployRalphMd(ralphDir, templateVars, artifactsDir);
-  if (!ralphMdResult.ok) return ralphMdResult;
-  actions.push(ralphMdResult.value);
+  const raufMdResult = deployRaufMd(raufDir, templateVars, artifactsDir);
+  if (!raufMdResult.ok) return raufMdResult;
+  actions.push(raufMdResult.value);
 
-  // Hash the rendered RALPH.md
-  const ralphMdPath = path.join(ralphDir, DIR_FILES.ralphMd);
-  const ralphMdHash = computeHash(ralphMdPath);
-  if (ralphMdHash.ok) {
-    artifactHashes["RALPH.md"] = ralphMdHash.value;
+  // Hash the rendered RAUF.md
+  const raufMdPath = path.join(raufDir, DIR_FILES.raufMd);
+  const raufMdHash = computeHash(raufMdPath);
+  if (raufMdHash.ok) {
+    artifactHashes["RAUF.md"] = raufMdHash.value;
   }
 
   // 5b. Render REVIEW.md from template
-  const reviewMdResult = deployReviewMd(ralphDir, templateVars, artifactsDir);
+  const reviewMdResult = deployReviewMd(raufDir, templateVars, artifactsDir);
   if (!reviewMdResult.ok) return reviewMdResult;
   actions.push(reviewMdResult.value);
 
   // 6. Create backlog.json if missing, validate if exists
   const backlogResult = deployBacklog(
-    ralphDir,
+    raufDir,
     options.projectName,
     options.projectDescription,
     artifactsDir,
@@ -268,7 +268,7 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   actions.push(backlogResult.value);
 
   // 7. Copy progress.md if missing
-  const progressResult = deployProgress(ralphDir, artifactsDir);
+  const progressResult = deployProgress(raufDir, artifactsDir);
   if (!progressResult.ok) return progressResult;
   actions.push(progressResult.value);
 
@@ -276,12 +276,12 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   const schemaContentResult = readArtifact(DIR_FILES.backlogSchema, artifactsDir);
   if (schemaContentResult.ok) {
     fs.writeFileSync(
-      path.join(resolved, ".ralph", "backlog.schema.json"),
+      path.join(resolved, ".rauf", "backlog.schema.json"),
       schemaContentResult.value,
       "utf-8",
     );
     actions.push({
-      file: ".ralph/backlog.schema.json",
+      file: ".rauf/backlog.schema.json",
       action: "created",
       detail: "JSON Schema for editor validation",
     });
@@ -292,7 +292,7 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
-  // 10. Write .ralph.json marker file
+  // 10. Write .rauf.json marker file
   // On re-install, preserve existing options unless explicitly overridden
   const markerOptions: MarkerOptions = {
     ignoreInTool: options.options?.ignoreInTool ?? existingOptions?.ignoreInTool ?? false,
@@ -302,11 +302,11 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   };
 
   const marker: MarkerFile = {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
-    installedBy: `ralph-manager@${TOOL_VERSION}`,
+    installedBy: `rauf-manager@${TOOL_VERSION}`,
     profile,
     artifactHashes,
     options: markerOptions,
@@ -316,8 +316,8 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   if (!markerResult.ok) return markerResult;
 
   const markerAction: InstallAction = isReinstall
-    ? { file: MARKER_FILENAME, action: "updated", detail: "Updated .ralph.json marker file" }
-    : { file: MARKER_FILENAME, action: "created", detail: "Created .ralph.json marker file" };
+    ? { file: MARKER_FILENAME, action: "updated", detail: "Updated .rauf.json marker file" }
+    : { file: MARKER_FILENAME, action: "created", detail: "Created .rauf.json marker file" };
   actions.push(markerAction);
 
   // Determine project name for report
@@ -361,7 +361,7 @@ export function checkArtifactStaleness(
   if (!markerResult.ok) {
     return err({
       code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed in ${resolved}`,
+      message: `Rauf is not installed in ${resolved}`,
       details: { path: resolved },
     });
   }
@@ -387,7 +387,7 @@ export function update(
   if (!markerResult.ok) {
     return err({
       code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed in ${resolved}`,
+      message: `Rauf is not installed in ${resolved}`,
       details: { path: resolved },
     });
   }
@@ -396,20 +396,20 @@ export function update(
   const storedHashes = marker.artifactHashes;
   const newHashes: Record<string, string> = { ...storedHashes };
 
-  // Re-render RALPH.md managed sections
+  // Re-render RAUF.md managed sections
   const profile = marker.profile;
   const templateVars = buildTemplateVars(profile);
-  const ralphMdResult = deployRalphMd(path.join(resolved, DOT_RALPH), templateVars, artifactsDir);
-  if (!ralphMdResult.ok) return ralphMdResult;
-  actions.push(ralphMdResult.value);
+  const raufMdResult = deployRaufMd(path.join(resolved, DOT_RAUF), templateVars, artifactsDir);
+  if (!raufMdResult.ok) return raufMdResult;
+  actions.push(raufMdResult.value);
 
-  // Hash updated RALPH.md
-  const ralphMdPath = path.join(resolved, DOT_RALPH, DIR_FILES.ralphMd);
-  const ralphMdHash = computeHash(ralphMdPath);
-  if (ralphMdHash.ok) newHashes["RALPH.md"] = ralphMdHash.value;
+  // Hash updated RAUF.md
+  const raufMdPath = path.join(resolved, DOT_RAUF, DIR_FILES.raufMd);
+  const raufMdHash = computeHash(raufMdPath);
+  if (raufMdHash.ok) newHashes["RAUF.md"] = raufMdHash.value;
 
   // Re-render REVIEW.md
-  const reviewMdResult = deployReviewMd(path.join(resolved, DOT_RALPH), templateVars, artifactsDir);
+  const reviewMdResult = deployReviewMd(path.join(resolved, DOT_RAUF), templateVars, artifactsDir);
   if (!reviewMdResult.ok) return reviewMdResult;
   actions.push(reviewMdResult.value);
 
@@ -420,12 +420,12 @@ export function update(
 
   // Never touch backlog.json or progress.md during update
   actions.push({
-    file: ".ralph/backlog.json",
+    file: ".rauf/backlog.json",
     action: "skipped",
     detail: "Backlog preserved during update",
   });
   actions.push({
-    file: ".ralph/progress.md",
+    file: ".rauf/progress.md",
     action: "skipped",
     detail: "Progress preserved during update",
   });
@@ -434,12 +434,12 @@ export function update(
   const schemaContentResult = readArtifact(DIR_FILES.backlogSchema, artifactsDir);
   if (schemaContentResult.ok) {
     fs.writeFileSync(
-      path.join(resolved, ".ralph", "backlog.schema.json"),
+      path.join(resolved, ".rauf", "backlog.schema.json"),
       schemaContentResult.value,
       "utf-8",
     );
     actions.push({
-      file: ".ralph/backlog.schema.json",
+      file: ".rauf/backlog.schema.json",
       action: "updated",
       detail: "JSON Schema updated to latest version",
     });
@@ -449,7 +449,7 @@ export function update(
   const updatedMarker: MarkerFile = {
     ...marker,
     artifactHashes: newHashes,
-    installedBy: `ralph-manager@${TOOL_VERSION}`,
+    installedBy: `rauf-manager@${TOOL_VERSION}`,
   };
 
   const writeResult = writeMarkerFile(resolved, updatedMarker);
@@ -458,7 +458,7 @@ export function update(
   actions.push({
     file: MARKER_FILENAME,
     action: "updated",
-    detail: "Updated artifact hashes in .ralph.json",
+    detail: "Updated artifact hashes in .rauf.json",
   });
 
   const projectName = path.basename(resolved);
@@ -484,7 +484,7 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   if (!markerResult.ok) {
     return err({
       code: ErrorCodes.NOT_INSTALLED,
-      message: `Ralph is not installed in ${resolved}`,
+      message: `Rauf is not installed in ${resolved}`,
       details: { path: resolved },
     });
   }
@@ -494,41 +494,41 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   const keepLog = options.keepLog ?? true;
   const removeClaudeMdSection = options.removeClaudeMdSection ?? true;
 
-  // Remove RALPH.md and REVIEW.md (always)
-  safeUnlink(path.join(resolved, DOT_RALPH, "RALPH.md"));
-  safeUnlink(path.join(resolved, DOT_RALPH, "REVIEW.md"));
+  // Remove RAUF.md and REVIEW.md (always)
+  safeUnlink(path.join(resolved, DOT_RAUF, "RAUF.md"));
+  safeUnlink(path.join(resolved, DOT_RAUF, "REVIEW.md"));
 
   // Remove backlog.schema.json (tool-managed)
-  safeUnlink(path.join(resolved, DOT_RALPH, "backlog.schema.json"));
+  safeUnlink(path.join(resolved, DOT_RAUF, "backlog.schema.json"));
 
   // Remove state.json and DONE file (always — these are loop state)
-  safeUnlink(path.join(resolved, DOT_RALPH, "state.json"));
-  safeUnlink(path.join(resolved, DOT_RALPH, "DONE"));
+  safeUnlink(path.join(resolved, DOT_RAUF, "state.json"));
+  safeUnlink(path.join(resolved, DOT_RAUF, "DONE"));
 
   // Conditionally remove data files
   if (!keepBacklog) {
-    safeUnlink(path.join(resolved, DOT_RALPH, "backlog.json"));
-    safeUnlink(path.join(resolved, DOT_RALPH, "backlog.json.bak"));
+    safeUnlink(path.join(resolved, DOT_RAUF, "backlog.json"));
+    safeUnlink(path.join(resolved, DOT_RAUF, "backlog.json.bak"));
   }
 
   if (!keepProgress) {
-    safeUnlink(path.join(resolved, DOT_RALPH, "progress.md"));
+    safeUnlink(path.join(resolved, DOT_RAUF, "progress.md"));
   }
 
   if (!keepLog) {
-    safeUnlink(path.join(resolved, DOT_RALPH, "ralph.log"));
+    safeUnlink(path.join(resolved, DOT_RAUF, "rauf.log"));
   }
 
   // Remove CLAUDE.md ralph section
   if (removeClaudeMdSection) {
-    removeClaudeMdRalphSection(resolved);
+    removeClaudeMdRaufSection(resolved);
   }
 
-  // Remove .ralph.json marker
+  // Remove .rauf.json marker
   safeUnlink(path.join(resolved, MARKER_FILENAME));
 
-  // Try to remove .ralph/ directory if empty
-  tryRemoveEmptyDir(path.join(resolved, DOT_RALPH));
+  // Try to remove .rauf/ directory if empty
+  tryRemoveEmptyDir(path.join(resolved, DOT_RAUF));
 
   return ok(undefined);
 }
@@ -552,12 +552,12 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
 
 /** Extract the content between managed sentinels from rendered template */
 function extractManagedBlock(rendered: string): string | null {
-  const startIdx = rendered.indexOf(RALPH_MD_MANAGED_START);
-  const endIdx = rendered.indexOf(RALPH_MD_MANAGED_END);
+  const startIdx = rendered.indexOf(RAUF_MD_MANAGED_START);
+  const endIdx = rendered.indexOf(RAUF_MD_MANAGED_END);
 
   if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
 
-  const contentStart = startIdx + RALPH_MD_MANAGED_START.length;
+  const contentStart = startIdx + RAUF_MD_MANAGED_START.length;
   // Trim leading/trailing newline from the inner content
   let inner = rendered.slice(contentStart, endIdx);
   if (inner.startsWith("\n")) inner = inner.slice(1);
@@ -565,15 +565,15 @@ function extractManagedBlock(rendered: string): string | null {
   return inner;
 }
 
-/** Render RALPH.md from template with profile variables */
-function deployRalphMd(
-  ralphDir: string,
+/** Render RAUF.md from template with profile variables */
+function deployRaufMd(
+  raufDir: string,
   templateVars: Record<string, string | null | undefined>,
   artifactsDir?: string,
 ): Result<InstallAction> {
-  const outputPath = path.join(ralphDir, DIR_FILES.ralphMd);
+  const outputPath = path.join(raufDir, DIR_FILES.raufMd);
 
-  const contentResult = readArtifact(DIR_FILES.ralphMdTemplate, artifactsDir);
+  const contentResult = readArtifact(DIR_FILES.raufMdTemplate, artifactsDir);
   if (!contentResult.ok) return contentResult;
 
   const rendered = renderTemplate(contentResult.value, templateVars);
@@ -589,29 +589,29 @@ function deployRalphMd(
       const writeResult = atomicWrite(outputPath, rendered);
       if (!writeResult.ok) return writeResult;
       return ok({
-        file: ".ralph/RALPH.md",
+        file: ".rauf/RAUF.md",
         action: "rendered" as const,
-        detail: "RALPH.md rendered from template",
+        detail: "RAUF.md rendered from template",
       });
     }
 
     // Extract just the managed block from the freshly rendered template
     const newManagedContent = extractManagedBlock(rendered);
 
-    if (newManagedContent !== null && current.includes(RALPH_MD_MANAGED_START)) {
+    if (newManagedContent !== null && current.includes(RAUF_MD_MANAGED_START)) {
       // Sentinel-aware update: replace only the managed block
       const updated = updateSentinelBlock(
         current,
-        RALPH_MD_MANAGED_START,
-        RALPH_MD_MANAGED_END,
+        RAUF_MD_MANAGED_START,
+        RAUF_MD_MANAGED_END,
         newManagedContent,
       );
 
       if (updated === current) {
         return ok({
-          file: ".ralph/RALPH.md",
+          file: ".rauf/RAUF.md",
           action: "skipped" as const,
-          detail: "RALPH.md already up to date",
+          detail: "RAUF.md already up to date",
         });
       }
 
@@ -619,18 +619,18 @@ function deployRalphMd(
       if (!writeResult.ok) return writeResult;
 
       return ok({
-        file: ".ralph/RALPH.md",
+        file: ".rauf/RAUF.md",
         action: "updated" as const,
-        detail: "RALPH.md managed section updated, project-specific content preserved",
+        detail: "RAUF.md managed section updated, project-specific content preserved",
       });
     }
 
     // Legacy file without sentinels or template without sentinels — full overwrite
     if (current === rendered) {
       return ok({
-        file: ".ralph/RALPH.md",
+        file: ".rauf/RAUF.md",
         action: "skipped" as const,
-        detail: "RALPH.md already up to date",
+        detail: "RAUF.md already up to date",
       });
     }
 
@@ -638,9 +638,9 @@ function deployRalphMd(
     if (!writeResult.ok) return writeResult;
 
     return ok({
-      file: ".ralph/RALPH.md",
+      file: ".rauf/RAUF.md",
       action: "rendered" as const,
-      detail: "RALPH.md re-rendered from template (no managed sentinels found)",
+      detail: "RAUF.md re-rendered from template (no managed sentinels found)",
     });
   }
 
@@ -649,25 +649,25 @@ function deployRalphMd(
   if (!writeResult.ok) return writeResult;
 
   return ok({
-    file: ".ralph/RALPH.md",
+    file: ".rauf/RAUF.md",
     action: "rendered" as const,
-    detail: "RALPH.md rendered from template",
+    detail: "RAUF.md rendered from template",
   });
 }
 
 /** Render REVIEW.md from template if missing or update managed sections */
 function deployReviewMd(
-  ralphDir: string,
+  raufDir: string,
   templateVars: Record<string, string | null | undefined>,
   artifactsDir?: string,
 ): Result<InstallAction> {
-  const outputPath = path.join(ralphDir, DIR_FILES.reviewMd);
+  const outputPath = path.join(raufDir, DIR_FILES.reviewMd);
 
   const contentResult = readArtifact(DIR_FILES.reviewMdTemplate, artifactsDir);
   if (!contentResult.ok) {
     // REVIEW.md template is optional — skip if not found
     return ok({
-      file: ".ralph/REVIEW.md",
+      file: ".rauf/REVIEW.md",
       action: "skipped" as const,
       detail: "REVIEW.md template not found, skipping",
     });
@@ -684,7 +684,7 @@ function deployReviewMd(
       const writeResult = atomicWrite(outputPath, rendered);
       if (!writeResult.ok) return writeResult;
       return ok({
-        file: ".ralph/REVIEW.md",
+        file: ".rauf/REVIEW.md",
         action: "rendered" as const,
         detail: "REVIEW.md rendered from template",
       });
@@ -692,7 +692,7 @@ function deployReviewMd(
 
     if (current === rendered) {
       return ok({
-        file: ".ralph/REVIEW.md",
+        file: ".rauf/REVIEW.md",
         action: "skipped" as const,
         detail: "REVIEW.md already up to date",
       });
@@ -700,7 +700,7 @@ function deployReviewMd(
 
     // User has customized — skip to preserve their changes
     return ok({
-      file: ".ralph/REVIEW.md",
+      file: ".rauf/REVIEW.md",
       action: "skipped" as const,
       detail: "REVIEW.md preserved (user-customized)",
     });
@@ -711,7 +711,7 @@ function deployReviewMd(
   if (!writeResult.ok) return writeResult;
 
   return ok({
-    file: ".ralph/REVIEW.md",
+    file: ".rauf/REVIEW.md",
     action: "rendered" as const,
     detail: "REVIEW.md rendered from template",
   });
@@ -719,26 +719,26 @@ function deployReviewMd(
 
 /** Create empty backlog.json if missing, validate if exists */
 function deployBacklog(
-  ralphDir: string,
+  raufDir: string,
   projectName?: string,
   projectDescription?: string,
   artifactsDir?: string,
 ): Result<InstallAction> {
-  const backlogPath = path.join(ralphDir, "backlog.json");
+  const backlogPath = path.join(raufDir, "backlog.json");
 
   if (fileExists(backlogPath)) {
     // Validate existing backlog
     const validateResult = readJsonFile(backlogPath, BacklogSchema, normalizeBacklogItems);
     if (!validateResult.ok) {
       return ok({
-        file: ".ralph/backlog.json",
+        file: ".rauf/backlog.json",
         action: "skipped" as const,
         detail: `Existing backlog.json has validation issues: ${validateResult.error.message}`,
       });
     }
 
     return ok({
-      file: ".ralph/backlog.json",
+      file: ".rauf/backlog.json",
       action: "skipped" as const,
       detail: "Existing backlog.json preserved",
     });
@@ -774,19 +774,19 @@ function deployBacklog(
   if (!writeResult.ok) return writeResult;
 
   return ok({
-    file: ".ralph/backlog.json",
+    file: ".rauf/backlog.json",
     action: "created" as const,
     detail: "Created empty backlog",
   });
 }
 
 /** Write progress.md template if missing */
-function deployProgress(ralphDir: string, artifactsDir?: string): Result<InstallAction> {
-  const destPath = path.join(ralphDir, "progress.md");
+function deployProgress(raufDir: string, artifactsDir?: string): Result<InstallAction> {
+  const destPath = path.join(raufDir, "progress.md");
 
   if (fileExists(destPath)) {
     return ok({
-      file: ".ralph/progress.md",
+      file: ".rauf/progress.md",
       action: "skipped" as const,
       detail: "Existing progress.md preserved",
     });
@@ -805,7 +805,7 @@ function deployProgress(ralphDir: string, artifactsDir?: string): Result<Install
   if (!writeResult.ok) return writeResult;
 
   return ok({
-    file: ".ralph/progress.md",
+    file: ".rauf/progress.md",
     action: "created" as const,
     detail: "Created progress.md template",
   });
@@ -816,8 +816,8 @@ function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<Inst
   const contentResult = readArtifact(CLAUDE_ADDON_FILE, artifactsDir);
   if (!contentResult.ok) return contentResult;
 
-  const ralphBlock = extractRalphBlock(contentResult.value);
-  const mergeResult = mergeClaudeMd(projectPath, ralphBlock);
+  const raufBlock = extractRaufBlock(contentResult.value);
+  const mergeResult = mergeClaudeMd(projectPath, raufBlock);
   if (!mergeResult.ok) return mergeResult;
 
   const mergeAction = mergeResult.value.action;
@@ -859,7 +859,7 @@ function isCommandInPath(cmd: string): boolean {
 }
 
 /** Remove ralph section from CLAUDE.md */
-function removeClaudeMdRalphSection(projectPath: string): void {
+function removeClaudeMdRaufSection(projectPath: string): void {
   const claudeMdPath = path.join(projectPath, "CLAUDE.md");
 
   if (!fileExists(claudeMdPath)) return;
@@ -918,7 +918,7 @@ function tryRemoveEmptyDir(dirPath: string): void {
 
 // ─── Exported constants (for testing) ────────────────────────────
 
-export { DOT_RALPH, DIR_FILES, CLAUDE_ADDON_FILE, RALPH_MD_MANAGED_START, RALPH_MD_MANAGED_END };
+export { DOT_RAUF, DIR_FILES, CLAUDE_ADDON_FILE, RAUF_MD_MANAGED_START, RAUF_MD_MANAGED_END };
 
 // ─── Exported helpers (for testing) ──────────────────────────────
 

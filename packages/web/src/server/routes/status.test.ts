@@ -20,10 +20,10 @@ async function json(response: Response): Promise<unknown> {
   return response.json();
 }
 
-/** Create a minimal valid .ralph.json (MarkerFile). */
+/** Create a minimal valid .rauf.json (MarkerFile). */
 function writeMarker(dir: string): void {
   const marker = {
-    ralph: true,
+    rauf: true,
     version: "1",
     variant: "backlog-json",
     installedAt: new Date().toISOString(),
@@ -44,13 +44,13 @@ function writeMarker(dir: string): void {
     artifactHashes: {},
     options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
-  fs.writeFileSync(path.join(dir, ".ralph.json"), JSON.stringify(marker, null, 2));
+  fs.writeFileSync(path.join(dir, ".rauf.json"), JSON.stringify(marker, null, 2));
 }
 
-/** Write a state.json to .ralph/ */
+/** Write a state.json to .rauf/ */
 function writeState(dir: string, overrides: Record<string, unknown> = {}): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
   const state = {
     status: "running",
     currentItem: "001",
@@ -64,26 +64,26 @@ function writeState(dir: string, overrides: Record<string, unknown> = {}): void 
     error: null,
     ...overrides,
   };
-  fs.writeFileSync(path.join(ralphDir, "state.json"), JSON.stringify(state, null, 2));
+  fs.writeFileSync(path.join(raufDir, "state.json"), JSON.stringify(state, null, 2));
 }
 
 /** Write a log file with some lines. */
 function writeLog(dir: string, lines: string[]): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, "ralph.log"), lines.join("\n") + "\n");
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+  fs.writeFileSync(path.join(raufDir, "rauf.log"), lines.join("\n") + "\n");
 }
 
 /** Write a progress.md file. */
 function writeProgress(dir: string, content: string): void {
-  const ralphDir = path.join(dir, ".ralph");
-  fs.mkdirSync(ralphDir, { recursive: true });
-  fs.writeFileSync(path.join(ralphDir, "progress.md"), content);
+  const raufDir = path.join(dir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+  fs.writeFileSync(path.join(raufDir, "progress.md"), content);
 }
 
-/** Ensure .ralph/ directory exists (without any files). */
-function writeRalphDir(dir: string): void {
-  fs.mkdirSync(path.join(dir, ".ralph"), { recursive: true });
+/** Ensure .rauf/ directory exists (without any files). */
+function writeRaufDir(dir: string): void {
+  fs.mkdirSync(path.join(dir, ".rauf"), { recursive: true });
 }
 
 // ─── Setup ───────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ afterEach(() => {
 // ─── GET /api/projects/:id/status ────────────────────────────────
 
 describe("GET /api/projects/:id/status", () => {
-  it("returns IDLE when .ralph/ directory is missing (caller handles NOT_INSTALLED)", async () => {
+  it("returns IDLE when .rauf/ directory is missing (caller handles NOT_INSTALLED)", async () => {
     writeMarker(projectDir);
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/status");
@@ -113,9 +113,9 @@ describe("GET /api/projects/:id/status", () => {
     expect(body.data.loopState).toBe("IDLE");
   });
 
-  it("returns IDLE when .ralph/ exists but no state.json or log file", async () => {
+  it("returns IDLE when .rauf/ exists but no state.json or log file", async () => {
     writeMarker(projectDir);
-    writeRalphDir(projectDir);
+    writeRaufDir(projectDir);
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/status");
     expect(res.status).toBe(200);
@@ -148,7 +148,7 @@ describe("GET /api/projects/:id/status", () => {
 
   it("returns DerivedStatus with backlogSummary", async () => {
     writeMarker(projectDir);
-    writeRalphDir(projectDir);
+    writeRaufDir(projectDir);
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/status");
     expect(res.status).toBe(200);
@@ -273,7 +273,7 @@ describe("GET /api/projects/:id/log/stream", () => {
 
   it("returns 200 with text/event-stream content type", async () => {
     writeMarker(projectDir);
-    writeRalphDir(projectDir);
+    writeRaufDir(projectDir);
     const app = makeApp(tmpDir);
     const res = await sseRequest(app, "/api/projects/my-project/log/stream");
     expect(res.status).toBe(200);
@@ -326,7 +326,7 @@ describe("GET /api/projects/:id/log/stream", () => {
 
   it("handles missing log file gracefully (no initial log event)", async () => {
     writeMarker(projectDir);
-    writeRalphDir(projectDir);
+    writeRaufDir(projectDir);
     // No log file — log watcher setup should not throw
     const app = makeApp(tmpDir);
     const res = await sseRequest(app, "/api/projects/my-project/log/stream");
@@ -368,9 +368,9 @@ describe("GET /api/projects/:id/progress", () => {
     expect(body.data).toBe(content);
   });
 
-  it("returns empty string when .ralph/ dir does not exist", async () => {
+  it("returns empty string when .rauf/ dir does not exist", async () => {
     writeMarker(projectDir);
-    // No .ralph/ directory at all
+    // No .rauf/ directory at all
     const app = makeApp(tmpDir);
     const res = await app.request("/api/projects/my-project/progress");
     expect(res.status).toBe(200);

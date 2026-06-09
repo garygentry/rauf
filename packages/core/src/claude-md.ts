@@ -8,8 +8,8 @@ import { updateSentinelBlock } from "./template.js";
 // ─── Constants ────────────────────────────────────────────────────
 
 export const CLAUDE_MD_FILENAME = "CLAUDE.md";
-export const CLAUDE_MD_SENTINEL_START = "<!-- ralph:start -->";
-export const CLAUDE_MD_SENTINEL_END = "<!-- ralph:end -->";
+export const CLAUDE_MD_SENTINEL_START = "<!-- rauf:start -->";
+export const CLAUDE_MD_SENTINEL_END = "<!-- rauf:end -->";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -31,12 +31,12 @@ export interface ClaudeMdMergeResult {
 //   3. Sentinels exist, content matches → skip (no-op)
 //   4. Sentinels exist, content differs → replace bounded block only
 //
-// The ralphBlockContent parameter is the inner content between
+// The raufBlockContent parameter is the inner content between
 // sentinels (NOT including the sentinel comments themselves).
 
 export function mergeClaudeMd(
   projectPath: string,
-  ralphBlockContent: string,
+  raufBlockContent: string,
 ): Result<ClaudeMdMergeResult> {
   const resolvedProject = path.resolve(projectPath);
   const claudeMdPath = path.join(resolvedProject, CLAUDE_MD_FILENAME);
@@ -52,7 +52,7 @@ export function mergeClaudeMd(
   // ── Scenario 1: CLAUDE.md does not exist ──────────────────────
   if (existingContent === null) {
     const content =
-      CLAUDE_MD_SENTINEL_START + "\n" + ralphBlockContent + "\n" + CLAUDE_MD_SENTINEL_END + "\n";
+      CLAUDE_MD_SENTINEL_START + "\n" + raufBlockContent + "\n" + CLAUDE_MD_SENTINEL_END + "\n";
 
     const writeResult = atomicWrite(claudeMdPath, content);
     if (!writeResult.ok) return writeResult;
@@ -71,7 +71,7 @@ export function mergeClaudeMd(
 
     // Normalize for comparison: trim leading/trailing whitespace
     const normalizedCurrent = currentInner.trim();
-    const normalizedNew = ralphBlockContent.trim();
+    const normalizedNew = raufBlockContent.trim();
 
     // ── Scenario 3: Content matches → skip ────────────────────
     if (normalizedCurrent === normalizedNew) {
@@ -83,7 +83,7 @@ export function mergeClaudeMd(
       existingContent,
       CLAUDE_MD_SENTINEL_START,
       CLAUDE_MD_SENTINEL_END,
-      ralphBlockContent,
+      raufBlockContent,
     );
 
     const writeResult = atomicWrite(claudeMdPath, updated);
@@ -97,7 +97,7 @@ export function mergeClaudeMd(
     existingContent,
     CLAUDE_MD_SENTINEL_START,
     CLAUDE_MD_SENTINEL_END,
-    ralphBlockContent,
+    raufBlockContent,
   );
 
   const writeResult = atomicWrite(claudeMdPath, merged);
@@ -106,12 +106,12 @@ export function mergeClaudeMd(
   return ok({ action: "merged" as const, filePath: claudeMdPath });
 }
 
-// ─── extractRalphBlock ───────────────────────────────────────────
+// ─── extractRaufBlock ───────────────────────────────────────────
 //
 // Extract the ralph block content from a CLAUDE addon template file.
 // Strips the sentinel comments and returns just the inner content.
 
-export function extractRalphBlock(addonContent: string): string {
+export function extractRaufBlock(addonContent: string): string {
   const startIdx = addonContent.indexOf(CLAUDE_MD_SENTINEL_START);
   const endIdx = addonContent.indexOf(CLAUDE_MD_SENTINEL_END);
 
