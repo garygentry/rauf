@@ -32,6 +32,7 @@ export default defineConfig({
         {
           label: "Reference",
           items: [
+            { label: "Backlog-Tool / Loop-Runner Contract", slug: "spec-backlog-tool-contract" },
             { label: "CLI Reference", slug: "spec-cli" },
             { label: "Web API Reference", slug: "spec-web" },
             { label: "Core Package", slug: "spec-core" },

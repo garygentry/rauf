@@ -1,10 +1,158 @@
 ---
-title: "LLM-Agnostic Execution Architecture"
-description: Requirements and implementation plan for decoupling Rauf from Claude Code and supporting multiple LLM providers.
-status: DRAFT — Pending approval before implementation
+title: "Backlog-Tool / Loop-Runner Contract"
+description: The protocol a ralph-style loop runner exposes so a pipeline tool can drive it (Part A), plus rauf's LLM-agnostic execution architecture (Part B). rauf is the default and reference implementation.
+status: Part A — STABLE (current surface); Part B — DRAFT (provider refactor)
 ---
 
-# SPEC: LLM-Agnostic Execution Architecture
+# SPEC: Backlog-Tool / Loop-Runner Contract
+
+This spec is the single authority for two **orthogonal** axes. Keep them
+distinct:
+
+- **Part A — Backlog-Tool / Loop-Runner Contract.** WHICH backlog tool / loop
+  runner a pipeline talks to: the backlog schema, the signal protocol, the
+  state-directory layout, and the CLI verbs a conforming runner exposes. This
+  is the surface a pipeline (e.g. `feature-forge`) depends on. **rauf is the
+  default and reference implementation.**
+- **Part B — LLM-Agnostic Execution Architecture.** WHICH LLM drives a single
+  rauf iteration (Claude Code, Codex, Gemini, …) — the _provider_ axis.
+
+> **Not to be confused.** "Loop runner" (Part A) ≠ "provider" (Part B). Swapping
+> the runner (rauf → some other ralph tool) is a Part-A concern; swapping the
+> LLM that the runner spawns is a Part-B concern. The word "provider" refers
+> only to the Part-B axis. The state-directory layout and `.rauf.json` marker
+> are defined **once**, authoritatively, in Part A §A.3; Part B references that
+> definition rather than restating it.
+
+---
+
+# Part A — Backlog-Tool / Loop-Runner Contract
+
+A conforming loop runner consumes a `backlog.json`, executes work items, emits
+signals, maintains a state directory, and exposes a small set of CLI verbs. A
+pipeline tool drives the runner entirely through this contract — it never reads
+the runner's internals. rauf is the reference implementation; an alternative
+ralph-style runner conforms by supplying its own implementation of this surface
+(its own schema + `validate` verb, signal vocabulary, and CLI verbs).
+
+## A.1 Data surface — the backlog schema
+
+- **Canonical JSON Schema:** [`schemas/backlog.schema.json`](https://github.com/garygentry/rauf/blob/main/schemas/backlog.schema.json),
+  published with
+  `$id = https://raw.githubusercontent.com/garygentry/rauf/main/schemas/backlog.schema.json`.
+- **Single source of truth:** the JSON Schema is **generated** from the Zod
+  schema in `packages/core/src/schemas.ts` by
+  `scripts/generate-json-schemas.ts`. A CI drift guard
+  (`pnpm schema:check`) fails the build if the committed copies diverge from the
+  Zod source — there is no hand-maintained schema copy.
+- **`schemaVersion`:** top-level optional string, **default `"1"`**, stamped on
+  read. It is intentionally _not_ in the JSON Schema `required` array, so
+  backlogs written before the field existed keep validating.
+- **Item `type`:** `bug | bugfix | refactor | feature | chore | test`.
+- **Item `status`:** `pending | in_progress | done | blocked`.
+  (Note: `complete`, `in-progress`, `docs` are **not** valid — a runner-agnostic
+  pipeline must author to these exact values.)
+- Full field shape: see the JSON Schema and `docs/SCHEMAS.md`.
+
+## A.2 Signal protocol
+
+A work item's execution communicates its outcome by emitting a signal as the
+**final line** of its output:
+
+| Signal                      | Meaning                                                              |
+| --------------------------- | -------------------------------------------------------------------- |
+| `RAUF_DONE`                 | All acceptance criteria pass; mark the item done.                    |
+| `RAUF_BLOCKED:<reason>`     | Cannot proceed (missing dependency, unclear requirement).            |
+| `RAUF_NEEDS_HUMAN:<reason>` | Human input required (API key, design decision).                     |
+| `RAUF_REVIEW:<json>`        | Review pass output — a JSON `ReviewPayload` of new items to enqueue. |
+
+These tokens are part of the contract; an alternative runner that reuses rauf's
+artifacts MUST emit the same tokens (or supply its own artifact templates).
+
+## A.3 State-directory layout (authoritative)
+
+A runner keeps per-backlog state in a **state directory**, resolved as follows:
+
+- **Default root:** `<project>/.rauf/` — used when no `--backlog` is given.
+- **Per-feature root:** with `--backlog <dir>`, the backlog root is
+  `<project>/<dir>` and its state directory is `<dir>/.rauf/` (unless `<dir>`
+  itself is named `.rauf`, in which case it is used directly). **State is
+  isolated per backlog dir** — two `--backlog` targets (or a per-feature loop
+  and the project's own loop) never collide on state.
+
+Files within a state directory:
+
+| File                    | Role                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `backlog.json`          | The work queue (schema per §A.1). May live in the backlog root or its `.rauf/`. |
+| `state.json`            | Loop state (status, iteration, current item, signals).                          |
+| `rauf.log`              | Append-only event log (fallback status source).                                 |
+| `iteration-status.json` | Live per-iteration status (current tool, tokens).                               |
+| `progress.md`           | Accumulated project learnings.                                                  |
+| `archive/`              | Swept done items, by month.                                                     |
+| `.loop.lock`            | Single-runner lock.                                                             |
+| `DONE` / `CANCEL`       | Sentinels.                                                                      |
+| `RAUF.md` / `REVIEW.md` | Per-iteration / review instructions (per-root, with project-level fallback).    |
+
+The **`.rauf.json` marker** at the project root identifies an installed project
+(version, profile, options incl. the Part-B `provider`). Its full shape is
+`MarkerFileSchema` in `packages/core/src/schemas.ts` (see also Part B §6.2).
+
+## A.4 CLI verbs
+
+A conforming runner exposes these verbs. `<path>` is the project root; `--json`
+selects machine-readable output where noted.
+
+| Verb     | Invocation                                                                    | Purpose                                         |
+| -------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| run      | `rauf loop run <path> --backlog <dir> [--iterations N]`                       | Execute iterations against a backlog.           |
+| validate | `rauf backlog validate <path> [--backlog <dir>] [--specs-dir <dir>] [--json]` | Validate a backlog (schema + semantics).        |
+| status   | `rauf status <path> [--backlog <dir>] [--json]`                               | Derived loop status.                            |
+| list     | `rauf backlog list <path> [--backlog <dir>] [--json]`                         | List backlog items.                             |
+| follow   | `rauf loop follow <path> [--backlog <dir>]`                                   | Stream loop events.                             |
+| log      | `rauf log <path> [--backlog <dir>] [--follow]`                                | Tail the event log.                             |
+| version  | `rauf version --json` → `{ "version": "<semver>" }`                           | Report runner version (for min-version gating). |
+
+**`validate` exit codes (contract):** `0` = valid (warnings allowed), `1` =
+validation findings (one or more errors), `2` = usage / IO error (missing path,
+unreadable file, bad JSON). With `--json` it emits `{ valid, findings[] }`,
+where each finding has `{ severity, code, message, itemId?, path? }`. The
+`specReferences`-existence check runs **only** when `--specs-dir` is provided
+(the repo-wide ad-hoc flow has no specs dir and must not be failed for it).
+
+## A.5 Versioning & conformance
+
+- The runner reports its version via `rauf version --json` as a bare semver
+  string (no `v` prefix). Consumers semver-compare this against a required
+  minimum — they MUST NOT string-compare.
+- `rauf backlog validate` and backlog `schemaVersion` first ship in **rauf
+  0.2.0**. A consumer that depends on them MUST require `>= 0.2.0`
+  (`minRunnerVersion`).
+
+## A.6 Distribution
+
+The runner is obtained as a **self-contained compiled binary**, distinct from
+any per-project artifact install:
+
+- rauf compiles via `bun build --compile` to a single `rauf-bin` that bundles
+  its runtime — the installed `rauf` needs **neither this repo nor Bun/Node**.
+- Distribution channel: **GitHub Releases** + an install script
+  (`scripts/install-binary.sh` → `~/.local/bin/rauf`; supports `--local` to
+  install a freshly-built binary from a clone). npm / Homebrew may layer on top
+  later.
+- **`rauf install <path>` is a different thing:** it installs per-project
+  artifacts (`.rauf/`, `RAUF.md`, schema copy, marker) into a _target_ repo. It
+  does **not** provide or upgrade the rauf CLI itself. A consumer's
+  "install/upgrade the runner" hint must point at the binary install above, not
+  at `rauf install`.
+
+---
+
+# Part B — LLM-Agnostic Execution Architecture
+
+> This part is the **provider** axis (which LLM drives an iteration) and remains
+> a DRAFT refactor plan. The state-directory layout and `.rauf.json` marker it
+> references are defined authoritatively in Part A §A.3.
 
 ## 1. Problem Statement
 

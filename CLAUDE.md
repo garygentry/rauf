@@ -49,6 +49,7 @@ Before implementing any feature, read the relevant spec:
 - **CLI commands & behavior:** `docs/SPEC-CLI.md`
 - **Web API & frontend:** `docs/SPEC-WEB.md`
 - **Artifact templates (RAUF.md, CLAUDE_ADDON.md, etc.):** `docs/SPEC-ARTIFACTS.md`
+- **Backlog-tool / loop-runner contract (the protocol consumers like feature-forge conform to) + LLM-agnostic provider architecture:** `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`
 - **Claude Code Tasks integration notes:** `docs/CLAUDE-CODE-TASKS.md`
 
 ## Development Commands
