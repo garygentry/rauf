@@ -150,7 +150,7 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "init",
-    description: "Initialize a new project with ralph",
+    description: "Initialize a new project with rauf",
     usage: "rauf init <path> [options]",
     handler: handleInit,
   },

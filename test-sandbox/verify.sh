@@ -155,7 +155,7 @@ run_scenario() {
   export MOCK_CLAUDE_SCENARIO="$scenario"
 
   # Run (capture output, allow non-zero exit)
-  ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 || true
+  rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 || true
 }
 
 # ─── Test cases ───────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ export MOCK_CLAUDE_SCENARIO="stream-done"
 assert_file_exists "$SANDBOX_DIR/specs/feature-a/backlog.json" "specs/feature-a/backlog.json (pre-run)"
 
 # Run with --backlog flag
-ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --backlog specs/feature-a >/dev/null 2>&1 || true
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --backlog specs/feature-a >/dev/null 2>&1 || true
 
 # Assert state dir was auto-created at specs/feature-a/.rauf/
 assert_dir_exists "$SANDBOX_DIR/specs/feature-a/.rauf" "specs/feature-a/.rauf state dir"

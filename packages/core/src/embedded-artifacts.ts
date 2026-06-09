@@ -39,7 +39,7 @@ If any command is not configured (empty), skip it.
 4. Read \`progress.md\` for context from previous iterations
 5. Implement the task
 6. Run verification: \`{{verifyCommand}}\`
-7. Commit with: \`[ralph] <id>: <title>\`
+7. Commit with: \`[rauf] <id>: <title>\`
 8. Output your exit signal:
    - \`RAUF_DONE\` — all criteria met, verification passes
    - \`RAUF_BLOCKED:<reason>\` — cannot proceed, explain why
@@ -69,7 +69,7 @@ Items may also include a \`specReferences\` field listing paths to specification
 - Claude Code Tasks (if you use them internally) are your own planning — they don't affect the backlog
 
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive ralph update -->
+<!-- Add custom instructions below this line — they survive rauf update -->
 `,
   ],
   [
@@ -311,7 +311,7 @@ RAUF_DONE
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "title": "Rauf Backlog",
-  "description": "Task backlog for a ralph autonomous coding loop project"
+  "description": "Task backlog for a rauf autonomous coding loop project"
 }
 `,
   ],
@@ -332,7 +332,7 @@ RAUF_DONE
 
 ## Autonomous Loop (Rauf)
 
-When running as a ralph loop iteration, follow these operational rules:
+When running as a rauf loop iteration, follow these operational rules:
 
 ### Reading Your Task
 1. Read \`RAUF.md\` for detailed per-iteration instructions
@@ -348,7 +348,7 @@ When running as a ralph loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
 8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
 9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
-10. Commit your changes with message: \`[ralph] <item-id>: <title>\`
+10. Commit your changes with message: \`[rauf] <item-id>: <title>\`
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
@@ -391,7 +391,7 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ## Autonomous Loop (Rauf)
 
-When running as a ralph loop iteration, follow these operational rules:
+When running as a rauf loop iteration, follow these operational rules:
 
 ### Reading Your Task
 1. Read \`RAUF.md\` for detailed per-iteration instructions
@@ -407,7 +407,7 @@ When running as a ralph loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
 8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
 9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
-10. Commit your changes with message: \`[ralph] <item-id>: <title>\`
+10. Commit your changes with message: \`[rauf] <item-id>: <title>\`
 
 ### Rules
 - ONE item per iteration — do not work on multiple items

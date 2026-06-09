@@ -1,13 +1,13 @@
 ---
 title: Schemas Reference
-description: All data structures used across the ralph system, mapping directly to Zod schemas.
+description: All data structures used across the rauf system, mapping directly to Zod schemas.
 ---
 
-All data structures used across the ralph system. These map directly to Zod schemas in `packages/core/src/schemas.ts`.
+All data structures used across the rauf system. These map directly to Zod schemas in `packages/core/src/schemas.ts`.
 
 ## ArchiveMonth
 
-Stored in `.ralph/archive/YYYY-MM.json`. Each file holds all done items swept for a given calendar month.
+Stored in `.rauf/archive/YYYY-MM.json`. Each file holds all done items swept for a given calendar month.
 
 ```typescript
 interface ArchiveMonth {
@@ -89,13 +89,13 @@ interface Backlog {
 }
 ```
 
-File: `.ralph/backlog.json`
+File: `.rauf/backlog.json`
 
-## MarkerFile (.ralph.json)
+## MarkerFile (.rauf.json)
 
 ```typescript
 interface MarkerFile {
-  ralph: true; // Sentinel — must be literal true
+  rauf: true; // Sentinel — must be literal true
   version: string; // Schema version, currently "1"
   variant: "backlog-json"; // Artifact variant
   installedAt: string; // ISO 8601
@@ -171,16 +171,16 @@ interface LoopState {
 | `running`        | Actively processing an item                      |
 | `paused`         | Gracefully stopped (CANCEL signal)               |
 | `complete`       | All items resolved                               |
-| `paused_human`   | Waiting for human input (`RALPH_NEEDS_HUMAN`)    |
+| `paused_human`   | Waiting for human input (`RAUF_NEEDS_HUMAN`)     |
 | `limit_reached`  | Max iterations config exceeded                   |
 | `error`          | Unexpected termination                           |
 | `sleeping_limit` | Sleeping until 5-hour Claude usage window resets |
 | `weekly_limit`   | 7-day weekly Claude usage cap exhausted          |
 | `reviewing`      | Running post-loop review pass                    |
 
-File: `.ralph/state.json` (written by the loop runner, read by status derivation)
+File: `.rauf/state.json` (written by the loop runner, read by status derivation)
 
-## ToolConfig (~/.ralph/config.json)
+## ToolConfig (~/.rauf/config.json)
 
 ```typescript
 interface ToolConfig {
@@ -236,7 +236,7 @@ interface DiscoveredProject {
   id: string; // Directory name (used in API routes)
   path: string; // Absolute path to project root
   name: string; // From backlog.json project field, or directory name
-  marker: MarkerFile; // Parsed .ralph.json
+  marker: MarkerFile; // Parsed .rauf.json
 }
 ```
 
@@ -279,9 +279,9 @@ interface ApiError {
 ## Result Type (core internal)
 
 ```typescript
-type Result<T, E = RalphError> = { ok: true; value: T } | { ok: false; error: E };
+type Result<T, E = RaufError> = { ok: true; value: T } | { ok: false; error: E };
 
-interface RalphError {
+interface RaufError {
   code: string;
   message: string;
   details?: Record<string, unknown>;
@@ -471,7 +471,7 @@ type LoopEvent =
 
 ## ReviewPayload / ReviewItem
 
-Parsed from the `RALPH_REVIEW:{json}` signal emitted during a review pass.
+Parsed from the `RAUF_REVIEW:{json}` signal emitted during a review pass.
 
 ```typescript
 interface ReviewItem {
@@ -504,7 +504,7 @@ interface LoopResult {
 
 ## Log Line Patterns (fallback parsing)
 
-Used by `status.ts` Tier 2 fallback to derive loop state from `ralph.log` when `state.json` is unavailable. Patterns match the log output written by the TypeScript loop runner (`packages/loop`).
+Used by `status.ts` Tier 2 fallback to derive loop state from `rauf.log` when `state.json` is unavailable. Patterns match the log output written by the TypeScript loop runner (`packages/loop`).
 
 ```typescript
 const LOG_PATTERNS = {

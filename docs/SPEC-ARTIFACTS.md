@@ -1,11 +1,11 @@
 ---
 title: Artifact Templates
-description: Canonical template files installed into target projects — RALPH.md, CLAUDE.md blocks, backlog schema.
+description: Canonical template files installed into target projects — RAUF.md, CLAUDE.md blocks, backlog schema.
 ---
 
 Reference: `artifacts/variants/backlog-json/`
 
-These are the canonical template files that get installed into target projects. They live in the ralph tool's repo under `artifacts/variants/backlog-json/` and are embedded into the compiled binary.
+These are the canonical template files that get installed into target projects. They live in the rauf tool's repo under `artifacts/variants/backlog-json/` and are embedded into the compiled binary.
 
 ## File Inventory
 
@@ -13,8 +13,8 @@ These are the canonical template files that get installed into target projects. 
 artifacts/variants/backlog-json/
 ├── CLAUDE_ADDON.md              # Block to merge into existing CLAUDE.md
 ├── CLAUDE_GREENFIELD.md.tmpl    # Full CLAUDE.md template for new projects
-└── .ralph/
-    ├── RALPH.md.tmpl            # Per-iteration agent prompt (template)
+└── .rauf/
+    ├── RAUF.md.tmpl            # Per-iteration agent prompt (template)
     ├── REVIEW.md.tmpl           # Post-loop review prompt (template)
     ├── backlog.json              # Empty backlog template
     ├── backlog.schema.json       # JSON Schema for backlog.json
@@ -25,8 +25,8 @@ artifacts/variants/backlog-json/
 
 The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner class, replacing the legacy shell scripts. The loop is started via:
 
-- **`ralph loop start`** — server mode (via LoopManager)
-- **`ralph loop run`** — direct mode (in-process, no server)
+- **`rauf loop start`** — server mode (via LoopManager)
+- **`rauf loop run`** — direct mode (in-process, no server)
 
 ### Design Principle: Loop Runner Owns Status
 
@@ -36,25 +36,25 @@ The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner
 
 1. **Atomic writes for status management:** The loop runner selects items, marks them `in_progress`, runs Claude, then marks them `done`/`blocked` based on the exit signal. Each write goes through core's `updateItem()` which uses atomic write (write .tmp → rename) with .bak backup.
 
-2. **state.json writes:** Write `.ralph/state.json` on every major state change via `writeLoopState()`.
+2. **state.json writes:** Write `.rauf/state.json` on every major state change via `writeLoopState()`.
 
 3. **Dependency-aware item selection:** `selectNextItem()` returns the highest-priority pending item where all items in `dependsOn` have status `done`. Returns null if no eligible items.
 
-4. **Focused prompt:** Claude receives RALPH.md + the specific item JSON + full backlog as read-only context. The prompt explicitly states: "Do NOT modify .ralph/backlog.json or .ralph/state.json."
+4. **Focused prompt:** Claude receives RAUF.md + the specific item JSON + full backlog as read-only context. The prompt explicitly states: "Do NOT modify .rauf/backlog.json or .rauf/state.json."
 
 5. **Exit signal detection:** Parse Claude's stdout for:
-   - `RALPH_DONE` → mark item done, commit changes
-   - `RALPH_BLOCKED:reason` → mark item blocked, continue to next
-   - `RALPH_NEEDS_HUMAN:reason` → pause loop, leave item in_progress
-   - `RALPH_REVIEW:{"items":[...],"summary":"..."}` → review found issues, runner creates fix items
+   - `RAUF_DONE` → mark item done, commit changes
+   - `RAUF_BLOCKED:reason` → mark item blocked, continue to next
+   - `RAUF_NEEDS_HUMAN:reason` → pause loop, leave item in_progress
+   - `RAUF_REVIEW:{"items":[...],"summary":"..."}` → review found issues, runner creates fix items
    - No signal → reset item to pending, log warning, continue
    - Claude exits non-zero with usage limit message in stderr → see Usage Limit Handling below
 
 6. **Crash cleanup:** `try/finally` resets any `in_progress` item back to `pending` so it's not left stranded.
 
-7. **Git commit:** After RALPH_DONE, the loop commits with `[ralph] <id>: <title>`.
+7. **Git commit:** After RAUF_DONE, the loop commits with `[rauf] <id>: <title>`.
 
-8. **DONE file + ralph.log:** Written on all terminal exit paths for status derivation.
+8. **DONE file + rauf.log:** Written on all terminal exit paths for status derivation.
 
 ### Model Resolution
 
@@ -71,14 +71,14 @@ Model IDs follow Anthropic conventions: `claude-opus-4-6`, `claude-sonnet-4-6`, 
 
 ### Auto-Sweep
 
-The loop runner checks `.ralph.json` for `options.autoSweep` on startup (before the main loop). If `true`, it calls core's `sweepBacklog()` (optionally with `sweepMinAgeDays` from marker options) before the first iteration. This keeps the active backlog clean automatically.
+The loop runner checks `.rauf.json` for `options.autoSweep` on startup (before the main loop). If `true`, it calls core's `sweepBacklog()` (optionally with `sweepMinAgeDays` from marker options) before the first iteration. This keeps the active backlog clean automatically.
 
 ```
 Auto-sweep behavior:
-  - Triggered by: options.autoSweep = true in .ralph.json
+  - Triggered by: options.autoSweep = true in .rauf.json
   - Optional age filter: options.sweepMinAgeDays (integer, default 0 = sweep all done)
   - Failure is NON-FATAL — loop continues regardless of sweep result
-  - .ralph/archive/ files are NOT auto-gitignored — users may add to .gitignore if preferred
+  - .rauf/archive/ files are NOT auto-gitignored — users may add to .gitignore if preferred
 ```
 
 MarkerOptions fields:
@@ -93,7 +93,7 @@ Claude sessions can stall indefinitely — the process stays alive but stops mak
 ```
 Session timeout behavior:
   - Default: 60 minutes per Claude session
-  - Configurable via: sessionTimeoutMinutes in LoopStartOptions or options.sessionTimeout in .ralph.json
+  - Configurable via: sessionTimeoutMinutes in LoopStartOptions or options.sessionTimeout in .rauf.json
   - Uses SIGTERM first, then SIGKILL after 30s grace period
   - Timeout triggers the retry flow (same as no-signal)
 ```
@@ -114,15 +114,15 @@ MarkerOptions field:
 
 ### Graceful Cancel
 
-The loop runner supports graceful cancellation via both AbortController (programmatic) and `.ralph/CANCEL` signal file:
+The loop runner supports graceful cancellation via both AbortController (programmatic) and `.rauf/CANCEL` signal file:
 
 ```
 Cancel mechanism:
   - Programmatic: call runner.cancel() (triggers AbortController)
-  - File-based: create .ralph/CANCEL (e.g., via ralph loop stop)
+  - File-based: create .rauf/CANCEL (e.g., via rauf loop stop)
   - Loop checks for cancellation at iteration boundaries and during sleep
   - On detection:
-      1. Remove .ralph/CANCEL (if file-based)
+      1. Remove .rauf/CANCEL (if file-based)
       2. Write state.json: status=paused
       3. Write DONE file with content "cancel"
       4. Return with cancelled=true in LoopResult
@@ -135,10 +135,10 @@ The loop runner supports a post-loop review pass to catch issues in completed wo
 
 ```
 Review lifecycle:
-  - Triggered by: --review flag on ralph loop run, or ralph loop review standalone command
+  - Triggered by: --review flag on rauf loop run, or rauf loop review standalone command
   - Git baseline captured at loop start; diff computed for review context (baseCommit..HEAD)
   - Review prompt built from REVIEW.md template (or embedded REVIEW.md.tmpl)
-  - Claude outputs RALPH_DONE (clean) or RALPH_REVIEW:{json} (issues found)
+  - Claude outputs RAUF_DONE (clean) or RAUF_REVIEW:{json} (issues found)
   - Review items created with source: "review" and reviewBatch: <ISO timestamp>
   - If not --review-only, loop re-enters to process fix items (no recursive review)
   - Runner methods: runReviewPass(), startReviewOnly(), buildReviewPrompt()
@@ -149,8 +149,8 @@ Review lifecycle:
 Template for the review pass sent to Claude after the main loop completes.
 
 - **Template variables:** `verifyCommand`, `completedItemsDetail`, `gitDiff`, `progressContent`
-- **User-customizable:** if `.ralph/REVIEW.md` exists locally, it's used instead of the embedded template
-- **Expected outputs:** `RALPH_DONE` (clean — no issues) or `RALPH_REVIEW:{json}` (issues found, JSON matches `ReviewPayload` schema)
+- **User-customizable:** if `.rauf/REVIEW.md` exists locally, it's used instead of the embedded template
+- **Expected outputs:** `RAUF_DONE` (clean — no issues) or `RAUF_REVIEW:{json}` (issues found, JSON matches `ReviewPayload` schema)
 - **Installed during:** `install()` and re-rendered during `update()`, removed during `uninstall()`
 
 ### Usage Limit Handling
@@ -177,7 +177,7 @@ API unreachable:
 
 CANCEL during sleep:
   - interruptibleSleep checks AbortController signal every ~30s
-  - ralph loop stop triggers cancel which aborts the sleep
+  - rauf loop stop triggers cancel which aborts the sleep
 ```
 
 ## CLAUDE_ADDON.md — Merge Block
@@ -185,16 +185,16 @@ CANCEL during sleep:
 The content between sentinels that gets merged into an existing CLAUDE.md:
 
 ```markdown
-<!-- ralph:start -->
+<!-- rauf:start -->
 
-## Autonomous Loop (Ralph)
+## Autonomous Loop (Rauf)
 
-When running as a ralph loop iteration, follow these operational rules:
+When running as a rauf loop iteration, follow these operational rules:
 
 ### Reading Your Task
 
-1. Read `.ralph/RALPH.md` for detailed per-iteration instructions
-2. Read `.ralph/backlog.json` — find the current `in_progress` item
+1. Read `.rauf/RAUF.md` for detailed per-iteration instructions
+2. Read `.rauf/backlog.json` — find the current `in_progress` item
 3. The item's `acceptanceCriteria` define "done" for this iteration
 
 ### Working
@@ -205,19 +205,19 @@ When running as a ralph loop iteration, follow these operational rules:
 
 ### Completing
 
-7. If all acceptance criteria pass: output `RALPH_DONE` as your final line
-8. If blocked (missing dependency, unclear requirement): output `RALPH_BLOCKED:<reason>`
-9. If human input needed (API key, design decision): output `RALPH_NEEDS_HUMAN:<reason>`
-10. Commit your changes with message: `[ralph] <item-id>: <title>`
+7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
+8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
+9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
+10. Commit your changes with message: `[rauf] <item-id>: <title>`
 
 ### Rules
 
 - ONE item per iteration — do not work on multiple items
-- Do not modify `.ralph/backlog.json` — the loop runner manages status
-- Do not modify `.ralph/state.json` — the loop runner manages state
-- Read `.ralph/progress.md` for accumulated project learnings
-- Append new learnings to `.ralph/progress.md` if you discover important patterns
-<!-- ralph:end -->
+- Do not modify `.rauf/backlog.json` — the loop runner manages status
+- Do not modify `.rauf/state.json` — the loop runner manages state
+- Read `.rauf/progress.md` for accumulated project learnings
+- Append new learnings to `.rauf/progress.md` if you discover important patterns
+<!-- rauf:end -->
 ```
 
 ## CLAUDE_GREENFIELD.md.tmpl — Full Template
@@ -257,23 +257,23 @@ For greenfield projects where no CLAUDE.md exists:
 
 ---
 
-<!-- ralph:start -->
+<!-- rauf:start -->
 
-## Autonomous Loop (Ralph)
+## Autonomous Loop (Rauf)
 
 ...same content as CLAUDE_ADDON.md...
 
-<!-- ralph:end -->
+<!-- rauf:end -->
 ```
 
-## RALPH.md.tmpl — Per-Iteration Prompt
+## RAUF.md.tmpl — Per-Iteration Prompt
 
 Contains two sections: managed (tool-updated) and user-customizable.
 
 ```markdown
-# Ralph — Per-Iteration Instructions
+# Rauf — Per-Iteration Instructions
 
-<!-- ralph:managed:start -->
+<!-- rauf:managed:start -->
 
 ## Verification Commands
 
@@ -292,24 +292,24 @@ Individual commands:
 - Format: `{{formatCommand}}`
 
 If any command is not configured (empty), skip it.
-<!-- ralph:managed:end -->
+<!-- rauf:managed:end -->
 
 ## Workflow
 
 1. You are one iteration of an autonomous coding loop
-2. Read `.ralph/backlog.json` — your current task is the `in_progress` item
+2. Read `.rauf/backlog.json` — your current task is the `in_progress` item
 3. Read the item's `acceptanceCriteria` — each must pass
-4. Read `.ralph/progress.md` for context from previous iterations
+4. Read `.rauf/progress.md` for context from previous iterations
 5. Implement the task
 6. Run verification: `{{verifyCommand}}`
-7. Commit with: `[ralph] <id>: <title>`
+7. Commit with: `[rauf] <id>: <title>`
 8. Output your exit signal:
-   - `RALPH_DONE` — all criteria met
-   - `RALPH_BLOCKED:<reason>` — cannot proceed
-   - `RALPH_NEEDS_HUMAN:<reason>` — need human input
+   - `RAUF_DONE` — all criteria met
+   - `RAUF_BLOCKED:<reason>` — cannot proceed
+   - `RAUF_NEEDS_HUMAN:<reason>` — need human input
 
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive ralph update -->
+<!-- Add custom instructions below this line — they survive rauf update -->
 ```
 
 ## backlog.json — Empty Template

@@ -2,7 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(mkdir -p /tmp/test-ralph-ensure/.ralph)",
-      "Bash(scripts/bin/ralph backlog:*)",
+      "Bash(scripts/bin/rauf backlog:*)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(bash /home/gary/.claude/plugins/cache/gwg-plugins/feature-forge/0.6.0/scripts/forge-init.sh)",
       "Bash(git add:*)",

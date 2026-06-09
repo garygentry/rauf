@@ -1,7 +1,7 @@
 ---
-name: test-ralph-loop
+name: test-rauf-loop
 description: >
-  Interactive testing of the ralph loop runner, stream parser, signal parser,
+  Interactive testing of the rauf loop runner, stream parser, signal parser,
   or CLI loop commands using the test-sandbox with mock Claude scripts.
   Use this skill when working on code in packages/loop/ or
   packages/cli/src/loop-commands.ts and need to verify changes interactively.
@@ -11,11 +11,11 @@ description: >
   status-line.ts, or loop-commands.ts and want to confirm behavior before committing.
 ---
 
-# Test Ralph Loop — Sandbox Guide
+# Test Rauf Loop — Sandbox Guide
 
 ## What This Sandbox Is
 
-`test-sandbox/` is a self-contained ralph project with mock Claude scripts that exercise the full loop pipeline:
+`test-sandbox/` is a self-contained rauf project with mock Claude scripts that exercise the full loop pipeline:
 
 **backlog → prompt → spawn → stream parse → signal → status files**
 
@@ -36,13 +36,13 @@ bash test-sandbox/verify.sh
 
 ## Available Scenarios
 
-| Scenario             | Signal              | Tools Emitted          | Timing       | Tests                                          |
-| -------------------- | ------------------- | ---------------------- | ------------ | ---------------------------------------------- |
-| `stream-done`        | `RALPH_DONE`        | Read, Edit             | 300ms sleeps | Basic done flow with tool activity             |
-| `stream-blocked`     | `RALPH_BLOCKED`     | None                   | Instant      | Blocked signal parsing, reason extraction      |
-| `stream-tools`       | `RALPH_DONE`        | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use |
-| `slow-stream`        | `RALPH_DONE`        | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience      |
-| `stream-needs-human` | `RALPH_NEEDS_HUMAN` | None                   | Instant      | Needs-human signal, item stays in_progress     |
+| Scenario             | Signal             | Tools Emitted          | Timing       | Tests                                          |
+| -------------------- | ------------------ | ---------------------- | ------------ | ---------------------------------------------- |
+| `stream-done`        | `RAUF_DONE`        | Read, Edit             | 300ms sleeps | Basic done flow with tool activity             |
+| `stream-blocked`     | `RAUF_BLOCKED`     | None                   | Instant      | Blocked signal parsing, reason extraction      |
+| `stream-tools`       | `RAUF_DONE`        | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use |
+| `slow-stream`        | `RAUF_DONE`        | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience      |
+| `stream-needs-human` | `RAUF_NEEDS_HUMAN` | None                   | Instant      | Needs-human signal, item stays in_progress     |
 
 ## What to Observe
 
@@ -51,10 +51,10 @@ After running a scenario, check:
 - **Signal parsing**: The CLI output should show the parsed signal (done/blocked/needs_human)
 - **Tool activity**: Count `llm_tool_activity` events against what the scenario script emits
 - **Token counts**: Values in token events should match the scenario's JSON (`input_tokens`, `output_tokens`)
-- **Backlog state**: Item statuses in `.ralph/backlog.json` after completion
+- **Backlog state**: Item statuses in `.rauf/backlog.json` after completion
 - **Transient files**: `iteration-status.json` must be absent after a clean run — the runner clears it
-- **DONE file**: `.ralph/DONE` should exist and contain the appropriate summary
-- **State file**: `.ralph/state.json` should reflect the final loop state
+- **DONE file**: `.rauf/DONE` should exist and contain the appropriate summary
+- **State file**: `.rauf/state.json` should reflect the final loop state
 
 ## The Reset-Run-Observe-Verify Cycle
 
@@ -91,7 +91,7 @@ echo '{"type":"content_block_stop","index":1}'
 
 # Final text block with signal as last non-empty line
 echo '{"type":"content_block_start","index":2,"content_block":{"type":"text"}}'
-echo '{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Done.\n\nRALPH_DONE"}}'
+echo '{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Done.\n\nRAUF_DONE"}}'
 echo '{"type":"content_block_stop","index":2}'
 
 # message_delta with output token count

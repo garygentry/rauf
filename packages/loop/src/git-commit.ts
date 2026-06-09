@@ -9,7 +9,7 @@ export interface GitCommitSuccess {
 
 /**
  * Runs `git add -A && git commit` in the given project directory.
- * Uses commit message format: `[ralph] <itemId>: <title>`
+ * Uses commit message format: `[rauf] <itemId>: <title>`
  *
  * Returns ok with commit hash on success, err on failure.
  * Handles "nothing to commit" gracefully (returns ok with empty hash).
@@ -19,7 +19,7 @@ export async function gitCommit(
   itemId: string,
   title: string,
 ): Promise<Result<GitCommitSuccess>> {
-  const message = `[ralph] ${itemId}: ${title}`;
+  const message = `[rauf] ${itemId}: ${title}`;
 
   try {
     await execGit(projectPath, ["add", "-A"]);

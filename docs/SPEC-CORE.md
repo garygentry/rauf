@@ -52,12 +52,12 @@ Also exports `LOG_PATTERNS` (regex patterns for Tier 2 log-parsing fallback) and
 ## Module: errors.ts
 
 ```typescript
-export type Result<T, E = RalphError> = { ok: true; value: T } | { ok: false; error: E };
+export type Result<T, E = RaufError> = { ok: true; value: T } | { ok: false; error: E };
 
 export function ok<T>(value: T): Result<T, never>;
 export function err<E>(error: E): Result<never, E>;
 
-export interface RalphError {
+export interface RaufError {
   code: string;
   message: string;
   details?: Record<string, unknown>;
@@ -81,28 +81,28 @@ export const ErrorCodes = {
 ### discoverProjects(rootDir: string) → Result<DiscoveredProject[]>
 
 1. List immediate child directories of rootDir (depth=1)
-2. For each child, check if `.ralph.json` exists
-3. If rootDir itself has `.ralph.json`, include it
-4. Parse each `.ralph.json`, validate with MarkerFileSchema
+2. For each child, check if `.rauf.json` exists
+3. If rootDir itself has `.rauf.json`, include it
+4. Parse each `.rauf.json`, validate with MarkerFileSchema
 5. Filter: exclude any path containing `/artifacts/` segment (prevents false positives)
 6. Filter: exclude projects with `options.ignoreInTool === true` from active list (but return them separately)
 7. Return sorted by project name
 
-Performance: reads ONLY .ralph.json during scan. Backlog, state, log reads are lazy.
+Performance: reads ONLY .rauf.json during scan. Backlog, state, log reads are lazy.
 
 ## Module: config.ts
 
 ### readMarkerFile(projectPath) → Result<MarkerFile>
 
-Read and validate `<projectPath>/.ralph.json`.
+Read and validate `<projectPath>/.rauf.json`.
 
 ### writeMarkerFile(projectPath, marker: MarkerFile) → Result<void>
 
-Atomic write of `.ralph.json`.
+Atomic write of `.rauf.json`.
 
 ### readToolConfig() → Result<ToolConfig>
 
-Read `~/.ralph/config.json`. Return defaults if file doesn't exist:
+Read `~/.rauf/config.json`. Return defaults if file doesn't exist:
 
 ```typescript
 { rootDirectory: process.cwd(), port: 5173, theme: "system" }
@@ -110,11 +110,11 @@ Read `~/.ralph/config.json`. Return defaults if file doesn't exist:
 
 ### writeToolConfig(config: ToolConfig) → Result<void>
 
-Write to `~/.ralph/config.json`. Create `~/.ralph/` if needed.
+Write to `~/.rauf/config.json`. Create `~/.rauf/` if needed.
 
 ### resolveRootDirectory(cliRoot?, envRoot?) → string
 
-Resolution order: cliRoot → RALPH_ROOT env → config file → cwd.
+Resolution order: cliRoot → RAUF_ROOT env → config file → cwd.
 
 ### readClaudeOAuthToken(credentialsPathOverride?) → Result\<string\>
 
@@ -160,14 +160,14 @@ Read template file, render, atomic write to output.
 
 Find content between `sentinelStart` and `sentinelEnd` markers. Replace it. Preserve everything outside the sentinels. If sentinels not found, append the block.
 
-Sentinels for RALPH.md: `<!-- ralph:managed:start -->` / `<!-- ralph:managed:end -->`
-Sentinels for CLAUDE.md: `<!-- ralph:start -->` / `<!-- ralph:end -->`
+Sentinels for RAUF.md: `<!-- rauf:managed:start -->` / `<!-- rauf:managed:end -->`
+Sentinels for CLAUDE.md: `<!-- rauf:start -->` / `<!-- rauf:end -->`
 
 ## Module: backlog.ts
 
 ### readBacklog(projectPath) → Result<Backlog>
 
-Read and validate `.ralph/backlog.json`.
+Read and validate `.rauf/backlog.json`.
 
 ### writeBacklog(projectPath, backlog: Backlog) → Result<void>
 
@@ -211,7 +211,7 @@ Check against the allowed transitions map.
 
 ### restoreFromBackup(projectPath) → Result<void>
 
-Copy `.ralph/backlog.json.bak` → `.ralph/backlog.json` if backup exists.
+Copy `.rauf/backlog.json.bak` → `.rauf/backlog.json` if backup exists.
 
 ### selectNextItem(backlog: Backlog) → BacklogItem | null
 
@@ -227,14 +227,14 @@ Read backlog, reset all `in_progress` items to `pending` via `updateItem`. Retur
 
 **Tier 1 — state.json:**
 
-1. Read `.ralph/state.json`
+1. Read `.rauf/state.json`
 2. If valid, map status field to LoopStateEnum
 3. Staleness check: if `updatedAt` > 5 min old AND status is "running", downgrade to PAUSED
 4. Set stateSource = "state.json"
 
 **Tier 2 — Log parsing fallback:**
 
-1. If state.json missing/invalid, check ralph.log
+1. If state.json missing/invalid, check rauf.log
 2. Read last 1000 lines for recent status patterns
 3. Read first 100 lines for start marker
 4. Check file mtime for activity detection
@@ -246,35 +246,35 @@ Read backlog, reset all `in_progress` items to `pending` via `updateItem`. Retur
 
 ### readLogTail(projectPath, lines: number) → Result<string[]>
 
-Read last N lines of ralph.log. Cap at 10000 for display.
+Read last N lines of rauf.log. Cap at 10000 for display.
 
 ### watchLog(projectPath, callback) → cleanup function
 
-Watch ralph.log for changes using fs.watch. Call callback with new lines. Return cleanup function to stop watching.
+Watch rauf.log for changes using fs.watch. Call callback with new lines. Return cleanup function to stop watching.
 
 ### writeLoopState(projectPath, state) → Result\<void\>
 
-Atomic write of `.ralph/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema` — returns `VALIDATION_ERROR` if invalid.
+Atomic write of `.rauf/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema` — returns `VALIDATION_ERROR` if invalid.
 
 ### appendLog(projectPath, message) → Result\<void\>
 
-Append a timestamped line to `.ralph/ralph.log`. Format: `[YYYY-MM-DD HH:MM:SS] message\n`. Creates the file if it doesn't exist (when `.ralph/` directory exists).
+Append a timestamped line to `.rauf/rauf.log`. Format: `[YYYY-MM-DD HH:MM:SS] message\n`. Creates the file if it doesn't exist (when `.rauf/` directory exists).
 
 ### writeDoneFile(projectPath, content) → Result\<void\>
 
-Write content string to `.ralph/DONE` marker file. Overwrites if file already exists.
+Write content string to `.rauf/DONE` marker file. Overwrites if file already exists.
 
 ### clearDoneFile(projectPath) → Result\<void\>
 
-Remove `.ralph/DONE` file. Returns `ok` even if the file doesn't exist (ENOENT is not an error).
+Remove `.rauf/DONE` file. Returns `ok` even if the file doesn't exist (ENOENT is not an error).
 
 ### checkCancelRequested(projectPath) → boolean
 
-Check if `.ralph/CANCEL` file exists. Returns boolean directly (not wrapped in Result). Used by the loop runner to detect graceful cancellation requests.
+Check if `.rauf/CANCEL` file exists. Returns boolean directly (not wrapped in Result). Used by the loop runner to detect graceful cancellation requests.
 
 ### clearCancelFile(projectPath) → Result\<boolean\>
 
-Remove `.ralph/CANCEL` file. Returns `ok(true)` if the file existed and was removed, `ok(false)` if it didn't exist.
+Remove `.rauf/CANCEL` file. Returns `ok(true)` if the file existed and was removed, `ok(false)` if it didn't exist.
 
 ## Module: installer.ts
 
@@ -285,7 +285,7 @@ Full installation flow for existing projects:
 1. **Preflight checks** (§9.2 of PRD)
    - Directory exists?
    - Git repo? (warn if not)
-   - .ralph.json already present? (offer repair, not reinstall)
+   - .rauf.json already present? (offer repair, not reinstall)
    - jq in PATH? (warn)
    - claude in PATH? (warn)
 
@@ -294,21 +294,21 @@ Full installation flow for existing projects:
    - Apply user overrides from options
    - Store in marker file
 
-3. **Create .ralph/ directory**
+3. **Create .rauf/ directory**
 
 4. **Deploy artifacts** (§6.2)
-   - RALPH.md: render from template with profile vars, respect sentinels
+   - RAUF.md: render from template with profile vars, respect sentinels
    - REVIEW.md: render from REVIEW.md.tmpl with profile vars
    - backlog.json: copy empty template if not exists, validate if exists
    - progress.md: copy template if not exists
 
 5. **CLAUDE.md smart merge** (§9.3)
-   - Search for `<!-- ralph:start -->` / `<!-- ralph:end -->`
+   - Search for `<!-- rauf:start -->` / `<!-- rauf:end -->`
    - If not found: append block
    - If found and current: skip
    - If found but different: replace bounded block only
 
-6. **Write .ralph.json** with profile, hashes, options
+6. **Write .rauf.json** with profile, hashes, options
 
 7. **Return InstallationReport**
 
@@ -316,15 +316,15 @@ Full installation flow for existing projects:
 
 Re-sync artifacts:
 
-- Re-render RALPH.md managed sections
+- Re-render RAUF.md managed sections
 - Re-render REVIEW.md (preserves user-customized versions)
-- Update CLAUDE.md ralph section
+- Update CLAUDE.md rauf section
 - Never touch backlog.json or progress.md
 - Update artifactHashes for updated files
 
 ### uninstall(projectPath, options) → Result<void>
 
-Remove ralph artifacts (including RALPH.md and REVIEW.md). Preserve backlog/progress/log per user choice.
+Remove rauf artifacts (including RAUF.md and REVIEW.md). Preserve backlog/progress/log per user choice.
 
 ## Module: greenfield.ts
 
@@ -335,7 +335,7 @@ Remove ralph artifacts (including RALPH.md and REVIEW.md). Preserve backlog/prog
 3. `git init` + `.gitignore` + empty initial commit
 4. Configure profile from preset or user input
 5. Scaffold CLAUDE.md from CLAUDE_GREENFIELD.md.tmpl
-6. Install standard ralph artifacts (calls installer.install internally)
+6. Install standard rauf artifacts (calls installer.install internally)
 7. Seed backlog if seed source provided (JSON file, markdown checklist, or inline items)
 8. Return report
 
@@ -347,7 +347,7 @@ Remove ralph artifacts (including RALPH.md and REVIEW.md). Preserve backlog/prog
 
 ## Module: archive.ts
 
-Moves done backlog items into monthly archive files under `.ralph/archive/YYYY-MM.json`.
+Moves done backlog items into monthly archive files under `.rauf/archive/YYYY-MM.json`.
 
 **Archive file format:** `{ month: "YYYY-MM", items: BacklogItem[] }`. Appends to existing file if present.
 
@@ -360,7 +360,7 @@ Moves done backlog items into monthly archive files under `.ralph/archive/YYYY-M
 3. Separate `toArchive` (status === "done" and passes age check) from `toKeep`.
 4. If `toArchive` is empty, return `{ archivedCount: 0, archivedMonths: [] }` early.
 5. Group `toArchive` by month: `completedAt.slice(0, 7)` or `new Date().toISOString().slice(0, 7)` fallback for null.
-6. `ensureDir(archiveDir)` — create `.ralph/archive/` if absent.
+6. `ensureDir(archiveDir)` — create `.rauf/archive/` if absent.
 7. For each month group: read existing archive file (if present, validate), merge items, `atomicWrite` the file.
 8. `writeBacklog(projectPath, { ...backlog, items: toKeep })`.
 9. Return `ok({ archivedCount, archivedMonths: sorted keys })`.
@@ -390,7 +390,7 @@ Options:
 
 - `clearBacklog?: boolean` — empty the backlog items array (preserve project/description metadata)
 - `keepProgress?: boolean` — when used with `clearBacklog`, preserve `progress.md` instead of archiving it
-- `keepLog?: boolean` — when used with `clearBacklog`, preserve `ralph.log` instead of archiving it
+- `keepLog?: boolean` — when used with `clearBacklog`, preserve `rauf.log` instead of archiving it
 
 Steps:
 
@@ -398,23 +398,23 @@ Steps:
 2. Reset `in_progress` items → `pending`
 3. Delete `state.json` (swallow ENOENT)
 4. Clear DONE and CANCEL marker files
-5. If `clearBacklog` and not `keepProgress`: archive `progress.md` → `.ralph/archive/YYYYMMDD-HHmmss-progress.md`, deploy fresh template
-6. If `clearBacklog` and not `keepLog`: archive `ralph.log` → `.ralph/archive/YYYYMMDD-HHmmss-ralph.log`
+5. If `clearBacklog` and not `keepProgress`: archive `progress.md` → `.rauf/archive/YYYYMMDD-HHmmss-progress.md`, deploy fresh template
+6. If `clearBacklog` and not `keepLog`: archive `rauf.log` → `.rauf/archive/YYYYMMDD-HHmmss-rauf.log`
 7. If `clearBacklog`: empty backlog items array (preserve project/description)
 
 Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`) — never overwrites previous archives.
 
 ## File locations summary
 
-| Module writes to | Files                                                                          |
-| ---------------- | ------------------------------------------------------------------------------ |
-| config.ts        | `.ralph.json`, `~/.ralph/config.json`                                          |
-| backlog.ts       | `.ralph/backlog.json`, `.ralph/backlog.json.bak`                               |
-| archive.ts       | `.ralph/archive/YYYY-MM.json`                                                  |
-| reset.ts         | `.ralph/archive/YYYYMMDD-HHmmss-*`, `.ralph/state.json`, `.ralph/backlog.json` |
-| installer.ts     | All `.ralph/` files, CLAUDE.md, `.ralph.json`                                  |
-| greenfield.ts    | All of installer + directory creation + git init                               |
-| status.ts        | `.ralph/state.json`, `.ralph/ralph.log`, `.ralph/DONE`, `.ralph/CANCEL`        |
-| discovery.ts     | (read-only)                                                                    |
-| profile.ts       | (read-only, result stored by installer)                                        |
-| template.ts      | (pure functions, no direct file I/O unless renderTemplateFile)                 |
+| Module writes to | Files                                                                       |
+| ---------------- | --------------------------------------------------------------------------- |
+| config.ts        | `.rauf.json`, `~/.rauf/config.json`                                         |
+| backlog.ts       | `.rauf/backlog.json`, `.rauf/backlog.json.bak`                              |
+| archive.ts       | `.rauf/archive/YYYY-MM.json`                                                |
+| reset.ts         | `.rauf/archive/YYYYMMDD-HHmmss-*`, `.rauf/state.json`, `.rauf/backlog.json` |
+| installer.ts     | All `.rauf/` files, CLAUDE.md, `.rauf.json`                                 |
+| greenfield.ts    | All of installer + directory creation + git init                            |
+| status.ts        | `.rauf/state.json`, `.rauf/rauf.log`, `.rauf/DONE`, `.rauf/CANCEL`          |
+| discovery.ts     | (read-only)                                                                 |
+| profile.ts       | (read-only, result stored by installer)                                     |
+| template.ts      | (pure functions, no direct file I/O unless renderTemplateFile)              |

@@ -62,7 +62,7 @@ const schema = zodToJsonSchema(BacklogSchema, {
 schema["$schema"] = "http://json-schema.org/draft-07/schema#";
 schema["$id"] = schemaId;
 schema["title"] = "Rauf Backlog";
-schema["description"] = "Task backlog for a ralph autonomous coding loop project";
+schema["description"] = "Task backlog for a rauf autonomous coding loop project";
 
 // Post-process: add descriptions to top-level properties
 const props = schema["properties"] as Record<string, Record<string, unknown>>;

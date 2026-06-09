@@ -1,6 +1,6 @@
 // ─── Argument Parser ─────────────────────────────────────────────
 //
-// Lightweight CLI argument parser for ralph.
+// Lightweight CLI argument parser for rauf.
 // Extracts global flags, identifies command/subcommand, and passes
 // remaining args to command handlers for per-command parsing.
 

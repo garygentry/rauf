@@ -156,5 +156,5 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
   "title": "Rauf Backlog",
-  "description": "Task backlog for a ralph autonomous coding loop project"
+  "description": "Task backlog for a rauf autonomous coding loop project"
 }

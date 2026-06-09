@@ -38,7 +38,7 @@ describe("gitCommit", () => {
       cwd: tmpDir,
       encoding: "utf-8",
     });
-    expect(log).toContain("[ralph] 006: signal-parser.ts");
+    expect(log).toContain("[rauf] 006: signal-parser.ts");
   });
 
   it("returns ok with empty hash when nothing to commit", async () => {
@@ -78,7 +78,7 @@ describe("gitCommit", () => {
       cwd: tmpDir,
       encoding: "utf-8",
     });
-    expect(log).toContain("[ralph] 002: update file");
+    expect(log).toContain("[rauf] 002: update file");
   });
 
   it("commits deleted files", async () => {
@@ -98,7 +98,7 @@ describe("gitCommit", () => {
       cwd: tmpDir,
       encoding: "utf-8",
     });
-    expect(log).toContain("[ralph] 003: remove file");
+    expect(log).toContain("[rauf] 003: remove file");
   });
 
   it("returns err when projectPath does not exist", async () => {

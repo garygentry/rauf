@@ -39,7 +39,7 @@ export async function checkUsageLimit(token: string): Promise<UsageLimitResult> 
     });
 
     if (!response.ok) {
-      console.warn(`[ralph] Usage API returned ${response.status}: ${response.statusText}`);
+      console.warn(`[rauf] Usage API returned ${response.status}: ${response.statusText}`);
       return { limited: false };
     }
 
@@ -71,7 +71,7 @@ export async function checkUsageLimit(token: string): Promise<UsageLimitResult> 
 
     return { limited: false };
   } catch (e) {
-    console.warn(`[ralph] Usage API check failed: ${e instanceof Error ? e.message : String(e)}`);
+    console.warn(`[rauf] Usage API check failed: ${e instanceof Error ? e.message : String(e)}`);
     return { limited: false };
   }
 }

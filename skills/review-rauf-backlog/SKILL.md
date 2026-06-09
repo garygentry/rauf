@@ -1,21 +1,21 @@
 ---
-name: review-ralph-backlog
+name: review-rauf-backlog
 description: >
-  Review and improve an existing ralph backlog.json against reference documents (specs, plans, architecture docs).
+  Review and improve an existing rauf backlog.json against reference documents (specs, plans, architecture docs).
   Use this skill when the user asks to "review the backlog", "audit backlog.json", "check backlog against spec",
-  "QA the ralph backlog", "validate backlog items", "review backlog quality", or "compare backlog to spec".
-  Do NOT trigger for creating new backlogs — use create-ralph-backlog for that.
+  "QA the rauf backlog", "validate backlog items", "review backlog quality", or "compare backlog to spec".
+  Do NOT trigger for creating new backlogs — use create-rauf-backlog for that.
 ---
 
-# Review Ralph Backlog
+# Review Rauf Backlog
 
-You are reviewing an existing `backlog.json` for a ralph autonomous coding loop. Your role is QA second opinion — you compare the backlog against reference documents, check for anti-patterns, and propose concrete improvements.
+You are reviewing an existing `backlog.json` for a rauf autonomous coding loop. Your role is QA second opinion — you compare the backlog against reference documents, check for anti-patterns, and propose concrete improvements.
 
 ## Before You Start
 
-1. **Read `.ralph/backlog.json`** in the target project — this is what you're reviewing
+1. **Read `.rauf/backlog.json`** in the target project — this is what you're reviewing
 2. **Read all reference documents** the user provides (specs, plans, architecture docs)
-3. **Read `.ralph/backlog.schema.json`** if it exists in the target project (or use the schema reference below)
+3. **Read `.rauf/backlog.schema.json`** if it exists in the target project (or use the schema reference below)
 4. **Read the project codebase** enough to understand what already exists vs what the backlog proposes
 
 ## The Schema
@@ -181,7 +181,7 @@ Check schema conformance:
 - `priority` is 1-4
 - `status` is a valid value
 - `completedAt` is present and set to `null` for pending/blocked items, ISO date for done items. Flag items where `completedAt` is missing entirely.
-- Field naming: use `dependsOn` (not `dependencies`). Flag any items using the wrong field name — ralph can normalize this at read time, but the canonical name should be used.
+- Field naming: use `dependsOn` (not `dependencies`). Flag any items using the wrong field name — rauf can normalize this at read time, but the canonical name should be used.
 - `dependsOn` contains only valid item IDs
 - Project-level `project` and `description` fields are present and meaningful
 
@@ -267,7 +267,7 @@ After presenting the report, **wait for user approval** before making any change
 
 When the user approves (in whole or in part):
 
-1. Read the current `.ralph/backlog.json` again (it may have changed)
+1. Read the current `.rauf/backlog.json` again (it may have changed)
 2. Apply only approved modifications to `pending` and `blocked` items
 3. Append new items at the end, continuing the ID sequence
 4. Never modify `done` or `in_progress` items

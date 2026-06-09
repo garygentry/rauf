@@ -1,24 +1,24 @@
-# Ralph
+# Rauf
 
 **Autonomous coding loops, managed.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/version-0.1.0-green)
 
-Ralph installs, manages, and monitors AI coding loops across your local projects. Define a backlog, start the loop, and let [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ship work items autonomously — with full visibility through a CLI and web dashboard.
+Rauf installs, manages, and monitors AI coding loops across your local projects. Define a backlog, start the loop, and let [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ship work items autonomously — with full visibility through a CLI and web dashboard.
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="Ralph Manager — Projects Dashboard" width="720" />
+  <img src="screenshots/dashboard.png" alt="Rauf Manager — Projects Dashboard" width="720" />
 </p>
 
-> **Self-hosted from day one.** Ralph built itself: 44 backlog items, each implemented, verified, and committed by its own loop. The screenshots below are ralph managing ralph.
+> **Self-hosted from day one.** Rauf built itself: 44 backlog items, each implemented, verified, and committed by its own loop. The screenshots below are rauf managing rauf.
 
 ---
 
 ## How It Works
 
 <p align="center">
-  <img src="docs/images/ralph-loop.png" alt="Ralph loop diagram" width="720" />
+  <img src="docs/images/rauf-loop.png" alt="Rauf loop diagram" width="720" />
 </p>
 
 1. **Backlog** — You define work items with titles, priorities, and acceptance criteria
@@ -28,11 +28,11 @@ Ralph installs, manages, and monitors AI coding loops across your local projects
 
 Each iteration produces one of three exit signals:
 
-| Signal              | Meaning                            | What happens                       |
-| ------------------- | ---------------------------------- | ---------------------------------- |
-| `RALPH_DONE`        | All acceptance criteria passed     | Item marked done, loop continues   |
-| `RALPH_BLOCKED`     | Missing dependency or unclear spec | Item paused, loop retries or skips |
-| `RALPH_NEEDS_HUMAN` | Requires a decision or API key     | Loop pauses for human input        |
+| Signal             | Meaning                            | What happens                       |
+| ------------------ | ---------------------------------- | ---------------------------------- |
+| `RAUF_DONE`        | All acceptance criteria passed     | Item marked done, loop continues   |
+| `RAUF_BLOCKED`     | Missing dependency or unclear spec | Item paused, loop retries or skips |
+| `RAUF_NEEDS_HUMAN` | Requires a decision or API key     | Loop pauses for human input        |
 
 ---
 
@@ -45,7 +45,7 @@ Each iteration produces one of three exit signals:
 - **Web dashboard** — React SPA with project cards, backlog management, live log streaming via SSE
 - **Full CLI** — Every dashboard action available headless for scripting and CI
 - **Single binary** — Compiles to one executable via `bun build --compile` (CLI + server + frontend + templates)
-- **Self-contained projects** — Installed projects work standalone, no ralph manager required
+- **Self-contained projects** — Installed projects work standalone, no rauf manager required
 
 ---
 
@@ -55,21 +55,21 @@ Each iteration produces one of three exit signals:
 
 ```bash
 # Clone and build
-git clone https://github.com/your-org/ralph.git
-cd ralph && pnpm install && pnpm build
+git clone https://github.com/your-org/rauf.git
+cd rauf && pnpm install && pnpm build
 
-# Install ralph into an existing project
-ralph install ~/workspace/my-project --yes
+# Install rauf into an existing project
+rauf install ~/workspace/my-project --yes
 
 # Add a work item
-ralph backlog add ~/workspace/my-project \
+rauf backlog add ~/workspace/my-project \
   --title "Add user authentication" \
   --type feature --priority 1 \
   --ac "Login endpoint returns JWT" \
   --ac "pnpm test passes"
 
 # Start the loop
-ralph loop run ~/workspace/my-project
+rauf loop run ~/workspace/my-project
 ```
 
 ---
@@ -77,7 +77,7 @@ ralph loop run ~/workspace/my-project
 ## Web Dashboard
 
 ```bash
-ralph server start     # http://localhost:5173
+rauf server start     # http://localhost:5173
 ```
 
 **Backlog management** — Add, edit, prioritize, and sweep items. Filter by status, type, or priority.
@@ -99,46 +99,46 @@ ralph server start     # http://localhost:5173
 ### Project Setup
 
 ```bash
-ralph install <path> [--yes]              # Install into existing project
-ralph init <path> --name --stack --seed   # Scaffold new project
-ralph update <path> [--yes]               # Update ralph artifacts
-ralph uninstall <path> [--yes]            # Remove ralph from project
+rauf install <path> [--yes]              # Install into existing project
+rauf init <path> --name --stack --seed   # Scaffold new project
+rauf update <path> [--yes]               # Update rauf artifacts
+rauf uninstall <path> [--yes]            # Remove rauf from project
 ```
 
 ### Backlog
 
 ```bash
-ralph backlog list <path>                 # List items (--status, --type filters)
-ralph backlog add <path> --title --ac     # Add item with acceptance criteria
-ralph backlog edit <path> <id>            # Edit item fields
-ralph backlog delete <path> <id>          # Delete item
-ralph backlog show <path> <id>            # Show item details
-ralph backlog sweep <path> --yes          # Archive completed items
+rauf backlog list <path>                 # List items (--status, --type filters)
+rauf backlog add <path> --title --ac     # Add item with acceptance criteria
+rauf backlog edit <path> <id>            # Edit item fields
+rauf backlog delete <path> <id>          # Delete item
+rauf backlog show <path> <id>            # Show item details
+rauf backlog sweep <path> --yes          # Archive completed items
 ```
 
 ### Loop
 
 ```bash
-ralph loop run <path>                     # Run loop directly (no server)
-ralph loop start <path>                   # Start loop via server (auto-starts daemon)
-ralph loop stop <path>                    # Stop a running loop
-ralph loop follow <path>                  # Stream loop events in terminal
+rauf loop run <path>                     # Run loop directly (no server)
+rauf loop start <path>                   # Start loop via server (auto-starts daemon)
+rauf loop stop <path>                    # Stop a running loop
+rauf loop follow <path>                  # Stream loop events in terminal
 ```
 
 ### Monitoring
 
 ```bash
-ralph status <path>                       # Loop state + backlog summary
-ralph log <path> [--follow]               # View or tail loop log
-ralph progress <path>                     # View accumulated learnings
+rauf status <path>                       # Loop state + backlog summary
+rauf log <path> [--follow]               # View or tail loop log
+rauf progress <path>                     # View accumulated learnings
 ```
 
 ### Server
 
 ```bash
-ralph server start [--daemon] [--port N]  # Start web dashboard
-ralph server stop                         # Stop server
-ralph server status                       # Show server status
+rauf server start [--daemon] [--port N]  # Start web dashboard
+rauf server stop                         # Stop server
+rauf server status                       # Show server status
 ```
 
 **Global flags:** `--json` `--no-color` `--quiet` `--root <path>`
@@ -148,7 +148,7 @@ ralph server status                       # Show server status
 ## Project Structure
 
 ```
-ralph/
+rauf/
 ├── packages/core/     Shared business logic (zero deps on cli/web/loop)
 ├── packages/loop/     Loop runner engine (LoopRunner, events, claude process)
 ├── packages/cli/      CLI tool

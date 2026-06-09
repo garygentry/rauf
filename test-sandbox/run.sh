@@ -31,13 +31,13 @@ fi
 # Reset sandbox to clean state
 bash "$SANDBOX_DIR/setup.sh"
 
-# Put mock claude first on PATH, then the ralph dev wrapper
+# Put mock claude first on PATH, then the rauf dev wrapper
 export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
 export MOCK_CLAUDE_SCENARIO="$SCENARIO"
 
 echo "=== Running scenario: $SCENARIO ==="
 # shellcheck disable=SC2086
-ralph loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 $BACKLOG_FLAG
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 $BACKLOG_FLAG
 EXIT_CODE=$?
 
 echo ""

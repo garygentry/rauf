@@ -27,7 +27,7 @@ The server maintains a `LoopManager` singleton (`packages/web/src/server/loop-ma
 
 ### CSRF Middleware
 
-All POST/PUT/DELETE routes require header: `X-Ralph-Request: true`.
+All POST/PUT/DELETE routes require header: `X-Rauf-Request: true`.
 Requests without it get 403 Forbidden.
 No `Access-Control-Allow-Origin` headers set (blocks cross-origin).
 
@@ -141,9 +141,9 @@ Event types:
 
 Implementation:
 
-- Watch `.ralph/ralph.log` with fs.watch
+- Watch `.rauf/rauf.log` with fs.watch
 - Poll for new lines every 1s
-- Watch `.ralph/state.json` for state changes
+- Watch `.rauf/state.json` for state changes
 - Client auto-reconnects (standard SSE behavior)
 
 ## Frontend (React SPA)
@@ -165,12 +165,12 @@ Implementation:
 ### Shared Fetch Wrapper
 
 ```typescript
-async function ralphFetch(url: string, options?: RequestInit) {
+async function raufFetch(url: string, options?: RequestInit) {
   return fetch(url, {
     ...options,
     headers: {
       ...options?.headers,
-      "X-Ralph-Request": "true",
+      "X-Rauf-Request": "true",
       "Content-Type": "application/json",
     },
   });
@@ -199,7 +199,7 @@ All API calls go through this wrapper.
 
 - Card grid of discovered projects
 - Each card: name, stack badge, loop state badge, backlog summary, last activity
-- "Install Ralph" and "Initialize New Project" buttons
+- "Install Rauf" and "Initialize New Project" buttons
 - Auto-refresh every 30s + manual refresh button
 
 #### Backlog View
@@ -226,7 +226,7 @@ All API calls go through this wrapper.
 2. Preflight (checklist of checks)
 3. Tech Stack & Profile (auto-detected, editable)
 4. Configure (project name, gitignore toggle, options preview)
-5. Review (file list preview, RALPH.md verification section)
+5. Review (file list preview, RAUF.md verification section)
 6. Result (installation report, quick links)
 
 #### Greenfield Wizard (5 steps)

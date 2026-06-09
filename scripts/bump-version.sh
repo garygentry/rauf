@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bump the ralph version across all locations.
+# Bump the rauf version across all locations.
 # Usage: bash scripts/bump-version.sh <new-version>
 # Example: bash scripts/bump-version.sh 0.2.0
 
@@ -21,7 +21,7 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "Bumping ralph version to $NEW_VERSION"
+echo "Bumping rauf version to $NEW_VERSION"
 echo ""
 
 # 1. TypeScript source of truth

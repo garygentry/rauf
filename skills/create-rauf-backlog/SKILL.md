@@ -1,24 +1,24 @@
 ---
-name: create-ralph-backlog
+name: create-rauf-backlog
 description: >
-  Create and populate a ralph backlog.json for the ralph autonomous coding loop.
+  Create and populate a rauf backlog.json for the rauf autonomous coding loop.
   Use this skill ONLY when the user explicitly asks to create, populate, or generate
-  a ralph backlog — e.g., "create the ralph backlog", "populate backlog.json",
-  "generate the .ralph/backlog.json", "build the ralph task list", or "create backlog
-  items for ralph". Do NOT trigger for general planning, task decomposition, or work
-  breakdown requests that don't specifically mention ralph or backlog.json.
+  a rauf backlog — e.g., "create the rauf backlog", "populate backlog.json",
+  "generate the .rauf/backlog.json", "build the rauf task list", or "create backlog
+  items for rauf". Do NOT trigger for general planning, task decomposition, or work
+  breakdown requests that don't specifically mention rauf or backlog.json.
 ---
 
-# Create Ralph Backlog
+# Create Rauf Backlog
 
-You are creating a `backlog.json` file for a ralph autonomous coding loop. The ralph loop is an automated agent that picks up tasks one at a time, implements them, runs verification, and commits — so the quality of your backlog directly determines how effectively the loop operates.
+You are creating a `backlog.json` file for a rauf autonomous coding loop. The rauf loop is an automated agent that picks up tasks one at a time, implements them, runs verification, and commits — so the quality of your backlog directly determines how effectively the loop operates.
 
 ## Before You Start
 
 1. **Read the input material** — specs, docs, descriptions, or whatever the user provides
 2. **Read the target project's structure** if it exists — understand what code is already there
-3. **Read `.ralph/backlog.schema.json`** in the target project (or use the schema reference below) to confirm the exact shape
-4. **Check for an existing `.ralph/backlog.json`** — if one exists, understand what's already there before overwriting
+3. **Read `.rauf/backlog.schema.json`** in the target project (or use the schema reference below) to confirm the exact shape
+4. **Check for an existing `.rauf/backlog.json`** — if one exists, understand what's already there before overwriting
 
 ## The Schema
 
@@ -77,7 +77,7 @@ The backlog.json file has this structure:
 
 ## Decomposition Strategy
 
-The ralph loop processes ONE item per iteration. Each item should be:
+The rauf loop processes ONE item per iteration. Each item should be:
 
 ### Right-sized
 
@@ -240,7 +240,7 @@ The loop uses this hint to plan but doesn't enforce it — an item can take more
 
 ### `agentDelegation` — Parallel execution
 
-Use `agentDelegation` when a task has clearly independent subtasks that can run in parallel. The ralph loop agent will spawn sub-agents using the Task tool for each subtask.
+Use `agentDelegation` when a task has clearly independent subtasks that can run in parallel. The rauf loop agent will spawn sub-agents using the Task tool for each subtask.
 
 ```json
 {
@@ -313,7 +313,7 @@ Example: "LLM-agnostic execution architecture — decouple loop runner from Clau
 
 ## Output
 
-Write the complete backlog.json to `.ralph/backlog.json` in the target project directory. The file must:
+Write the complete backlog.json to `.rauf/backlog.json` in the target project directory. The file must:
 
 1. Be valid JSON
 2. Conform to the schema above
@@ -344,11 +344,11 @@ Don't create separate "write tests for X" items. Include testing in the acceptan
 
 ## Schema Validation
 
-The ralph schema enforces these machine-parseable constraints. Violating them will cause backlog validation errors:
+The rauf schema enforces these machine-parseable constraints. Violating them will cause backlog validation errors:
 
 - **IDs** should be zero-padded sequential digits (`"001"`, `"002"`). Any non-empty string is accepted, but numeric IDs are strongly preferred for consistent ordering.
 - **`completedAt`** must be present and set to `null` for new items (omitting it is tolerated but not recommended).
-- **`dependsOn`** is the correct field name for dependency references. Do NOT use `dependencies` — while ralph can normalize this alias at read time, using the canonical field name avoids confusion.
+- **`dependsOn`** is the correct field name for dependency references. Do NOT use `dependencies` — while rauf can normalize this alias at read time, using the canonical field name avoids confusion.
 - **`status`** must be `"pending"` on all new items.
 - **`type`** must be one of: `feature`, `bug`, `refactor`, `chore`.
 - **`priority`** must be an integer 1-4.

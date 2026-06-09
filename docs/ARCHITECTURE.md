@@ -1,6 +1,6 @@
 ---
 title: System Architecture
-description: High-level system diagram, data flow, and architectural principles for the ralph manager.
+description: High-level system diagram, data flow, and architectural principles for the rauf manager.
 ---
 
 ## Package Dependency Graph
@@ -23,14 +23,14 @@ All filesystem operations and business logic. Zero UI or CLI concerns.
 
 | Module          | Responsibility                                                                 |
 | --------------- | ------------------------------------------------------------------------------ |
-| `discovery.ts`  | Scan ROOT_DIRECTORY for .ralph.json files, return project list                 |
-| `config.ts`     | Read/write .ralph.json marker files, read/write ~/.ralph/config.json           |
+| `discovery.ts`  | Scan ROOT_DIRECTORY for .rauf.json files, return project list                  |
+| `config.ts`     | Read/write .rauf.json marker files, read/write ~/.rauf/config.json             |
 | `profile.ts`    | Tech-stack detection heuristics, profile management                            |
 | `template.ts`   | Render .tmpl files with {{variable}} interpolation, sentinel block handling    |
 | `installer.ts`  | Orchestrate artifact installation (existing projects)                          |
 | `greenfield.ts` | Orchestrate greenfield project initialization                                  |
 | `backlog.ts`    | CRUD operations on backlog.json, validation, atomic writes                     |
-| `status.ts`     | Derive loop state from state.json (primary) or ralph.log (fallback)            |
+| `status.ts`     | Derive loop state from state.json (primary) or rauf.log (fallback)             |
 | `fs-utils.ts`   | Atomic write, JSON read with error handling, path validation, hash computation |
 | `schemas.ts`    | Zod schemas + TypeScript types for all data structures                         |
 | `errors.ts`     | Result type, error codes, structured error types                               |
@@ -39,15 +39,15 @@ All filesystem operations and business logic. Zero UI or CLI concerns.
 
 Loop runner engine. Orchestrates the autonomous coding loop lifecycle.
 
-| Module              | Responsibility                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `runner.ts`         | LoopRunner class — main loop lifecycle, iteration management                                            |
-| `events.ts`         | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent                                     |
-| `claude-process.ts` | Spawn `claude -p` as child process with timeout and cancellation                                        |
-| `signal-parser.ts`  | Parse RALPH_DONE/BLOCKED/NEEDS_HUMAN/RALPH_REVIEW from Claude stdout                                    |
-| `prompt-builder.ts` | Build the prompt string from RALPH.md, item, backlog, and progress; build review prompts from REVIEW.md |
-| `usage-checker.ts`  | Check Claude API usage limits, interruptible sleep                                                      |
-| `git-commit.ts`     | Run `git add -A && git commit` after successful iterations                                              |
+| Module              | Responsibility                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `runner.ts`         | LoopRunner class — main loop lifecycle, iteration management                                           |
+| `events.ts`         | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent                                    |
+| `claude-process.ts` | Spawn `claude -p` as child process with timeout and cancellation                                       |
+| `signal-parser.ts`  | Parse RAUF_DONE/BLOCKED/NEEDS_HUMAN/RAUF_REVIEW from Claude stdout                                     |
+| `prompt-builder.ts` | Build the prompt string from RAUF.md, item, backlog, and progress; build review prompts from REVIEW.md |
+| `usage-checker.ts`  | Check Claude API usage limits, interruptible sleep                                                     |
+| `git-commit.ts`     | Run `git add -A && git commit` after successful iterations                                             |
 
 ### packages/cli
 
@@ -55,8 +55,8 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 
 - Each command is a separate file in `src/commands/`
 - Can call core functions directly (headless) or HTTP API (when server running)
-- `ralph loop run` creates a LoopRunner in-process (no server required)
-- `ralph loop start/stop/follow/review` route through the server API or run directly
+- `rauf loop run` creates a LoopRunner in-process (no server required)
+- `rauf loop start/stop/follow/review` route through the server API or run directly
 - Outputs human-readable by default, `--json` for machine-readable
 - Exit codes follow standard (0=success, 1=error, 2=bad args, etc.)
 
@@ -68,7 +68,7 @@ Hono HTTP server + React SPA.
 
 - API route handlers that call core functions
 - LoopManager singleton for server-centric loop management
-- CSRF middleware (X-Ralph-Request header check on mutations)
+- CSRF middleware (X-Rauf-Request header check on mutations)
 - SSE endpoints for log streaming and loop event streaming
 - Static file serving for built React app
 
@@ -77,7 +77,7 @@ Hono HTTP server + React SPA.
 - React + TanStack Router for routing
 - TanStack Query for server state
 - Tailwind CSS for styling
-- Shared fetch wrapper with automatic X-Ralph-Request header
+- Shared fetch wrapper with automatic X-Rauf-Request header
 - Start/Stop loop buttons on the status view
 
 **Shared (`src/shared/`):**
@@ -86,7 +86,7 @@ Hono HTTP server + React SPA.
 
 ## Loop Management Model
 
-Ralph uses a **server-centric loop management** model. The LoopManager singleton in `packages/web` is the central coordinator:
+Rauf uses a **server-centric loop management** model. The LoopManager singleton in `packages/web` is the central coordinator:
 
 ```
 LoopManager (singleton in web server)
@@ -104,13 +104,13 @@ LoopManager (singleton in web server)
 LoopRunner lifecycle:
   1. Capture git baseline commit hash (for review diff)
   2. Clear DONE/CANCEL files
-  3. Read .ralph.json marker options (autoSweep, model, etc.)
+  3. Read .rauf.json marker options (autoSweep, model, etc.)
   4. Run auto-sweep if enabled
   5. Pre-loop usage limit preflight (weekly check, 5h check)
   6. Main loop:
      a. Select next eligible item (dependency-aware priority queue)
      b. Resolve model (item.model > options.model > marker.model)
-     c. Build prompt (RALPH.md + item + backlog + progress)
+     c. Build prompt (RAUF.md + item + backlog + progress)
      d. Spawn claude -p with timeout
      e. Check stderr for usage limit patterns
      f. Parse exit signal (DONE/BLOCKED/NEEDS_HUMAN/REVIEW/none)
@@ -127,19 +127,19 @@ LoopRunner lifecycle:
 ### Installation Flow
 
 ```
-User → CLI `ralph install ./project`
+User → CLI `rauf install ./project`
        → core/installer.ts
          → core/profile.ts (detect tech stack)
-         → core/template.ts (render RALPH.md)
+         → core/template.ts (render RAUF.md)
          → core/fs-utils.ts (atomic writes)
-         → core/config.ts (write .ralph.json)
+         → core/config.ts (write .rauf.json)
        → CLI formats installation report
 ```
 
 ### Loop Lifecycle (server mode)
 
 ```
-User → CLI `ralph loop start ./project`
+User → CLI `rauf loop start ./project`
        → CLI auto-starts server daemon if needed
        → POST /api/projects/:id/loop/start
        → LoopManager.startLoop()
@@ -148,7 +148,7 @@ User → CLI `ralph loop start ./project`
            → selectNextItem → buildPrompt → spawnClaude → parseSignal
            → Emits LoopEvents at each lifecycle point
          → LoopManager fans events to SSE listeners
-       → CLI `ralph loop follow` or web frontend
+       → CLI `rauf loop follow` or web frontend
          → GET /api/projects/:id/loop/events (SSE)
          → Receives LoopEvent stream, renders in terminal/UI
 ```
@@ -156,7 +156,7 @@ User → CLI `ralph loop start ./project`
 ### Loop Lifecycle (direct mode)
 
 ```
-User → CLI `ralph loop run ./project`
+User → CLI `rauf loop run ./project`
        → Creates LoopRunner directly in-process (no server)
        → LoopRunner.start()
          → Same lifecycle as server mode
@@ -171,7 +171,7 @@ Loop completes → runReviewPass()
   → git diff baseCommit..HEAD
   → buildReviewPrompt() (REVIEW.md template)
   → Spawn Claude with review prompt
-  → Parse RALPH_REVIEW or RALPH_DONE
+  → Parse RAUF_REVIEW or RAUF_DONE
   → If issues: addItem() with source="review", reviewBatch=<ISO timestamp>
   → If !reviewOnly: re-enter main loop for fix iterations
 ```
@@ -182,10 +182,10 @@ Loop completes → runReviewPass()
 LoopRunner ──emits──► LoopEvent
   │
   ├──► LoopManager ──fans out──► SSE clients
-  │                                ├── CLI `ralph loop follow`
+  │                                ├── CLI `rauf loop follow`
   │                                └── Web frontend EventSource
   │
-  └──► Direct mode: CLI `ralph loop run` event handler
+  └──► Direct mode: CLI `rauf loop run` event handler
 ```
 
 ### Status View
@@ -194,9 +194,9 @@ LoopRunner ──emits──► LoopEvent
 User → Web UI "Status" tab
        → GET /api/projects/:id/status
        → core/status.ts
-         → Read .ralph/state.json (primary)
-         → Read .ralph/backlog.json (summary)
-         → Fallback: parse .ralph/ralph.log
+         → Read .rauf/state.json (primary)
+         → Read .rauf/backlog.json (summary)
+         → Fallback: parse .rauf/rauf.log
        → JSON response → React renders
 ```
 
@@ -217,15 +217,15 @@ User → Web UI "Add Item" form → POST /api/projects/:id/backlog
 Priority order:
 
 1. `--root` CLI flag
-2. `RALPH_ROOT` environment variable
-3. `rootDirectory` in `~/.ralph/config.json`
+2. `RAUF_ROOT` environment variable
+3. `rootDirectory` in `~/.rauf/config.json`
 4. Current working directory
 
 ## Security Model
 
 - Server binds to 127.0.0.1 ONLY (never 0.0.0.0)
 - No CORS headers set (blocks cross-origin reads)
-- Custom `X-Ralph-Request: true` header required on all POST/PUT/DELETE
+- Custom `X-Rauf-Request: true` header required on all POST/PUT/DELETE
 - Path sandboxing: all writes validated against ROOT_DIRECTORY
 - No authentication (localhost single-user only)
 
@@ -234,4 +234,4 @@ Priority order:
 - Manager tool: atomic writes (write .tmp → rename)
 - Loop runner: uses core's updateItem() for status transitions (atomic writes with .bak backup)
 - No file locking — last-write-wins is acceptable for single-developer use
-- Backup on every backlog write (.ralph/backlog.json.bak)
+- Backup on every backlog write (.rauf/backlog.json.bak)

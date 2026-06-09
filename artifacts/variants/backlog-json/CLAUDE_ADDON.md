@@ -2,7 +2,7 @@
 
 ## Autonomous Loop (Rauf)
 
-When running as a ralph loop iteration, follow these operational rules:
+When running as a rauf loop iteration, follow these operational rules:
 
 ### Reading Your Task
 1. Read `RAUF.md` for detailed per-iteration instructions
@@ -18,7 +18,7 @@ When running as a ralph loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
 8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
-10. Commit your changes with message: `[ralph] <item-id>: <title>`
+10. Commit your changes with message: `[rauf] <item-id>: <title>`
 
 ### Rules
 - ONE item per iteration — do not work on multiple items

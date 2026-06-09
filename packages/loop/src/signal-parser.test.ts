@@ -209,7 +209,7 @@ describe("parseSignal", () => {
         "",
         "RAUF_DONE",
         "",
-        "Committed as [ralph] 001: Scaffold packages/ai",
+        "Committed as [rauf] 001: Scaffold packages/ai",
       ].join("\n");
       expect(parseSignal(stdout)).toEqual({ signal: "done" });
     });

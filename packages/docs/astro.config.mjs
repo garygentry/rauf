@@ -6,14 +6,14 @@ export default defineConfig({
   base: process.env.BASE_PATH,
   integrations: [
     starlight({
-      title: "Ralph",
+      title: "Rauf",
       description:
         "Install, manage, and monitor autonomous coding loops across local software projects.",
       social: [
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/your-org/ralph",
+          href: "https://github.com/your-org/rauf",
         },
       ],
       sidebar: [

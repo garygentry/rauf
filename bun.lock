@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "ralph",
+      "name": "rauf",
       "dependencies": {
         "vitest": "^4.0.18",
       },
@@ -20,7 +20,7 @@
       "name": "@rauf/cli",
       "version": "0.1.0",
       "bin": {
-        "ralph": "dist/index.js",
+        "rauf": "dist/index.js",
       },
       "dependencies": {
         "@rauf/core": "workspace:*",

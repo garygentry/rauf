@@ -1,6 +1,6 @@
 ---
 title: Contributing
-description: Development setup, coding conventions, and contribution workflow for ralph.
+description: Development setup, coding conventions, and contribution workflow for rauf.
 ---
 
 ## Development Setup
@@ -15,8 +15,8 @@ description: Development setup, coding conventions, and contribution workflow fo
 ### Getting Started
 
 ```bash
-git clone https://github.com/your-org/ralph.git
-cd ralph
+git clone https://github.com/your-org/rauf.git
+cd rauf
 pnpm install
 pnpm build
 ```
@@ -32,7 +32,7 @@ pnpm lint             # ESLint across all packages
 pnpm format:check     # Prettier format check
 pnpm format           # Prettier auto-format
 pnpm dev              # Start Vite dev server for the web frontend
-pnpm compile          # Build + compile single binary (./ralph-bin)
+pnpm compile          # Build + compile single binary (./rauf-bin)
 ```
 
 ### Running Individual Packages
@@ -54,7 +54,7 @@ cd packages/web && pnpm dev
 ## Repository Layout
 
 ```
-ralph/
+rauf/
 ├── packages/
 │   ├── core/    — Shared business logic (discovery, installer, backlog, status, profile, template)
 │   ├── loop/    — Loop runner engine (LoopRunner, events, claude process, signal parsing)
@@ -64,15 +64,15 @@ ralph/
 │   └── variants/backlog-json/
 ├── docs/        — Specifications (ARCHITECTURE, SCHEMAS, SPEC-CORE, SPEC-CLI, SPEC-WEB)
 ├── scripts/     — Build scripts (embedded artifacts/assets generation, binary entry point)
-└── .ralph/      — This project's own ralph loop state (self-hosting)
+└── .rauf/      — This project's own rauf loop state (self-hosting)
 ```
 
 ## Architecture Rules
 
 1. **`packages/core` has zero imports from `cli` or `web`.** All filesystem logic lives in core.
 2. **All file writes use atomic write** (write `.tmp` then rename) with `.bak` backup for `backlog.json`.
-3. **Path sandboxing:** Never write outside `ROOT_DIRECTORY` or `~/.ralph/`. Validate with `path.resolve()` + `startsWith()`.
-4. **The web server binds to `127.0.0.1` only.** All mutation endpoints require `X-Ralph-Request: true` header.
+3. **Path sandboxing:** Never write outside `ROOT_DIRECTORY` or `~/.rauf/`. Validate with `path.resolve()` + `startsWith()`.
+4. **The web server binds to `127.0.0.1` only.** All mutation endpoints require `X-Rauf-Request: true` header.
 
 ## Coding Conventions
 
@@ -110,8 +110,8 @@ Before implementing features, read the relevant spec in `docs/`:
 | `SPEC-CORE.md`      | Core package modules and logic                       |
 | `SPEC-CLI.md`       | CLI commands, flags, exit codes                      |
 | `SPEC-WEB.md`       | Web API endpoints and frontend components            |
-| `SPEC-ARTIFACTS.md` | Artifact templates (RALPH.md, CLAUDE_ADDON.md, etc.) |
+| `SPEC-ARTIFACTS.md` | Artifact templates (RAUF.md, CLAUDE_ADDON.md, etc.)  |
 
 ## Self-Hosting
 
-This repository is itself a ralph-managed project. The `.ralph/` directory at the repo root is this project's own ralph loop state. Run the loop with `ralph loop run` (direct mode) or `ralph loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing ralph into other projects. Do not confuse them.
+This repository is itself a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into other projects. Do not confuse them.

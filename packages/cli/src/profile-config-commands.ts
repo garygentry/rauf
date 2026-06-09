@@ -304,7 +304,7 @@ export async function handleProjectsList(ctx: CommandContext): Promise<number> {
   }
 
   if (projects.length === 0 && ignored.length === 0) {
-    info(`No ralph-enabled projects found in: ${c.dim(rootDir)}`);
+    info(`No rauf-enabled projects found in: ${c.dim(rootDir)}`);
     info("Run 'rauf install <path>' to enable rauf for a project.");
     return ExitCode.SUCCESS;
   }
@@ -362,7 +362,7 @@ export async function handleProjectsStatus(ctx: CommandContext): Promise<number>
   }
 
   if (projects.length === 0) {
-    info(`No ralph-enabled projects found in: ${c.dim(rootDir)}`);
+    info(`No rauf-enabled projects found in: ${c.dim(rootDir)}`);
     return ExitCode.SUCCESS;
   }
 
