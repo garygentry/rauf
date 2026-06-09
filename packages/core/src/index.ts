@@ -1,4 +1,4 @@
-// @ralph/core — Shared business logic
+// @rauf/core — Shared business logic
 // Modules will be added as backlog items are completed
 
 export { VERSION } from "./version.js";

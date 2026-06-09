@@ -1,4 +1,4 @@
-// @ralph/web — Server start function
+// @rauf/web — Server start function
 //
 // Exports startServer() for use by the compiled binary's --internal-server mode
 // and by the dev entry point (index.ts).
@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-import { readToolConfig, resolveRootDirectory } from "@ralph/core";
+import { readToolConfig, resolveRootDirectory } from "@rauf/core";
 import ports from "../../../../config/ports.json";
 
 import { createApp } from "./app.js";

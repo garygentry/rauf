@@ -3,7 +3,7 @@ import { useParams } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { BacklogItem, DerivedStatus } from "@ralph/core";
+import type { BacklogItem, DerivedStatus } from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
 // ─── Loop state badge config ──────────────────────────────────────

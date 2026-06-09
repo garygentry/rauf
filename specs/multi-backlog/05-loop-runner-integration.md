@@ -35,7 +35,7 @@ import {
   releaseLock,
   type BacklogPaths,
   type InstructionPaths,
-} from "@ralph/core";
+} from "@rauf/core";
 ```
 
 ## 2. LoopRunner Changes
@@ -222,7 +222,7 @@ const PROGRESS_MD = "progress.md";
 ### 3.2 New Imports
 
 ```typescript
-import type { BacklogPaths, InstructionPaths } from "@ralph/core";
+import type { BacklogPaths, InstructionPaths } from "@rauf/core";
 ```
 
 ### 3.3 `buildPrompt` Signature Change

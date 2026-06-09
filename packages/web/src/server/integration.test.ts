@@ -11,7 +11,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { createApp } from "./app.js";
-import { install, type InstallOptions } from "@ralph/core";
+import { install, type InstallOptions } from "@rauf/core";
 
 // ─── Shared Helpers ──────────────────────────────────────────────
 

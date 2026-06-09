@@ -18,7 +18,7 @@ import {
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -34,7 +34,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph status <path> [--watch] [--interval N]");
+    info("Usage: rauf status <path> [--watch] [--interval N]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -90,7 +90,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
         if (ctx.globalFlags.json) {
           outputJson({ legacy: true, message: `Run 'rauf migrate ${resolved}' to migrate.` });
         } else {
-          warn(`Legacy ralph project detected.`);
+          warn(`Legacy rauf project detected.`);
           info(`Run: ${c.cyan(`rauf migrate ${resolved}`)} to migrate it to rauf.`);
         }
         return ExitCode.ERROR;
@@ -104,7 +104,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
           outputJson({ error: result.error });
         } else {
           error(result.error.message);
-          info(`Ensure ralph is installed. Run: ${c.cyan(`ralph install ${resolved}`)}`);
+          info(`Ensure rauf is installed. Run: ${c.cyan(`rauf install ${resolved}`)}`);
         }
         return ExitCode.ERROR;
       }
@@ -149,7 +149,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph log <path> [--tail N] [--follow]");
+    info("Usage: rauf log <path> [--tail N] [--follow]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -180,7 +180,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
       outputJson({ error: result.error });
     } else {
       error(result.error.message);
-      info(`No log yet. Start the loop with: ${c.cyan("ralph loop run")}`);
+      info(`No log yet. Start the loop with: ${c.cyan("rauf loop run")}`);
     }
     return ExitCode.ERROR;
   }
@@ -204,7 +204,7 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph progress <path>");
+    info("Usage: rauf progress <path>");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -314,7 +314,7 @@ async function handleStatusWatch(
       process.stdout.write("\x1b[2J\x1b[H");
 
       const now = new Date().toLocaleTimeString();
-      print(c.dim(`ralph status  (${now})  Ctrl+C to stop`));
+      print(c.dim(`rauf status  (${now})  Ctrl+C to stop`));
       print("");
 
       // Resolve paths for the target backlog root
@@ -414,7 +414,7 @@ function printStatusSummary(status: DerivedStatus): void {
       const countdown = formatCountdown(status.sleepUntil);
       print(`${c.bold("Usage Limit:")} Claude's 5-hour window is active.`);
       print(`             The loop will resume at ${c.cyan(timeStr)} (${countdown}).`);
-      print(`             Run ${c.dim("ralph loop stop")} to cancel the wait.`);
+      print(`             Run ${c.dim("rauf loop stop")} to cancel the wait.`);
     } else {
       print(`${c.bold("Usage Limit:")} Claude's 5-hour window is active. Waiting for reset.`);
     }

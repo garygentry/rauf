@@ -1,4 +1,4 @@
-// @ralph/web — Concurrent dev launcher
+// @rauf/web — Concurrent dev launcher
 //
 // Starts both the Hono API server and Vite dev server
 // with color-coded output prefixes. Handles clean shutdown on Ctrl+C.

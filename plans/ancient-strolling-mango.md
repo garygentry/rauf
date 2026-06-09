@@ -18,7 +18,7 @@ Add `WorkspacePackageSchema` and wire it into existing schemas:
 ```typescript
 // New — after ProfileCommandsSchema
 export const WorkspacePackageSchema = z.object({
-  name: z.string(),             // e.g. "@ralph/core"
+  name: z.string(),             // e.g. "@rauf/core"
   path: z.string(),             // e.g. "packages/core" (relative)
   scripts: z.array(z.string()), // e.g. ["build", "test", "typecheck"]
 });

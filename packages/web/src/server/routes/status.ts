@@ -23,7 +23,7 @@ import {
   resolveBacklogPaths,
   defaultBacklogPaths,
   type BacklogPaths,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import { errorResponse } from "../app.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";

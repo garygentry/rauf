@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { DiscoveredProject, DerivedStatus } from "@ralph/core";
+import type { DiscoveredProject, DerivedStatus } from "@rauf/core";
 import { raufFetchJson } from "../../lib/fetch";
 
 // ─── API shape ────────────────────────────────────────────────────

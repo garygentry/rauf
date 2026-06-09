@@ -6,7 +6,7 @@
 // All mutations require X-Rauf-Request: true (enforced by app-level CSRF
 // middleware — not repeated here).
 //
-// Artifacts are embedded in @ralph/core at build time — no filesystem
+// Artifacts are embedded in @rauf/core at build time — no filesystem
 // path resolution needed for install/init/update.
 
 import * as path from "node:path";
@@ -51,7 +51,7 @@ import {
   type ProfileOverrides,
   type CreateItemInput,
   type UpdateItemInput,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import { errorResponse } from "../app.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";

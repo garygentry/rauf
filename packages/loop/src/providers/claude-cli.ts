@@ -1,5 +1,5 @@
-import { ok, err, ErrorCodes, readClaudeOAuthToken } from "@ralph/core";
-import type { Result } from "@ralph/core";
+import { ok, err, ErrorCodes, readClaudeOAuthToken } from "@rauf/core";
+import type { Result } from "@rauf/core";
 
 import { spawnClaude } from "../claude-process.js";
 import { checkUsageLimit } from "../usage-checker.js";

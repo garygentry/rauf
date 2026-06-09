@@ -10,8 +10,8 @@ import {
   type BacklogPaths,
   type InstructionPaths,
   type Result,
-} from "@ralph/core";
-import { ok, err, ErrorCodes } from "@ralph/core";
+} from "@rauf/core";
+import { ok, err, ErrorCodes } from "@rauf/core";
 
 /** Summary counts for backlog items by status */
 interface BacklogSummary {

@@ -3,8 +3,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { BacklogItem, Backlog, MarkerFile, BacklogPaths, InstructionPaths } from "@ralph/core";
-import { defaultBacklogPaths } from "@ralph/core";
+import type { BacklogItem, Backlog, MarkerFile, BacklogPaths, InstructionPaths } from "@rauf/core";
+import { defaultBacklogPaths } from "@rauf/core";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 
 const RAUF_DIR = ".rauf";

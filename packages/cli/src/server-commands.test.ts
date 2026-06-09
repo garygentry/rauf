@@ -478,10 +478,10 @@ describe("handleServerLogs", () => {
 
 describe("handleServerStart", () => {
   it("cleans up state and proceeds when PID is alive but health fails", async () => {
-    // Write state with current process PID (alive but not a ralph server).
+    // Write state with current process PID (alive but not a rauf server).
     // Health check will fail → treated as PID reuse → state cleaned → proceed.
     // CONFLICT only triggers when BOTH PID is alive AND health endpoint responds,
-    // confirming a genuine ralph server is running.
+    // confirming a genuine rauf server is running.
     writeServerState({ pid: process.pid, port: 59999, startedAt: new Date().toISOString() });
 
     const ctx = makeCtx({ daemon: true });

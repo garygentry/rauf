@@ -1,5 +1,5 @@
 {
-  "name": "@ralph/cli",
+  "name": "@rauf/cli",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,8 +15,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ralph/core": "workspace:*",
-    "@ralph/loop": "workspace:*",
+    "@rauf/core": "workspace:*",
+    "@rauf/loop": "workspace:*",
     "picocolors": "^1.1.0"
   },
   "devDependencies": {

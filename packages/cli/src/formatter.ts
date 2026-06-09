@@ -1,7 +1,7 @@
 // ─── Output Formatter ────────────────────────────────────────────
 //
 // Color helpers (via picocolors), table renderer, JSON output,
-// and quiet-mode-aware printing for the ralph CLI.
+// and quiet-mode-aware printing for the rauf CLI.
 
 import pc from "picocolors";
 

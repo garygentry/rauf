@@ -6,15 +6,15 @@
 // - Fans events out to SSE clients via subscribe()
 // - Handles graceful shutdown and stale loop recovery
 //
-// This is the bridge between the @ralph/loop runner module and the
+// This is the bridge between the @rauf/loop runner module and the
 // HTTP layer (Hono routes + SSE).
 
 import * as path from "node:path";
 
-import type { LoopEvent, LoopStartOptions } from "@ralph/core";
-import { discoverProjects, resetStalledItems, defaultBacklogPaths } from "@ralph/core";
-import { LoopRunner } from "@ralph/loop";
-import type { LoopResult } from "@ralph/loop";
+import type { LoopEvent, LoopStartOptions } from "@rauf/core";
+import { discoverProjects, resetStalledItems, defaultBacklogPaths } from "@rauf/core";
+import { LoopRunner } from "@rauf/loop";
+import type { LoopResult } from "@rauf/loop";
 
 // ─── Types ──────────────────────────────────────────────────────
 

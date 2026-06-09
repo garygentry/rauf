@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ok, err, ErrorCodes } from "@ralph/core";
+import { ok, err, ErrorCodes } from "@rauf/core";
 import type { SpawnClaudeResult } from "../claude-process.js";
 import type { UsageLimitResult as CheckerUsageLimitResult } from "../usage-checker.js";
 
@@ -12,8 +12,8 @@ vi.mock("../usage-checker.js", () => ({
   checkUsageLimit: vi.fn(),
 }));
 
-vi.mock("@ralph/core", async () => {
-  const actual = await vi.importActual<typeof import("@ralph/core")>("@ralph/core");
+vi.mock("@rauf/core", async () => {
+  const actual = await vi.importActual<typeof import("@rauf/core")>("@rauf/core");
   return {
     ...actual,
     readClaudeOAuthToken: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("@ralph/core", async () => {
 // Must import after mocks are set up
 import { spawnClaude } from "../claude-process.js";
 import { checkUsageLimit } from "../usage-checker.js";
-import { readClaudeOAuthToken } from "@ralph/core";
+import { readClaudeOAuthToken } from "@rauf/core";
 import { createClaudeCliProvider } from "./claude-cli.js";
 import { getAvailableProviders, createProvider } from "./registry.js";
 

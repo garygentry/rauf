@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { TypedEventEmitter } from "./events.js";
-import type { LoopEvent } from "@ralph/core";
+import type { LoopEvent } from "@rauf/core";
 
 function makeBaseFields(projectPath = "/test/project") {
   return { timestamp: new Date().toISOString(), projectPath };

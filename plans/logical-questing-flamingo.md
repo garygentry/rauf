@@ -8,12 +8,12 @@
 
 **Single file modified:** `packages/cli/src/loop-commands.ts`
 
-### 1. Add imports from `@ralph/core`
+### 1. Add imports from `@rauf/core`
 
 Line 14 — add `deriveStatus`, `readLogTail`, `watchLog` to the existing import:
 
 ```typescript
-import { readToolConfig, LoopStartOptionsSchema, readIterationStatus, type LoopEvent, type IterationStatus, deriveStatus, readLogTail, watchLog } from "@ralph/core";
+import { readToolConfig, LoopStartOptionsSchema, readIterationStatus, type LoopEvent, type IterationStatus, deriveStatus, readLogTail, watchLog } from "@rauf/core";
 ```
 
 ### 2. Add `followDirectMode()` helper function
@@ -55,7 +55,7 @@ export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
 
 ## Key design decisions
 
-- **No core changes needed** — `watchLog`, `readLogTail`, and `deriveStatus` are already exported from `@ralph/core`
+- **No core changes needed** — `watchLog`, `readLogTail`, and `deriveStatus` are already exported from `@rauf/core`
 - **Server mode unchanged** — the `isServerRunning()` check still takes priority; SSE path is untouched
 - **2s poll interval** for state checking — matches the staleness model in `deriveStatus()` without being too chatty
 - **`watchLog` throws if file missing** — handle with try/catch and retry on next poll tick

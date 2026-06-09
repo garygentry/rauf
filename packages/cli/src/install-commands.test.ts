@@ -112,7 +112,7 @@ describe("handleInstall", () => {
     expect(code).toBe(ExitCode.NOT_FOUND);
   });
 
-  it("installs ralph into an existing project", async () => {
+  it("installs rauf into an existing project", async () => {
     const projectDir = path.join(tmpDir, "myproject");
     createFakeProject(projectDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
 
@@ -420,7 +420,7 @@ describe("handleUninstall", () => {
     expect(code).toBe(ExitCode.NOT_FOUND);
   });
 
-  it("uninstalls ralph from an installed project", async () => {
+  it("uninstalls rauf from an installed project", async () => {
     const projectDir = path.join(tmpDir, "uninstall-test");
     createFakeProject(projectDir, { git: true });
 

@@ -1,5 +1,5 @@
 {
-  "name": "@ralph/web",
+  "name": "@rauf/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,8 +15,8 @@
     "clean": "rm -rf dist build"
   },
   "dependencies": {
-    "@ralph/core": "workspace:*",
-    "@ralph/loop": "workspace:*",
+    "@rauf/core": "workspace:*",
+    "@rauf/loop": "workspace:*",
     "@tanstack/react-query": "^5.65.0",
     "zod": "^3.24.0",
     "@tanstack/react-router": "^1.100.0",

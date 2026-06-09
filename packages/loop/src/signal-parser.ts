@@ -1,4 +1,4 @@
-import { ReviewPayloadSchema, type ReviewPayload } from "@ralph/core";
+import { ReviewPayloadSchema, type ReviewPayload } from "@rauf/core";
 
 /** Signal types that can be parsed from Claude's stdout */
 export type SignalType = "done" | "blocked" | "needs_human" | "review" | "none";

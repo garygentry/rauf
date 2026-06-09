@@ -230,7 +230,7 @@ packages/
 
 ### `packages/loop/` — New workspace package
 
-Depends on `@ralph/core`. Owns HTTP client (usage API), child process management, and event emission — concerns that don't belong in core's pure data/filesystem layer.
+Depends on `@rauf/core`. Owns HTTP client (usage API), child process management, and event emission — concerns that don't belong in core's pure data/filesystem layer.
 
 **Module structure:**
 ```

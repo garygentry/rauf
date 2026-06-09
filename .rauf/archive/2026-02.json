@@ -95,9 +95,9 @@
       "type": "feature",
       "priority": 1,
       "title": "Scaffold packages/loop + events.ts",
-      "description": "Create the new packages/loop workspace package. Set up package.json (name: @ralph/loop, depends on @ralph/core), tsconfig.json extending root config, vitest config. Create src/index.ts as public API surface and src/events.ts implementing TypedEventEmitter<LoopEvent> — a typed wrapper around Node's EventEmitter that emits LoopEvent objects with type-safe on/emit/off methods. Add packages/loop to pnpm-workspace.yaml. Run pnpm install to wire up the workspace.",
+      "description": "Create the new packages/loop workspace package. Set up package.json (name: @rauf/loop, depends on @rauf/core), tsconfig.json extending root config, vitest config. Create src/index.ts as public API surface and src/events.ts implementing TypedEventEmitter<LoopEvent> — a typed wrapper around Node's EventEmitter that emits LoopEvent objects with type-safe on/emit/off methods. Add packages/loop to pnpm-workspace.yaml. Run pnpm install to wire up the workspace.",
       "acceptanceCriteria": [
-        "packages/loop/package.json exists with name @ralph/loop, dependency on @ralph/core",
+        "packages/loop/package.json exists with name @rauf/loop, dependency on @rauf/core",
         "packages/loop/tsconfig.json extends root tsconfig with correct paths",
         "packages/loop added to pnpm-workspace.yaml packages list",
         "pnpm install resolves the new workspace package without errors",

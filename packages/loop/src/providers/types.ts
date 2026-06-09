@@ -1,4 +1,4 @@
-import type { Result } from "@ralph/core";
+import type { Result } from "@rauf/core";
 import type { ParsedSignal } from "../signal-parser.js";
 import type { ClaudeStreamEvent } from "../stream-parser.js";
 

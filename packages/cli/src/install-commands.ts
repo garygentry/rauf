@@ -3,7 +3,7 @@
 // CLI adapters for core installer and greenfield modules.
 // Each handler: parses flags → resolves paths → calls core → formats output.
 //
-// Artifacts are embedded at build time in @ralph/core — no filesystem
+// Artifacts are embedded at build time in @rauf/core — no filesystem
 // path resolution needed. The install/init/update functions default to
 // reading from embedded artifacts when artifactsDir is omitted.
 
@@ -19,7 +19,7 @@ import {
   ErrorCodes,
   type InstallationReport,
   type ProfileOverrides,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -32,7 +32,7 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info(`Usage: ralph install <path> [options]`);
+    info(`Usage: rauf install <path> [options]`);
     return ExitCode.INVALID_ARGS;
   }
 
@@ -63,7 +63,7 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
     info("");
   }
 
-  // Run installation (artifacts are embedded in @ralph/core)
+  // Run installation (artifacts are embedded in @rauf/core)
   const result = install(resolved, {
     profileOverrides: overrides,
     options: {
@@ -92,7 +92,7 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info(`Usage: ralph init <path> [options]`);
+    info(`Usage: rauf init <path> [options]`);
     return ExitCode.INVALID_ARGS;
   }
 
@@ -120,11 +120,9 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
     return ExitCode.INVALID_ARGS;
   }
 
-  // Check target doesn't already exist as a ralph project
+  // Check target doesn't already exist as a rauf project
   if (fs.existsSync(path.join(resolved, ".rauf.json"))) {
-    error(
-      `Path "${resolved}" already has a .rauf.json. Use 'ralph install' for existing projects.`,
-    );
+    error(`Path "${resolved}" already has a .rauf.json. Use 'rauf install' for existing projects.`);
     return ExitCode.CONFLICT;
   }
 
@@ -158,7 +156,7 @@ export async function handleUpdate(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info(`Usage: ralph update <path> [--yes]`);
+    info(`Usage: rauf update <path> [--yes]`);
     return ExitCode.INVALID_ARGS;
   }
 
@@ -188,7 +186,7 @@ export async function handleUninstall(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info(`Usage: ralph uninstall <path> [--yes] [--keep-data]`);
+    info(`Usage: rauf uninstall <path> [--yes] [--keep-data]`);
     return ExitCode.INVALID_ARGS;
   }
 
@@ -260,24 +258,24 @@ function handleCoreError(
     switch (err.code) {
       case ErrorCodes.FILE_NOT_FOUND:
         info(
-          `Ensure the directory exists, then run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+          `Ensure the directory exists, then run: ${c.cyan(projectPath ? `rauf install ${projectPath}` : "rauf install <path>")}`,
         );
         break;
       case ErrorCodes.NOT_INSTALLED:
         info(
-          `Rauf is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+          `Rauf is not installed here. Run: ${c.cyan(projectPath ? `rauf install ${projectPath}` : "rauf install <path>")}`,
         );
         break;
       case ErrorCodes.INVALID_JSON:
       case ErrorCodes.VALIDATION_ERROR:
         info(
-          `A project file may be corrupted. Try re-running: ${c.cyan(projectPath ? `ralph install ${projectPath} --yes` : "ralph install <path> --yes")}`,
+          `A project file may be corrupted. Try re-running: ${c.cyan(projectPath ? `rauf install ${projectPath} --yes` : "rauf install <path> --yes")}`,
         );
         break;
       case ErrorCodes.ALREADY_INSTALLED:
       case ErrorCodes.CONFLICT:
         info(
-          `Use ${c.cyan(projectPath ? `ralph update ${projectPath}` : "ralph update <path>")} to update an existing installation.`,
+          `Use ${c.cyan(projectPath ? `rauf update ${projectPath}` : "rauf update <path>")} to update an existing installation.`,
         );
         break;
     }
@@ -352,7 +350,7 @@ function printInitReport(report: InstallationReport): void {
   info("");
   info(c.dim("Next steps:"));
   info(c.dim(`  cd ${report.projectPath}`));
-  info(c.dim(`  ralph loop run  # Start the autonomous loop`));
+  info(c.dim(`  rauf loop run  # Start the autonomous loop`));
 }
 
 /** Print update report in human-readable format */

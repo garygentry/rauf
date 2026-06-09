@@ -4,7 +4,7 @@
 // Includes handler implementations for `version` and `help`.
 // Other commands are registered as stubs — future items add handlers.
 
-import { VERSION } from "@ralph/core";
+import { VERSION } from "@rauf/core";
 import type { GlobalFlags } from "./parser.js";
 import { c, print, outputJson, renderTable } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
@@ -93,19 +93,19 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "version",
     description: "Show version information",
-    usage: "ralph version",
+    usage: "rauf version",
     handler: handleVersion,
   },
   {
     name: "help",
     description: "Show help for a command",
-    usage: "ralph help [command]",
+    usage: "rauf help [command]",
     handler: handleHelp,
   },
   {
     name: "server",
-    description: "Manage the ralph web server",
-    usage: "ralph server <subcommand>",
+    description: "Manage the rauf web server",
+    usage: "rauf server <subcommand>",
     subcommands: [
       { name: "start", description: "Start the web server", handler: handleServerStart },
       { name: "stop", description: "Stop the web server", handler: handleServerStop },
@@ -116,13 +116,13 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "loop",
-    description: "Manage ralph autonomous coding loops",
-    usage: "ralph loop <subcommand> [path]",
+    description: "Manage rauf autonomous coding loops",
+    usage: "rauf loop <subcommand> [path]",
     subcommands: [
       {
         name: "start",
         description: "Start a loop via server",
-        usage: "ralph loop start <path> [--iterations N] [--follow]",
+        usage: "rauf loop start <path> [--iterations N] [--follow]",
         handler: handleLoopStart,
       },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
@@ -131,52 +131,52 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "review",
         description: "Review completed items and create fix items",
-        usage: "ralph loop review [path] [--model MODEL] [--timeout N]",
+        usage: "rauf loop review [path] [--model MODEL] [--timeout N]",
         handler: handleLoopReview,
       },
       {
         name: "watch",
         description: "Watch live iteration status (tool activity, tokens)",
-        usage: "ralph loop watch [path] [--json]",
+        usage: "rauf loop watch [path] [--json]",
         handler: handleLoopWatch,
       },
     ],
   },
   {
     name: "install",
-    description: "Install ralph into an existing project",
-    usage: "ralph install <path> [options]",
+    description: "Install rauf into an existing project",
+    usage: "rauf install <path> [options]",
     handler: handleInstall,
   },
   {
     name: "init",
     description: "Initialize a new project with ralph",
-    usage: "ralph init <path> [options]",
+    usage: "rauf init <path> [options]",
     handler: handleInit,
   },
   {
     name: "update",
-    description: "Update ralph artifacts in a project",
-    usage: "ralph update <path> [--yes]",
+    description: "Update rauf artifacts in a project",
+    usage: "rauf update <path> [--yes]",
     handler: handleUpdate,
   },
   {
     name: "uninstall",
-    description: "Remove ralph from a project",
-    usage: "ralph uninstall <path> [--yes] [--keep-data]",
+    description: "Remove rauf from a project",
+    usage: "rauf uninstall <path> [--yes] [--keep-data]",
     handler: handleUninstall,
   },
   {
     name: "migrate",
     description: "Migrate a legacy ralph project to rauf",
     usage:
-      "ralph migrate <path> [--dry-run] [--no-backup] [--clean-backups] | ralph migrate --global",
+      "rauf migrate <path> [--dry-run] [--no-backup] [--clean-backups] | rauf migrate --global",
     handler: handleMigrate,
   },
   {
     name: "backlog",
     description: "Manage project backlog items",
-    usage: "ralph backlog <subcommand> <path>",
+    usage: "rauf backlog <subcommand> <path>",
     subcommands: [
       { name: "list", description: "List backlog items", handler: handleBacklogList },
       { name: "add", description: "Add a new backlog item", handler: handleBacklogAdd },
@@ -209,25 +209,25 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "status",
     description: "Show loop status for a project",
-    usage: "ralph status <path> [--watch] [--interval N]",
+    usage: "rauf status <path> [--watch] [--interval N]",
     handler: handleStatus,
   },
   {
     name: "log",
     description: "View loop log for a project",
-    usage: "ralph log <path> [--tail N] [--follow]",
+    usage: "rauf log <path> [--tail N] [--follow]",
     handler: handleLog,
   },
   {
     name: "progress",
     description: "View progress notes for a project",
-    usage: "ralph progress <path>",
+    usage: "rauf progress <path>",
     handler: handleProgress,
   },
   {
     name: "profile",
     description: "Manage project tech-stack profile",
-    usage: "ralph profile <subcommand> <path>",
+    usage: "rauf profile <subcommand> <path>",
     subcommands: [
       { name: "show", description: "Show current profile", handler: handleProfileShow },
       { name: "detect", description: "Auto-detect tech stack", handler: handleProfileDetect },
@@ -236,8 +236,8 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "config",
-    description: "Manage ralph tool configuration",
-    usage: "ralph config <subcommand>",
+    description: "Manage rauf tool configuration",
+    usage: "rauf config <subcommand>",
     subcommands: [
       { name: "get", description: "Get a config value", handler: handleConfigGet },
       { name: "set", description: "Set a config value", handler: handleConfigSet },
@@ -247,7 +247,7 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "projects",
     description: "List and manage discovered projects",
-    usage: "ralph projects <subcommand>",
+    usage: "rauf projects <subcommand>",
     subcommands: [
       { name: "list", description: "List discovered projects", handler: handleProjectsList },
       {
@@ -285,7 +285,7 @@ async function handleVersion(ctx: CommandContext): Promise<number> {
   if (ctx.globalFlags.json) {
     outputJson({ version: VERSION });
   } else {
-    print(`ralph v${VERSION}`);
+    print(`rauf v${VERSION}`);
   }
   return ExitCode.SUCCESS;
 }
@@ -314,9 +314,9 @@ function showGeneralHelp(ctx: CommandContext): number {
   }
 
   const lines: string[] = [
-    `${c.bold("rauf")} v${VERSION} ${c.dim("\u2014 Management tool for ralph autonomous coding loops")}`,
+    `${c.bold("rauf")} v${VERSION} ${c.dim("\u2014 Management tool for rauf autonomous coding loops")}`,
     "",
-    `${c.bold("Usage:")} ralph <command> [options]`,
+    `${c.bold("Usage:")} rauf <command> [options]`,
     "",
     c.bold("Commands:"),
   ];
@@ -345,7 +345,7 @@ function showGeneralHelp(ctx: CommandContext): number {
   lines.push(`  ${c.cyan("--quiet")}, ${c.cyan("-q")}      Suppress informational output`);
   lines.push(`  ${c.cyan("--root")} <path>     Override root directory`);
   lines.push("");
-  lines.push(c.dim("Run 'ralph help <command>' for details on a specific command."));
+  lines.push(c.dim("Run 'rauf help <command>' for details on a specific command."));
 
   print(lines.join("\n"));
   return ExitCode.SUCCESS;
@@ -360,7 +360,7 @@ function showCommandHelp(commandName: string, ctx: CommandContext): number {
       });
     } else {
       print(
-        `${c.red("Unknown command:")} ${commandName}\n\nRun ${c.cyan("ralph help")} for available commands.`,
+        `${c.red("Unknown command:")} ${commandName}\n\nRun ${c.cyan("rauf help")} for available commands.`,
       );
     }
     return ExitCode.INVALID_ARGS;
@@ -370,7 +370,7 @@ function showCommandHelp(commandName: string, ctx: CommandContext): number {
     outputJson({
       name: cmd.name,
       description: cmd.description,
-      usage: cmd.usage ?? `ralph ${cmd.name}`,
+      usage: cmd.usage ?? `rauf ${cmd.name}`,
       subcommands:
         cmd.subcommands?.map((sc) => ({
           name: sc.name,
@@ -383,7 +383,7 @@ function showCommandHelp(commandName: string, ctx: CommandContext): number {
   const lines: string[] = [
     c.bold(cmd.description),
     "",
-    `${c.bold("Usage:")} ${cmd.usage ?? `ralph ${cmd.name}`}`,
+    `${c.bold("Usage:")} ${cmd.usage ?? `rauf ${cmd.name}`}`,
   ];
 
   if (cmd.subcommands && cmd.subcommands.length > 0) {

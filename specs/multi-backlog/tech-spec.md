@@ -428,19 +428,19 @@ Each step should map to a separate backlog item to keep changes reviewable.
 - **After:** Imports `BacklogPaths`, `ActiveRoot`, and `scanActiveRoots`. `deriveStatus()` uses `paths.state`, `paths.log`, `paths.done`, `paths.cancel`. New `scanActiveRoots()` is added here in `status.ts` (the natural home since it already handles status derivation).
 - **Data flow:** `deriveStatus(paths)` reads `paths.state` → `paths.log` → `paths.done` in that priority order
 
-### 6.3 `packages/loop/src/runner.ts` → `@ralph/core` (backlog-root, lock)
+### 6.3 `packages/loop/src/runner.ts` → `@rauf/core` (backlog-root, lock)
 
 - **Current:** Stores `this.projectPath`, passes to all core functions
 - **After:** Constructor computes `this.paths = resolveBacklogPaths(projectPath, options.backlogRoot)`. All core function calls use `this.paths`. Calls `acquireLock(this.paths)` at start, `releaseLock(this.paths)` in finally block.
 - **Key change:** `readMarkerFile()` still uses `projectPath` (it reads `.ralph.json` at the project root, not in the backlog root). This is the one function where `projectPath` and `backlogRoot` diverge.
 
-### 6.4 `packages/loop/src/prompt-builder.ts` → `@ralph/core` (backlog-root)
+### 6.4 `packages/loop/src/prompt-builder.ts` → `@rauf/core` (backlog-root)
 
 - **Current:** Constructs `ralphMdPath`, `progressPath` internally via `.ralph/` constant
 - **After:** Receives `BacklogPaths` and `InstructionPaths`. Uses `instructionPaths.ralphMd` for RALPH.md, `paths.progress` for progress.md. Adds "Active Backlog Root" section to prompt.
 - **Signature change:** `buildPrompt(paths: BacklogPaths, instructionPaths: InstructionPaths, item: BacklogItem, backlog: Backlog)`
 
-### 6.5 `packages/cli/src/*-commands.ts` → `@ralph/core` (backlog-root)
+### 6.5 `packages/cli/src/*-commands.ts` → `@rauf/core` (backlog-root)
 
 - **Current:** `resolveProjectPath(ctx)` → pass to core
 - **After:** `resolveProjectPath(ctx)` + `resolveBacklogRoot(projectPath, backlogFlag)` + `resolveBacklogPaths(projectPath, backlogRoot)` → pass `paths` to core

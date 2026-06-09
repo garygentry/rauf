@@ -1,6 +1,6 @@
 // ─── Server Management Command Handlers ──────────────────────────
 //
-// Implements: ralph server start/stop/restart/status/logs
+// Implements: rauf server start/stop/restart/status/logs
 //
 // Server lifecycle:
 //   --foreground: inherit stdio, block until exit (default in TTY)
@@ -17,7 +17,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as child_process from "node:child_process";
 
-import { readToolConfig } from "@ralph/core";
+import { readToolConfig } from "@rauf/core";
 import ports from "../../../config/ports.json";
 
 import type { CommandContext } from "./commands.js";
@@ -331,7 +331,7 @@ async function killProcess(pid: number): Promise<boolean> {
 
 // ─── handleServerStart ───────────────────────────────────────────
 //
-// Start the ralph web server.
+// Start the rauf web server.
 // --foreground (default in TTY): inherit stdio, block until process exits.
 // --daemon: spawn detached, write state file, log to ~/.rauf/server.log.
 
@@ -347,7 +347,7 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
     // PID is alive — verify it's actually our server via health probe
     const health = await pingHealthEndpoint(state.port);
     if (health) {
-      // Genuinely running ralph server
+      // Genuinely running rauf server
       if (ctx.globalFlags.json) {
         outputJson({
           error: {
@@ -357,7 +357,7 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
         });
       } else {
         error(`Server is already running (PID ${state.pid}).`);
-        info(`Use ${c.cyan("ralph server stop")} to stop it first.`);
+        info(`Use ${c.cyan("rauf server stop")} to stop it first.`);
       }
       return ExitCode.CONFLICT;
     }
@@ -368,14 +368,12 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
     removeServerState();
   }
 
-  // ── Check for orphaned ralph server on our target port ────────
+  // ── Check for orphaned rauf server on our target port ────────
   const portHealth = await pingHealthEndpoint(port);
   if (portHealth && portHealth.pid) {
-    // Something is responding on our port with ralph health data — orphan
+    // Something is responding on our port with rauf health data — orphan
     if (!ctx.globalFlags.quiet) {
-      info(
-        `Detected orphaned ralph server (PID ${portHealth.pid}) on port ${port}. Cleaning up...`,
-      );
+      info(`Detected orphaned rauf server (PID ${portHealth.pid}) on port ${port}. Cleaning up...`);
     }
     await killProcess(portHealth.pid);
     await sleep(500); // Wait for port release
@@ -486,7 +484,7 @@ async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
         print(`  URL:  ${c.cyan(`http://127.0.0.1:${port}`)}`);
         print(`  Log:  ${SERVER_LOG_FILE}`);
         print(`  PID:  ${child.pid}`);
-        print(`  Stop: ${c.cyan("ralph server stop")}`);
+        print(`  Stop: ${c.cyan("rauf server stop")}`);
       }
       return ExitCode.SUCCESS;
 
@@ -503,8 +501,8 @@ async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
         error(`Port ${result.port} is already in use.`);
         print("  Options:");
         print("    1. Stop the other process");
-        print(`    2. Use a different port: ${c.cyan(`ralph server start --port <N>`)}`);
-        print(`    3. Update default port:  ${c.cyan("ralph config set port <N>")}`);
+        print(`    2. Use a different port: ${c.cyan(`rauf server start --port <N>`)}`);
+        print(`    3. Update default port:  ${c.cyan("rauf config set port <N>")}`);
       }
       return ExitCode.ERROR;
 
@@ -519,7 +517,7 @@ async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
         });
       } else {
         error(`Server failed to start: ${result.message}`);
-        info(`Check logs: ${c.cyan(`ralph server logs`)}`);
+        info(`Check logs: ${c.cyan(`rauf server logs`)}`);
       }
       return ExitCode.ERROR;
 
@@ -534,7 +532,7 @@ async function startDaemon(port: number, ctx: CommandContext): Promise<number> {
         });
       } else {
         error("Server started but health endpoint not responding within timeout.");
-        info(`Check logs: ${c.cyan(`ralph server logs`)}`);
+        info(`Check logs: ${c.cyan(`rauf server logs`)}`);
       }
       return ExitCode.ERROR;
   }
@@ -638,7 +636,7 @@ export async function handleServerStatus(ctx: CommandContext): Promise<number> {
     } else {
       print(`${c.red("\u25CF")} Server is ${c.bold("stopped")}`);
       print(`  Port: ${port}`);
-      print(`  Start: ${c.cyan("ralph server start")}`);
+      print(`  Start: ${c.cyan("rauf server start")}`);
     }
     return ExitCode.SUCCESS;
   }
@@ -682,7 +680,7 @@ export async function handleServerLogs(ctx: CommandContext): Promise<number> {
       outputJson({ lines: [] });
     } else {
       info("No server log file found.");
-      info(`Start the server with ${c.cyan("ralph server start --daemon")} to create a log.`);
+      info(`Start the server with ${c.cyan("rauf server start --daemon")} to create a log.`);
     }
     return ExitCode.SUCCESS;
   }

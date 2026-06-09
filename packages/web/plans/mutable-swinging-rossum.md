@@ -80,7 +80,7 @@ router.get("/:id/artifact-status", async (c) => {
 });
 ```
 
-Import `checkArtifactStaleness` from `@ralph/core` alongside the existing `update` import.
+Import `checkArtifactStaleness` from `@rauf/core` alongside the existing `update` import.
 
 ### 3. `packages/web/src/client/routes/projects/settings.tsx`
 

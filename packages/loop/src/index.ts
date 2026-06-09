@@ -12,7 +12,7 @@ export { StreamParser } from "./stream-parser.js";
 export type { ClaudeStreamEvent, StreamEventType } from "./stream-parser.js";
 export { LoopRunner } from "./runner.js";
 export type { LoopResult } from "./runner.js";
-export type { LoopEvent, LoopStartOptions } from "@ralph/core";
+export type { LoopEvent, LoopStartOptions } from "@rauf/core";
 
 // Provider system
 export {

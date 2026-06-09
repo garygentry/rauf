@@ -70,7 +70,7 @@ The only real risk is the sync gap, which we can close by having `ralph profile 
 After the existing `writeMarkerFile()` call (line 142), add:
 
 ```ts
-import { update } from "@ralph/core";
+import { update } from "@rauf/core";
 
 // After writeMarkerFile succeeds...
 const updateResult = update(resolved);

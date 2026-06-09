@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// ─── ralph CLI Entry Point ───────────────────────────────────────
+// ─── rauf CLI Entry Point ───────────────────────────────────────
 //
 // Dev mode entry point. For the compiled binary, see scripts/binary-entry.ts.
 // Delegates to runCli() in main.ts.

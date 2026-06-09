@@ -20,7 +20,7 @@ NEVER bind to 0.0.0.0.
 The server maintains a `LoopManager` singleton (`packages/web/src/server/loop-manager.ts`) that:
 
 - Tracks active loops by project path (max one loop per project)
-- Creates `LoopRunner` instances from `@ralph/loop`, subscribes to all 20 event types
+- Creates `LoopRunner` instances from `@rauf/loop`, subscribes to all 20 event types
 - Fans events out to SSE clients via `subscribe(projectPath, listener)`
 - Recovers stale loops on startup by scanning discovered projects and resetting stalled `in_progress` items to `pending`
 - Handles graceful shutdown (`shutdownAll()`) — cancels all active loops and waits for completion

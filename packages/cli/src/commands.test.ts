@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { VERSION } from "@ralph/core";
+import { VERSION } from "@rauf/core";
 import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
@@ -182,7 +182,7 @@ describe("version command", () => {
       const code = await cmd.handler!(makeCtx());
       expect(code).toBe(ExitCode.SUCCESS);
     });
-    expect(output.stdout).toContain(`ralph v${VERSION}`);
+    expect(output.stdout).toContain(`rauf v${VERSION}`);
   });
 
   it("outputs JSON when --json flag is set", async () => {

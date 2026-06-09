@@ -69,27 +69,27 @@ Consumer packages:
 
 ```
 packages/loop/src/runner.ts
-  ├── imports: @ralph/core (BacklogPaths, resolveBacklogPaths, acquireLock, releaseLock)
+  ├── imports: @rauf/core (BacklogPaths, resolveBacklogPaths, acquireLock, releaseLock)
   └── Constructs BacklogPaths in constructor, threads through all core calls
 
 packages/loop/src/prompt-builder.ts
-  ├── imports: @ralph/core (BacklogPaths, InstructionPaths)
+  ├── imports: @rauf/core (BacklogPaths, InstructionPaths)
   └── Receives BacklogPaths + InstructionPaths, no longer constructs paths internally
 
 packages/cli/src/loop-commands.ts
-  ├── imports: @ralph/core (resolveBacklogRoot, resolveBacklogPaths)
+  ├── imports: @rauf/core (resolveBacklogRoot, resolveBacklogPaths)
   └── Extracts --backlog flag, resolves paths at entry point
 
 packages/cli/src/backlog-commands.ts
-  ├── imports: @ralph/core (resolveBacklogRoot, resolveBacklogPaths)
+  ├── imports: @rauf/core (resolveBacklogRoot, resolveBacklogPaths)
   └── Same pattern as loop-commands
 
 packages/cli/src/status-commands.ts
-  ├── imports: @ralph/core (resolveBacklogRoot, resolveBacklogPaths, scanActiveRoots)
+  ├── imports: @rauf/core (resolveBacklogRoot, resolveBacklogPaths, scanActiveRoots)
   └── Calls scanActiveRoots when no --backlog flag
 
 packages/web/src/server/routes/loop.ts
-  ├── imports: @ralph/core (resolveBacklogRoot, resolveBacklogPaths)
+  ├── imports: @rauf/core (resolveBacklogRoot, resolveBacklogPaths)
   └── Resolves backlogRoot from request body/query param
 
 packages/web/src/server/loop-manager.ts
@@ -101,7 +101,7 @@ packages/web/src/server/loop-manager.ts
 `packages/core/src/index.ts` gains two new re-exports:
 
 ```typescript
-// @ralph/core — Shared business logic
+// @rauf/core — Shared business logic
 
 export const VERSION = "0.1.0";
 

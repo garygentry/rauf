@@ -1,9 +1,9 @@
-// ─── ralph CLI Main Logic ───────────────────────────────────────
+// ─── rauf CLI Main Logic ───────────────────────────────────────
 //
 // Extracted from index.ts so the unified binary entry point can
 // call runCli() without side effects on import.
 
-import { VERSION } from "@ralph/core";
+import { VERSION } from "@rauf/core";
 import { parseArgs } from "./parser.js";
 import {
   configureOutput,
@@ -28,7 +28,7 @@ export async function runCli(): Promise<number> {
     if (wantJson) {
       outputJson({ version: VERSION });
     } else {
-      print(`ralph v${VERSION}`);
+      print(`rauf v${VERSION}`);
     }
     return ExitCode.SUCCESS;
   }
@@ -64,7 +64,7 @@ export async function runCli(): Promise<number> {
   if (!cmd) {
     error(`Unknown command: ${commandName}`);
     info("");
-    info(`Run ${c.cyan("ralph help")} for available commands.`);
+    info(`Run ${c.cyan("rauf help")} for available commands.`);
 
     // Suggest similar commands
     const suggestion = findSimilarCommand(commandName);
@@ -99,7 +99,7 @@ export async function runCli(): Promise<number> {
         info(`  ${c.cyan(sc.name)}  ${sc.description}`);
       }
       info("");
-      info(`Run ${c.cyan(`ralph help ${commandName}`)} for details.`);
+      info(`Run ${c.cyan(`rauf help ${commandName}`)} for details.`);
       return ExitCode.INVALID_ARGS;
     }
 

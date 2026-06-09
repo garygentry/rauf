@@ -1,6 +1,6 @@
 // ─── Loop Command Handlers ──────────────────────────────────────────
 //
-// Implements: ralph loop start/stop/follow/run
+// Implements: rauf loop start/stop/follow/run
 //
 // Smart routing:
 //   start  → auto-starts server daemon if not running, POST to server API
@@ -28,9 +28,9 @@ import {
   forceClearLock,
   detectMigrationState,
   type BacklogPaths,
-} from "@ralph/core";
+} from "@rauf/core";
 import ports from "../../../config/ports.json";
-import { LoopRunner } from "@ralph/loop";
+import { LoopRunner } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -76,7 +76,7 @@ function apiUrl(port: number, id: string, endpoint: string): string {
   return `http://127.0.0.1:${port}/api/projects/${encodeURIComponent(id)}/loop/${endpoint}`;
 }
 
-/** Check if the ralph server is running via state file */
+/** Check if the rauf server is running via state file */
 function isServerRunning(): boolean {
   const state = readServerState();
   return state !== null && isProcessAlive(state.pid);
@@ -188,7 +188,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
       }
 
       if (!ctx.globalFlags.json) {
-        info(`Follow: ${c.cyan(`ralph loop follow ${ctx.args[0] ?? "."}`)}`);
+        info(`Follow: ${c.cyan(`rauf loop follow ${ctx.args[0] ?? "."}`)}`);
       }
       return ExitCode.SUCCESS;
     }
@@ -200,7 +200,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
 
     if (resp.status === 409) {
       error(`Loop already running for ${id}.`);
-      info(`Use ${c.cyan("ralph loop stop")} to stop it first.`);
+      info(`Use ${c.cyan("rauf loop stop")} to stop it first.`);
     } else {
       error(`Failed to start loop: ${errMsg}`);
     }
@@ -222,7 +222,7 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
   if (!isServerRunning()) {
     error("Server is not running.");
     info(
-      `Start the server with ${c.cyan("ralph server start")} or use ${c.cyan("ralph loop start")} which auto-starts.`,
+      `Start the server with ${c.cyan("rauf server start")} or use ${c.cyan("rauf loop start")} which auto-starts.`,
     );
     return ExitCode.ERROR;
   }
@@ -388,7 +388,7 @@ async function followDirectMode(projectPath: string, paths?: BacklogPaths): Prom
   const { loopState } = statusResult.value;
   if (loopState !== "RUNNING" && loopState !== "SLEEPING_LIMIT") {
     error(`No active loop for ${c.cyan(id)} (state: ${loopState}).`);
-    info(`Start a loop with ${c.cyan("ralph loop run .")} or ${c.cyan("ralph loop start .")}`);
+    info(`Start a loop with ${c.cyan("rauf loop run .")} or ${c.cyan("rauf loop start .")}`);
     return ExitCode.ERROR;
   }
 
@@ -806,8 +806,8 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         if (result.blockedCount > 0) {
           print("");
           info("To retry blocked items:");
-          info(`  ${c.cyan("ralph backlog unblock .")}     ${c.dim("# then re-run")}`);
-          info(`  ${c.cyan("ralph loop run . --retry-blocked")}  ${c.dim("# or in one step")}`);
+          info(`  ${c.cyan("rauf backlog unblock .")}     ${c.dim("# then re-run")}`);
+          info(`  ${c.cyan("rauf loop run . --retry-blocked")}  ${c.dim("# or in one step")}`);
         }
       }
     }
@@ -1021,7 +1021,7 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       );
       if (event.blockedCount > 0) {
         print(
-          `${prefix}   ${c.dim("Retry:")} ${c.cyan("ralph backlog unblock .")} ${c.dim("or")} ${c.cyan("ralph loop run . --retry-blocked")}`,
+          `${prefix}   ${c.dim("Retry:")} ${c.cyan("rauf backlog unblock .")} ${c.dim("or")} ${c.cyan("rauf loop run . --retry-blocked")}`,
         );
       }
       break;

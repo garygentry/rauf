@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { VERSION, readToolConfig, resolveRootDirectory, discoverProjects } from "@ralph/core";
+import { VERSION, readToolConfig, resolveRootDirectory, discoverProjects } from "@rauf/core";
 import { createProjectsRouter } from "./routes/projects.js";
 import { createStatusRouter } from "./routes/status.js";
 import { createLoopRouter } from "./routes/loop.js";

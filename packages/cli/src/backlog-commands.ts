@@ -25,7 +25,7 @@ import {
   type BacklogItemStatus,
   type CreateItemInput,
   type UpdateItemInput,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -59,7 +59,7 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog list <path> [--status <s>] [--type <t>] [--json]");
+    info("Usage: rauf backlog list <path> [--status <s>] [--type <t>] [--json]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -143,7 +143,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info('Usage: ralph backlog add <path> --title "..." --type <t> --priority N [options]');
+    info('Usage: rauf backlog add <path> --title "..." --type <t> --priority N [options]');
     return ExitCode.INVALID_ARGS;
   }
 
@@ -244,7 +244,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
 
   if (!targetPath || !itemId) {
     error("Missing required arguments: <path> <id>");
-    info("Usage: ralph backlog edit <path> <id> [field options]");
+    info("Usage: rauf backlog edit <path> <id> [field options]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -341,7 +341,7 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
 
   if (!targetPath || !itemId) {
     error("Missing required arguments: <path> <id>");
-    info("Usage: ralph backlog delete <path> <id> [--yes]");
+    info("Usage: rauf backlog delete <path> <id> [--yes]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -389,7 +389,7 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
 
   if (!targetPath || !itemId) {
     error("Missing required arguments: <path> <id>");
-    info("Usage: ralph backlog show <path> <id> [--json]");
+    info("Usage: rauf backlog show <path> <id> [--json]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -433,7 +433,7 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog restore <path> [--yes]");
+    info("Usage: rauf backlog restore <path> [--yes]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -474,13 +474,13 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
 
 // ─── handleBacklogSweep ──────────────────────────────────────────
 //
-// ralph backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]
+// rauf backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]
 
 export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]");
+    info("Usage: rauf backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -573,13 +573,13 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
 
 // ─── handleBacklogArchiveList ─────────────────────────────────────
 //
-// ralph backlog archive list <path>
+// rauf backlog archive list <path>
 
 export async function handleBacklogArchiveList(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[1]; // args[0] is "list"
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog archive list <path>");
+    info("Usage: rauf backlog archive list <path>");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -631,7 +631,7 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
 
 // ─── handleBacklogArchiveView ─────────────────────────────────────
 //
-// ralph backlog archive view <path> <month>
+// rauf backlog archive view <path> <month>
 
 export async function handleBacklogArchiveView(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[1]; // args[0] is "view"
@@ -639,7 +639,7 @@ export async function handleBacklogArchiveView(ctx: CommandContext): Promise<num
 
   if (!targetPath || !month) {
     error("Missing required arguments: <path> <month>");
-    info("Usage: ralph backlog archive view <path> <month>");
+    info("Usage: rauf backlog archive view <path> <month>");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -694,13 +694,13 @@ export async function handleBacklogArchiveView(ctx: CommandContext): Promise<num
 
 // ─── handleBacklogArchivePurge ────────────────────────────────────
 //
-// ralph backlog archive purge <path> [--month YYYY-MM] [--yes]
+// rauf backlog archive purge <path> [--month YYYY-MM] [--yes]
 
 export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[1]; // args[0] is "purge"
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog archive purge <path> [--month YYYY-MM] [--yes]");
+    info("Usage: rauf backlog archive purge <path> [--month YYYY-MM] [--yes]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -748,7 +748,7 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
 
 // ─── handleBacklogArchiveDispatch ─────────────────────────────────
 //
-// Dispatches "ralph backlog archive <subcommand> ..." to the relevant handler.
+// Dispatches "rauf backlog archive <subcommand> ..." to the relevant handler.
 
 export async function handleBacklogArchiveDispatch(ctx: CommandContext): Promise<number> {
   const subcommand = ctx.args[0];
@@ -763,21 +763,21 @@ export async function handleBacklogArchiveDispatch(ctx: CommandContext): Promise
     default:
       error(`Unknown archive subcommand: "${subcommand ?? ""}"`);
       info("Valid subcommands: list, view, purge");
-      info("Usage: ralph backlog archive <list|view|purge> <path> [options]");
+      info("Usage: rauf backlog archive <list|view|purge> <path> [options]");
       return ExitCode.INVALID_ARGS;
   }
 }
 
 // ─── handleBacklogReset ──────────────────────────────────────────
 //
-// ralph backlog reset <path> [--clear] [--yes] [--json]
+// rauf backlog reset <path> [--clear] [--yes] [--json]
 
 export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
     info(
-      "Usage: ralph backlog reset <path> [--clear] [--keep-progress] [--keep-log] [--yes] [--json]",
+      "Usage: rauf backlog reset <path> [--clear] [--keep-progress] [--keep-log] [--yes] [--json]",
     );
     return ExitCode.INVALID_ARGS;
   }
@@ -859,13 +859,13 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
 
 // ─── handleBacklogUnblock ─────────────────────────────────────────
 //
-// ralph backlog unblock <path> [id]
+// rauf backlog unblock <path> [id]
 
 export async function handleBacklogUnblock(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph backlog unblock <path> [id]");
+    info("Usage: rauf backlog unblock <path> [id]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -921,13 +921,13 @@ function handleCoreError(
       case ErrorCodes.FILE_NOT_FOUND:
       case ErrorCodes.NOT_INSTALLED:
         info(
-          `Rauf is not installed here. Run: ${c.cyan(projectPath ? `ralph install ${projectPath}` : "ralph install <path>")}`,
+          `Rauf is not installed here. Run: ${c.cyan(projectPath ? `rauf install ${projectPath}` : "rauf install <path>")}`,
         );
         break;
       case ErrorCodes.INVALID_JSON:
       case ErrorCodes.VALIDATION_ERROR:
         info(
-          `The backlog file may be corrupted. Recover with: ${c.cyan(projectPath ? `ralph backlog restore ${projectPath} --yes` : "ralph backlog restore <path> --yes")}`,
+          `The backlog file may be corrupted. Recover with: ${c.cyan(projectPath ? `rauf backlog restore ${projectPath} --yes` : "rauf backlog restore <path> --yes")}`,
         );
         break;
       case ErrorCodes.TRANSITION_INVALID:
@@ -937,7 +937,7 @@ function handleCoreError(
         break;
       case ErrorCodes.CONFLICT:
         info(
-          `A loop may be running. Check with: ${c.cyan(projectPath ? `ralph status ${projectPath}` : "ralph status <path>")}`,
+          `A loop may be running. Check with: ${c.cyan(projectPath ? `rauf status ${projectPath}` : "rauf status <path>")}`,
         );
         break;
     }

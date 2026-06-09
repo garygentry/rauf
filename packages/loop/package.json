@@ -1,5 +1,5 @@
 {
-  "name": "@ralph/loop",
+  "name": "@rauf/loop",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ralph/core": "workspace:*"
+    "@rauf/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

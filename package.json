@@ -1,5 +1,5 @@
 {
-  "name": "ralph",
+  "name": "rauf",
   "version": "0.1.0",
   "private": true,
   "description": "Management tool for ralph autonomous coding loops",
@@ -14,16 +14,16 @@
     "lint": "pnpm -r lint",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
-    "dev": "pnpm --filter @ralph/web dev",
-    "dev:docs": "pnpm --filter @ralph/docs dev",
-    "build:docs": "pnpm --filter @ralph/docs build",
+    "dev": "pnpm --filter @rauf/web dev",
+    "dev:docs": "pnpm --filter @rauf/docs dev",
+    "build:docs": "pnpm --filter @rauf/docs build",
     "compile": "pnpm build && bun build --compile scripts/binary-entry.ts --outfile ralph-bin",
     "clean": "pnpm -r clean",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
-    "ralph": "ralph"
+    "rauf": "rauf"
   },
   "devDependencies": {
-    "@ralph/cli": "workspace:*",
+    "@rauf/cli": "workspace:*",
     "@eslint/js": "^9.39.3",
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",

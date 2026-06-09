@@ -17,7 +17,7 @@ import {
   resolveRootDirectory,
   resolveBacklogRoot,
   validatePath,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import { errorResponse } from "../app.js";
 import { getLoopManager } from "../loop-manager.js";

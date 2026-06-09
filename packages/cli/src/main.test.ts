@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { VERSION } from "@ralph/core";
+import { VERSION } from "@rauf/core";
 import { runCli } from "./main.js";
 
 // Helper to capture stdout and mock argv
@@ -39,7 +39,7 @@ describe("--version flag", () => {
       const code = await runCli();
       expect(code).toBe(0);
     });
-    expect(output.stdout).toContain(`ralph v${VERSION}`);
+    expect(output.stdout).toContain(`rauf v${VERSION}`);
   });
 
   it("prints version with -V", async () => {
@@ -47,7 +47,7 @@ describe("--version flag", () => {
       const code = await runCli();
       expect(code).toBe(0);
     });
-    expect(output.stdout).toContain(`ralph v${VERSION}`);
+    expect(output.stdout).toContain(`rauf v${VERSION}`);
   });
 
   it("outputs JSON with --version --json", async () => {

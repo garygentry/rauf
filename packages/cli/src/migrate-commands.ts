@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { planMigration, migrate, migrateGlobal, type MigrateReport } from "@ralph/core";
+import { planMigration, migrate, migrateGlobal, type MigrateReport } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";

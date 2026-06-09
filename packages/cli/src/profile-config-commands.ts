@@ -20,7 +20,7 @@ import {
   type ProjectProfile,
   type ToolConfig,
   buildVerifyCommand,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -33,7 +33,7 @@ export async function handleProfileShow(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph profile show <path>");
+    info("Usage: rauf profile show <path>");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -63,7 +63,7 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: ralph profile detect <path>");
+    info("Usage: rauf profile detect <path>");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -75,9 +75,7 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
     return ExitCode.SUCCESS;
   }
 
-  print(
-    c.bold("Detected Profile (read-only — use 'ralph profile set' or 'ralph update' to apply):"),
-  );
+  print(c.bold("Detected Profile (read-only — use 'rauf profile set' or 'rauf update' to apply):"));
   print("");
   printProfile(detected);
   return ExitCode.SUCCESS;
@@ -86,7 +84,7 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
 // ─── PROFILE SET ───────────────────────────────────────────────────
 //
 // Update a single profile field in .rauf.json.
-// Usage: ralph profile set <path> <key> <value>
+// Usage: rauf profile set <path> <key> <value>
 //
 // Supported keys:
 //   commands.test, commands.typecheck, commands.lint, commands.build, commands.format
@@ -102,7 +100,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
 
   if (!targetPath || !key || value === undefined) {
     error("Missing required arguments: <path> <key> <value>");
-    info("Usage: ralph profile set <path> <key> <value>");
+    info("Usage: rauf profile set <path> <key> <value>");
     info("");
     info("Keys: test, typecheck, lint, build, format, stack, packageManager, monorepo");
     info("Set a command key to '' to disable (null).");
@@ -152,7 +150,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
     // Non-fatal — profile was saved, just warn that RAUF.md wasn't re-rendered
     if (!ctx.globalFlags.json) {
       info(`Profile saved but RAUF.md could not be updated: ${updateResult.error.message}`);
-      info(`Run 'ralph update ${targetPath}' manually to sync.`);
+      info(`Run 'rauf update ${targetPath}' manually to sync.`);
     }
   }
 
@@ -198,7 +196,7 @@ export async function handleConfigGet(ctx: CommandContext): Promise<number> {
   const key = ctx.args[0];
   if (!key) {
     error("Missing required argument: <key>");
-    info("Usage: ralph config get <key>");
+    info("Usage: rauf config get <key>");
     info("Keys: rootDirectory, port, theme");
     return ExitCode.INVALID_ARGS;
   }
@@ -233,7 +231,7 @@ export async function handleConfigSet(ctx: CommandContext): Promise<number> {
 
   if (!key || rawValue === undefined) {
     error("Missing required arguments: <key> <value>");
-    info("Usage: ralph config set <key> <value>");
+    info("Usage: rauf config set <key> <value>");
     info("Keys: rootDirectory, port, theme");
     return ExitCode.INVALID_ARGS;
   }
@@ -307,7 +305,7 @@ export async function handleProjectsList(ctx: CommandContext): Promise<number> {
 
   if (projects.length === 0 && ignored.length === 0) {
     info(`No ralph-enabled projects found in: ${c.dim(rootDir)}`);
-    info("Run 'ralph install <path>' to enable ralph for a project.");
+    info("Run 'rauf install <path>' to enable rauf for a project.");
     return ExitCode.SUCCESS;
   }
 
@@ -426,16 +424,16 @@ function handleCoreError(
       case ErrorCodes.FILE_NOT_FOUND:
       case ErrorCodes.NOT_INSTALLED:
         if (projectPath) {
-          info(`Rauf is not installed here. Run: ${c.cyan(`ralph install ${projectPath}`)}`);
+          info(`Rauf is not installed here. Run: ${c.cyan(`rauf install ${projectPath}`)}`);
         } else {
-          info("Ensure ralph is installed in the target directory.");
+          info("Ensure rauf is installed in the target directory.");
         }
         break;
       case ErrorCodes.INVALID_JSON:
       case ErrorCodes.VALIDATION_ERROR:
         if (projectPath) {
           info(
-            `A project file may be corrupted. Try reinstalling: ${c.cyan(`ralph install ${projectPath} --yes`)}`,
+            `A project file may be corrupted. Try reinstalling: ${c.cyan(`rauf install ${projectPath} --yes`)}`,
           );
         } else {
           info("A config file may be corrupted. Check ~/.rauf/config.json manually.");
@@ -443,7 +441,7 @@ function handleCoreError(
         break;
       case ErrorCodes.CONFLICT:
         if (projectPath) {
-          info(`A loop may be running. Check with: ${c.cyan(`ralph status ${projectPath}`)}`);
+          info(`A loop may be running. Check with: ${c.cyan(`rauf status ${projectPath}`)}`);
         }
         break;
     }

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ProjectProfile, InstallationReport, ProfileOverrides } from "@ralph/core";
+import type { ProjectProfile, InstallationReport, ProfileOverrides } from "@rauf/core";
 import { raufFetchJson } from "../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────

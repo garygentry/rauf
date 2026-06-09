@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 
-import type { LoopStartOptions, LoopEvent, LoopState, Backlog, IterationStatus } from "@ralph/core";
+import type { LoopStartOptions, LoopEvent, LoopState, Backlog, IterationStatus } from "@rauf/core";
 import {
   readBacklog,
   selectNextItem,
@@ -27,7 +27,7 @@ import {
   type InstructionPaths,
   type Result,
   ok,
-} from "@ralph/core";
+} from "@rauf/core";
 
 import { TypedEventEmitter } from "./events.js";
 import { spawnClaude } from "./claude-process.js";

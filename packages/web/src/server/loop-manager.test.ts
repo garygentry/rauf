@@ -13,7 +13,7 @@ import * as path from "node:path";
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import type { LoopEvent } from "@ralph/core";
+import type { LoopEvent } from "@rauf/core";
 
 import { LoopManager } from "./loop-manager.js";
 

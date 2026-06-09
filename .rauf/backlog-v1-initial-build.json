@@ -13,7 +13,7 @@
         "pnpm build compiles all three packages",
         "pnpm test runs vitest (0 tests is OK)",
         "pnpm -r typecheck passes with no errors",
-        "Each package can import from @ralph/core",
+        "Each package can import from @rauf/core",
         "ESLint config exists and pnpm -r lint runs"
       ],
       "status": "done",

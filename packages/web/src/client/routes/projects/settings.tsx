@@ -9,7 +9,7 @@ import type {
   InstallationReport,
   ArtifactStalenessReport,
   ArtifactFileStatus,
-} from "@ralph/core";
+} from "@rauf/core";
 import { raufFetchJson } from "../../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────

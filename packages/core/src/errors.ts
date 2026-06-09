@@ -1,6 +1,6 @@
 // ─── Result Type ──────────────────────────────────────────────────
 //
-// Core error-handling pattern for @ralph/core.
+// Core error-handling pattern for @rauf/core.
 // All public functions return Result<T, E> instead of throwing.
 // RaufError shape is defined by the Zod schema in schemas.ts.
 

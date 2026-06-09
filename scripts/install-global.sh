@@ -2,12 +2,19 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SOURCE="$REPO_DIR/scripts/bin/ralph"
-TARGET="$HOME/.local/bin/ralph"
+SOURCE="$REPO_DIR/scripts/bin/rauf"
+TARGET="$HOME/.local/bin/rauf"
 
 mkdir -p "$HOME/.local/bin"
 ln -sf "$SOURCE" "$TARGET"
 echo "Linked: $TARGET -> $SOURCE"
+
+# Remove the old pre-rename `ralph` symlink (hard cut-over — a stale
+# old-protocol binary on PATH would shadow the new `rauf`).
+if [ -L "$HOME/.local/bin/ralph" ]; then
+  rm -f "$HOME/.local/bin/ralph"
+  echo "Removed old symlink: $HOME/.local/bin/ralph"
+fi
 
 # Check PATH
 if ! echo "$PATH" | tr ':' '\n' | grep -qx "$HOME/.local/bin"; then

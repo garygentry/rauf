@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { LoopEvent } from "@ralph/core";
+import type { LoopEvent } from "@rauf/core";
 
 /** Extract the set of valid LoopEvent type discriminator values */
 type LoopEventType = LoopEvent["type"];

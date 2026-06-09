@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 
-import type { Result } from "@ralph/core";
-import { ok, err, ErrorCodes } from "@ralph/core";
+import type { Result } from "@rauf/core";
+import { ok, err, ErrorCodes } from "@rauf/core";
 
 import { StreamParser, type ClaudeStreamEvent } from "./stream-parser.js";
 

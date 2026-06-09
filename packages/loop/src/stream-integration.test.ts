@@ -3,8 +3,8 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LoopEvent, Backlog, LoopStartOptions } from "@ralph/core";
-import { readIterationStatus, defaultBacklogPaths } from "@ralph/core";
+import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
+import { readIterationStatus, defaultBacklogPaths } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
 

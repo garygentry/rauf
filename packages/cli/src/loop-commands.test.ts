@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import type { LoopEvent } from "@ralph/core";
+import type { LoopEvent } from "@rauf/core";
 
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";

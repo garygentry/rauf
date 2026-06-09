@@ -21,13 +21,13 @@ Adding the `--backlog` flag to all CLI commands and updating web API routes to a
 All CLI command files gain:
 
 ```typescript
-import { resolveBacklogRoot, resolveBacklogPaths, type BacklogPaths } from "@ralph/core";
+import { resolveBacklogRoot, resolveBacklogPaths, type BacklogPaths } from "@rauf/core";
 ```
 
 `status-commands.ts` additionally imports:
 
 ```typescript
-import { scanActiveRoots } from "@ralph/core";
+import { scanActiveRoots } from "@rauf/core";
 ```
 
 ## 2. CLI Changes
@@ -75,7 +75,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
   // Handle --force: clear existing lock with warning (REQ-LOCK-04)
   if (force) {
-    const { forceClearLock, checkLock } = await import("@ralph/core");
+    const { forceClearLock, checkLock } = await import("@rauf/core");
     const lockStatus = checkLock(paths);
     if (lockStatus.ok && lockStatus.value.locked) {
       warn(`Force-clearing lock (PID ${lockStatus.value.pid}, started ${lockStatus.value.startedAt})`);

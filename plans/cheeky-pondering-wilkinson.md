@@ -224,7 +224,7 @@ if (status.loopState === "WEEKLY_LIMIT") {
 
 ```bash
 # 1. TypeScript tests (after pnpm build for cross-package)
-pnpm --filter @ralph/core build && pnpm --filter @ralph/core test && pnpm --filter @ralph/cli test
+pnpm --filter @rauf/core build && pnpm --filter @rauf/core test && pnpm --filter @rauf/cli test
 pnpm typecheck
 
 # 2. Bash: test preflight check with mock claude and mock API
@@ -244,7 +244,7 @@ cat > .ralph/state.json <<EOF
  "sleepUntil":"$(date -d '+2 hours' -Iseconds)","completedItems":[],"blockedItems":[],
  "error":"5-hour usage limit hit"}
 EOF
-pnpm --filter @ralph/cli exec bun run src/index.ts status .
+pnpm --filter @rauf/cli exec bun run src/index.ts status .
 # Expected: "The loop will resume at 3:24 AM (in 2h 0m)"
 rm .ralph/state.json
 ```

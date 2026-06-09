@@ -11,7 +11,7 @@ importers:
       '@eslint/js':
         specifier: ^9.39.3
         version: 9.39.3
-      '@ralph/cli':
+      '@rauf/cli':
         specifier: workspace:*
         version: link:packages/cli
       prettier:
@@ -29,10 +29,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@ralph/core':
+      '@rauf/core':
         specifier: workspace:*
         version: link:../core
-      '@ralph/loop':
+      '@rauf/loop':
         specifier: workspace:*
         version: link:../loop
       picocolors:
@@ -91,7 +91,7 @@ importers:
 
   packages/loop:
     dependencies:
-      '@ralph/core':
+      '@rauf/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -113,10 +113,10 @@ importers:
 
   packages/web:
     dependencies:
-      '@ralph/core':
+      '@rauf/core':
         specifier: workspace:*
         version: link:../core
-      '@ralph/loop':
+      '@rauf/loop':
         specifier: workspace:*
         version: link:../loop
       '@tanstack/react-query':

@@ -7,10 +7,10 @@ import type {
   BacklogItemType,
   DerivedStatus,
   SweepResult,
-} from "@ralph/core";
+} from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
-// Mirrors VALID_STATUS_TRANSITIONS from @ralph/core/schemas — inlined to avoid
+// Mirrors VALID_STATUS_TRANSITIONS from @rauf/core/schemas — inlined to avoid
 // bundling Node.js modules into the browser bundle (core imports node:fs etc.)
 const VALID_STATUS_TRANSITIONS: Record<BacklogItemStatus, BacklogItemStatus[]> = {
   pending: ["in_progress", "blocked"],

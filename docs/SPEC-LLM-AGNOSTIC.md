@@ -128,7 +128,7 @@ The adapter layer abstracts over both models behind a single interface.
 ```typescript
 // packages/loop/src/providers/types.ts
 
-import type { Result } from "@ralph/core";
+import type { Result } from "@rauf/core";
 
 /** Uniquely identifies a provider */
 type ProviderId = string; // "claude-cli" | "claude-sdk" | "openai-codex" | "gemini-cli" | "generic-cli" | string
