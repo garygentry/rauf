@@ -144,7 +144,7 @@ RAUF_DONE
   [
     ".rauf/backlog.json",
     `{
-  "$schema": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
+  "$schema": "https://raw.githubusercontent.com/garygentry/rauf/main/schemas/backlog.schema.json",
   "project": "",
   "description": "",
   "items": []
@@ -309,7 +309,7 @@ RAUF_DONE
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/garygentry/ralph/main/schemas/backlog.schema.json",
+  "$id": "https://raw.githubusercontent.com/garygentry/rauf/main/schemas/backlog.schema.json",
   "title": "Rauf Backlog",
   "description": "Task backlog for a rauf autonomous coding loop project"
 }
