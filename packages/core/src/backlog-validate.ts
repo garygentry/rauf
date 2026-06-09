@@ -28,9 +28,11 @@ export interface ValidateBacklogResult {
 
 export interface ValidateBacklogOptions {
   /**
-   * Directory that `specReferences` are resolved against. When omitted, the
-   * specReferences-existence check is skipped entirely (the repo-wide ad-hoc
-   * flow has no specs dir, and must not be failed for that).
+   * Presence **gates** the `specReferences`-existence check (the repo-wide
+   * ad-hoc flow passes none and must not be failed for it). The value itself is
+   * not used as a resolution base: `specReferences` are project-root-relative
+   * and resolved against the project root, so they may legitimately point
+   * outside the specs dir (e.g. `docs/SPEC-CORE.md`).
    */
   specsDir?: string;
 }
@@ -90,7 +92,7 @@ export function validateBacklog(
     ...checkDuplicateIds(backlog.items),
     ...checkDependencies(backlog.items),
     ...checkEmptyAcceptanceCriteria(backlog.items),
-    ...checkSpecReferences(backlog.items, opts.specsDir),
+    ...checkSpecReferences(backlog.items, paths.projectPath, opts.specsDir !== undefined),
   ];
 
   const valid = !findings.some((f) => f.severity === "error");
@@ -200,15 +202,34 @@ function checkEmptyAcceptanceCriteria(items: BacklogItem[]): ValidationFinding[]
   return findings;
 }
 
-function checkSpecReferences(items: BacklogItem[], specsDir?: string): ValidationFinding[] {
-  // No-op when no specs dir is provided/resolvable (repo-wide ad-hoc flow).
-  if (!specsDir) return [];
-  const base = path.resolve(specsDir);
+function checkSpecReferences(
+  items: BacklogItem[],
+  projectPath: string,
+  gateOn: boolean,
+): ValidationFinding[] {
+  // No-op unless a specs context was requested (--specs-dir). The repo-wide
+  // ad-hoc flow passes no specs dir and must not be failed for it.
+  if (!gateOn) return [];
+
+  // specReferences are project-root-relative (they may point inside or outside
+  // the specs dir, e.g. `docs/SPEC-CORE.md`), so they resolve against the
+  // project root — never against --specs-dir, whose only role here is the gate.
+  const base = path.resolve(projectPath);
 
   const findings: ValidationFinding[] = [];
   for (const it of items) {
     for (const ref of it.specReferences ?? []) {
       const resolved = path.resolve(base, ref);
+      // Reject absolute refs and any ref that escapes the project root.
+      if (path.isAbsolute(ref) || (resolved !== base && !resolved.startsWith(base + path.sep))) {
+        findings.push({
+          severity: "error",
+          code: "SPEC_PATH_INVALID",
+          message: `Item ${it.id} references a path outside the project root: ${ref}`,
+          itemId: it.id,
+        });
+        continue;
+      }
       if (!fs.existsSync(resolved)) {
         findings.push({
           severity: "error",

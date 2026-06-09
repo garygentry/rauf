@@ -282,7 +282,7 @@ Use `agentDelegation` when a task has clearly independent subtasks that can run 
 
 ### `specReferences` — Pointing the agent to docs
 
-List file paths **relative to the project root** (e.g., `specs/auth/00-core-definitions.md`, `docs/SPEC-CORE.md`), NOT relative to the backlog file. Reference each file actually exists. Use this when the item implements a specific spec section or relies on architectural context not in the description.
+List file paths **relative to the project root** (e.g., `specs/auth/00-core-definitions.md`, `docs/SPEC-CORE.md`), NOT relative to the backlog file. `rauf backlog validate --specs-dir …` resolves these from the project root and flags any that don't exist (or that are absolute / escape the project root), so make sure each file actually exists. Use this when the item implements a specific spec section or relies on architectural context not in the description.
 
 ### `model` — Right-sizing the intelligence
 

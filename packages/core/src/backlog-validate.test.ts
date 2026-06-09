@@ -146,6 +146,47 @@ describe("validateBacklog", () => {
     expect(result.ok && result.value.valid).toBe(true);
   });
 
+  it("resolves project-root-relative specReferences from the project root", () => {
+    // Refs are project-root-relative (e.g. specs/auth/00.md) regardless of the
+    // --specs-dir value, which only gates the check.
+    fs.mkdirSync(path.join(tmpDir, "specs", "auth"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "specs", "auth", "00.md"), "# spec\n");
+    writeRaw(backlog([item({ specReferences: ["specs/auth/00.md"] })]));
+    const result = validateBacklog(paths, { specsDir: path.join(tmpDir, "specs") });
+    expect(result.ok && result.value.valid).toBe(true);
+  });
+
+  it("flags a missing project-root-relative specReference", () => {
+    writeRaw(backlog([item({ specReferences: ["specs/auth/missing.md"] })]));
+    const result = validateBacklog(paths, { specsDir: path.join(tmpDir, "specs") });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.valid).toBe(false);
+      expect(result.value.findings.some((f) => f.code === "MISSING_SPEC")).toBe(true);
+    }
+  });
+
+  it("rejects an absolute specReference as SPEC_PATH_INVALID (even if it exists)", () => {
+    fs.writeFileSync(path.join(tmpDir, "present.md"), "# spec\n");
+    writeRaw(backlog([item({ specReferences: [path.join(tmpDir, "present.md")] })]));
+    const result = validateBacklog(paths, { specsDir: tmpDir });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.valid).toBe(false);
+      expect(result.value.findings.some((f) => f.code === "SPEC_PATH_INVALID")).toBe(true);
+    }
+  });
+
+  it("rejects a specReference escaping the project root as SPEC_PATH_INVALID", () => {
+    writeRaw(backlog([item({ specReferences: ["../escape.md"] })]));
+    const result = validateBacklog(paths, { specsDir: tmpDir });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.valid).toBe(false);
+      expect(result.value.findings.some((f) => f.code === "SPEC_PATH_INVALID")).toBe(true);
+    }
+  });
+
   it("returns INVALID_JSON for a malformed file (usage/IO error, not a finding)", () => {
     fs.writeFileSync(paths.backlog, "{ not json");
     const result = validateBacklog(paths);

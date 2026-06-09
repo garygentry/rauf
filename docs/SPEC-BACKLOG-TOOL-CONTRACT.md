@@ -116,9 +116,13 @@ selects machine-readable output where noted.
 **`validate` exit codes (contract):** `0` = valid (warnings allowed), `1` =
 validation findings (one or more errors), `2` = usage / IO error (missing path,
 unreadable file, bad JSON). With `--json` it emits `{ valid, findings[] }`,
-where each finding has `{ severity, code, message, itemId?, path? }`. The
-`specReferences`-existence check runs **only** when `--specs-dir` is provided
-(the repo-wide ad-hoc flow has no specs dir and must not be failed for it).
+where each finding has `{ severity, code, message, itemId?, path? }`.
+`specReferences` are **project-root-relative** and resolved against the project
+root (so a ref may point inside or outside the specs dir, e.g.
+`docs/SPEC-CORE.md`); a ref that is absolute or escapes the project root is a
+`SPEC_PATH_INVALID` error. The existence check runs **only** when `--specs-dir`
+is provided — its presence is the gate, not a resolution base — so the
+repo-wide ad-hoc flow (no `--specs-dir`) is never failed for it.
 
 ## A.5 Versioning & conformance
 
