@@ -88,8 +88,8 @@
       "status": "in-progress",
       "startedAt": "2026-06-10T17:26:12Z",
       "basedOnVersions": { "forge-4-backlog": 1 },
-      "artifacts": ["specs/release-automation/.rauf/state.json"],
-      "notes": "10/11 items done. Item 011 (manual e2e release validation) returned needs_human by design — requires a human with repo admin to push real tags, run the GitHub release workflow, and install on Windows; not loop-automatable. Stage stays in-progress until 011 is satisfied or descoped."
+      "artifacts": ["specs/release-automation/backlog.json"],
+      "notes": "10/11 items implemented. Item 011 (manual e2e release validation, spec 07 §4) is a deliberate human gate: set aside as status=blocked + needsHuman by the loop (does NOT halt — autonomy fix item 019). Documented as a one-time checklist in docs/RELEASING.md §5. Stage stays in-progress until a maintainer runs the prerelease→stable validation and marks 011 done."
     }
   },
   "notes": "RISK-1 (Bun cross-compile of all 5 targets) empirically validated during forge-2-tech on Bun 1.3.10 from a single Linux host — see tech-spec.md §3.3. Tag-protection ruleset (OTQ-1) is manual GitHub config, not code; document as a one-time setup step. forge-4-backlog: 10 items (6 feature, 4 chore), validated via rauf-stable (exit 0); deepest dependency chain = 5 (001→002→004→007→010); install-script items 008/009 are independent for loop parallelism; no agentDelegation used."

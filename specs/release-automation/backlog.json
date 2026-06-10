@@ -258,7 +258,7 @@
         "Step 8 (checksum tamper) makes the install scripts hard-fail with MISMATCH",
         "All 8 steps recorded as executed against a real prerelease→stable cycle (human-run RAUF_NEEDS_HUMAN gate, not loop-automatable)"
       ],
-      "status": "pending",
+      "status": "blocked",
       "completedAt": null,
       "dependsOn": [
         "008",
@@ -271,7 +271,9 @@
         "specs/release-automation/07-testing-strategy.md",
         "specs/release-automation/04-ci-preflight-and-workflow.md",
         "specs/release-automation/05-install-scripts.md"
-      ]
+      ],
+      "blockedReason": "Item 011 is a designed human-gate — manual end-to-end release validation requires a human operator with repo admin rights to push real git tags, drive GitHub Actions end-to-end, and run install-binary.ps1 on Windows (all impossible from an autonomous loop). Dependencies 008/009/010 are done and the release-tags ruleset must be active; a maintainer must execute the 8-step prerelease→stable cycle in spec 07 §4 and record the results.",
+      "needsHuman": true
     }
   ]
 }

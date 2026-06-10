@@ -156,3 +156,38 @@ unaffected and need no workaround.
 - **Code signing / SLSA provenance is deferred** (REQ-INTEGRITY-03): v1 ships
   unsigned binaries with checksum verification as the integrity mechanism. The
   macOS quarantine workaround above exists because of this stance.
+
+---
+
+## 5. First-Release Validation (one-time human gate)
+
+This is **backlog item 011** of the release-automation feature — a deliberate
+human gate (`RAUF_NEEDS_HUMAN`), not loop-automatable: it requires a maintainer
+with repo-admin rights to push real tags, drive GitHub Actions end-to-end, and
+run the Windows installer. The release _code_ (helpers, workflow, install
+scripts, checksums — items 001–010) is implemented and unit-tested; this gate
+validates one real prerelease→stable cycle before relying on it. Run it once,
+against `0.3.0-rc.1` → `0.3.0`, and record the results. Reference: spec 07 §4.
+
+Prerequisite: the `release-tags` ruleset (§1.1) must be active.
+
+- [ ] **1. Prerelease dry-run** — `prepare` prints the seven edits (incl. docs
+      drift correction) and makes **no** repo change.
+- [ ] **2. Prerelease publish** — the release attaches all five assets +
+      `SHA256SUMS`, is marked **prerelease** (not "latest"), and its notes match
+      the changelog section.
+- [ ] **3. Install the prerelease by tag** on **Unix and Windows**; `rauf
+    version` reports `0.3.0-rc.1`.
+- [ ] **4. Promote to stable** — the release becomes "latest" and the default
+      install installs it; `rauf version` reports `0.3.0`.
+- [ ] **5–6. Negative paths** — drift check and re-release refusal both fail
+      **before** any publish and mutate nothing.
+- [ ] **7. Prep guards** — every prep guard fires, each leaving the repo
+      untouched with a distinct `refusing:` line.
+- [ ] **8. Checksum tamper** — tampering makes both install scripts hard-fail
+      with `MISMATCH`.
+
+When all eight are recorded as executed against a real cycle, mark item 011 done
+(`rauf backlog unblock . 011` then set it done, or edit the backlog). Until then
+it stays `blocked` + `needsHuman` so the loop sets it aside and never halts on
+it.
