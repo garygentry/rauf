@@ -140,8 +140,8 @@
         ".github/workflows/ci.yml's check job uses ./.github/actions/quality-gate and no longer contains the inline six-command list",
         "Both YAML files parse cleanly with a YAML parser"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:13:28.796Z",
       "dependsOn": [],
       "notes": "Single source of truth for the gate (V-009). release.yml (item 007) will reference the same ./.github/actions/quality-gate, so adding/removing a check becomes a one-place edit. Read the current ci.yml check job first to preserve its setup steps. dependsOn is intentionally [] — acceptance is YAML structure + parse only; the gate is never executed in this item (it runs in CI on a future push), so it does not require the scripts/release tests (item 002) to exist.",
       "estimatedIterations": 1,
