@@ -41,8 +41,8 @@
         "lib.ts contains no import from @rauf/* or node:child_process",
         "pnpm test runs the scripts/release suite once (and each package suite once) and passes; pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T17:47:46.269Z",
       "dependsOn": [
         "001"
       ],
