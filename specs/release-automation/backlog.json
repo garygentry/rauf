@@ -68,8 +68,8 @@
         "scripts/bump-version.sh no longer exists and `grep -rn \"bump-version.sh\" docs/ scripts/ README.md` returns no stale references (only updated pnpm release:prepare mentions)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:00:09.527Z",
       "dependsOn": [
         "002"
       ],

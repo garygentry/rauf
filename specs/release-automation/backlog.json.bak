@@ -41,8 +41,8 @@
         "lib.ts contains no import from @rauf/* or node:child_process",
         "pnpm test runs the scripts/release suite once (and each package suite once) and passes; pnpm typecheck passes"
       ],
-      "status": "in_progress",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T17:47:46.269Z",
       "dependsOn": [
         "001"
       ],
@@ -68,7 +68,7 @@
         "scripts/bump-version.sh no longer exists and `grep -rn \"bump-version.sh\" docs/ scripts/ README.md` returns no stale references (only updated pnpm release:prepare mentions)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "completedAt": null,
       "dependsOn": [
         "002"
