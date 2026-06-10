@@ -6,11 +6,11 @@
   "currentStage": "forge-2-tech",
   "stages": {
     "forge-1-prd": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "artifacts": ["specs/release-automation/PRD.md"],
       "completedAt": "2026-06-09T00:00:00Z",
-      "commitHash": null,
+      "commitHash": "d600e6a",
       "basedOnVersions": {}
     }
   },
