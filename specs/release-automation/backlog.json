@@ -93,8 +93,8 @@
         "preflight.test.ts covers all-agree, tag-mismatch, one-package-mismatch, and prerelease-classification branches without the Actions env",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:05:04.868Z",
       "dependsOn": [
         "002"
       ],

@@ -68,8 +68,8 @@
         "scripts/bump-version.sh no longer exists and `grep -rn \"bump-version.sh\" docs/ scripts/ README.md` returns no stale references (only updated pnpm release:prepare mentions)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "in_progress",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:00:09.527Z",
       "dependsOn": [
         "002"
       ],
@@ -93,7 +93,7 @@
         "preflight.test.ts covers all-agree, tag-mismatch, one-package-mismatch, and prerelease-classification branches without the Actions env",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "completedAt": null,
       "dependsOn": [
         "002"
