@@ -34,3 +34,11 @@
   - Running preflight against the REAL repo currently (correctly) fails with `drift: packages/docs/package.json version 0.1.0 != canonical 0.2.0` — the historical docs drift is live until the first `release:prepare` run corrects it. Don't mistake that for a preflight bug.
   - **Smoke-test trick for preflight's success path:** copy `lib.ts` + `preflight.ts` into a temp tree (`$FIX/scripts/release/`) alongside a fabricated `packages/core/src/version.ts` + six agreeing package.json files — `import.meta.dir` then resolves repoRoot to the fixture, so both the stable and prerelease GITHUB_OUTPUT paths run for real without touching the repo. Both verified (version=/is_prerelease= lines exact), plus INPUT_TAG fallback and the missing-GITHUB_OUTPUT failure.
   - Prettier wants long multi-name import lines broken — run `npx prettier --write` on new scripts/release files before `pnpm format:check` (it bit this iteration; scripts/ is format-checked but not linted).
+
+## Iteration 5 — item 005 (build-notes.ts + build-notes.test.ts)
+
+- Created `scripts/release/build-notes.ts` (pure `composeNotes()` + main flow: extractSection → `git describe --tags --abbrev=0 --match 'v*' <tag>^` → write dist/NOTES.md, mkdir -p dist) and `scripts/release/build-notes.test.ts` (2 tests: prior tag appends the compare link byte-exact; null omits it). Same `import.meta.main` executable-vs-import pattern.
+- **Learnings for future iterations:**
+  - `node:child_process` is allowed in `scripts/release/*` executables (build-notes.ts, prepare.ts) — the prohibition only covers `lib.ts` (the pure module). Don't over-apply the constraint.
+  - **Smoke-test trick for build-notes:** temp git repo with `lib.ts`+`build-notes.ts` under `$FIX/scripts/release/`, a CHANGELOG, and tags `pre-rauf-rename` → `v0.2.0` → `v0.3.0`. Verified the compare base resolves to v0.2.0 (decoy excluded by `--match 'v*'`); deleting v0.2.0 from the history → first-release path, no compare line. In the fixture use `git -c tag.gpgSign=false tag <name>` for lightweight tags (the gpgSign learning from iteration 3).
+  - On the first-release path `git describe`'s `fatal: No tags can describe …` goes to stderr (execFileSync inherits stderr) before the catch swallows the nonzero exit — expected noise in CI logs, not a failure; the spec's sample code behaves identically.
