@@ -37,7 +37,9 @@ rauf/
 │   │   ├── prepare.ts                        + maintainer prep helper (03-prepare-helper.md)
 │   │   ├── prepare.test.ts                   + unit tests for pure guard predicates
 │   │   ├── preflight.ts                      + CI drift guard + classification (04-…workflow.md §2)
-│   │   └── preflight.test.ts                 + unit tests for drift/classification
+│   │   ├── preflight.test.ts                 + unit tests for drift/classification
+│   │   ├── build-notes.ts                    + CI: compose dist/NOTES.md (04-…workflow.md §3 step 9)
+│   │   └── build-notes.test.ts               + unit test for the prev-tag/notes-omission logic
 │   ├── install-binary.sh                     ~ add SHA256 verification (05-install-scripts.md)
 │   ├── install-binary.ps1                    + Windows PowerShell installer (05-install-scripts.md)
 │   ├── bump-version.sh                        - REMOVED — subsumed by scripts/release/prepare.ts

@@ -7,7 +7,10 @@
   "artifacts": [
     "specs/release-automation/00-core-definitions.md",
     "specs/release-automation/01-architecture-layout.md",
-    "specs/release-automation/02-shared-lib.md"
+    "specs/release-automation/02-shared-lib.md",
+    "specs/release-automation/03-prepare-helper.md",
+    "specs/release-automation/04-ci-preflight-and-workflow.md",
+    "specs/release-automation/05-install-scripts.md"
   ],
   "stages": {
     "forge-1-prd": {
