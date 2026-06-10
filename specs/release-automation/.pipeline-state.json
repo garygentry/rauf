@@ -7,11 +7,18 @@
   "stages": {
     "forge-1-prd": {
       "status": "complete",
-      "version": 1,
+      "version": 2,
       "artifacts": ["specs/release-automation/PRD.md"],
       "completedAt": "2026-06-09T00:00:00Z",
       "commitHash": "d600e6a",
       "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": "specs/release-automation/.verification/VERIFY-prd-2026-06-09.md",
+      "findingsCount": 9,
+      "verifiedAt": "2026-06-09T00:00:00Z",
+      "fixedAt": "2026-06-09T00:00:00Z"
     }
   },
   "notes": ""
