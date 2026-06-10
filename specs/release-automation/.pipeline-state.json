@@ -4,6 +4,11 @@
   "createdAt": "2026-06-09T00:00:00Z",
   "updatedAt": "2026-06-10T00:00:00Z",
   "currentStage": "forge-3-specs",
+  "artifacts": [
+    "specs/release-automation/00-core-definitions.md",
+    "specs/release-automation/01-architecture-layout.md",
+    "specs/release-automation/02-shared-lib.md"
+  ],
   "stages": {
     "forge-1-prd": {
       "status": "complete",
