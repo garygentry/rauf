@@ -13,6 +13,11 @@ rauf-bin
 .worktrees/
 .playwright-mcp/
 
+# Plan-mode scratch — plan files are written to plans/<name>.md at the repo root
+# (a path we don't control), so the loop's `git add -A` must never sweep them
+# into a feature commit. Local-only; not tracked. See docs/DOGFOODING.md.
+plans/
+
 # Test sandbox transient files
 test-sandbox/.rauf/rauf.log
 test-sandbox/.rauf/state.json
