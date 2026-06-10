@@ -12,6 +12,8 @@
 #              Releases and install it to ~/.local/bin/rauf.
 #   --local    Install the locally-built ./rauf-bin (run `pnpm compile` first).
 #              Use this to build + test the distribution path from a repo clone.
+#   --name N   Install the binary as N instead of `rauf` (e.g. `rauf-stable`,
+#              a compiled snapshot used as the loop runner — see docs/DOGFOODING.md).
 #
 # Env overrides:
 #   RAUF_REPO     GitHub owner/repo to fetch releases from (default garygentry/rauf)
@@ -21,17 +23,26 @@
 # Usage:
 #   bash scripts/install-binary.sh
 #   bash scripts/install-binary.sh --local
+#   bash scripts/install-binary.sh --local --name rauf-stable
 #   curl -fsSL https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.sh | bash
 set -euo pipefail
 
 RAUF_REPO="${RAUF_REPO:-garygentry/rauf}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
-TARGET="$INSTALL_DIR/rauf"
 MODE="download"
+NAME="rauf"
 
-if [[ "${1:-}" == "--local" ]]; then
-  MODE="local"
-fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --local) MODE="local"; shift ;;
+    --name)
+      if [[ -z "${2:-}" ]]; then echo "--name requires a value" >&2; exit 1; fi
+      NAME="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+TARGET="$INSTALL_DIR/$NAME"
 
 # Detect OS/arch and map to Bun --compile target naming used for release assets.
 detect_asset() {

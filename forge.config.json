@@ -6,5 +6,6 @@
   "commitPrefix": "forge",
   "stack": "typescript",
   "typeCheckCommand": "pnpm typecheck",
-  "testCommand": "pnpm test"
+  "testCommand": "pnpm test",
+  "loopRunner": { "bin": "rauf-stable" }
 }
