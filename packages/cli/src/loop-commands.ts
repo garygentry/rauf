@@ -30,7 +30,7 @@ import {
   type BacklogPaths,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
-import { LoopRunner } from "@rauf/loop";
+import { LoopRunner, checkLoopPreconditions } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -587,6 +587,19 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
   const paths = pathsResult.value;
+
+  // Safety guard: refuse to run on the default branch, a detached HEAD, or a
+  // dirty tree — the loop auto-commits with `git add -A`, so otherwise it could
+  // sweep unrelated work into a loop commit. --force bypasses (and, below, also
+  // force-clears any lock — there is currently no way to skip the guard alone).
+  if (!force) {
+    const preconditions = await checkLoopPreconditions(projectPath);
+    if (!preconditions.ok) {
+      error(preconditions.error.message);
+      info("Commit or stash and switch to a feature branch, or pass `--force`.");
+      return ExitCode.CONFLICT;
+    }
+  }
 
   // Handle --force: clear existing lock with warning
   if (force) {
