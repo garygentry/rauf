@@ -29,7 +29,7 @@ bash test-sandbox/verify.sh
 | `stream-blocked`     | `RAUF_BLOCKED`     | None                   | Instant      | Blocked signal parsing, reason extraction      |
 | `stream-tools`       | `RAUF_DONE`        | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use |
 | `slow-stream`        | `RAUF_DONE`        | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience      |
-| `stream-needs-human` | `RAUF_NEEDS_HUMAN` | None                   | Instant      | Needs-human signal, item stays in_progress     |
+| `stream-needs-human` | `RAUF_NEEDS_HUMAN` | None                   | Instant      | Needs-human signal: item set aside (blocked+needsHuman), loop continues |
 
 ## What to Observe
 

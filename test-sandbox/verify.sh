@@ -188,9 +188,10 @@ assert_no_iteration_status
 assert_done_file_exists
 assert_state_status "limit_reached"
 
-# 5. stream-needs-human: RAUF_NEEDS_HUMAN leaves in_progress
+# 5. stream-needs-human: RAUF_NEEDS_HUMAN sets the item aside (blocked) and the
+#    loop continues/ends naturally instead of halting in_progress.
 run_scenario "stream-needs-human"
-assert_item_status "001" "in_progress"
+assert_item_status "001" "blocked"
 assert_no_iteration_status
 assert_done_file_exists
 assert_done_file_contains "needs_human"
