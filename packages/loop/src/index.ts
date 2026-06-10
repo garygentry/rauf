@@ -9,6 +9,8 @@ export { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 export type { UsageLimitResult } from "./usage-checker.js";
 export { spawnClaude } from "./claude-process.js";
 export type { SpawnClaudeOptions, SpawnClaudeResult } from "./claude-process.js";
+export { resolveChildEnv, REVIEW_HOOK_SUPPRESSION_ENV } from "./review-hooks.js";
+export type { ChildEnvOptions } from "./review-hooks.js";
 export { StreamParser } from "./stream-parser.js";
 export type { ClaudeStreamEvent, StreamEventType } from "./stream-parser.js";
 export { LoopRunner } from "./runner.js";

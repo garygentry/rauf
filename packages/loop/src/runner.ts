@@ -36,6 +36,7 @@ import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
+import { resolveChildEnv } from "./review-hooks.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -77,6 +78,8 @@ export class LoopRunner extends TypedEventEmitter {
   private readonly paths: BacklogPaths;
   private instructionPaths!: InstructionPaths;
   private readonly options: LoopStartOptions;
+  /** Env overrides applied to every spawned child session (undefined = inherit parent). */
+  private readonly childEnv: Record<string, string> | undefined;
   private readonly abortController: AbortController;
   private softCancelled = false;
   private iterationCount = 0;
@@ -111,6 +114,10 @@ export class LoopRunner extends TypedEventEmitter {
     this.projectPath = projectPath;
     this.paths = paths;
     this.options = options;
+    this.childEnv = resolveChildEnv({
+      suppressIterationReview: options.suppressIterationReview,
+      childEnv: options.childEnv,
+    });
     this.abortController = new AbortController();
   }
 
@@ -155,6 +162,18 @@ export class LoopRunner extends TypedEventEmitter {
       // (5) Log which backlog root is active
       const relativeRoot = path.relative(this.projectPath, this.paths.root);
       appendLog(this.paths, `Loop started (backlog root: ${relativeRoot || ".rauf"})`);
+
+      // Note when child sessions run with review hooks suppressed (single-gate
+      // review model). Review then belongs at the gate over the cumulative diff.
+      if (this.childEnv) {
+        appendLog(
+          this.paths,
+          `Child sessions run with env overrides: ${Object.keys(this.childEnv).join(", ")}` +
+            (this.options.suppressIterationReview
+              ? " (per-iteration review hooks suppressed — review at the gate)"
+              : ""),
+        );
+      }
 
       // (6) Read .rauf.json marker for project-level options
       const markerResult = readMarkerFile(this.projectPath);
@@ -524,6 +543,7 @@ export class LoopRunner extends TypedEventEmitter {
       signal: this.abortController.signal,
       outputFormat: "stream-json",
       onStreamEvent,
+      ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
     clearInterval(stuckTimer);
@@ -746,6 +766,7 @@ export class LoopRunner extends TypedEventEmitter {
       sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
       model: resolvedModel,
       signal: this.abortController.signal,
+      ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
     if (!claudeResult.ok) {

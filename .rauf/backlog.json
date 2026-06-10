@@ -495,8 +495,8 @@
         "Default behavior is unchanged unless explicitly opted in",
         "pnpm test && pnpm typecheck && pnpm lint pass"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T22:26:41.611Z",
       "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10. The harness auto-mode classifier also blocks ad-hoc ENABLE_CODE_SECURITY_REVIEW=0 on the loop command, reinforcing the need for a first-class, intentional mechanism.",
       "estimatedIterations": 3
     },

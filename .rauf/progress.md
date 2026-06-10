@@ -43,3 +43,10 @@
 - Prompt-builder signatures updated to `(paths, instructionPaths, ...)` with internal bridge `const projectPath = paths.projectPath` — full internal refactor deferred to item 010
 - CLI callers needed `return 1` (not bare `return`) since handler functions return `Promise<number>`
 - The `defaultBacklogPaths` import was cleanly removed from runner.ts — no longer needed since `this.paths` is resolved in `create()`
+
+### 018 — Single-gate review: suppress per-iteration review hooks in child sessions (2026-06-10)
+- Generic mechanism, not plugin-hardcoded: `spawnClaude` gained an optional `env` override (merged over `process.env` only when present, so default behavior — child inherits parent env — is untouched). `packages/loop/src/review-hooks.ts` holds `REVIEW_HOOK_SUPPRESSION_ENV` (currently `ENABLE_CODE_SECURITY_REVIEW=0`) + `resolveChildEnv()`; the map is the extension point and `childEnv` lets callers suppress any env-opt-out hook.
+- Two new LoopStartOptions fields: `suppressIterationReview` (friendly opt-in → suppression set) and `childEnv` (generic override, wins over the set). Runner computes `this.childEnv` once in the constructor and passes it to BOTH spawnClaude calls (iteration + review pass).
+- CLI flag `--suppress-iteration-review` on `rauf loop run`; also threaded through `rauf loop start` body → web `StartLoopBodySchema` → `LoopStartOptions` for server-mode parity.
+- Testing child env through the runner: mock-claude writes `$ENABLE_CODE_SECURITY_REVIEW` to an abs file under tmpDir, then `echo RAUF_DONE`. The default-behavior test must `delete process.env.ENABLE_CODE_SECURITY_REVIEW` first (parent may carry it) — child inherits parent env, so the assertion of "unset" is only deterministic after clearing it.
+- The "review at the gate" model is documented in `docs/SPEC-CLI.md` (loop run → "Single-gate review") and `docs/DOGFOODING.md`. Gate = `git diff main..HEAD` / PR hook / `rauf loop review`, never per item. See [[rauf_loop_security_review_altitude]].

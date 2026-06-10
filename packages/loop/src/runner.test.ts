@@ -923,6 +923,51 @@ fi`,
     });
   });
 
+  describe("child session env (suppressIterationReview)", () => {
+    it("propagates the review-hook suppression env to child sessions when opted in", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Suppression test")]);
+      const capture = path.join(tmpDir, "env-capture.txt");
+      // Mock claude records the suppression env var it received, then signals done.
+      writeMockClaude(
+        binDir,
+        `printf '%s' "$ENABLE_CODE_SECURITY_REVIEW" > '${capture}'\necho "RAUF_DONE"`,
+      );
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        suppressIterationReview: true,
+      });
+      await runner.start();
+
+      expect(fs.existsSync(capture)).toBe(true);
+      expect(fs.readFileSync(capture, "utf-8")).toBe("0");
+    });
+
+    it("does not set the suppression env by default", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Default env test")]);
+      const capture = path.join(tmpDir, "env-capture.txt");
+      writeMockClaude(
+        binDir,
+        `printf '%s' "$ENABLE_CODE_SECURITY_REVIEW" > '${capture}'\necho "RAUF_DONE"`,
+      );
+
+      // Ensure the parent env doesn't already carry the var, so the child
+      // inheriting the parent environment unchanged sees it unset.
+      const prev = process.env.ENABLE_CODE_SECURITY_REVIEW;
+      delete process.env.ENABLE_CODE_SECURITY_REVIEW;
+      try {
+        const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+        await runner.start();
+      } finally {
+        if (prev !== undefined) process.env.ENABLE_CODE_SECURITY_REVIEW = prev;
+      }
+
+      expect(fs.existsSync(capture)).toBe(true);
+      // Var is unset → empty string captured.
+      expect(fs.readFileSync(capture, "utf-8")).toBe("");
+    });
+  });
+
   describe("empty backlog", () => {
     it("completes immediately with no items", async () => {
       setupProject(tmpDir, []);

@@ -90,6 +90,24 @@ commit.
    GitHub Actions run. Merge only on green. Publishing anything outward-facing
    (e.g. cutting a release tag) is a deliberate human step, never the loop.
 
+### Review at the gate, not per iteration
+
+If you have a commit/`Stop`-triggered review hook installed globally (e.g. a
+security-review plugin), it fires inside **every** loop child session — noise,
+not real review, since the child rubber-stamps its own findings. Run the loop
+quiet and review the cumulative branch diff **once**, surfaced to you:
+
+```bash
+rauf-stable loop run . --backlog specs/<name> --suppress-iteration-review
+```
+
+`--suppress-iteration-review` propagates a documented set of hook-suppression
+env vars (`REVIEW_HOOK_SUPPRESSION_ENV` in `@rauf/loop`, currently
+`ENABLE_CODE_SECURITY_REVIEW=0`) into each child session. It is generic — the
+`childEnv` loop option opts out of any hook that honors an env var. Then gate
+once over `main..HEAD`: `git diff main..HEAD`, the PR review hook / CI, or
+`rauf loop review`. See `docs/SPEC-CLI.md` → "Single-gate review".
+
 ## Verify the setup
 
 ```bash

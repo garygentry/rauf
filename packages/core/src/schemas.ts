@@ -321,6 +321,21 @@ export const LoopStartOptionsSchema = z.object({
   review: z.boolean().optional(),
   reviewOnly: z.boolean().optional(),
   backlogRoot: z.string().optional(),
+  /**
+   * Opt-in: suppress per-iteration review/security hooks inside the loop's
+   * child agent sessions, deferring review to a single gate over the cumulative
+   * branch diff. When true, a documented set of hook-suppression env vars is
+   * merged into every child session's environment. Default behavior (undefined/
+   * false) is unchanged — child sessions inherit the parent environment as-is.
+   */
+  suppressIterationReview: z.boolean().optional(),
+  /**
+   * Generic environment variable overrides applied to every child agent session
+   * spawned by the loop. Values here take precedence over the suppression set
+   * implied by `suppressIterationReview`. Not hardcoded to any one plugin —
+   * use this to opt out of any hook that honors an env var.
+   */
+  childEnv: z.record(z.string(), z.string()).optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
