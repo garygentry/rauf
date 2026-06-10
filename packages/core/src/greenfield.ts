@@ -52,13 +52,23 @@ const GITIGNORE_TEMPLATES: Record<string, string> = {
   custom: "",
 };
 
-/** Rauf-specific entries appended to every .gitignore */
+/**
+ * Rauf-specific entries appended to every .gitignore. Uses `**` so the rules
+ * apply to nested backlog dirs (e.g. specs/<feature>/.rauf/) as well as the
+ * project-root .rauf/. Keep backlog.json, progress.md, RAUF.md, and archive/
+ * tracked.
+ */
 const RAUF_GITIGNORE = [
   "",
-  "# Rauf loop state",
-  ".rauf/state.json",
-  ".rauf/DONE",
-  ".rauf/rauf.log",
+  "# Rauf loop runtime state (never tracked, any backlog dir)",
+  "**/.rauf/state.json",
+  "**/.rauf/DONE",
+  "**/.rauf/CANCEL",
+  "**/.rauf/rauf.log",
+  "**/.rauf/iteration-status.json",
+  "**/.rauf/.loop.lock",
+  // backlog.json.bak sits beside backlog.json (root .rauf/ or specs/<feature>/).
+  "**/backlog.json.bak",
 ].join("\n");
 
 // ─── Types ────────────────────────────────────────────────────────

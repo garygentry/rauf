@@ -477,8 +477,8 @@
         "Exactly one commit is produced per completed item (no duplicate agent+runner commits)",
         "pnpm test && pnpm typecheck && pnpm lint && pnpm build pass"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T22:10:50.018Z",
       "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10.",
       "estimatedIterations": 2
     },
@@ -499,6 +499,22 @@
       "completedAt": null,
       "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10. The harness auto-mode classifier also blocks ad-hoc ENABLE_CODE_SECURITY_REVIEW=0 on the loop command, reinforcing the need for a first-class, intentional mechanism.",
       "estimatedIterations": 3
+    },
+    {
+      "id": "019",
+      "type": "feature",
+      "priority": 2,
+      "title": "Loop autonomy: RAUF_NEEDS_HUMAN sets item aside and continues (no halt)",
+      "description": "needs_human now sets the item aside (blocked + needsHuman flag) and the loop continues with other runnable items instead of halting; also restores the --review pass on that path. Implemented manually in commit 90cffe0.",
+      "acceptanceCriteria": [
+        "needs_human item is stored blocked+needsHuman and not reselected",
+        "loop continues to other runnable items; dependents stay pending",
+        "review pass runs after a needs_human set-aside when items completed",
+        "pnpm test && pnpm typecheck && pnpm lint pass"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T22:06:15.906Z",
+      "notes": "Dogfooding fix surfaced during forge-5-loop on release-automation, 2026-06-10."
     }
   ]
 }

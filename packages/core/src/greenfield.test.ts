@@ -732,6 +732,19 @@ describe("RAUF_GITIGNORE", () => {
     expect(RAUF_GITIGNORE).toContain(".rauf/DONE");
     expect(RAUF_GITIGNORE).toContain(".rauf/rauf.log");
   });
+
+  it("covers all runtime files with nested-dir (**) patterns", () => {
+    // Lock, CANCEL, iteration-status, and the .bak must be ignored too, in any
+    // backlog dir (root .rauf/ and specs/<feature>/.rauf/).
+    expect(RAUF_GITIGNORE).toContain("**/.rauf/.loop.lock");
+    expect(RAUF_GITIGNORE).toContain("**/.rauf/CANCEL");
+    expect(RAUF_GITIGNORE).toContain("**/.rauf/iteration-status.json");
+    // .bak sits beside backlog.json (not under .rauf/), so it's matched anywhere.
+    expect(RAUF_GITIGNORE).toContain("**/backlog.json.bak");
+    // backlog.json / progress.md / RAUF.md stay tracked (not ignored).
+    expect(RAUF_GITIGNORE).not.toContain("**/.rauf/backlog.json\n");
+    expect(RAUF_GITIGNORE).not.toContain(".rauf/progress.md");
+  });
 });
 
 // ─── Error cases ─────────────────────────────────────────────────
