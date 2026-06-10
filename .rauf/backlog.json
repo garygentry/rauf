@@ -515,6 +515,19 @@
       "status": "done",
       "completedAt": "2026-06-10T22:06:15.906Z",
       "notes": "Dogfooding fix surfaced during forge-5-loop on release-automation, 2026-06-10."
+    },
+    {
+      "id": "020",
+      "type": "bug",
+      "priority": 3,
+      "title": "test-sandbox verify.sh trips the loop dirty-tree guard (fixture drift + no --force)",
+      "description": "Committed sandbox fixtures (test-sandbox/.rauf/backlog.json, specs/feature-a/backlog.json) still say 'ralph loop runner' while setup.sh regenerates them as 'rauf', so the tree is dirty after setup and the loop refuses to run. The sandbox harness also never passes --force despite the loop mutating tracked backlog fixtures during a run. Fix: regenerate+commit the fixtures (rename leftover) AND/OR have run.sh/verify.sh pass --force (the sandbox intentionally mutates fixtures). Surfaced while verifying the needs_human autonomy fix 2026-06-10.",
+      "acceptanceCriteria": [
+        "bash test-sandbox/verify.sh passes from a clean checkout",
+        "committed sandbox fixtures match setup.sh output (no 'ralph' leftovers)"
+      ],
+      "status": "pending",
+      "completedAt": null
     }
   ]
 }
