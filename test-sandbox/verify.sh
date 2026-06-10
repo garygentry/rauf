@@ -3,6 +3,13 @@ set -euo pipefail
 SANDBOX_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SANDBOX_DIR/.." && pwd)"
 
+# Point every loop run's git operations (dirty-tree guard + auto-commit) at
+# the sandbox's own throwaway repo (created by setup.sh), never the parent
+# rauf repo. The guard then sees a clean `sandbox` branch (no --force needed)
+# and sandbox commits stay out of the parent's history.
+export GIT_DIR="$SANDBOX_DIR/.sandbox-git"
+export GIT_WORK_TREE="$SANDBOX_DIR"
+
 # Require jq
 if ! command -v jq &>/dev/null; then
   echo "ERROR: jq is required but not installed."

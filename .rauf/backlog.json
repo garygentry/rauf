@@ -526,8 +526,8 @@
         "bash test-sandbox/verify.sh passes from a clean checkout",
         "committed sandbox fixtures match setup.sh output (no 'ralph' leftovers)"
       ],
-      "status": "pending",
-      "completedAt": null
+      "status": "done",
+      "completedAt": "2026-06-10T22:37:37.195Z"
     }
   ]
 }

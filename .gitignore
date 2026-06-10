@@ -20,6 +20,10 @@ build/
 .DS_Store
 rauf-bin
 ~/.rauf/
+# test-sandbox keeps its own throwaway git repo here (NOT named .git, so the
+# parent never treats it as an embedded submodule) to isolate the loop's
+# dirty-tree guard and auto-commit from this repo. See test-sandbox/setup.sh.
+test-sandbox/.sandbox-git/
 .worktrees/
 .playwright-mcp/
 
