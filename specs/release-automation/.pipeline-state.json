@@ -3,7 +3,7 @@
   "pipelineStatus": "active",
   "createdAt": "2026-06-09T00:00:00Z",
   "updatedAt": "2026-06-10T00:00:00Z",
-  "currentStage": "forge-4-backlog",
+  "currentStage": "forge-5-loop",
   "stages": {
     "forge-1-prd": {
       "status": "complete",
@@ -64,7 +64,19 @@
         "forge-1-prd": 2,
         "forge-2-tech": 1
       }
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/release-automation/backlog.json"],
+      "completedAt": "2026-06-10T00:00:00Z",
+      "commitHash": null,
+      "basedOnVersions": {
+        "forge-1-prd": 2,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      }
     }
   },
-  "notes": "RISK-1 (Bun cross-compile of all 5 targets) empirically validated during forge-2-tech on Bun 1.3.10 from a single Linux host — see tech-spec.md §3.3. Tag-protection ruleset (OTQ-1) is manual GitHub config, not code; document as a one-time setup step."
+  "notes": "RISK-1 (Bun cross-compile of all 5 targets) empirically validated during forge-2-tech on Bun 1.3.10 from a single Linux host — see tech-spec.md §3.3. Tag-protection ruleset (OTQ-1) is manual GitHub config, not code; document as a one-time setup step. forge-4-backlog: 10 items (6 feature, 4 chore), validated via rauf-stable (exit 0); deepest dependency chain = 5 (001→002→004→007→010); install-script items 008/009 are independent for loop parallelism; no agentDelegation used."
 }
