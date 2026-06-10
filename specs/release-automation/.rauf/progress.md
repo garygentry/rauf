@@ -42,3 +42,8 @@
   - `node:child_process` is allowed in `scripts/release/*` executables (build-notes.ts, prepare.ts) — the prohibition only covers `lib.ts` (the pure module). Don't over-apply the constraint.
   - **Smoke-test trick for build-notes:** temp git repo with `lib.ts`+`build-notes.ts` under `$FIX/scripts/release/`, a CHANGELOG, and tags `pre-rauf-rename` → `v0.2.0` → `v0.3.0`. Verified the compare base resolves to v0.2.0 (decoy excluded by `--match 'v*'`); deleting v0.2.0 from the history → first-release path, no compare line. In the fixture use `git -c tag.gpgSign=false tag <name>` for lightweight tags (the gpgSign learning from iteration 3).
   - On the first-release path `git describe`'s `fatal: No tags can describe …` goes to stderr (execFileSync inherits stderr) before the catch swallows the nonzero exit — expected noise in CI logs, not a failure; the spec's sample code behaves identically.
+## Iteration 6 — item 006 (quality-gate composite action + ci.yml refactor)
+
+- Created `.github/actions/quality-gate/action.yml` (exact YAML from spec 04 §5) and replaced ci.yml's six inline gate steps with `- uses: ./.github/actions/quality-gate` (setup/install steps untouched).
+- **Learnings for future iterations:**
+  - **YAML parse validation without extra deps:** `Bun.YAML.parse(await Bun.file(f).text())` via `bun -e` — no js-yaml/pyyaml install needed. Item 007's "release.yml parses as valid YAML" criterion can use the same one-liner.
