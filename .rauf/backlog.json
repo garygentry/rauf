@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1",
   "project": "ralph",
   "description": "Multi-backlog support — enables ralph to operate on any backlog location with isolated state, lock files, and per-root instruction resolution. Introduces BacklogPaths abstraction, --backlog CLI flag, and filesystem-based active root scanning.",
   "items": [
@@ -462,6 +463,42 @@
       "specReferences": [
         "specs/multi-backlog/PRD.md"
       ]
+    },
+    {
+      "id": "017",
+      "type": "bug",
+      "priority": 2,
+      "title": "Loop runner's `git add -A` commits transient runtime state into git history",
+      "description": "The loop runner commits via `git add -A && git commit` (packages/loop/src/git-commit.ts), which sweeps its OWN runtime files into the per-item commit: .loop.lock (a lock file!), state.json, backlog.json.bak, and the DONE marker. Observed during the release-automation loop (commit 62190f2 contained .rauf/.loop.lock + state.json + backlog.json.bak). Lock/marker files must never enter history. Fix: gitignore the per-backlog .rauf/ runtime files (lock, state.json, *.bak, DONE, rauf.log) and/or scope the runner's staging to exclude its own state dir via pathspec. NOTE: the agent-self-commit half of this was already fixed live in .rauf/RAUF.md (commit 656d8c6); this item is the runner-side staging hygiene follow-up.",
+      "acceptanceCriteria": [
+        "After a loop run, git log shows NO .loop.lock, state.json, *.bak, or DONE files in any [rauf] commit",
+        "Per-backlog .rauf/ runtime files are gitignored or excluded from the runner's git add via pathspec",
+        "backlog.json itself remains tracked and committed normally",
+        "Exactly one commit is produced per completed item (no duplicate agent+runner commits)",
+        "pnpm test && pnpm typecheck && pnpm lint && pnpm build pass"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10.",
+      "estimatedIterations": 2
+    },
+    {
+      "id": "018",
+      "type": "feature",
+      "priority": 3,
+      "title": "Single-gate review for loops — suppress per-iteration security/review hooks in child sessions",
+      "description": "When a commit/Stop-triggered review hook (e.g. the security-guidance plugin) is installed globally, the loop's child agent sessions trigger it every iteration. With the agent self-commit removed (RAUF.md 656d8c6) the heavyweight commit-review no longer fires, but the Stop-hook diff review still runs per child session, and there is no first-class way to run a loop with per-iteration review hooks suppressed in favor of ONE review over the cumulative branch diff. For human-in-the-loop autonomous dev, per-item review inside autonomous child sessions is the wrong altitude (the agent rubber-stamps findings); review belongs at the gate, surfaced to the human. Add: a documented/opt-in way for the loop to spawn child sessions with per-iteration review hooks disabled (e.g. propagate ENABLE_CODE_SECURITY_REVIEW=0 or a generic hook-suppression env), plus a post-loop gate review over main..HEAD.",
+      "acceptanceCriteria": [
+        "Loop provides a documented, opt-in flag/config to run child sessions without per-iteration review-hook noise",
+        "A single review over the cumulative branch diff (main..HEAD) is run or documented as the gate step after the loop",
+        "The mechanism is generic (not hardcoded to one plugin) and documented in docs/SPEC-* and rauf guidance",
+        "Default behavior is unchanged unless explicitly opted in",
+        "pnpm test && pnpm typecheck && pnpm lint pass"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10. The harness auto-mode classifier also blocks ad-hoc ENABLE_CODE_SECURITY_REVIEW=0 on the loop command, reinforcing the need for a first-class, intentional mechanism.",
+      "estimatedIterations": 3
     }
   ]
 }
