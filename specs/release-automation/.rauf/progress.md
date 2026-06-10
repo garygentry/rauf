@@ -47,3 +47,11 @@
 - Created `.github/actions/quality-gate/action.yml` (exact YAML from spec 04 §5) and replaced ci.yml's six inline gate steps with `- uses: ./.github/actions/quality-gate` (setup/install steps untouched).
 - **Learnings for future iterations:**
   - **YAML parse validation without extra deps:** `Bun.YAML.parse(await Bun.file(f).text())` via `bun -e` — no js-yaml/pyyaml install needed. Item 007's "release.yml parses as valid YAML" criterion can use the same one-liner.
+
+## Iteration 7 — item 007 (release.yml release workflow)
+
+- Created `.github/workflows/release.yml` — verbatim from spec 04 §3 (triggers push tags v* + workflow_dispatch(tag), permissions contents: write only, concurrency release-${{ github.ref }} / cancel-in-progress: false, 13 steps: checkout → authorize actor → setup-bun/pnpm → install → preflight + no-existing-release assert → quality-gate → cross-compile ×5 → SHA256SUMS → build-notes → gh release create → summary). Completed in 1 iteration (estimate was 2 — the spec YAML was copy-ready).
+- **Learnings for future iterations:**
+  - Structural acceptance checks on workflow YAML are scriptable with the same `Bun.YAML.parse` trick: parse, then index `y.jobs.release.steps` to assert step order/`if:` conditions/`run:` contents programmatically rather than eyeballing.
+  - The spec YAML is already prettier-clean for .github files (prettier reformats `tags: ['v*']`→`["v*"]` style but our spec already used double quotes); comment alignment inside `run: |` blocks is untouched by prettier since it's string content.
+  - GitHub Actions injection hygiene (a PostToolUse hook flags workflow edits): `github.event.inputs.tag` must only reach `run:` blocks via `env:` (TAG/INPUT_TAG), never direct `${{ }}` interpolation in shell text — the spec's YAML already follows this; keep the pattern for any future workflow steps.
