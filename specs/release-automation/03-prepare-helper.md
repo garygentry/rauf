@@ -47,7 +47,7 @@ const version = positionals[0]!;
 
 ## 2. Guards (REQ-PREP-07 — all evaluated BEFORE any mutation)
 
-The guards run in this order; the first failure calls `fail()` and the process exits nonzero, leaving the repo **completely untouched**. `repoRoot` is resolved once via `path.resolve(import.meta.dir, "../..")`. Git is invoked through a small `git()` helper that mirrors `checkLoopPreconditions`' `execFile("git", …)` pattern (`packages/loop/src/git-status.ts:71`) but operates on the repo root.
+The guards run in this order; the first failure calls `fail()` and the process exits nonzero, leaving the repo **completely untouched**. `repoRoot` is resolved once via `path.resolve(import.meta.dir, "../..")`. Git is invoked through a small `git()` helper that mirrors the `execGit`/`execFile("git", …)` pattern used by `checkLoopPreconditions` (`packages/loop/src/git-status.ts`) but operates on the repo root.
 
 ```typescript
 import { execFileSync } from "node:child_process";
@@ -119,6 +119,8 @@ if (compareVersions(version, current) !== 1) {
   fail(`refusing: ${version} is not greater than current ${current}`);
 }
 ```
+
+> The comparison is always against the **canonical** `version.ts` value (currently `0.2.0`), never the drifted `packages/docs` `0.1.0` — so the first real release must be strictly greater than `0.2.0` (e.g. `0.3.0` or `0.2.1`). The same `release:prepare` run that bumps forward also corrects the docs drift (§3.2).
 
 ### 2.5 Changelog has content (REQ-PREP-05)
 

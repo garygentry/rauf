@@ -26,7 +26,7 @@ rauf/
 ├── .github/
 │   ├── actions/
 │   │   └── quality-gate/
-│   │       └── action.yml                    + composite: the 7-command gate (04-…workflow.md §3)
+│   │       └── action.yml                    + composite: the 6-command gate (04-…workflow.md §3)
 │   └── workflows/
 │       ├── ci.yml                            ~ check job → uses ./.github/actions/quality-gate (§3.2)
 │       └── release.yml                       + the release workflow, single ubuntu-latest job
@@ -137,7 +137,7 @@ export function extractSection(content: string, v: string): string;
 
 ### 3.2 Workflow / composite-action structure
 
-- `.github/actions/quality-gate/action.yml` — a **local composite action** running the 7-command gate (`build → schema:check → typecheck → lint → format:check → test`). Single source of truth; both `ci.yml`'s `check` job and `release.yml` step 6 do `uses: ./.github/actions/quality-gate`. Drift between the two gates is structurally impossible (tech-spec §6.3, V-009).
+- `.github/actions/quality-gate/action.yml` — a **local composite action** running the 6-command gate (`build → schema:check → typecheck → lint → format:check → test`). Single source of truth; both `ci.yml`'s `check` job and `release.yml` step 6 do `uses: ./.github/actions/quality-gate`. Drift between the two gates is structurally impossible (tech-spec §6.3, V-009).
 - `release.yml` — one `release` job on `ubuntu-latest`, 11 ordered steps (`04-ci-preflight-and-workflow.md` §3).
 
 ## 4. Build & deployment considerations

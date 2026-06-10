@@ -195,6 +195,11 @@ jobs:
 A thin Bun script (sibling of `preflight.ts`) that composes `dist/NOTES.md`:
 
 ```typescript
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { execFileSync } from "node:child_process";
+import { extractSection, REPO_SLUG } from "./lib";
+
 const repoRoot = path.resolve(import.meta.dir, "../..");
 const version = process.env.VERSION!;             // from preflight output
 const tag = process.env.TAG!;
@@ -262,4 +267,4 @@ runs:
 - End-to-end (tech-spec §8): cut `v0.3.0-rc.1` → all five assets + `SHA256SUMS` publish, release marked **prerelease** (not latest), notes match the changelog section; then promote `v0.3.0` → becomes `latest`. (Success Criteria #3/#6.)
 - Drift negative test: push a tag whose value ≠ `version.ts` → job fails at step 5 before any build (Success Criteria #5/#9).
 - Re-run against an already-published stable tag → step 5 "Assert no existing release" fails, nothing mutated (Success Criteria #8).
-- `git grep -n "quality-gate"` shows both `ci.yml` and `release.yml` referencing the composite action; neither contains the inline 7-command list.
+- `git grep -n "quality-gate"` shows both `ci.yml` and `release.yml` referencing the composite action; neither contains the inline 6-command list.

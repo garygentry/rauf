@@ -23,7 +23,7 @@ New and modified files (all release tooling is repo infrastructure, not shipped 
 ```
 .bun-version                          # NEW — pins Bun (e.g. "1.3.10") for reproducible builds
 .github/workflows/release.yml         # NEW — the release workflow (single ubuntu-latest job)
-.github/actions/quality-gate/action.yml # NEW — shared composite action: the 7-command quality gate, used by ci.yml + release.yml (§6.3)
+.github/actions/quality-gate/action.yml # NEW — shared composite action: the 6-command quality gate, used by ci.yml + release.yml (§6.3)
 .github/workflows/ci.yml              # MODIFIED — `check` job invokes shared quality-gate action (§6.3); `.bun-version` now also pins CI's Bun (§3.9)
 vitest.config.ts                      # NEW — root vitest project; include scoped to scripts/release/**, excludes packages/** (§6.3)
 scripts/
@@ -277,7 +277,7 @@ The prep helper **mirrors** this function's `execFile("git", …)` approach and 
 
 ### 6.3 `ci.yml` — quality-gate as a shared composite action + scripts test coverage (REQ-BUILD-06)
 
-**Single source of truth for the gate (no drift by construction).** REQ-BUILD-06 requires the release gate (workflow step 6) to run the *same* quality suite as `ci.yml`'s `check` job. Rather than duplicating the seven-command list in two workflow files and relying on contributor discipline to keep them in sync, the sequence is extracted into one **local composite action**, `.github/actions/quality-gate/action.yml`, that runs `pnpm build` → `pnpm schema:check` → `pnpm typecheck` → `pnpm lint` → `pnpm format:check` → `pnpm test` (it assumes Bun/pnpm/install are already set up by the caller). Both `ci.yml`'s `check` job and `release.yml` step 6 invoke it via `uses: ./.github/actions/quality-gate`. Adding or removing a check is then a one-place edit that *automatically* applies to both workflows — divergence is structurally impossible, not merely discouraged. (Earlier alternatives — duplicating the list, or a separate `test:scripts` step in both files — are rejected: both leave two lists that can silently drift, exactly the REQ-BUILD-06 risk this closes.)
+**Single source of truth for the gate (no drift by construction).** REQ-BUILD-06 requires the release gate (workflow step 6) to run the *same* quality suite as `ci.yml`'s `check` job. Rather than duplicating the six-command list in two workflow files and relying on contributor discipline to keep them in sync, the sequence is extracted into one **local composite action**, `.github/actions/quality-gate/action.yml`, that runs `pnpm build` → `pnpm schema:check` → `pnpm typecheck` → `pnpm lint` → `pnpm format:check` → `pnpm test` (it assumes Bun/pnpm/install are already set up by the caller). Both `ci.yml`'s `check` job and `release.yml` step 6 invoke it via `uses: ./.github/actions/quality-gate`. Adding or removing a check is then a one-place edit that *automatically* applies to both workflows — divergence is structurally impossible, not merely discouraged. (Earlier alternatives — duplicating the list, or a separate `test:scripts` step in both files — are rejected: both leave two lists that can silently drift, exactly the REQ-BUILD-06 risk this closes.)
 
 > Files affected: `.github/actions/quality-gate/action.yml` (NEW), `.github/workflows/ci.yml` (MODIFIED — `check` job calls the composite action), `.github/workflows/release.yml` (step 6 calls the same action).
 

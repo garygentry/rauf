@@ -246,7 +246,7 @@ export function rollChangelog(
  */
 export function extractSection(content: string, v: string): string {
   const lines = content.split("\n");
-  const headingRe = new RegExp(`^## ${v.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\s*$`);
+  const headingRe = new RegExp(`^## ${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`);
   const start = lines.findIndex((l) => headingRe.test(l));
   if (start === -1) throw new Error(`changelog has no "## ${v}" section`);
   let end = lines.length;

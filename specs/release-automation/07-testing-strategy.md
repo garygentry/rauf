@@ -29,7 +29,7 @@ How release-automation is tested: colocated vitest unit suites for the pure/test
 | Function                | Cases                                                                                              |
 | ----------------------- | ------------------------------------------------------------------------------------------------- |
 | `rollChangelog`         | greenfield (no prior `## X.Y.Z`); with prior sections (newest-first preserved); **byte-exact** output asserted; throws on empty/absent `## Unreleased`. |
-| `extractSection`        | section present (verbatim body, trimmed); section absent → throws.                                 |
+| `extractSection`        | section present (verbatim body, trimmed); section absent → throws; **regex-escape**: a heading differing from the version only at a `.` position (e.g. `## 0X3X0-rcX1` vs version `0.3.0-rc.1`) must NOT match (guards the dots-are-not-wildcards escape). |
 | `getUnreleasedBody`     | non-empty; empty (heading present, no body); absent heading → `""`.                                |
 | `isValidVersion`        | accepts `1.2.3`, `1.2.3-rc.1`; rejects `v1.2.3`, `1.2`, `1.2.3+build`, `""`.                       |
 | `compareVersions`       | `<`, `=`, `>`; prerelease ordering (`1.2.3-rc.1` < `1.2.3`).                                        |
