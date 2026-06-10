@@ -3,15 +3,7 @@
   "pipelineStatus": "active",
   "createdAt": "2026-06-09T00:00:00Z",
   "updatedAt": "2026-06-10T00:00:00Z",
-  "currentStage": "forge-3-specs",
-  "artifacts": [
-    "specs/release-automation/00-core-definitions.md",
-    "specs/release-automation/01-architecture-layout.md",
-    "specs/release-automation/02-shared-lib.md",
-    "specs/release-automation/03-prepare-helper.md",
-    "specs/release-automation/04-ci-preflight-and-workflow.md",
-    "specs/release-automation/05-install-scripts.md"
-  ],
+  "currentStage": "forge-4-backlog",
   "stages": {
     "forge-1-prd": {
       "status": "complete",
@@ -44,6 +36,27 @@
       "findingsCount": 9,
       "verifiedAt": "2026-06-10T00:00:00Z",
       "fixedAt": "2026-06-10T00:00:00Z"
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/release-automation/00-core-definitions.md",
+        "specs/release-automation/01-architecture-layout.md",
+        "specs/release-automation/02-shared-lib.md",
+        "specs/release-automation/03-prepare-helper.md",
+        "specs/release-automation/04-ci-preflight-and-workflow.md",
+        "specs/release-automation/05-install-scripts.md",
+        "specs/release-automation/06-security-and-setup.md",
+        "specs/release-automation/07-testing-strategy.md",
+        "specs/release-automation/TRACEABILITY.md"
+      ],
+      "completedAt": "2026-06-10T00:00:00Z",
+      "commitHash": "3c77eb1",
+      "basedOnVersions": {
+        "forge-1-prd": 2,
+        "forge-2-tech": 1
+      }
     }
   },
   "notes": "RISK-1 (Bun cross-compile of all 5 targets) empirically validated during forge-2-tech on Bun 1.3.10 from a single Linux host — see tech-spec.md §3.3. Tag-protection ruleset (OTQ-1) is manual GitHub config, not code; document as a one-time setup step."
