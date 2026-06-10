@@ -229,8 +229,8 @@
         "Docs include the release-tags tag ruleset setup described as a first-release blocker (restrict v* creation to the repository admin)",
         "Docs include the pre-release setup checklist and the Windows `irm … | iex` install one-liner"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:35:14.837Z",
       "dependsOn": [
         "003",
         "007"

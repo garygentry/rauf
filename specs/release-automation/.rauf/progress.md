@@ -67,3 +67,11 @@
 - Created `scripts/install-binary.ps1` per spec 05 §2.2 (download `rauf-windows-x64.exe` + SHA256SUMS → mandatory Get-FileHash verify → Move-Item to `$HOME\.local\bin\rauf.exe` → user-PATH append → `& $Target version`). RAUF_REPO/RAUF_VERSION overrides honored.
 - **Spec bug found & fixed (PowerShell twin of iteration 8's `|| true`):** the spec's `(Select-String …).Line.Split(" ")[0]` throws a null-method error when the asset is NOT listed in SHA256SUMS — before the intended `remove temp + throw "not listed"` path runs, leaving the unverified download on disk. Fixed by guarding the match (`$SumsMatch = Select-String … | Select-Object -First 1; $expected = if ($SumsMatch) { … } else { $null }`) so the unlisted-asset path removes $Tmp and throws the spec's message.
 - No `pwsh` on this machine (`whence -p pwsh powershell` → nothing), so acceptance was verified by inspection as the item's notes prescribe. Prettier has no PowerShell parser — `.ps1` files pass `format:check` untouched.
+
+## Iteration 10 — item 010 (release/install docs + one-time setup)
+
+- Created `docs/RELEASING.md` (release-tags ruleset as FIRST-RELEASE BLOCKER with exact GitHub steps, pre-release checklist, release:prepare flow, Unix/Windows install one-liners, macOS quarantine note + curl-not-quarantined caveat, v1 unsigned/deferred-signing stance) and added an Install section + docs-table row to README.md.
+- **Learnings for future iterations:**
+  - There is no `docs/architecture/` dir despite spec 01's layout line — docs are flat UPPERCASE files under `docs/`; `RELEASING.md` follows that convention.
+  - `packages/docs` (Astro Starlight) auto-builds from `docs/` content collections but only the pages in its sidebar config — adding `docs/RELEASING.md` did NOT break `pnpm build` (it's simply not routed); if it should appear on the docs site, that's a separate sidebar/content-collection change.
+  - Item 011 is the RAUF_NEEDS_HUMAN e2e gate; it depends on the `release-tags` ruleset (manual GitHub config documented in docs/RELEASING.md §1.1) being created by the maintainer BEFORE its step 2.

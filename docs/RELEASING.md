@@ -1,0 +1,158 @@
+# Releasing & Installing Rauf
+
+Maintainer and end-user documentation for the tag-driven release pipeline: one-time
+GitHub setup, the pre-release checklist, how a release is cut, and how end users
+install the published binaries.
+
+---
+
+## 1. One-Time Setup (maintainer)
+
+### 1.1 The `release-tags` tag ruleset — FIRST-RELEASE BLOCKER
+
+> **⛔ The first `vX.Y.Z` release MUST NOT proceed until this ruleset exists.**
+> The ruleset is the **primary** authorization layer (REQ-SEC-02): it prevents
+> non-owners from creating `v*` tags at all, so the release workflow never even
+> starts for an unauthorized actor. The workflow's own actor check is only
+> defense-in-depth. Shipping with only the actor check active is explicitly
+> disallowed.
+
+This is **manual GitHub configuration** — a human with repository admin rights
+must perform it once in the repo settings (it cannot be automated from this
+repository's code):
+
+1. Go to **Settings → Rules → Rulesets → New ruleset → New tag ruleset**.
+2. **Name:** `release-tags`
+3. **Enforcement status:** **Active**
+4. **Target tags:** tag name pattern `v*` (fnmatch)
+5. **Rules:** enable **Restrict creations** — only actors on the bypass list may
+   create matching tags.
+6. **Bypass list:** **Repository admin** (the owner, `garygentry`) only.
+
+Verification: Settings → Rules shows an **Active** `release-tags` ruleset, and a
+`v*` tag push by a non-owner is rejected by GitHub before any workflow run.
+
+### 1.2 Pre-release setup checklist
+
+Run through this once before the **first** release (items 1–2 are blockers):
+
+- [ ] **[blocker]** Create the `release-tags` tag ruleset (§1.1 above).
+- [ ] **[blocker]** Confirm `packages/core/src/version.ts` and all six
+      `package.json` files (root, `packages/core`, `packages/cli`,
+      `packages/loop`, `packages/web`, `packages/docs`) agree on the version.
+      The first `pnpm release:prepare` run corrects the historical
+      `packages/docs` `0.1.0` drift automatically — but verify the result.
+- [ ] Confirm `.bun-version` exists at the repo root and CI is green on the
+      pinned Bun version.
+- [ ] Confirm `CHANGELOG.md` has a `## Unreleased` section with real notes
+      (the prepare helper refuses to release an empty changelog).
+
+---
+
+## 2. Cutting a Release (maintainer)
+
+Releases are tag-driven. The whole flow is:
+
+```bash
+pnpm release:prepare 0.3.0            # bump + changelog roll + commit + tag + push
+pnpm release:prepare 0.3.0 --dry-run  # preview the planned edits, no writes
+pnpm release:prepare 0.3.0 --no-push  # do everything locally, push manually later
+```
+
+`release:prepare` guards against unsafe states (wrong branch, dirty tree,
+behind/ahead of origin, existing tag, non-incrementing version, empty
+changelog — each failure prints a distinct `refusing: …` line and leaves the
+repo untouched), then bumps all seven version locations, renames
+`## Unreleased` to `## X.Y.Z` in the changelog, commits, tags `vX.Y.Z`, and
+pushes branch-first so the tagged commit is on `origin/main` before the tag
+arrives.
+
+The `v*` tag push triggers `.github/workflows/release.yml`, which:
+
+1. Verifies the actor is the repository owner (defense-in-depth behind the
+   ruleset).
+2. Runs preflight: the tag must match `version.ts` and all six `package.json`
+   versions exactly — any drift fails the run before any build.
+3. Runs the full quality gate (build, schema:check, typecheck, lint,
+   format:check, test).
+4. Cross-compiles five platform binaries, generates `SHA256SUMS` and release
+   notes from the changelog section.
+5. Publishes everything atomically in a single `gh release create` — a failure
+   anywhere earlier creates no release object.
+
+Prereleases (`0.3.0-rc.1`) are marked **prerelease** and never become
+`latest`; stable versions are published as `latest`.
+
+---
+
+## 3. Installing Rauf (end users)
+
+The published binaries are self-contained — they bundle the Bun runtime, so
+the target machine needs neither this repo nor Bun/Node.
+
+### 3.1 Linux / macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.sh | bash
+```
+
+Installs the latest release to `~/.local/bin/rauf`. The script verifies the
+download against the release's published `SHA256SUMS` before installing — a
+checksum mismatch hard-fails and the binary is never installed. (If no sha256
+tool is available or the checksums file is unreachable, the script warns and
+continues rather than blocking the install.)
+
+Env overrides:
+
+| Variable       | Default           | Purpose                                    |
+| -------------- | ----------------- | ------------------------------------------ |
+| `RAUF_VERSION` | `latest`          | Install a specific tag, e.g. `v0.3.0-rc.1` |
+| `RAUF_REPO`    | `garygentry/rauf` | Fetch releases from a different repo       |
+| `INSTALL_DIR`  | `~/.local/bin`    | Install destination                        |
+
+### 3.2 Windows
+
+```powershell
+irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.ps1 | iex
+```
+
+Installs `rauf-windows-x64.exe` as `%USERPROFILE%\.local\bin\rauf.exe` and adds
+that directory to your user `PATH` if it isn't already there (open a new
+terminal afterwards). Checksum verification via `Get-FileHash` is mandatory on
+Windows — any mismatch aborts the install.
+
+The same `RAUF_VERSION` / `RAUF_REPO` env overrides apply (set them before
+running the one-liner).
+
+Only `windows-x64` is built; Windows arm64 is out of scope.
+
+### 3.3 macOS Gatekeeper / quarantine note
+
+The darwin binaries are **unsigned in v1** (code signing and notarization are
+deferred). If Gatekeeper blocks the binary — typically when it was downloaded
+through a browser or Finder — remove the quarantine attribute:
+
+```bash
+xattr -d com.apple.quarantine ./rauf
+```
+
+(or right-click the binary in Finder and choose **Open** once).
+
+**Caveat:** binaries fetched via `curl` / `install-binary.sh` are usually
+**not** quarantined — the `com.apple.quarantine` attribute is applied by
+browsers and Finder, not by `curl` — so terminal installs are normally
+unaffected and need no workaround.
+
+---
+
+## 4. Integrity & Security Stance (v1)
+
+- Every release publishes a `SHA256SUMS` file alongside the five binaries; both
+  install scripts verify against it (hard-fail on mismatch).
+- Publishing uses only the workflow's built-in `GITHUB_TOKEN` with
+  `contents: write` — no personal access tokens or extra secrets.
+- Release notes are sourced verbatim from the human-curated changelog section;
+  no CI environment values are interpolated.
+- **Code signing / SLSA provenance is deferred** (REQ-INTEGRITY-03): v1 ships
+  unsigned binaries with checksum verification as the integrity mechanism. The
+  macOS quarantine workaround above exists because of this stance.

@@ -209,8 +209,8 @@
         "RAUF_REPO and RAUF_VERSION env overrides are honored with defaults garygentry/rauf and latest",
         "The script contains the complete download → verify → Move-Item → PATH-update → run-version flow"
       ],
-      "status": "in_progress",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:31:52.681Z",
       "dependsOn": [],
       "notes": "Symmetric with the Unix ~/.local/bin install dir. Unlike Unix there is no soft-fail path: Get-FileHash ships with Windows, so a missing checksum tool is impossible and any mismatch is a hard throw. CI cannot run this script, so verification is by inspection — ensure the flow matches spec 05 §2.2 exactly.",
       "estimatedIterations": 1,
@@ -229,7 +229,7 @@
         "Docs include the release-tags tag ruleset setup described as a first-release blocker (restrict v* creation to the repository admin)",
         "Docs include the pre-release setup checklist and the Windows `irm … | iex` install one-liner"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "completedAt": null,
       "dependsOn": [
         "003",
