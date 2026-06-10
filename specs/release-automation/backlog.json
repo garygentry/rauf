@@ -162,8 +162,8 @@
         "release.yml uses ./.github/actions/quality-gate, and gh release create attaches all five binaries plus SHA256SUMS using --verify-tag and --prerelease vs --latest driven by the is_prerelease output",
         "release.yml parses as valid YAML"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:19:09.639Z",
       "dependsOn": [
         "004",
         "005",
