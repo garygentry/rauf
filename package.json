@@ -23,6 +23,7 @@
     "generate:schemas": "bun run scripts/generate-json-schemas.ts",
     "schema:check": "bun run scripts/generate-json-schemas.ts --check",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
+    "release:prepare": "bun run scripts/release/prepare.ts",
     "rauf": "rauf"
   },
   "devDependencies": {

@@ -86,8 +86,9 @@ export const VERSION_TS_PATH = "packages/core/src/version.ts";
 /**
  * The six lockstep package.json files (REQ-VER-01). Order is stable for
  * deterministic output. NOTE the inclusion of packages/docs — the legacy
- * bump-version.sh omitted it, which is why docs drifted to 0.1.0 while
- * everything else is 0.2.0 (REQ-VER-05). This set corrects that.
+ * bump script (replaced by `pnpm release:prepare`) omitted it, which is why
+ * docs drifted to 0.1.0 while everything else is 0.2.0 (REQ-VER-05). This set
+ * corrects that.
  */
 export const PACKAGE_JSON_PATHS = [
   "package.json",
@@ -196,7 +197,7 @@ export function setVersionTs(content: string, v: string): string {
 /**
  * Return a package.json `content` with `.version` set to `v`, preserving the
  * file's original indentation and trailing newline (mirrors the technique the
- * removed bump-version.sh used via `node -e`). Throws on invalid JSON.
+ * removed legacy bump script used via `node -e`). Throws on invalid JSON.
  */
 export function setPackageJsonVersion(content: string, v: string): string {
   let pkg: Record<string, unknown>;
