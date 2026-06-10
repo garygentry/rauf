@@ -162,8 +162,8 @@
         "release.yml uses ./.github/actions/quality-gate, and gh release create attaches all five binaries plus SHA256SUMS using --verify-tag and --prerelease vs --latest driven by the is_prerelease output",
         "release.yml parses as valid YAML"
       ],
-      "status": "in_progress",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:19:09.639Z",
       "dependsOn": [
         "004",
         "005",
@@ -188,7 +188,7 @@
         "detect_asset() and the existing download URL scheme are unchanged",
         "bash -n scripts/install-binary.sh passes (no syntax errors)"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "completedAt": null,
       "dependsOn": [],
       "notes": "Read the current scripts/install-binary.sh first to find the exact insertion point (after $TMP is fetched, before install -m 0755) and the existing $ASSET / $TAG / $RAUF_REPO variable names. The soft-fail-on-missing-tool behavior matters because the script is often piped from curl|bash.",

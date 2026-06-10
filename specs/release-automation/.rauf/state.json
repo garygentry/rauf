@@ -1,19 +1,13 @@
 {
   "status": "running",
-  "iteration": 7,
-  "maxIterations": 17,
+  "iteration": 1,
+  "maxIterations": 6,
   "currentItem": null,
   "lastSignal": "clean",
-  "startedAt": "2026-06-10T17:32:34.354Z",
-  "updatedAt": "2026-06-10T18:19:09.639Z",
+  "startedAt": "2026-06-10T18:24:56.281Z",
+  "updatedAt": "2026-06-10T18:29:21.294Z",
   "completedItems": [
-    "001",
-    "002",
-    "003",
-    "004",
-    "005",
-    "006",
-    "007"
+    "008"
   ],
   "blockedItems": [],
   "error": null

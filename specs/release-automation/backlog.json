@@ -188,8 +188,8 @@
         "detect_asset() and the existing download URL scheme are unchanged",
         "bash -n scripts/install-binary.sh passes (no syntax errors)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-10T18:29:21.293Z",
       "dependsOn": [],
       "notes": "Read the current scripts/install-binary.sh first to find the exact insertion point (after $TMP is fetched, before install -m 0755) and the existing $ASSET / $TAG / $RAUF_REPO variable names. The soft-fail-on-missing-tool behavior matters because the script is often piped from curl|bash.",
       "estimatedIterations": 1,

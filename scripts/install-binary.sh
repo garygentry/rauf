@@ -88,6 +88,51 @@ else
     rm -f "$TMP"
     exit 1
   fi
+
+  # Verify the download against the release's published SHA256SUMS.
+  # Mismatch = hard-fail; missing tool / unreachable sums / unlisted asset =
+  # warn + continue (don't brick curl|bash installs). --local skips this block.
+  if [[ "$TAG" == "latest" ]]; then
+    SUMS_URL="https://github.com/$RAUF_REPO/releases/latest/download/SHA256SUMS"
+  else
+    SUMS_URL="https://github.com/$RAUF_REPO/releases/download/$TAG/SHA256SUMS"
+  fi
+
+  SUM_TOOL=""
+  if command -v sha256sum >/dev/null 2>&1; then
+    SUM_TOOL="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    SUM_TOOL="shasum -a 256"
+  fi
+
+  if [[ -z "$SUM_TOOL" ]]; then
+    echo "Warning: no sha256 tool found; skipping checksum verification." >&2
+  else
+    SUMS_TMP="$(mktemp)"
+    if ! curl -fsSL "$SUMS_URL" -o "$SUMS_TMP"; then
+      echo "Warning: could not fetch SHA256SUMS; skipping verification." >&2
+      rm -f "$SUMS_TMP"
+    else
+      # `|| true`: under set -euo pipefail a no-match grep would kill the
+      # script; an unlisted asset must warn + continue instead.
+      EXPECTED="$(grep " ${ASSET}\$" "$SUMS_TMP" | awk '{print $1}' || true)"
+      rm -f "$SUMS_TMP"
+      if [[ -z "$EXPECTED" ]]; then
+        echo "Warning: $ASSET not listed in SHA256SUMS; skipping verification." >&2
+      else
+        ACTUAL="$($SUM_TOOL "$TMP" | awk '{print $1}')"
+        if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+          echo "Checksum MISMATCH for $ASSET:" >&2
+          echo "  expected $EXPECTED" >&2
+          echo "  actual   $ACTUAL" >&2
+          rm -f "$TMP" # hard-fail: delete the unverified download
+          exit 1
+        fi
+        echo "Checksum OK ($ASSET)."
+      fi
+    fi
+  fi
+
   install -m 0755 "$TMP" "$TARGET"
   rm -f "$TMP"
   echo "Installed: $TARGET"

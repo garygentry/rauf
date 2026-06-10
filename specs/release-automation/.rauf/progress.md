@@ -55,3 +55,10 @@
   - Structural acceptance checks on workflow YAML are scriptable with the same `Bun.YAML.parse` trick: parse, then index `y.jobs.release.steps` to assert step order/`if:` conditions/`run:` contents programmatically rather than eyeballing.
   - The spec YAML is already prettier-clean for .github files (prettier reformats `tags: ['v*']`→`["v*"]` style but our spec already used double quotes); comment alignment inside `run: |` blocks is untouched by prettier since it's string content.
   - GitHub Actions injection hygiene (a PostToolUse hook flags workflow edits): `github.event.inputs.tag` must only reach `run:` blocks via `env:` (TAG/INPUT_TAG), never direct `${{ }}` interpolation in shell text — the spec's YAML already follows this; keep the pattern for any future workflow steps.
+
+## Iteration 8 — item 008 (SHA256 verification in install-binary.sh)
+
+- Inserted the spec 05 §1.2 verification block into `scripts/install-binary.sh` (download mode only, after the curl into `$TMP`, before `install -m 0755`). detect_asset() and the URL scheme untouched.
+- **Spec bug found & fixed:** the spec's snippet does `EXPECTED="$(grep " ${ASSET}\$" "$SUMS_TMP" | awk '{print $1}')"` — under the script's `set -euo pipefail`, a no-match grep makes the assignment fail and kills the script with a silent exit 1, breaking the "unlisted asset → warn + continue" semantics. Fixed by appending `|| true` inside the substitution. Item 009's ps1 is unaffected (PowerShell), but any future bash that greps under set -e needs the same guard.
+- **Smoke-test trick for installer paths without a release:** a PATH-prepended `curl` shim (`case "$URL" in */SHA256SUMS) …`) that copies fixture files lets every path run for real: OK / mismatch / unreachable-sums / unlisted-asset all verified, incl. exit codes and "binary never installed on failure". For the missing-tool path, build a restricted PATH dir of symlinks — but use zsh's `whence -p` (NOT `command -v`, which returns alias text like `alias rm='rm -i'` and builtin names in the interactive zsh the Bash tool runs).
+- `--local` skip verified with a curl shim that exits 97 if invoked — no network call, no checksum output.
