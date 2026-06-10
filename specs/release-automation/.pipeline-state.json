@@ -52,7 +52,7 @@
         "specs/release-automation/TRACEABILITY.md"
       ],
       "completedAt": "2026-06-10T00:00:00Z",
-      "commitHash": "3c77eb1",
+      "commitHash": "db71118",
       "basedOnVersions": {
         "forge-1-prd": 2,
         "forge-2-tech": 1
