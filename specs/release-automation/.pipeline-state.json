@@ -21,11 +21,11 @@
       "fixedAt": "2026-06-09T00:00:00Z"
     },
     "forge-2-tech": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "artifacts": ["specs/release-automation/tech-spec.md"],
       "completedAt": "2026-06-10T00:00:00Z",
-      "commitHash": null,
+      "commitHash": "839a4ae",
       "basedOnVersions": {
         "forge-1-prd": 2
       }
