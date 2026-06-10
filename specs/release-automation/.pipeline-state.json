@@ -1,0 +1,18 @@
+{
+  "feature": "release-automation",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-09T00:00:00Z",
+  "updatedAt": "2026-06-09T00:00:00Z",
+  "currentStage": "forge-2-tech",
+  "stages": {
+    "forge-1-prd": {
+      "status": "in-progress",
+      "version": 1,
+      "artifacts": ["specs/release-automation/PRD.md"],
+      "completedAt": "2026-06-09T00:00:00Z",
+      "commitHash": null,
+      "basedOnVersions": {}
+    }
+  },
+  "notes": ""
+}
