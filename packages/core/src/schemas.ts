@@ -40,6 +40,13 @@ export const BacklogItemSchema = z.object({
   status: BacklogItemStatusSchema,
   completedAt: z.string().nullable().optional(),
   blockedReason: z.string().optional(),
+  /**
+   * When true, this item is `blocked` specifically because it needs a human
+   * decision/action (RAUF_NEEDS_HUMAN), as opposed to a code-level blocker.
+   * The loop sets the item aside and continues; the human resolves it and
+   * re-runs (`--retry-blocked`/`unblock`, which clears this flag).
+   */
+  needsHuman: z.boolean().optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
@@ -202,6 +209,8 @@ export const BacklogSummarySchema = z.object({
   pending: z.number().int().nonnegative(),
   inProgress: z.number().int().nonnegative(),
   blocked: z.number().int().nonnegative(),
+  /** Subset of `blocked` that is blocked on a human decision (needsHuman flag). */
+  needsHuman: z.number().int().nonnegative().optional(),
   done: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 });
@@ -416,6 +425,7 @@ const LoopCompletedSchema = LoopEventBaseSchema.extend({
   type: z.literal("loop_completed"),
   completedCount: z.number().int().nonnegative(),
   blockedCount: z.number().int().nonnegative(),
+  needsHumanCount: z.number().int().nonnegative().optional(),
 });
 
 const LoopErrorSchema = LoopEventBaseSchema.extend({

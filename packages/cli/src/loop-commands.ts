@@ -808,6 +808,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         info("Loop stopped gracefully after completing iteration.");
       } else {
         let msg = `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`;
+        if (result.needsHumanCount !== undefined && result.needsHumanCount > 0) {
+          msg += `, ${result.needsHumanCount} needs human`;
+        }
         if (result.reviewItemsCreated !== undefined && result.reviewItemsCreated > 0) {
           msg += `, ${result.reviewItemsCreated} review items created`;
         }
@@ -816,9 +819,14 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         }
         success(msg);
 
-        if (result.blockedCount > 0) {
+        const needsHuman = result.needsHumanCount ?? 0;
+        if (result.blockedCount > 0 || needsHuman > 0) {
           print("");
-          info("To retry blocked items:");
+          info(
+            needsHuman > 0
+              ? "To retry blocked / needs-human items (after resolving them):"
+              : "To retry blocked items:",
+          );
           info(`  ${c.cyan("rauf backlog unblock .")}     ${c.dim("# then re-run")}`);
           info(`  ${c.cyan("rauf loop run . --retry-blocked")}  ${c.dim("# or in one step")}`);
         }
@@ -1028,16 +1036,18 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       print(`${prefix} ${c.green("\u25B6")} Woke from sleep`);
       break;
 
-    case "loop_completed":
+    case "loop_completed": {
+      const needsHuman = event.needsHumanCount ?? 0;
       print(
-        `${prefix} ${c.green("\u25A0")} ${c.green("Loop completed")} \u2014 ${event.completedCount} done, ${event.blockedCount} blocked`,
+        `${prefix} ${c.green("\u25A0")} ${c.green("Loop completed")} \u2014 ${event.completedCount} done, ${event.blockedCount} blocked${needsHuman > 0 ? `, ${needsHuman} needs human` : ""}`,
       );
-      if (event.blockedCount > 0) {
+      if (event.blockedCount > 0 || needsHuman > 0) {
         print(
           `${prefix}   ${c.dim("Retry:")} ${c.cyan("rauf backlog unblock .")} ${c.dim("or")} ${c.cyan("rauf loop run . --retry-blocked")}`,
         );
       }
       break;
+    }
 
     case "loop_error":
       print(`${prefix} ${c.red("\u2717")} ${c.red("Loop error:")} ${event.error}`);

@@ -55,7 +55,10 @@ function computeBacklogSummary(paths: BacklogPaths): BacklogSummary {
   return {
     pending: items.filter((i) => i.status === "pending").length,
     inProgress: items.filter((i) => i.status === "in_progress").length,
+    // `blocked` includes needs-human items (they ARE blocked-status);
+    // `needsHuman` is the human-decision subset, so totals stay consistent.
     blocked: items.filter((i) => i.status === "blocked").length,
+    needsHuman: items.filter((i) => i.status === "blocked" && i.needsHuman === true).length,
     done: items.filter((i) => i.status === "done").length,
     total: items.length,
   };
