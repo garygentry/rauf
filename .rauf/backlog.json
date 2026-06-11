@@ -640,8 +640,8 @@
         "No production reset logic is modified",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T21:21:28.651Z",
       "dependsOn": [],
       "notes": "From the Codex review of the loop-hardening branch (uncovered acceptance criterion). Files: reset-commands.test.ts.",
       "estimatedIterations": 1,

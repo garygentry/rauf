@@ -5,6 +5,7 @@ import * as os from "node:os";
 import { execSync } from "node:child_process";
 
 import { handleReset } from "./reset-commands.js";
+import { handleBacklogValidate } from "./backlog-commands.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
@@ -321,5 +322,22 @@ describe("handleReset — state clearing", () => {
     expect(code).toBe(ExitCode.SUCCESS);
     expect(fs.existsSync(statefile)).toBe(false);
     expect(fs.existsSync(donefile)).toBe(false);
+  });
+});
+
+describe("handleReset -> handleBacklogValidate (item 030)", () => {
+  it("backlog stays schema-valid after reset over a mixed backlog", async () => {
+    const projectDir = createProject([
+      item("001", "blocked", { deferred: true, blockedReason: "No signal (deferred by runner)" }),
+      item("002", "in_progress"),
+      item("003", "done"),
+      item("004", "blocked", { blockedReason: "RAUF_BLOCKED: real block" }),
+    ]);
+
+    const resetCode = await handleReset(makeCtx({ args: [projectDir] }));
+    expect(resetCode).toBe(ExitCode.SUCCESS);
+
+    const validateCode = await handleBacklogValidate(makeCtx({ args: [projectDir] }));
+    expect(validateCode).toBe(ExitCode.SUCCESS);
   });
 });
