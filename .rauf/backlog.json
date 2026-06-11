@@ -596,8 +596,8 @@
         "Tests cover only-backlog-dirty -> seeds-and-passes and other-files-dirty -> refuses",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T21:15:51.459Z",
       "dependsOn": [
         "026"
       ],

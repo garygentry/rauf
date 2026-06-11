@@ -39,7 +39,7 @@ import {
   type Result,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
-import { LoopRunner, checkLoopPreconditions, execGit } from "@rauf/loop";
+import { LoopRunner, checkLoopPreconditions, execGit, gitCommit } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -122,6 +122,77 @@ export async function createLoopBranch(
         "Pick a name that does not already exist, or `git switch` to it manually.",
     });
   }
+}
+
+/**
+ * Commit a freshly-authored backlog before the loop runs, in response to
+ * `--seed-backlog`. backlog.json is git-tracked (its status changes are
+ * meaningful), so an uncommitted backlog would otherwise be swept into item
+ * 001's loop commit when the loop marks the first item in_progress. Only
+ * auto-commits when the ONLY dirty paths are this loop's backlog file(s) and
+ * `.rauf/` bookkeeping — if ANY other file is dirty it refuses and lists them,
+ * so unrelated work is never committed under the loop's name. The seed commit
+ * excludes loop runtime files (state.json, lock, etc.) via gitCommit's
+ * RUNTIME_EXCLUDE_PATHSPECS. (item 028)
+ */
+export async function seedBacklog(
+  projectPath: string,
+  paths: BacklogPaths,
+): Promise<Result<{ committed: boolean; commitHash: string }>> {
+  // Reuse revertAbandonedWork's exclude-pathspec approach to decide whether any
+  // NON-backlog file is dirty: `git status --porcelain` over everything EXCEPT
+  // this loop's runtime dir and backlog (+ .bak), relative to projectPath.
+  // Non-empty output means there is other work we must not sweep into the seed
+  // commit.
+  const stateDirRel = path.relative(projectPath, paths.stateDir);
+  const backlogRel = path.relative(projectPath, paths.backlog);
+  const excludePathspecs = [
+    ".",
+    `:(exclude)${stateDirRel}`,
+    `:(exclude)${backlogRel}`,
+    `:(exclude)${backlogRel}.bak`,
+  ];
+
+  let otherDirty: string;
+  try {
+    otherDirty = (
+      await execGit(projectPath, ["status", "--porcelain", "--", ...excludePathspecs])
+    ).trim();
+  } catch (e) {
+    return err({
+      code: ErrorCodes.CONFLICT,
+      message: `Could not read git status: ${e instanceof Error ? e.message : String(e)}`,
+    });
+  }
+
+  if (otherDirty !== "") {
+    // Porcelain lines are `XY <path>` (slice past the 2-char status + space).
+    const files = otherDirty
+      .split("\n")
+      .map((line) => line.slice(3).trim())
+      .filter((f) => f.length > 0);
+    return err({
+      code: ErrorCodes.CONFLICT,
+      message:
+        "--seed-backlog only commits the backlog when nothing else is dirty, but these files have uncommitted changes:\n" +
+        files.map((f) => `  ${f}`).join("\n") +
+        "\nCommit or stash them first, then re-run.",
+    });
+  }
+
+  // Only the backlog (+ .rauf bookkeeping) is dirty. gitCommit stages with the
+  // runtime excludes and uses the `[rauf] <id>: <title>` format — id "backlog"
+  // + title "seed <project>" yields `[rauf] backlog: seed <project>`.
+  const commitResult = await gitCommit(
+    projectPath,
+    "backlog",
+    `seed ${path.basename(projectPath)}`,
+  );
+  if (!commitResult.ok) return commitResult;
+  return ok({
+    committed: commitResult.value.commitHash !== "",
+    commitHash: commitResult.value.commitHash,
+  });
 }
 
 /**
@@ -743,6 +814,25 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       info(`Switched to new branch ${c.cyan(createBranch)}`);
     } else {
       info(`Already on branch ${c.cyan(createBranch)}`);
+    }
+  }
+
+  // --seed-backlog: commit an otherwise-clean tree's backlog before the
+  // precondition check, so a freshly-authored backlog isn't swept into item
+  // 001's loop commit. Runs after any --create-branch switch so the seed commit
+  // lands on the feature branch, not a protected one. Refuses (without
+  // committing) if any non-backlog file is dirty.
+  const seedBacklogFlag = extractBoolFlag(ctx.flags, "seed-backlog");
+  if (seedBacklogFlag) {
+    const seedResult = await seedBacklog(projectPath, paths);
+    if (!seedResult.ok) {
+      error(seedResult.error.message);
+      return ExitCode.CONFLICT;
+    }
+    if (seedResult.value.committed) {
+      info(`Seeded backlog: committed ${c.cyan(seedResult.value.commitHash || "(staged)")}`);
+    } else {
+      info("Backlog already committed — nothing to seed.");
     }
   }
 

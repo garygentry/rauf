@@ -211,6 +211,11 @@ export const COMMANDS: CommandDef[] = [
             name: "--ndjson",
             description: "Emit one JSON object per loop event to stdout (machine-readable)",
           },
+          {
+            name: "--seed-backlog",
+            description:
+              "Commit an otherwise-clean backlog before running (no other file may be dirty)",
+          },
         ],
         handler: handleLoopRun,
       },

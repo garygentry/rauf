@@ -693,4 +693,74 @@ describe("createLoopBranch & loop preconditions", () => {
     expect(out.stdout).not.toContain("Running loop directly");
     expect(out.stdout).not.toContain("Loop finished");
   });
+
+  // ─── --seed-backlog (item 028) ───
+
+  function writeBacklog(projectDir: string, items: object[], description = "d"): void {
+    fs.writeFileSync(
+      path.join(projectDir, ".rauf", "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "p", description, items }, null, 2) + "\n",
+    );
+  }
+
+  function gitStatus(cwd: string): string {
+    return execSync("git status --porcelain", { cwd, encoding: "utf-8" }).trim();
+  }
+
+  function gitSubjects(cwd: string): string {
+    return execSync("git log --format=%s", { cwd, encoding: "utf-8" });
+  }
+
+  it("loop run --seed-backlog commits an otherwise-clean backlog before the loop", async () => {
+    // Empty backlog: after seeding, the loop selects no item and completes
+    // without spawning Claude.
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/seed"); // off the protected branch
+    // Dirty the already-tracked backlog to simulate a freshly-edited backlog.
+    writeBacklog(proj, [], "seeded description");
+    // A runtime file that must NOT land in the seed commit (criterion 3).
+    fs.writeFileSync(path.join(proj, ".rauf", "state.json"), "{}\n");
+    expect(gitStatus(proj)).not.toBe("");
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["seed-backlog", true]]),
+    });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    // The backlog was committed as `[rauf] backlog: seed <project>`.
+    expect(gitSubjects(proj)).toContain("[rauf] backlog: seed proj");
+    expect(out.stdout).toContain("Seeded backlog");
+    // The seed commit excludes runtime files (state.json never gets tracked).
+    const tracked = execSync("git ls-files", { cwd: proj, encoding: "utf-8" });
+    expect(tracked).not.toContain(".rauf/state.json");
+    // Tree is clean after seeding (the loop ran on an empty backlog).
+    expect(gitStatus(proj)).toBe("");
+  });
+
+  it("loop run --seed-backlog refuses and lists other dirty files (no auto-commit)", async () => {
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/seed");
+    writeBacklog(proj, [], "seeded description"); // backlog dirty
+    fs.writeFileSync(path.join(proj, "app.ts"), "export const x = 1;\n"); // unrelated dirty file
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["seed-backlog", true]]),
+    });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.CONFLICT);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain("app.ts");
+    expect(all).toContain("--seed-backlog only commits");
+    // No seed commit was created, and the backlog is still uncommitted.
+    expect(gitSubjects(proj)).not.toContain("[rauf] backlog: seed");
+    expect(gitStatus(proj)).not.toBe("");
+  });
 });
