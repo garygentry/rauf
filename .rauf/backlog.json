@@ -239,8 +239,8 @@
         "rauf backlog validate . still passes after a reset",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T08:55:08.893Z",
       "dependsOn": [
         "002",
         "004"

@@ -49,6 +49,7 @@ import {
   handleLoopWatch,
 } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
+import { handleReset } from "./reset-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -212,6 +213,13 @@ export const COMMANDS: CommandDef[] = [
         handler: handleBacklogUnblock,
       },
     ],
+  },
+  {
+    name: "reset",
+    description:
+      "Recover an interrupted loop: reconcile commits, requeue false blocks, clear state",
+    usage: "rauf reset [path] [--keep-done] [--backlog <dir>] [--json]",
+    handler: handleReset,
   },
   {
     name: "status",
