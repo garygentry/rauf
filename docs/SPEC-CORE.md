@@ -522,3 +522,18 @@ When a usage limit is hit and `sleepOnLimit` is `false` (default: `true`):
 - `rauf resume` detects this state, applies reconciliation + false-block requeue, and relaunches the loop
 
 When `sleepOnLimit` is `true` (default), the runner parses the reset time from the banner (`/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i`) and sleeps until that local time + 60 s buffer, falling back to 60 s if no match.
+
+### Usage Preflight OAuth Token
+
+`runUsagePreflight()` reads the Claude OAuth token via `readClaudeOAuthToken()` (from `packages/core/src/config.ts`):
+
+- **Token source:** `~/.config/claude-code/credentials.json` → `.claudeAiOauth.accessToken`
+- **Errors:** `FILE_NOT_FOUND` (file absent or unreadable), `INVALID_JSON` (malformed), `VALIDATION_ERROR` (missing fields or empty token)
+
+When the token read fails, the preflight is skipped **with no behavior change** — reactive banner detection (items 005/006) still covers the usage-limit case. The runner logs the specific error code and message plus a remediation hint:
+
+```
+OAuth token unavailable (FILE_NOT_FOUND: Claude credentials file not found: /home/user/.config/claude-code/credentials.json). Ensure Claude Code is authenticated (token: ~/.config/claude-code/credentials.json → .claudeAiOauth.accessToken). Relying on reactive banner detection.
+```
+
+This makes degraded-mode visible in the log without causing a false alarm or changing loop behavior.

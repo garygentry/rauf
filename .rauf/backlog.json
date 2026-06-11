@@ -617,8 +617,8 @@
         "docs/SPEC-CORE.md documents the OAuth source and the reactive fallback",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T21:19:41.165Z",
       "dependsOn": [],
       "notes": "From feedback #2 F9 / dogfooding. The credentials path + format are in packages/core/src/config.ts readClaudeOAuthToken. Files: runner.ts, docs/SPEC-CORE.md.",
       "estimatedIterations": 1,
