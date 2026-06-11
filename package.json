@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && vitest run",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "format:check": "prettier --check .",
@@ -23,6 +23,7 @@
     "generate:schemas": "bun run scripts/generate-json-schemas.ts",
     "schema:check": "bun run scripts/generate-json-schemas.ts --check",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
+    "release:prepare": "bun run scripts/release/prepare.ts",
     "rauf": "rauf"
   },
   "devDependencies": {
@@ -31,6 +32,7 @@
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.56.0",
+    "vitest": "^3.0.0",
     "zod-to-json-schema": "^3.25.1"
   },
   "engines": {

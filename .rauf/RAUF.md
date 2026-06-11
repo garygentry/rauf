@@ -28,7 +28,7 @@ If any command is not configured (empty), skip it.
 4. Read `.rauf/progress.md` for context from previous iterations
 5. Implement the task
 6. Run verification: `pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check`
-7. Commit with: `[rauf] <id>: <title>`
+7. Leave your changes in the working tree — do NOT commit. The loop runner commits automatically with `[rauf] <id>: <title>` after you signal `RAUF_DONE`.
 8. Output your exit signal:
    - `RAUF_DONE` — all criteria met, verification passes
    - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
@@ -37,6 +37,7 @@ If any command is not configured (empty), skip it.
 ## Important Rules
 
 - Work on ONE item only — the current `in_progress` item
+- Do NOT run `git commit` or `git add` — the loop runner stages and commits your work automatically. Committing yourself causes a duplicate commit and triggers per-iteration commit hooks.
 - Do NOT modify `.rauf/backlog.json` status — the loop runner manages it
 - Do NOT modify `.rauf/state.json` — the loop runner manages it
 - DO read `.rauf/progress.md` for accumulated learnings

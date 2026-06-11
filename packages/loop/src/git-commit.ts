@@ -8,6 +8,25 @@ export interface GitCommitSuccess {
 }
 
 /**
+ * Runtime files the loop writes into a backlog dir's `.rauf/`. They must never
+ * land in a per-item commit, even in a project whose `.gitignore` was not set
+ * up. Excluded from `git add` via `:(exclude,glob)` pathspecs (the `**` covers
+ * nested backlog dirs like specs/<feature>/.rauf/ as well as the root .rauf/).
+ * backlog.json / progress.md / RAUF.md / archive/ are intentionally NOT listed,
+ * so they stage and commit normally.
+ */
+const RUNTIME_EXCLUDE_PATHSPECS = [
+  ":(exclude,glob)**/.rauf/.loop.lock",
+  ":(exclude,glob)**/.rauf/state.json",
+  ":(exclude,glob)**/.rauf/DONE",
+  ":(exclude,glob)**/.rauf/CANCEL",
+  ":(exclude,glob)**/.rauf/iteration-status.json",
+  ":(exclude,glob)**/.rauf/rauf.log",
+  // backlog.json.bak sits beside backlog.json (root .rauf/ or specs/<feature>/).
+  ":(exclude,glob)**/backlog.json.bak",
+];
+
+/**
  * Runs `git add -A && git commit` in the given project directory.
  * Uses commit message format: `[rauf] <itemId>: <title>`
  *
@@ -22,7 +41,7 @@ export async function gitCommit(
   const message = `[rauf] ${itemId}: ${title}`;
 
   try {
-    await execGit(projectPath, ["add", "-A"]);
+    await execGit(projectPath, ["add", "-A", "--", ".", ...RUNTIME_EXCLUDE_PATHSPECS]);
   } catch (e) {
     return err({
       code: ErrorCodes.CONFLICT,

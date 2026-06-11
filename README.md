@@ -49,6 +49,28 @@ Each iteration produces one of three exit signals:
 
 ---
 
+## Install
+
+Self-contained binaries are published with every release — no Bun or Node needed on the target machine. Downloads are verified against the release's `SHA256SUMS` before installing.
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.ps1 | iex
+```
+
+Set `RAUF_VERSION=v0.3.0` (or any tag) to install a specific release instead of latest.
+
+> **macOS note:** the darwin binaries are unsigned in v1. Binaries installed via the `curl` one-liner are normally **not** quarantined, but if Gatekeeper blocks a binary downloaded through a browser or Finder, run `xattr -d com.apple.quarantine ./rauf` (or right-click → Open once). See [Releasing & Installing](docs/RELEASING.md) for details.
+
+---
+
 ## Quick Start
 
 **Prerequisites:** [Bun](https://bun.sh/) 1.0+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI, Git
@@ -159,14 +181,15 @@ rauf/
 
 ## Documentation
 
-| Document                                 | Description                                    |
-| ---------------------------------------- | ---------------------------------------------- |
-| [Architecture](docs/ARCHITECTURE.md)     | System design, data flow, component boundaries |
-| [Schemas](docs/SCHEMAS.md)               | All TypeScript types and JSON schemas          |
-| [Core Spec](docs/SPEC-CORE.md)           | Core package logic and algorithms              |
-| [CLI Spec](docs/SPEC-CLI.md)             | CLI commands, flags, and behavior              |
-| [Web Spec](docs/SPEC-WEB.md)             | API endpoints and frontend architecture        |
-| [Artifacts Spec](docs/SPEC-ARTIFACTS.md) | Template files and installation process        |
+| Document                                    | Description                                      |
+| ------------------------------------------- | ------------------------------------------------ |
+| [Architecture](docs/ARCHITECTURE.md)        | System design, data flow, component boundaries   |
+| [Schemas](docs/SCHEMAS.md)                  | All TypeScript types and JSON schemas            |
+| [Core Spec](docs/SPEC-CORE.md)              | Core package logic and algorithms                |
+| [CLI Spec](docs/SPEC-CLI.md)                | CLI commands, flags, and behavior                |
+| [Web Spec](docs/SPEC-WEB.md)                | API endpoints and frontend architecture          |
+| [Artifacts Spec](docs/SPEC-ARTIFACTS.md)    | Template files and installation process          |
+| [Releasing & Installing](docs/RELEASING.md) | Release pipeline, one-time setup, binary install |
 
 ## Contributing
 

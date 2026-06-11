@@ -43,6 +43,7 @@ export interface UpdateItemInput {
   acceptanceCriteria?: string[];
   status?: BacklogItemStatus;
   blockedReason?: string;
+  needsHuman?: boolean;
   dependsOn?: string[];
   notes?: string;
   estimatedIterations?: number;
@@ -226,6 +227,7 @@ export function updateItem(
     updatedItem.acceptanceCriteria = updates.acceptanceCriteria;
   if (updates.status !== undefined) updatedItem.status = updates.status;
   if (updates.blockedReason !== undefined) updatedItem.blockedReason = updates.blockedReason;
+  if (updates.needsHuman !== undefined) updatedItem.needsHuman = updates.needsHuman;
   if (updates.dependsOn !== undefined) updatedItem.dependsOn = updates.dependsOn;
   if (updates.notes !== undefined) updatedItem.notes = updates.notes;
   if (updates.estimatedIterations !== undefined)
@@ -233,9 +235,10 @@ export function updateItem(
   if (updates.agentDelegation !== undefined) updatedItem.agentDelegation = updates.agentDelegation;
   if (updates.specReferences !== undefined) updatedItem.specReferences = updates.specReferences;
 
-  // 5. Auto-set completedAt on done
+  // 5. Auto-set completedAt on done; clear the needs-human flag once resolved
   if (updates.status === "done") {
     updatedItem.completedAt = new Date().toISOString();
+    delete updatedItem.needsHuman;
   }
 
   // 6. Write
@@ -403,6 +406,8 @@ export function ensureBacklog(paths: BacklogPaths): Result<void> {
 // ─── unblockItems ─────────────────────────────────────────────────
 //
 // Transition blocked items back to pending and clear blockedReason.
+// Also clears the needsHuman flag, so items set aside as RAUF_NEEDS_HUMAN
+// (stored as status="blocked" + needsHuman) are picked up on the next run.
 // If itemId provided, unblock just that item; otherwise unblock all.
 
 export function unblockItems(
@@ -433,6 +438,7 @@ export function unblockItems(
     }
     item.status = "pending";
     delete item.blockedReason;
+    delete item.needsHuman;
 
     const writeResult = writeBacklog(paths, backlog);
     if (!writeResult.ok) return writeResult;
@@ -449,6 +455,7 @@ export function unblockItems(
   for (const item of blockedItems) {
     item.status = "pending";
     delete item.blockedReason;
+    delete item.needsHuman;
   }
 
   const writeResult = writeBacklog(paths, backlog);

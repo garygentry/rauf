@@ -1,0 +1,279 @@
+{
+  "schemaVersion": "1",
+  "project": "rauf — release-automation",
+  "description": "Tag-driven release pipeline for the rauf monorepo: a maintainer prep helper (scripts/release/prepare.ts) that bumps all seven version locations, rolls the changelog, and pushes a vX.Y.Z tag; a CI release workflow that drift-guards, cross-compiles five platform binaries, generates SHA256SUMS and release notes, and publishes atomically; checksum-verifying install scripts (Unix + Windows); and the security/setup docs. Implements specs/release-automation specs 00–07.",
+  "items": [
+    {
+      "id": "001",
+      "type": "chore",
+      "priority": 1,
+      "title": "Scaffold scripts/release/lib.ts foundation — types, constants, fail()",
+      "description": "Scaffold the shared release-tooling module surface. Create scripts/release/lib.ts (Bun runtime, standalone — it MUST NOT import from @rauf/* or node:child_process).\n\n1. Export interfaces (spec 00 §1): VersionLocation { file: string; version: string; canonical: boolean }; ReleaseTarget { bunTarget: string; asset: string }; PreparePlan { version: string; tag: string; isPrerelease: boolean; changelog: string; sectionBody: string; locations: VersionLocation[] }.\n2. Export constants (spec 00 §2-3): VERSION_TS_PATH = \"packages/core/src/version.ts\"; PACKAGE_JSON_PATHS as const, in order: package.json, packages/core/package.json, packages/cli/package.json, packages/loop/package.json, packages/web/package.json, packages/docs/package.json (the docs entry is deliberate — it is the drift this feature corrects); RELEASE_TARGETS (five: bun-linux-x64→rauf-linux-x64, bun-linux-arm64→rauf-linux-arm64, bun-darwin-x64→rauf-darwin-x64, bun-darwin-arm64→rauf-darwin-arm64, bun-windows-x64→rauf-windows-x64.exe); COMPILE_ENTRY = \"scripts/binary-entry.ts\"; CHECKSUMS_FILE = \"SHA256SUMS\"; REPO_SLUG = \"garygentry/rauf\"; PINNED_BUN_VERSION = \"1.3.10\"; SEMVER_RE = /^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9.]+)?$/.\n3. Export fail(message: string): never — write `${message}\\n` to process.stderr and call process.exit(1).\n4. Create .bun-version at the repo root containing exactly \"1.3.10\" (single line).\n\nDo NOT implement any pure functions yet — readVersionLocations, the semver helpers, and the changelog helpers all land in item 002. This item is declarations + the constants file only; it must typecheck.",
+      "acceptanceCriteria": [
+        "scripts/release/lib.ts exports the VersionLocation, ReleaseTarget, and PreparePlan interfaces and the constants VERSION_TS_PATH, PACKAGE_JSON_PATHS, RELEASE_TARGETS, COMPILE_ENTRY, CHECKSUMS_FILE, REPO_SLUG, PINNED_BUN_VERSION, SEMVER_RE plus fail()",
+        "PACKAGE_JSON_PATHS lists exactly the six files including packages/docs/package.json; RELEASE_TARGETS has five entries whose asset names are rauf-{os}-{arch} (windows carries .exe)",
+        "scripts/release/lib.ts contains no import from @rauf/* or node:child_process",
+        ".bun-version exists at the repo root and contains exactly \"1.3.10\"",
+        "pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T17:37:56.719Z",
+      "dependsOn": [],
+      "notes": "Foundation item — everything else imports this module's type/constant surface. Read specs/release-automation/00-core-definitions.md fully and use its exact TypeScript. SEMVER_RE must be byte-identical to the regex in the (to-be-removed) bump-version.sh. .bun-version is auto-read by oven-sh/setup-bun@v2 in CI/release later.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/00-core-definitions.md",
+        "specs/release-automation/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement lib.ts pure functions + lib.test.ts + vitest harness",
+      "description": "Implement the pure, side-effect-free logic in scripts/release/lib.ts (spec 02) and its colocated test suite. No process.exit, no @rauf/* import, no git/network I/O; filesystem reads are confined to readVersionLocations.\n\nAdd functions:\n- readVersionLocations(repoRoot: string): VersionLocation[] — read version.ts (canonical, index 0) via parseVersionTs, then each PACKAGE_JSON_PATHS file's .version; throw on missing file / invalid JSON / non-string version.\n- parseVersionTs(content): string — match /export const VERSION = \"([^\"]*)\"/, throw if absent.\n- setVersionTs(content, v): string — replace the VERSION value, throw if no VERSION line.\n- setPackageJsonVersion(content, v): string — JSON.parse, set .version, JSON.stringify preserving the file's original indentation (2-space / 4-space / tab) and trailing-newline presence; throw on invalid JSON.\n- isValidVersion(v) = SEMVER_RE.test(v); compareVersions(a, b): -1|0|1 wrapping Bun.semver.order; isPrerelease(v) = v.includes(\"-\").\n- getUnreleasedBody(content): trimmed body of the `## Unreleased` section (lines up to the next `## ` or EOF); \"\" if absent/empty.\n- rollChangelog(content, v): { updated, sectionBody } — rename `## Unreleased`→`## X.Y.Z` and insert a fresh empty `## Unreleased`; throw if Unreleased empty/absent; preserve the before/after slices byte-exact.\n- extractSection(content, v): verbatim trimmed `## X.Y.Z` body; regex-escape v in the heading match; throw if absent.\n\nCreate scripts/release/lib.test.ts covering spec 07 §2.1: rollChangelog greenfield + with-prior-sections (byte-exact); extractSection present/absent + regex-escape (dots are not wildcards); getUnreleasedBody empty/non-empty/absent; isValidVersion accepts 1.2.3 & 1.2.3-rc.1, rejects v1.2.3 / 1.2 / 1.2.3+build / \"\"; compareVersions incl. 1.2.3-rc.1 < 1.2.3; isPrerelease; setPackageJsonVersion across indent + trailing-newline variants; parseVersionTs/setVersionTs present+absent; readVersionLocations via makeRepoFixture (below), cleaned in afterEach.\n\nCreate a shared fixtures/factory module scripts/release/__fixtures__.ts (spec 07 §2.4) exporting makeChangelog({ unreleased, priorSections? }): string and makeRepoFixture(versions): string — the latter writes a temp dir containing version.ts + the six package.json files at the given versions and returns its path. lib.test.ts (and item 004's preflight.test.ts) consume these rather than hand-rolling fixtures.\n\nCreate root vitest.config.ts: include [\"scripts/release/**/*.test.ts\"], exclude [\"packages/**\", \"node_modules/**\"]. Add devDependency vitest ^3.0.0 to root package.json and change the root \"test\" script to \"pnpm -r test && vitest run\".",
+      "acceptanceCriteria": [
+        "lib.ts exports readVersionLocations, parseVersionTs, setVersionTs, setPackageJsonVersion, isValidVersion, compareVersions, isPrerelease, getUnreleasedBody, rollChangelog, extractSection",
+        "lib.test.ts covers every case listed in spec 07 §2.1, including byte-exact rollChangelog output and the extractSection regex-escape case",
+        "scripts/release/__fixtures__.ts exports makeChangelog and makeRepoFixture per spec 07 §2.4 and is used by lib.test.ts",
+        "Root vitest.config.ts include is scoped to scripts/release/**/*.test.ts and excludes packages/**",
+        "Root package.json test script is \"pnpm -r test && vitest run\" and vitest ^3.0.0 is a devDependency",
+        "lib.ts contains no import from @rauf/* or node:child_process",
+        "pnpm test runs the scripts/release suite once (and each package suite once) and passes; pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T17:47:46.269Z",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "Highest-risk suite — a bug here ships a wrong release, so aim for 100% branch coverage on the changelog and version-location functions. compareVersions is only ever called on strings that already passed isValidVersion, so SEMVER_RE (not Bun.semver) defines validity. The vitest major (^3.0.0) matches the four packages so the workspace never resolves two vitest majors.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/02-shared-lib.md",
+        "specs/release-automation/07-testing-strategy.md",
+        "specs/release-automation/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add prepare.ts maintainer helper + prepare.test.ts; remove bump-version.sh",
+      "description": "Create scripts/release/prepare.ts — the maintainer command run via `pnpm release:prepare <X.Y.Z[-pre]> [--dry-run] [--no-push]` (spec 03). Standalone Bun program; route guard failures through fail() from lib.ts.\n\n1. Parse argv: --dry-run / --no-push flags; exactly one positional version (else fail() with usage).\n2. repoRoot = path.resolve(import.meta.dir, \"../..\"). Add a git(args) helper using execFileSync(\"git\", args, { cwd: repoRoot, encoding: \"utf8\" }) that throws stderr on failure.\n3. Guards — ALL before any mutation; the first failure exits nonzero leaving the repo untouched; messages prefixed `refusing: `: (a) isValidVersion; (b) branch is main (not detached, not other) AND `git status --porcelain` clean AND, after `git fetch --quiet origin main`, compare @ / @{u} / merge-base for distinct behind/ahead/diverged messages; (c) tag vX.Y.Z absent locally (`git tag -l`) and on origin (`git ls-remote --tags origin`); (d) compareVersions(version, canonical version.ts value) === 1; (e) getUnreleasedBody(CHANGELOG.md) !== \"\".\n4. Build a PreparePlan via rollChangelog. If --dry-run: print the seven planned edits + rolled section + tag, exit 0, NO writes.\n5. Mutations: setVersionTs on version.ts; setPackageJsonVersion on all six PACKAGE_JSON_PATHS (this corrects the docs 0.1.0 drift); write the rolled CHANGELOG; `git add -A`; commit `chore(release): vX.Y.Z`; `git tag vX.Y.Z`.\n6. Unless --no-push: pushOrRecover branch (origin main) then tag — branch FIRST; on failure print exact retry/abort git commands and exit nonzero.\n\nFactor the pure guard predicates so prepare.test.ts can test valid-version, version-forward (compareVersions), and changelog-empty WITHOUT touching git. Add \"release:prepare\": \"bun run scripts/release/prepare.ts\" to root package.json scripts. Remove scripts/bump-version.sh and update any references to it in docs/, scripts/, and README.md to `pnpm release:prepare`.",
+      "acceptanceCriteria": [
+        "scripts/release/prepare.ts implements arg parsing, all five guards before any mutation, --dry-run (no writes), the seven-location bump, the changelog roll, commit/tag, and branch-first push with recovery guidance",
+        "Each guard failure emits a distinct `refusing: …` message and the --dry-run path performs no writes",
+        "prepare.test.ts covers the valid-version, version-forward, and changelog-empty predicates without invoking git",
+        "Root package.json has \"release:prepare\": \"bun run scripts/release/prepare.ts\"",
+        "scripts/bump-version.sh no longer exists and `grep -rn \"bump-version.sh\" docs/ scripts/ README.md` returns no stale references (only updated pnpm release:prepare mentions)",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:00:09.527Z",
+      "dependsOn": [
+        "002"
+      ],
+      "notes": "Branch-first push ordering is deliberate: the tag is the workflow trigger, so the tagged commit must already be on origin/main before the tag arrives. The version-forward comparison is against the canonical version.ts value (0.2.0), never the drifted packages/docs 0.1.0. prepare.ts mirrors the branch/detached/dirty *pattern* of checkLoopPreconditions (packages/loop/src/git-status.ts) and adds the remote up-to-date check in prepare.ts itself — git-status.ts is NOT modified (release tooling stays out of the product, REQ-PREP-06 / C-4).",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "specs/release-automation/03-prepare-helper.md",
+        "specs/release-automation/07-testing-strategy.md",
+        "specs/release-automation/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add preflight.ts drift guard + classification + preflight.test.ts",
+      "description": "Create scripts/release/preflight.ts — the CI drift guard + prerelease classifier invoked by release.yml (spec 04 §1-2). Standalone Bun program using fail() and readVersionLocations from lib.ts.\n\n1. ref = process.env.GITHUB_REF_NAME ?? process.env.INPUT_TAG ?? \"\"; if it does not start with \"v\" → fail(`drift: expected a v* tag, got \"${ref}\"`); tagVersion = ref.slice(1); if !isValidVersion(tagVersion) → fail(`drift: tag ${ref} is not a valid version`).\n2. repoRoot = path.resolve(import.meta.dir, \"../..\"); locations = readVersionLocations(repoRoot); canonical = the canonical entry's version.\n3. Drift check — factor into a pure detectDrift(tagVersion: string, locations: VersionLocation[]): string | null that returns the failure message or null: if tagVersion !== canonical → a message naming the tag mismatch; if any non-canonical location.version !== canonical → a message naming that file (e.g. packages/docs/package.json). preflight.ts calls detectDrift and routes a non-null result through fail().\n4. On success: isPre = isPrerelease(tagVersion); require process.env.GITHUB_OUTPUT (else fail with `drift: GITHUB_OUTPUT not set`); appendFileSync `version=${tagVersion}\\n` and `is_prerelease=${isPre}\\n`; console.log `preflight OK: ${ref} (${isPre ? \"prerelease\" : \"stable\"})`.\n\nCreate scripts/release/preflight.test.ts covering detectDrift: all seven locations agree → null; tag ≠ version.ts → message; one package.json (docs) ≠ canonical → message naming it; plus isPrerelease classification true/false. Tests build their location fixtures via makeRepoFixture from scripts/release/__fixtures__.ts (created in item 002) rather than re-creating fixtures, and exercise detectDrift/isPrerelease directly so they do not require the Actions env.",
+      "acceptanceCriteria": [
+        "scripts/release/preflight.ts validates the v* tag, runs the drift guard via a pure detectDrift(), and appends version and is_prerelease to $GITHUB_OUTPUT on success",
+        "detectDrift returns a message naming the offending file on mismatch and null when all locations agree",
+        "preflight.test.ts covers all-agree, tag-mismatch, one-package-mismatch, and prerelease-classification branches without the Actions env",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:05:04.868Z",
+      "dependsOn": [
+        "002"
+      ],
+      "notes": "This is the machine-side enforcement of the single most important invariant (REQ-TRIGGER-02): tag ↔ version.ts ↔ all six package.json must agree, and a single mismatch must exit nonzero BEFORE any build step. Greppable `drift: ` prefix on every failure message.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/04-ci-preflight-and-workflow.md",
+        "specs/release-automation/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add build-notes.ts + build-notes.test.ts",
+      "description": "Create scripts/release/build-notes.ts — composes dist/NOTES.md for the release step (spec 04 §3 step 9). Standalone Bun program importing extractSection and REPO_SLUG from lib.ts.\n\n1. version = process.env.VERSION!; tag = process.env.TAG!; read CHANGELOG.md at repoRoot.\n2. notes = extractSection(changelog, version) — the verbatim curated section body (REQ-NOTES-02).\n3. Determine the previous release tag: execFileSync(\"git\", [\"describe\", \"--tags\", \"--abbrev=0\", \"--match\", \"v*\", `${tag}^`], { cwd: repoRoot, encoding: \"utf8\" }); on nonzero exit treat as no prior tag (prev = \"\"). The `--match 'v*'` is mandatory so the unrelated pre-rauf-rename tag is never selected.\n4. Factor the composition into a pure composeNotes(sectionBody: string, prevTag: string | null, tag: string, repoSlug: string): string: when prevTag is non-null, append `\\n\\n**Full Changelog**: https://github.com/${repoSlug}/compare/${prevTag}...${tag}\\n`; when null, omit the line entirely (first release).\n5. Write dist/NOTES.md (mkdir dist if needed).\n\nCreate scripts/release/build-notes.test.ts covering composeNotes: with a prior tag → appends the compare link; with null → omits it (no compare line emitted).",
+      "acceptanceCriteria": [
+        "scripts/release/build-notes.ts extracts the changelog section and writes dist/NOTES.md, appending the Full Changelog compare link only when a prior v* tag exists",
+        "git describe uses --match 'v*' so pre-rauf-rename is never selected as the compare base, and a first release omits the compare line entirely",
+        "build-notes.test.ts covers composeNotes with a prior tag (link appended) and with null (link omitted)",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:11:00.058Z",
+      "dependsOn": [
+        "002"
+      ],
+      "notes": "The Full Changelog link is appended HERE (not in extractSection) because it depends on git describe output. extractSection returns only the curated body. First-release behavior (no prior v* tag) must omit the compare line rather than fabricate a base against pre-rauf-rename.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/04-ci-preflight-and-workflow.md",
+        "specs/release-automation/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "chore",
+      "priority": 1,
+      "title": "Extract quality-gate composite action and refactor ci.yml to use it",
+      "description": "Extract the CI quality gate into a shared composite action and consume it from ci.yml (spec 04 §5, 01 §3.2), so the gate is defined once and reused by release.yml later (drift between the two gates becomes structurally impossible).\n\n1. Create .github/actions/quality-gate/action.yml — a composite action (`using: composite`) whose steps run, in order, each with `shell: bash`: `pnpm build`, `pnpm schema:check`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test`. It assumes the caller already set up Bun/pnpm and ran install. Give it a name and description.\n2. Modify .github/workflows/ci.yml: in the existing check job, replace the inline build → schema:check → typecheck → lint → format:check → test steps with a single `- uses: ./.github/actions/quality-gate`, keeping the existing checkout / setup-bun / pnpm setup / install steps before it.\n\nDo not change any of the six commands themselves — only relocate them into the composite action.",
+      "acceptanceCriteria": [
+        ".github/actions/quality-gate/action.yml is a composite action running pnpm build, schema:check, typecheck, lint, format:check, test in that order, each with shell: bash",
+        ".github/workflows/ci.yml's check job uses ./.github/actions/quality-gate and no longer contains the inline six-command list",
+        "Both YAML files parse cleanly with a YAML parser"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:13:28.796Z",
+      "dependsOn": [],
+      "notes": "Single source of truth for the gate (V-009). release.yml (item 007) will reference the same ./.github/actions/quality-gate, so adding/removing a check becomes a one-place edit. Read the current ci.yml check job first to preserve its setup steps. dependsOn is intentionally [] — acceptance is YAML structure + parse only; the gate is never executed in this item (it runs in CI on a future push), so it does not require the scripts/release tests (item 002) to exist.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/04-ci-preflight-and-workflow.md",
+        "specs/release-automation/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "chore",
+      "priority": 1,
+      "title": "Add release.yml release workflow with actor authorization",
+      "description": "Create .github/workflows/release.yml — the single-job release workflow triggered by a v* tag push (spec 04 §3, with the actor check from spec 06 §1.2). It invokes preflight.ts (004), build-notes.ts (005), and the quality-gate composite action (006).\n\nTriggers: `push: tags: ['v*']` and `workflow_dispatch` with a required `tag` input. `permissions: { contents: write }` only. `concurrency: { group: release-${{ github.ref }}, cancel-in-progress: false }`.\n\nOne `release` job on ubuntu-latest, ordered steps:\n1. actions/checkout@v4 with fetch-depth: 0 and ref: ${{ github.event.inputs.tag || github.ref }}.\n2. Authorize actor — `if: github.actor != github.repository_owner` → echo ::error and exit 1.\n3. oven-sh/setup-bun@v2 (auto-reads .bun-version) and pnpm/action-setup@v4.\n4. pnpm install --frozen-lockfile.\n5. Preflight (id: preflight) `bun run scripts/release/preflight.ts` with env INPUT_TAG; then Assert no existing release — `gh release view \"$TAG\"` succeeding → ::error + exit 1 (GH_TOKEN: github.token).\n6. uses: ./.github/actions/quality-gate.\n7. Cross-compile the five targets with `bun build --compile --target=<bunTarget> scripts/binary-entry.ts --outfile dist/<asset>` into dist/.\n8. `cd dist && sha256sum rauf-* > SHA256SUMS`.\n9. Build notes — `bun run scripts/release/build-notes.ts` (env TAG, VERSION from preflight output).\n10. `gh release create \"$TAG\"` attaching all five assets + dist/SHA256SUMS, with --title, --notes-file dist/NOTES.md, --verify-tag, and `--prerelease` when is_prerelease==true else `--latest`.\n11. Summary — append the release URL + tag to $GITHUB_STEP_SUMMARY.\n\nAll assets are built and checksummed BEFORE the single gh release create (atomic publish; a failure in steps 1–9 creates no release object).",
+      "acceptanceCriteria": [
+        "release.yml triggers on push tags v* and workflow_dispatch(tag), declares only permissions: contents: write, and sets concurrency group release-${{ github.ref }} with cancel-in-progress: false",
+        "Step 2 fails the job when github.actor != github.repository_owner; the create step runs only after preflight, the no-existing-release assertion, and the quality gate",
+        "release.yml uses ./.github/actions/quality-gate, and gh release create attaches all five binaries plus SHA256SUMS using --verify-tag and --prerelease vs --latest driven by the is_prerelease output",
+        "release.yml parses as valid YAML"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:19:09.639Z",
+      "dependsOn": [
+        "004",
+        "005",
+        "006"
+      ],
+      "notes": "The concurrency group is keyed on github.ref so only same-tag runs serialize; distinct-tag runs may overlap and --latest is attached only on stable, so a late-finishing prerelease can never steal latest. The actor check is defense-in-depth (the primary control is the manual tag ruleset documented in item 010) and specifically guards the workflow_dispatch re-run path. github.repository_owner avoids hardcoding the login.",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "specs/release-automation/04-ci-preflight-and-workflow.md",
+        "specs/release-automation/06-security-and-setup.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add SHA256 checksum verification to install-binary.sh",
+      "description": "Add SHA256 checksum verification to the existing scripts/install-binary.sh (spec 05 §1). The download URL scheme and detect_asset() are UNCHANGED — only insert verification after the successful download into $TMP and BEFORE `install -m 0755 \"$TMP\" \"$TARGET\"`.\n\nVerification is ON by default; `--local` mode skips it entirely (nothing published to verify against).\n\n1. Compute SUMS_URL from the same release: latest → https://github.com/$RAUF_REPO/releases/latest/download/SHA256SUMS; tagged → https://github.com/$RAUF_REPO/releases/download/$TAG/SHA256SUMS.\n2. Pick a tool: sha256sum, else `shasum -a 256`; if neither is present → warn to stderr and continue (do not brick curl|bash installs).\n3. Fetch SHA256SUMS to a temp file; if the fetch fails → warn and continue.\n4. EXPECTED = the hash for the current $ASSET (`grep \" ${ASSET}\\$\" | awk '{print $1}'`); if not listed → warn and continue.\n5. ACTUAL = the tool's hash of $TMP; on mismatch → print expected vs actual to stderr, `rm -f \"$TMP\"`, exit 1 (the bad binary is never installed). On match → echo `Checksum OK ($ASSET).`.\n\nFailure semantics: mismatch = hard-fail; missing tool / unreachable sums / unlisted asset = soft warn+continue; --local = skipped.",
+      "acceptanceCriteria": [
+        "install-binary.sh fetches SHA256SUMS from the same release and verifies $TMP before install -m 0755, with verification on by default",
+        "A checksum mismatch prints expected vs actual, removes $TMP, and exits 1; a missing tool, unreachable SHA256SUMS, or unlisted asset warns and continues; --local skips verification",
+        "detect_asset() and the existing download URL scheme are unchanged",
+        "bash -n scripts/install-binary.sh passes (no syntax errors)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:29:21.293Z",
+      "dependsOn": [],
+      "notes": "Read the current scripts/install-binary.sh first to find the exact insertion point (after $TMP is fetched, before install -m 0755) and the existing $ASSET / $TAG / $RAUF_REPO variable names. The soft-fail-on-missing-tool behavior matters because the script is often piped from curl|bash.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/05-install-scripts.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add Windows PowerShell installer install-binary.ps1",
+      "description": "Create scripts/install-binary.ps1 — a Windows PowerShell installer mirroring install-binary.sh (spec 05 §2), hosted for `irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.ps1 | iex`.\n\n- #Requires -Version 5; $ErrorActionPreference = 'Stop'.\n- $Repo from $env:RAUF_REPO (default garygentry/rauf); $Version from $env:RAUF_VERSION (default latest); $Asset = 'rauf-windows-x64.exe' (only windows-x64 is built; arm64 is out of scope).\n- $InstallDir = Join-Path $HOME '.local\\bin'; create it (New-Item -ItemType Directory -Force).\n- Base URL: latest → https://github.com/$Repo/releases/latest/download; tagged → https://github.com/$Repo/releases/download/$Version.\n- Download $Asset and SHA256SUMS to temp files (Invoke-WebRequest -UseBasicParsing).\n- Verification is MANDATORY (Get-FileHash -Algorithm SHA256 is built in — there is no missing-tool path): parse the expected hash for $Asset from SHA256SUMS (regex-escape the asset name); if not listed → remove the temp file and throw; if actual (ToLower) != expected (ToLower) → remove the temp file and throw `Checksum MISMATCH for <asset>`.\n- Move-Item -Force the verified file to $InstallDir\\rauf.exe.\n- If $InstallDir is not on the user PATH, append it to the User environment variable and warn that a new terminal is needed.\n- Finally run `& $Target version`.",
+      "acceptanceCriteria": [
+        "scripts/install-binary.ps1 downloads rauf-windows-x64.exe + SHA256SUMS, verifies with Get-FileHash SHA256 (hard-fail on mismatch or unlisted asset), installs to $HOME\\.local\\bin\\rauf.exe, and updates the user PATH when missing",
+        "Verification is unconditional (no skip path) and the asset name is exactly rauf-windows-x64.exe",
+        "RAUF_REPO and RAUF_VERSION env overrides are honored with defaults garygentry/rauf and latest",
+        "The script contains the complete download → verify → Move-Item → PATH-update → run-version flow"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:31:52.681Z",
+      "dependsOn": [],
+      "notes": "Symmetric with the Unix ~/.local/bin install dir. Unlike Unix there is no soft-fail path: Get-FileHash ships with Windows, so a missing checksum tool is impossible and any mismatch is a hard throw. CI cannot run this script, so verification is by inspection — ensure the flow matches spec 05 §2.2 exactly.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/05-install-scripts.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "chore",
+      "priority": 2,
+      "title": "Add release/install docs and one-time setup (ruleset, checklist, macOS, Windows)",
+      "description": "Add maintainer/end-user documentation and the one-time setup notes for the release pipeline (spec 05 §3 and 06 §1.1/§4). Documentation only — no code. Place under docs/architecture/ (or docs/) and update README install instructions as appropriate.\n\n1. macOS Gatekeeper/quarantine note: the darwin binaries are unsigned in v1 (signing deferred); workaround `xattr -d com.apple.quarantine ./rauf` (or right-click → Open once); caveat that binaries fetched via curl/install-binary.sh are usually NOT quarantined.\n2. Windows install one-liner: `irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.ps1 | iex`.\n3. The release-tags tag ruleset as a FIRST-RELEASE BLOCKER: Settings → Rules → Rulesets → New tag ruleset; name `release-tags`; enforcement Active; target tag pattern `v*`; rule = Restrict creations; bypass list = Repository admin (garygentry) only. State explicitly that the first vX.Y.Z release MUST NOT proceed until this ruleset exists. This is manual GitHub configuration — call it out as a human step.\n4. Pre-release setup checklist (spec 06 §4): [blocker] create the ruleset; [blocker] confirm version.ts + all six package.json agree (the first release:prepare run corrects the docs 0.1.0 drift); confirm .bun-version exists and CI is green on the pinned Bun; confirm CHANGELOG.md `## Unreleased` has real notes.",
+      "acceptanceCriteria": [
+        "Docs include the macOS quarantine workaround (xattr -d com.apple.quarantine) and the curl-not-quarantined caveat",
+        "Docs include the release-tags tag ruleset setup described as a first-release blocker (restrict v* creation to the repository admin)",
+        "Docs include the pre-release setup checklist and the Windows `irm … | iex` install one-liner"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T18:35:14.837Z",
+      "dependsOn": [
+        "003",
+        "007"
+      ],
+      "notes": "This item only WRITES docs; it does not configure GitHub. The release-tags ruleset itself is manual GitHub config the maintainer must perform (a RAUF_NEEDS_HUMAN-style step) — the docs describe how, and flag it as the gate on the first release. Signing/SLSA (REQ-INTEGRITY-03) stays deferred; document the v1 unsigned stance, do not implement signing.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/05-install-scripts.md",
+        "specs/release-automation/06-security-and-setup.md"
+      ]
+    },
+    {
+      "id": "011",
+      "type": "chore",
+      "priority": 2,
+      "title": "Execute manual end-to-end release validation (spec 07 §4)",
+      "description": "RAUF_NEEDS_HUMAN gate. Execute the manual end-to-end release validation procedure from spec 07 §4 once against a real prerelease→stable cycle — this is the ONLY validation for the release workflow YAML, the git-mutating prepare push paths, and the install scripts (CI cannot push real tags, drive GitHub Actions end-to-end, or run install-binary.ps1 on Windows). An autonomous loop CANNOT complete this item; it must emit RAUF_NEEDS_HUMAN and stop. Requires a human operator with repo admin rights, the release-tags tag ruleset in place (item 010), and a real tag push.\n\nRun, in order: (1) `pnpm release:prepare 0.3.0-rc.1 --dry-run` → prints the seven edits incl. docs drift correction + rolled section + tag, no repo change; (2) `pnpm release:prepare 0.3.0-rc.1` → on tag push, all five assets + SHA256SUMS publish, release marked prerelease (not latest), notes match the ## 0.3.0-rc.1 section, releases/latest unchanged; (3) install the prerelease by tag (`RAUF_VERSION=v0.3.0-rc.1`) on Unix + Windows, `rauf version` prints 0.3.0-rc.1; (4) `pnpm release:prepare 0.3.0` → published release becomes latest, default install-binary.sh installs it, `rauf version` prints 0.3.0; (5) drift negative: hand-push a tag whose value ≠ version.ts → run fails at preflight before any build; (6) re-release refusal: re-run the workflow for an already-published stable tag → 'Assert no existing release' fails, nothing mutated; (7) guard refusals: exercise each unsafe prep condition (not-on-main, dirty, behind/ahead/diverged, existing tag, non-incrementing, empty changelog) → each leaves the repo untouched with a distinct `refusing:` line; (8) checksum tamper: corrupt a downloaded asset → install scripts hard-fail with MISMATCH.",
+      "acceptanceCriteria": [
+        "Step 1 (prerelease dry-run) prints the seven edits incl. docs drift correction and makes no repo change",
+        "Step 2 (prerelease publish) attaches all five assets + SHA256SUMS, marks the release prerelease (not latest), and notes match the changelog section",
+        "Step 3 installs the prerelease by tag on Unix and Windows and `rauf version` reports 0.3.0-rc.1",
+        "Step 4 (promote to stable) makes the release latest and the default install installs it; `rauf version` reports 0.3.0",
+        "Steps 5–6 (drift negative, re-release refusal) fail before any publish and mutate nothing",
+        "Step 7 exercises every prep guard, each leaving the repo untouched with a distinct `refusing:` line",
+        "Step 8 (checksum tamper) makes the install scripts hard-fail with MISMATCH",
+        "All 8 steps recorded as executed against a real prerelease→stable cycle (human-run RAUF_NEEDS_HUMAN gate, not loop-automatable)"
+      ],
+      "status": "blocked",
+      "completedAt": null,
+      "dependsOn": [
+        "008",
+        "009",
+        "010"
+      ],
+      "notes": "RAUF_NEEDS_HUMAN — an autonomous loop cannot push real tags, drive GitHub Actions, or install on Windows; it must emit RAUF_NEEDS_HUMAN and stop rather than mark this done. This item exists so spec 07 §4's gate ('executed at least once before the feature is considered done') is visible rather than implied-covered. The release-tags ruleset (item 010) must be active before step 2.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/release-automation/07-testing-strategy.md",
+        "specs/release-automation/04-ci-preflight-and-workflow.md",
+        "specs/release-automation/05-install-scripts.md"
+      ],
+      "blockedReason": "Item 011 is a designed human-gate — manual end-to-end release validation requires a human operator with repo admin rights to push real git tags, drive GitHub Actions end-to-end, and run install-binary.ps1 on Windows (all impossible from an autonomous loop). Dependencies 008/009/010 are done and the release-tags ruleset must be active; a maintainer must execute the 8-step prerelease→stable cycle in spec 07 §4 and record the results.",
+      "needsHuman": true
+    }
+  ]
+}

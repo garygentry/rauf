@@ -35,6 +35,13 @@ bash "$SANDBOX_DIR/setup.sh"
 export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
 export MOCK_CLAUDE_SCENARIO="$SCENARIO"
 
+# Point the loop's git operations (dirty-tree guard + auto-commit) at the
+# sandbox's own throwaway repo (created by setup.sh), never the parent rauf
+# repo. This lets the loop run on a clean `sandbox` branch without --force
+# and keeps sandbox commits out of the parent's history.
+export GIT_DIR="$SANDBOX_DIR/.sandbox-git"
+export GIT_WORK_TREE="$SANDBOX_DIR"
+
 echo "=== Running scenario: $SCENARIO ==="
 # shellcheck disable=SC2086
 rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 $BACKLOG_FLAG

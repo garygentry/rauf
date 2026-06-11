@@ -915,6 +915,36 @@ describe("updateItem", () => {
     expect(result.value.status).toBe("in_progress");
   });
 
+  it("persists the needsHuman flag (in_progress → blocked + needsHuman)", () => {
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
+
+    const result = updateItem(paths, "001", {
+      status: "blocked",
+      blockedReason: "need human decision",
+      needsHuman: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("blocked");
+    expect(result.value.needsHuman).toBe(true);
+
+    const reread = readBacklog(paths);
+    if (!reread.ok) return;
+    expect(reread.value.items[0]!.needsHuman).toBe(true);
+  });
+
+  it("clears needsHuman when an item later transitions to done", () => {
+    writeBacklogRaw(
+      makeBacklog([makeItem({ id: "001", status: "in_progress", needsHuman: true })]),
+    );
+
+    const result = updateItem(paths, "001", { status: "done" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("done");
+    expect(result.value.needsHuman).toBeUndefined();
+  });
+
   it("allows valid status transition: in_progress → done", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
 
@@ -1323,6 +1353,27 @@ describe("selectNextItem", () => {
     expect(selectNextItem(backlog)).toBeNull();
   });
 
+  it("skips a blocked+needsHuman item but still selects an independent pending item", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "blocked", needsHuman: true }),
+      makeItem({ id: "002", priority: 2, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("002");
+  });
+
+  it("leaves a dependent of a needs-human item unselected (dep not done)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "blocked", needsHuman: true }),
+      makeItem({ id: "002", priority: 1, status: "pending", dependsOn: ["001"] }),
+    ]);
+
+    // 002 depends on the set-aside 001 (not done) → nothing runnable.
+    expect(selectNextItem(backlog)).toBeNull();
+  });
+
   it("skips items whose dependsOn includes non-done items", () => {
     const backlog = makeBacklog([
       makeItem({ id: "001", priority: 1, status: "pending", dependsOn: ["002"] }),
@@ -1728,6 +1779,40 @@ describe("unblockItems", () => {
     if (result.ok) return;
     expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     expect(result.error.message).toContain("not blocked");
+  });
+
+  it("clears the needsHuman flag when unblocking a single item", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "blocked", blockedReason: "need API key", needsHuman: true }),
+    ]);
+    writeBacklog(paths, backlog);
+
+    const result = unblockItems(paths, "001");
+    expect(result.ok).toBe(true);
+
+    const readResult = readBacklog(paths);
+    if (!readResult.ok) return;
+    const item = readResult.value.items[0]!;
+    expect(item.status).toBe("pending");
+    expect(item.blockedReason).toBeUndefined();
+    expect(item.needsHuman).toBeUndefined();
+  });
+
+  it("clears the needsHuman flag when unblocking all items", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "blocked", blockedReason: "code blocker" }),
+      makeItem({ id: "002", status: "blocked", blockedReason: "need decision", needsHuman: true }),
+    ]);
+    writeBacklog(paths, backlog);
+
+    const result = unblockItems(paths);
+    expect(result.ok).toBe(true);
+
+    const readResult = readBacklog(paths);
+    if (!readResult.ok) return;
+    expect(readResult.value.items[0]!.status).toBe("pending");
+    expect(readResult.value.items[1]!.status).toBe("pending");
+    expect(readResult.value.items[1]!.needsHuman).toBeUndefined();
   });
 
   it("errors on non-existent item", () => {

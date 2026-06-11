@@ -14,6 +14,12 @@ export interface SpawnClaudeOptions {
   signal?: AbortSignal;
   outputFormat?: "text" | "stream-json";
   onStreamEvent?: (event: ClaudeStreamEvent) => void;
+  /**
+   * Environment variable overrides for the child process. When provided, these
+   * are merged over the parent `process.env`. When omitted, the child inherits
+   * the parent environment unchanged (default behavior).
+   */
+  env?: Record<string, string>;
 }
 
 export interface SpawnClaudeResult {
@@ -81,6 +87,9 @@ export async function spawnClaude(
     proc = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       detached: true, // Create process group for clean tree kills
+      // Only override env when explicit overrides are supplied; otherwise let
+      // the child inherit the parent environment as-is (default behavior).
+      ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
     });
   } catch (e) {
     return err({

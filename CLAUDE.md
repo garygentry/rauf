@@ -180,11 +180,12 @@ When running as a rauf loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
 8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
-10. Commit your changes with message: `[rauf] <item-id>: <title>`
+10. Leave your changes in the working tree — do NOT commit. The loop runner stages and commits automatically with `[rauf] <item-id>: <title>` after you signal `RAUF_DONE`.
 
 ### Rules
 
 - ONE item per iteration — do not work on multiple items
+- Do NOT run `git commit` or `git add` — the loop runner commits your work. Committing yourself causes a duplicate commit and triggers per-iteration commit hooks.
 - Do not modify `.rauf/backlog.json` — the loop runner manages status
 - Do not modify `.rauf/state.json` — the loop runner manages state
 - Read `.rauf/progress.md` for accumulated project learnings

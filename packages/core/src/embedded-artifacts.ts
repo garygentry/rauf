@@ -233,6 +233,9 @@ RAUF_DONE
             "type": "string",
             "description": "Explanation when status is 'blocked'"
           },
+          "needsHuman": {
+            "type": "boolean"
+          },
           "dependsOn": {
             "type": "array",
             "items": {

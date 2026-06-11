@@ -75,6 +75,47 @@ describe("spawnClaude", () => {
     });
   });
 
+  describe("env overrides", () => {
+    it("passes env overrides to the child process", async () => {
+      writeMockClaude('echo "$RAUF_TEST_ENV"');
+
+      const result = await spawnClaude("test", {
+        sessionTimeoutMinutes: 1,
+        env: { RAUF_TEST_ENV: "suppressed" },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stdout.trim()).toBe("suppressed");
+    });
+
+    it("still inherits the parent environment when overrides are given", async () => {
+      writeMockClaude('echo "$PATH"');
+      // PATH is set by the test harness; the child should still see it even
+      // though we only override an unrelated var.
+      const result = await spawnClaude("test", {
+        sessionTimeoutMinutes: 1,
+        env: { RAUF_TEST_ENV: "x" },
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stdout.trim().length).toBeGreaterThan(0);
+    });
+
+    it("does not set the override when env is omitted", async () => {
+      writeMockClaude('echo "[$RAUF_TEST_ENV]"');
+
+      const result = await spawnClaude("test", {
+        sessionTimeoutMinutes: 1,
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stdout.trim()).toBe("[]");
+    });
+  });
+
   describe("stdin/stdout/stderr capture", () => {
     it("pipes prompt via stdin", async () => {
       // Script that reads stdin and echoes it to stdout

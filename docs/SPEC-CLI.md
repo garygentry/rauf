@@ -170,9 +170,18 @@ Run the loop directly in-process without the server. Equivalent to `loop start +
 - `--timeout N`: session timeout in minutes (default: 60)
 - `--review`: enable a post-loop review pass after all items complete
 - `--review-only`: run review only — create fix items but do not process them (implies `--review`)
+- `--suppress-iteration-review`: run child agent sessions with per-iteration review/security hooks suppressed (single-gate review model — see below). Opt-in; default behavior is unchanged.
 - Events are printed directly to the terminal with colors and Unicode icons
 - Responds to SIGINT/SIGTERM for graceful cancellation
 - With `--json`: outputs `LoopResult { completedCount, blockedCount, cancelled, reviewItemsCreated?, reviewSummary? }`
+
+#### Single-gate review (suppressing per-iteration review hooks)
+
+When a commit/`Stop`-triggered review hook (e.g. a globally-installed security-review plugin) is present, it fires inside **every** loop child agent session. For human-in-the-loop autonomous dev that is the wrong altitude — the child agent rubber-stamps its own findings, multiplied across the backlog. The adopted model is **review at the gate**: run the loop quiet, then review the cumulative `main..HEAD` diff **once**, surfaced to the human.
+
+`--suppress-iteration-review` (also settable via the `suppressIterationReview` loop option / `POST /loop/start` body) opts into this. It merges a documented set of hook-suppression environment variables — `REVIEW_HOOK_SUPPRESSION_ENV` in `@rauf/loop` — into every child session the loop spawns. The mechanism is **generic, not hardcoded to one plugin**: the env map is the extension point (currently `ENABLE_CODE_SECURITY_REVIEW=0`), and the lower-level `childEnv` loop option lets callers suppress any hook that honors an env opt-out. Default behavior (flag absent) is unchanged — child sessions inherit the parent environment as-is.
+
+The gate review itself is a deliberate, post-loop step over the branch diff — run `git diff main..HEAD`, open a PR (let a review hook / CI run there), or use `rauf loop review` — never per item inside the loop.
 
 ### rauf loop review [path]
 

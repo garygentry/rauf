@@ -1,6 +1,6 @@
 # Test Sandbox
 
-This is a test sandbox for interactive testing of `ralph loop run` with mock Claude scripts.
+This is a test sandbox for interactive testing of `rauf loop run` with mock Claude scripts.
 
 ## Verification
 

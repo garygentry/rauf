@@ -319,7 +319,7 @@ describe("LoopRunner", () => {
       expect(backlog.items[0].status).toBe("blocked");
     });
 
-    it("handles RAUF_NEEDS_HUMAN signal — leaves item in_progress", async () => {
+    it("RAUF_NEEDS_HUMAN sets the item aside (blocked+needsHuman) without halting the loop", async () => {
       setupProject(tmpDir, [pendingItem("001", "Human needed task")]);
       writeMockClaude(binDir, 'echo "RAUF_NEEDS_HUMAN:Need API key"');
 
@@ -330,27 +330,120 @@ describe("LoopRunner", () => {
       const result = await runner.start();
 
       expect(result.completedCount).toBe(0);
+      expect(result.needsHumanCount).toBe(1);
       expect(result.cancelled).toBe(false);
 
-      // Item should remain in_progress (NOT reset to pending)
+      // Item is set aside as blocked + needsHuman (NOT left in_progress)
       const backlog = JSON.parse(
         fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       );
-      expect(backlog.items[0].status).toBe("in_progress");
+      expect(backlog.items[0].status).toBe("blocked");
+      expect(backlog.items[0].needsHuman).toBe(true);
+      expect(backlog.items[0].blockedReason).toBe("Need API key");
 
-      // State should be paused_human
+      // Loop terminated naturally (NOT paused_human — nothing else runnable)
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
-      expect(state.status).toBe("paused_human");
+      expect(state.status).toBe("complete");
 
-      // DONE file written with needs_human
-      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
-      expect(doneContent).toContain("needs_human");
-
-      // Event emitted
+      // Event emitted with reason
       expect(events).toHaveLength(1);
       expect((events[0] as Extract<LoopEvent, { type: "needs_human" }>).reason).toBe(
         "Need API key",
       );
+    });
+
+    it("needs_human sets aside and the loop continues to the next runnable item", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Human task"), pendingItem("002", "Normal task")]);
+      // 001 (selected first) → needs_human; 002 → done
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+if [ ! -f "$COUNT_FILE" ]; then
+  echo 1 > "$COUNT_FILE"
+  echo "RAUF_NEEDS_HUMAN:blocked decision"
+else
+  echo "RAUF_DONE"
+fi`,
+      );
+
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+      expect(result.needsHumanCount).toBe(1);
+      expect(result.cancelled).toBe(false);
+
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const byId = Object.fromEntries(backlog.items.map((i: { id: string }) => [i.id, i]));
+      expect(byId["001"].status).toBe("blocked");
+      expect(byId["001"].needsHuman).toBe(true);
+      expect(byId["002"].status).toBe("done");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("complete");
+    });
+
+    it("leaves a dependent of a needs_human item pending", async () => {
+      setupProject(tmpDir, [
+        pendingItem("001", "Human task"),
+        pendingItem("002", "Dependent", { dependsOn: ["001"] }),
+      ]);
+      writeMockClaude(binDir, 'echo "RAUF_NEEDS_HUMAN:need decision"');
+
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      const result = await runner.start();
+
+      expect(result.needsHumanCount).toBe(1);
+      expect(result.completedCount).toBe(0);
+
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const byId = Object.fromEntries(backlog.items.map((i: { id: string }) => [i.id, i]));
+      expect(byId["001"].status).toBe("blocked");
+      expect(byId["001"].needsHuman).toBe(true);
+      // Dependency 001 is not done, so 002 is never selected and stays pending.
+      expect(byId["002"].status).toBe("pending");
+    });
+
+    it("DONE file omits the needs_human token on a clean run", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Clean task")]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      await runner.start();
+
+      const content = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(content).not.toContain("needs_human");
+    });
+
+    it("runs the review pass after a needs_human set-aside (was unreachable before)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Done task"), pendingItem("002", "Human task")]);
+      // 001 → done, 002 → needs_human, review-pass spawn → done
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then echo "RAUF_DONE"
+elif [ "$n" = "2" ]; then echo "RAUF_NEEDS_HUMAN:need human"
+else echo "RAUF_DONE"; fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true });
+      runner.on("review_started", (e) => events.push(e));
+
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+      expect(result.needsHumanCount).toBe(1);
+      // The review block sits after the main loop; the old needs_human `return
+      // "exit"` skipped it. With set-aside-and-continue it is now reached.
+      expect(events.filter((e) => e.type === "review_started")).toHaveLength(1);
     });
 
     it("retries on 'none' signal and blocks after maxRetries", async () => {
@@ -827,6 +920,51 @@ fi`,
         { type: "llm_spawned" }
       >;
       expect(spawnedEvent.timeoutMinutes).toBe(42);
+    });
+  });
+
+  describe("child session env (suppressIterationReview)", () => {
+    it("propagates the review-hook suppression env to child sessions when opted in", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Suppression test")]);
+      const capture = path.join(tmpDir, "env-capture.txt");
+      // Mock claude records the suppression env var it received, then signals done.
+      writeMockClaude(
+        binDir,
+        `printf '%s' "$ENABLE_CODE_SECURITY_REVIEW" > '${capture}'\necho "RAUF_DONE"`,
+      );
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        suppressIterationReview: true,
+      });
+      await runner.start();
+
+      expect(fs.existsSync(capture)).toBe(true);
+      expect(fs.readFileSync(capture, "utf-8")).toBe("0");
+    });
+
+    it("does not set the suppression env by default", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Default env test")]);
+      const capture = path.join(tmpDir, "env-capture.txt");
+      writeMockClaude(
+        binDir,
+        `printf '%s' "$ENABLE_CODE_SECURITY_REVIEW" > '${capture}'\necho "RAUF_DONE"`,
+      );
+
+      // Ensure the parent env doesn't already carry the var, so the child
+      // inheriting the parent environment unchanged sees it unset.
+      const prev = process.env.ENABLE_CODE_SECURITY_REVIEW;
+      delete process.env.ENABLE_CODE_SECURITY_REVIEW;
+      try {
+        const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+        await runner.start();
+      } finally {
+        if (prev !== undefined) process.env.ENABLE_CODE_SECURITY_REVIEW = prev;
+      }
+
+      expect(fs.existsSync(capture)).toBe(true);
+      // Var is unset → empty string captured.
+      expect(fs.readFileSync(capture, "utf-8")).toBe("");
     });
   });
 

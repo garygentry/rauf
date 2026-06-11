@@ -144,4 +144,36 @@ describe("gitCommit", () => {
     expect(files).toContain("src/a.ts");
     expect(files).toContain("src/b.ts");
   });
+
+  it("excludes .rauf/ runtime files (lock, state, DONE, .bak) but commits work + backlog.json", async () => {
+    // Simulate a project whose .gitignore does NOT cover runtime files: the
+    // pathspec exclude in gitCommit must keep them out of the commit anyway,
+    // in both the root .rauf/ and a nested backlog dir.
+    fs.mkdirSync(path.join(tmpDir, ".rauf"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, "specs/feat/.rauf"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "work.ts"), "export const x = 1;");
+    fs.writeFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "{}");
+    fs.writeFileSync(path.join(tmpDir, ".rauf", ".loop.lock"), "pid");
+    fs.writeFileSync(path.join(tmpDir, ".rauf", "state.json"), "{}");
+    fs.writeFileSync(path.join(tmpDir, ".rauf", "DONE"), "done");
+    fs.writeFileSync(path.join(tmpDir, ".rauf", "backlog.json.bak"), "{}");
+    fs.writeFileSync(path.join(tmpDir, "specs/feat/.rauf", ".loop.lock"), "pid");
+    fs.writeFileSync(path.join(tmpDir, "specs/feat/.rauf", "state.json"), "{}");
+
+    const result = await gitCommit(tmpDir, "005", "work + runtime");
+    expect(result.ok).toBe(true);
+
+    const files = execSync("git show --name-only --format=", {
+      cwd: tmpDir,
+      encoding: "utf-8",
+    });
+    // Work + the real backlog are committed…
+    expect(files).toContain("work.ts");
+    expect(files).toContain(".rauf/backlog.json");
+    // …but the runtime files (root + nested) are NOT.
+    expect(files).not.toContain(".loop.lock");
+    expect(files).not.toContain(".rauf/state.json");
+    expect(files).not.toContain(".rauf/DONE");
+    expect(files).not.toContain("backlog.json.bak");
+  });
 });

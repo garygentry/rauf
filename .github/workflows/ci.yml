@@ -22,26 +22,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        # Typecheck, lint, and tests of @rauf/loop, @rauf/cli, @rauf/web all
-        # import @rauf/core from its built dist (with .d.ts). Build first so a
-        # fresh CI checkout resolves the workspace packages.
-        run: pnpm build
-
-      - name: Schema drift guard
-        # Fails if the committed JSON Schemas are stale relative to the Zod
-        # source of truth (packages/core/src/schemas.ts). This is what would
-        # have caught the bugfix/test enum drift.
-        run: pnpm schema:check
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Format check
-        run: pnpm format:check
-
-      - name: Test
-        run: pnpm test
+      # Single source of truth for the gate — shared with release.yml so the
+      # two workflows can never drift apart.
+      - uses: ./.github/actions/quality-gate

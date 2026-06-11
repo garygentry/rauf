@@ -164,15 +164,22 @@ describe("BacklogItemSchema", () => {
     const item = {
       ...validBacklogItem,
       blockedReason: "Waiting on upstream",
+      needsHuman: true,
       dependsOn: ["001"],
       notes: "See issue #42",
       estimatedIterations: 3,
     };
     const result = BacklogItemSchema.parse(item);
     expect(result.blockedReason).toBe("Waiting on upstream");
+    expect(result.needsHuman).toBe(true);
     expect(result.dependsOn).toEqual(["001"]);
     expect(result.notes).toBe("See issue #42");
     expect(result.estimatedIterations).toBe(3);
+  });
+
+  it("accepts an item without needsHuman (optional, backward-compat)", () => {
+    const result = BacklogItemSchema.parse(validBacklogItem);
+    expect(result.needsHuman).toBeUndefined();
   });
 
   it("rejects empty title", () => {

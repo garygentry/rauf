@@ -495,9 +495,33 @@ describe("deriveStatus — BacklogSummary", () => {
       pending: 2,
       inProgress: 1,
       blocked: 1,
+      needsHuman: 0,
       done: 2,
       total: 6,
     });
+  });
+
+  it("counts needsHuman as a subset of blocked", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "done", completedAt: "2026-01-01" }),
+      makeItem({ id: "002", status: "blocked", blockedReason: "code blocker" }),
+      makeItem({
+        id: "003",
+        status: "blocked",
+        blockedReason: "need API key",
+        needsHuman: true,
+      }),
+    ]);
+    writeBacklog(backlog);
+    writeStateJson(makeLoopState());
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Both blocked items count in `blocked`; only the flagged one in `needsHuman`.
+    expect(result.value.backlogSummary.blocked).toBe(2);
+    expect(result.value.backlogSummary.needsHuman).toBe(1);
   });
 
   it("populates backlogSummary with correct counts from log-parsing path", () => {
@@ -516,6 +540,7 @@ describe("deriveStatus — BacklogSummary", () => {
       pending: 1,
       inProgress: 0,
       blocked: 0,
+      needsHuman: 0,
       done: 1,
       total: 2,
     });

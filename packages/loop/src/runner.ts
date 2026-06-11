@@ -36,6 +36,7 @@ import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
+import { resolveChildEnv } from "./review-hooks.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ import { gitCommit } from "./git-commit.js";
 export interface LoopResult {
   completedCount: number;
   blockedCount: number;
+  needsHumanCount?: number;
   cancelled: boolean;
   gracefulStop?: boolean;
   reviewItemsCreated?: number;
@@ -76,13 +78,17 @@ export class LoopRunner extends TypedEventEmitter {
   private readonly paths: BacklogPaths;
   private instructionPaths!: InstructionPaths;
   private readonly options: LoopStartOptions;
+  /** Env overrides applied to every spawned child session (undefined = inherit parent). */
+  private readonly childEnv: Record<string, string> | undefined;
   private readonly abortController: AbortController;
   private softCancelled = false;
   private iterationCount = 0;
   private completedCount = 0;
   private blockedCount = 0;
+  private needsHumanCount = 0;
   private completedItemIds: string[] = [];
   private blockedItemIds: string[] = [];
+  private needsHumanItemIds: string[] = [];
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
@@ -108,6 +114,10 @@ export class LoopRunner extends TypedEventEmitter {
     this.projectPath = projectPath;
     this.paths = paths;
     this.options = options;
+    this.childEnv = resolveChildEnv({
+      suppressIterationReview: options.suppressIterationReview,
+      childEnv: options.childEnv,
+    });
     this.abortController = new AbortController();
   }
 
@@ -152,6 +162,18 @@ export class LoopRunner extends TypedEventEmitter {
       // (5) Log which backlog root is active
       const relativeRoot = path.relative(this.projectPath, this.paths.root);
       appendLog(this.paths, `Loop started (backlog root: ${relativeRoot || ".rauf"})`);
+
+      // Note when child sessions run with review hooks suppressed (single-gate
+      // review model). Review then belongs at the gate over the cumulative diff.
+      if (this.childEnv) {
+        appendLog(
+          this.paths,
+          `Child sessions run with env overrides: ${Object.keys(this.childEnv).join(", ")}` +
+            (this.options.suppressIterationReview
+              ? " (per-iteration review hooks suppressed — review at the gate)"
+              : ""),
+        );
+      }
 
       // (6) Read .rauf.json marker for project-level options
       const markerResult = readMarkerFile(this.projectPath);
@@ -199,6 +221,7 @@ export class LoopRunner extends TypedEventEmitter {
           return {
             completedCount: this.completedCount,
             blockedCount: this.blockedCount,
+            ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
             cancelled: true,
             gracefulStop: this.softCancelled && !this.abortController.signal.aborted,
           };
@@ -210,6 +233,7 @@ export class LoopRunner extends TypedEventEmitter {
           return {
             completedCount: this.completedCount,
             blockedCount: this.blockedCount,
+            ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
             cancelled: this.isCancelled(),
           };
         }
@@ -256,6 +280,7 @@ export class LoopRunner extends TypedEventEmitter {
         this.emitEvent("loop_completed", {
           completedCount: this.completedCount,
           blockedCount: this.blockedCount,
+          needsHumanCount: this.needsHumanCount,
         });
         const summary = this.buildSummary();
         writeDoneFile(this.paths, summary);
@@ -265,6 +290,7 @@ export class LoopRunner extends TypedEventEmitter {
         this.emitEvent("loop_completed", {
           completedCount: this.completedCount,
           blockedCount: this.blockedCount,
+          needsHumanCount: this.needsHumanCount,
         });
         const summary = this.buildSummary();
         writeDoneFile(this.paths, summary);
@@ -274,6 +300,7 @@ export class LoopRunner extends TypedEventEmitter {
       return {
         completedCount: this.completedCount,
         blockedCount: this.blockedCount,
+        ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
         cancelled: false,
         ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
         ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
@@ -516,6 +543,7 @@ export class LoopRunner extends TypedEventEmitter {
       signal: this.abortController.signal,
       outputFormat: "stream-json",
       onStreamEvent,
+      ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
     clearInterval(stuckTimer);
@@ -619,17 +647,26 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "needs_human": {
         const reason = parsed.reason ?? "No reason provided";
-        // IMPORTANT: Leave item as in_progress (do NOT reset)
-        // Clear currentItemId so the finally block doesn't reset it to pending
-        this.currentItemId = null;
+        // Set the item aside as blocked + needsHuman so it is NOT reselected
+        // (selectNextItem only picks pending) and is distinguishable from a
+        // code-level blocker. Do NOT halt the loop — keep working other
+        // still-runnable items. Dependents of this item naturally stay pending
+        // because their dependency is not done. The human resolves it and
+        // re-runs (--retry-blocked / unblock, which clears the flag).
+        updateItem(this.paths, item.id, {
+          status: "blocked",
+          blockedReason: reason,
+          needsHuman: true,
+        });
+        this.needsHumanCount++;
+        this.needsHumanItemIds.push(item.id);
         this.emitEvent("needs_human", {
           itemId: item.id,
           reason,
         });
-        appendLog(this.paths, `Item ${item.id} needs human input: ${reason}`);
-        this.writeState("paused_human", item.id, "needs_human");
-        writeDoneFile(this.paths, `needs_human: ${reason}`);
-        return "exit";
+        appendLog(this.paths, `Item ${item.id} needs human input (set aside): ${reason}`);
+        this.writeState("running", null, "needs_human");
+        break;
       }
 
       case "review":
@@ -729,6 +766,7 @@ export class LoopRunner extends TypedEventEmitter {
       sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
       model: resolvedModel,
       signal: this.abortController.signal,
+      ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
     if (!claudeResult.ok) {
@@ -1094,6 +1132,13 @@ export class LoopRunner extends TypedEventEmitter {
     parts.push(`iterations=${this.iterationCount}`);
     if (this.completedItemIds.length > 0) {
       parts.push(`items=${this.completedItemIds.join(",")}`);
+    }
+    // Only emit the needs_human token when there genuinely are set-aside human
+    // items. parseDoneFileState classifies any "human" substring as
+    // PAUSED_HUMAN, so a guarded push keeps clean runs classified COMPLETE.
+    if (this.needsHumanCount > 0) {
+      parts.push(`needs_human=${this.needsHumanCount}`);
+      parts.push(`needs_human_items=${this.needsHumanItemIds.join(",")}`);
     }
     return parts.join(" ");
   }

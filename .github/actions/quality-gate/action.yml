@@ -1,0 +1,17 @@
+name: Quality Gate
+description: Build + schema check + typecheck + lint + format + tests (shared by ci.yml and release.yml).
+runs:
+  using: composite
+  steps:
+    - run: pnpm build
+      shell: bash
+    - run: pnpm schema:check
+      shell: bash
+    - run: pnpm typecheck
+      shell: bash
+    - run: pnpm lint
+      shell: bash
+    - run: pnpm format:check
+      shell: bash
+    - run: pnpm test
+      shell: bash

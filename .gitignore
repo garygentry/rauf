@@ -2,14 +2,28 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
-.rauf/rauf.log
-.rauf/state.json
-.rauf/DONE
-.rauf/backlog.json.bak
+# Rauf loop runtime state — never tracked, in ANY backlog dir (root .rauf/,
+# specs/**/.rauf/, test-sandbox/.rauf/, etc.). The runner's `git add -A` will
+# not stage gitignored paths, so this also keeps transient files out of the
+# per-item commits. Keep backlog.json, progress.md, RAUF.md, REVIEW.md, and
+# archive/ tracked.
+**/.rauf/rauf.log
+**/.rauf/state.json
+**/.rauf/DONE
+**/.rauf/CANCEL
+**/.rauf/iteration-status.json
+**/.rauf/.loop.lock
+# backlog.json.bak is a sibling of backlog.json (root .rauf/ OR specs/<feature>/),
+# so it is matched anywhere, not just under .rauf/.
+**/backlog.json.bak
 *.tmp
 .DS_Store
 rauf-bin
 ~/.rauf/
+# test-sandbox keeps its own throwaway git repo here (NOT named .git, so the
+# parent never treats it as an embedded submodule) to isolate the loop's
+# dirty-tree guard and auto-commit from this repo. See test-sandbox/setup.sh.
+test-sandbox/.sandbox-git/
 .worktrees/
 .playwright-mcp/
 
@@ -17,14 +31,6 @@ rauf-bin
 # (a path we don't control), so the loop's `git add -A` must never sweep them
 # into a feature commit. Local-only; not tracked. See docs/DOGFOODING.md.
 plans/
-
-# Test sandbox transient files
-test-sandbox/.rauf/rauf.log
-test-sandbox/.rauf/state.json
-test-sandbox/.rauf/DONE
-test-sandbox/.rauf/CANCEL
-test-sandbox/.rauf/iteration-status.json
-test-sandbox/.rauf/backlog.json.bak
 
 # Astro/Starlight generated (recreated by scripts/setup-docs.sh and astro dev/build)
 packages/docs/.astro/

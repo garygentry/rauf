@@ -3,6 +3,13 @@ set -euo pipefail
 SANDBOX_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SANDBOX_DIR/.." && pwd)"
 
+# Point every loop run's git operations (dirty-tree guard + auto-commit) at
+# the sandbox's own throwaway repo (created by setup.sh), never the parent
+# rauf repo. The guard then sees a clean `sandbox` branch (no --force needed)
+# and sandbox commits stay out of the parent's history.
+export GIT_DIR="$SANDBOX_DIR/.sandbox-git"
+export GIT_WORK_TREE="$SANDBOX_DIR"
+
 # Require jq
 if ! command -v jq &>/dev/null; then
   echo "ERROR: jq is required but not installed."
@@ -188,9 +195,10 @@ assert_no_iteration_status
 assert_done_file_exists
 assert_state_status "limit_reached"
 
-# 5. stream-needs-human: RAUF_NEEDS_HUMAN leaves in_progress
+# 5. stream-needs-human: RAUF_NEEDS_HUMAN sets the item aside (blocked) and the
+#    loop continues/ends naturally instead of halting in_progress.
 run_scenario "stream-needs-human"
-assert_item_status "001" "in_progress"
+assert_item_status "001" "blocked"
 assert_no_iteration_status
 assert_done_file_exists
 assert_done_file_contains "needs_human"

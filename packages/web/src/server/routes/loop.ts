@@ -32,6 +32,7 @@ const StartLoopBodySchema = z
     model: z.string().optional(),
     sessionTimeoutMinutes: z.number().int().positive().optional(),
     backlogRoot: z.string().optional(),
+    suppressIterationReview: z.boolean().optional(),
   })
   .optional();
 
@@ -115,6 +116,7 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       model: body.model,
       sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,
       backlogRoot,
+      ...(body.suppressIterationReview ? { suppressIterationReview: true } : {}),
     });
 
     const manager = getLoopManager();
