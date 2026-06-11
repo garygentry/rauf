@@ -158,6 +158,10 @@ export const COMMANDS: CommandDef[] = [
           },
           { name: "--model <name>", description: "Claude model to use" },
           { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+          {
+            name: "--create-branch <name>",
+            description: "Create & switch to a new feature branch before starting",
+          },
           { name: "--follow", description: "Follow loop events in real-time after starting" },
           {
             name: "--retry-blocked",

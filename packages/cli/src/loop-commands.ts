@@ -32,10 +32,14 @@ import {
   formatBudgetMath,
   resolveMaxIterations,
   formatMaxIterationsSource,
+  ok,
+  err,
+  ErrorCodes,
   type BacklogPaths,
+  type Result,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
-import { LoopRunner, checkLoopPreconditions } from "@rauf/loop";
+import { LoopRunner, checkLoopPreconditions, execGit } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -84,6 +88,57 @@ function resolveLoopMaxIterations(
   }
   info(c.dim(formatMaxIterationsSource(resolved)));
   return resolved.value;
+}
+
+/**
+ * Switch to a fresh feature branch before the loop runs, in response to
+ * `--create-branch <name>`. No-ops (switched:false) when already on that
+ * branch. Fails cleanly if the branch already exists or git errors — e.g. so
+ * `--create-branch` never silently runs the loop on the wrong branch.
+ */
+export async function createLoopBranch(
+  projectPath: string,
+  branchName: string,
+): Promise<Result<{ switched: boolean }>> {
+  let current = "";
+  try {
+    current = (await execGit(projectPath, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+  } catch {
+    // Not a git repo (or no commits) — let `git switch -c` surface the error.
+  }
+
+  if (current === branchName) {
+    return ok({ switched: false });
+  }
+
+  try {
+    await execGit(projectPath, ["switch", "-c", branchName]);
+    return ok({ switched: true });
+  } catch (e) {
+    return err({
+      code: ErrorCodes.CONFLICT,
+      message:
+        `Could not create branch "${branchName}": ${e instanceof Error ? e.message : String(e)}. ` +
+        "Pick a name that does not already exist, or `git switch` to it manually.",
+    });
+  }
+}
+
+/**
+ * Copy-pasteable remediation printed when `checkLoopPreconditions` refuses,
+ * replacing the old generic "commit or stash" hint. Surfaces the three ways to
+ * reach a runnable state: create/switch a feature branch, seed the backlog
+ * commit, or force past the checks.
+ */
+export function buildPreconditionRemediation(projectArg: string): string[] {
+  const p = projectArg;
+  return [
+    "To reach a runnable state, run one of:",
+    `  git switch -c <branch>                       ${c.dim("# move your work onto a feature branch")}`,
+    `  rauf loop run ${p} --create-branch <branch>  ${c.dim("# or have rauf create & switch for you")}`,
+    `  rauf loop run ${p} --seed-backlog            ${c.dim("# commit an otherwise-clean backlog first")}`,
+    `  rauf loop run ${p} --force                   ${c.dim("# bypass these checks (last resort)")}`,
+  ];
 }
 
 /** Resolve the project path from the first positional arg (default: cwd) */
@@ -161,6 +216,21 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const follow = extractBoolFlag(ctx.flags, "follow");
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  // Create & switch to a feature branch before starting (mirrors `loop run`).
+  // The switch is a local git operation, so it happens CLI-side before the
+  // server request — the server only sees the resulting branch.
+  const createBranch = extractStringFlag(ctx.flags, "create-branch");
+  if (createBranch !== null) {
+    const branchResult = await createLoopBranch(projectPath, createBranch);
+    if (!branchResult.ok) {
+      error(branchResult.error.message);
+      return ExitCode.CONFLICT;
+    }
+    if (branchResult.value.switched) {
+      info(`Switched to new branch ${c.cyan(createBranch)}`);
+    }
+  }
 
   if (retryBlocked) {
     // Resolve paths for unblock operation
@@ -650,6 +720,23 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   }
   const paths = pathsResult.value;
 
+  // Create & switch to a feature branch first (before the precondition check)
+  // so `--create-branch feat/x` takes a project off a protected/dirty branch
+  // and into a runnable state in one step.
+  const createBranch = extractStringFlag(ctx.flags, "create-branch");
+  if (createBranch !== null) {
+    const branchResult = await createLoopBranch(projectPath, createBranch);
+    if (!branchResult.ok) {
+      error(branchResult.error.message);
+      return ExitCode.CONFLICT;
+    }
+    if (branchResult.value.switched) {
+      info(`Switched to new branch ${c.cyan(createBranch)}`);
+    } else {
+      info(`Already on branch ${c.cyan(createBranch)}`);
+    }
+  }
+
   // Safety guard: refuse to run on the default branch, a detached HEAD, or a
   // dirty tree — the loop auto-commits with `git add -A`, so otherwise it could
   // sweep unrelated work into a loop commit. --force bypasses (and, below, also
@@ -658,7 +745,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     const preconditions = await checkLoopPreconditions(projectPath, { allowDirty });
     if (!preconditions.ok) {
       error(preconditions.error.message);
-      info("Commit or stash and switch to a feature branch, or pass `--force`.");
+      for (const line of buildPreconditionRemediation(ctx.args[0] ?? ".")) {
+        info(line);
+      }
       return ExitCode.CONFLICT;
     }
   }

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import * as os from "node:os";
 import * as http from "node:http";
+import { execSync } from "node:child_process";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
@@ -8,7 +10,13 @@ import type { LoopEvent } from "@rauf/core";
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
-import { formatAndPrintEvent, ensureServerRunning } from "./loop-commands.js";
+import {
+  formatAndPrintEvent,
+  ensureServerRunning,
+  createLoopBranch,
+  buildPreconditionRemediation,
+  handleLoopRun,
+} from "./loop-commands.js";
 import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -496,4 +504,146 @@ describe("ensureServerRunning", () => {
   function readState(): { pid: number } {
     return JSON.parse(fs.readFileSync(SERVER_STATE_FILE, "utf-8")) as { pid: number };
   }
+});
+
+// ─── --create-branch + actionable precondition refusal (item 026) ───
+
+describe("createLoopBranch & loop preconditions", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-createbranch-"));
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function git(cwd: string, args: string): void {
+    execSync(`git ${args}`, { cwd, stdio: "ignore" });
+  }
+
+  function currentBranch(cwd: string): string {
+    return execSync("git rev-parse --abbrev-ref HEAD", { cwd, encoding: "utf-8" }).trim();
+  }
+
+  /** Project dir that is its own git repo on `main`, with runtime files ignored. */
+  function makeProject(items: object[]): string {
+    const projectDir = path.join(tmpDir, "proj");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(raufDir, "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "p", description: "d", items }, null, 2) + "\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDir, ".gitignore"),
+      [
+        ".rauf/state.json",
+        ".rauf/DONE",
+        ".rauf/CANCEL",
+        ".rauf/.loop.lock",
+        ".rauf/rauf.log",
+        ".rauf/iteration-status.json",
+        ".rauf/backlog.json.bak",
+        "",
+      ].join("\n"),
+    );
+    git(projectDir, "-c init.defaultBranch=main init");
+    git(projectDir, 'config user.email "test@test.com"');
+    git(projectDir, 'config user.name "Test"');
+    git(projectDir, "add -A");
+    git(projectDir, 'commit -m "baseline"');
+    return projectDir;
+  }
+
+  function pendingItem(id: string): object {
+    return {
+      id,
+      type: "feature",
+      priority: 1,
+      title: `Item ${id}`,
+      description: "d",
+      acceptanceCriteria: [],
+      status: "pending",
+      completedAt: null,
+      dependsOn: [],
+    };
+  }
+
+  it("switches to a new feature branch (switched:true)", async () => {
+    const proj = makeProject([]);
+    expect(currentBranch(proj)).toBe("main");
+
+    const result = await createLoopBranch(proj, "feat/x");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.switched).toBe(true);
+    expect(currentBranch(proj)).toBe("feat/x");
+  });
+
+  it("no-ops when already on the requested branch (switched:false)", async () => {
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/x");
+
+    const result = await createLoopBranch(proj, "feat/x");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.switched).toBe(false);
+    expect(currentBranch(proj)).toBe("feat/x");
+  });
+
+  it("fails cleanly when the branch already exists (no switch)", async () => {
+    const proj = makeProject([]);
+    git(proj, "branch feat/x"); // create but stay on main
+
+    const result = await createLoopBranch(proj, "feat/x");
+    expect(result.ok).toBe(false);
+    // The working branch is left untouched on failure.
+    expect(currentBranch(proj)).toBe("main");
+  });
+
+  it("buildPreconditionRemediation lists branch + seed + force commands", () => {
+    const lines = buildPreconditionRemediation(".").join("\n");
+    expect(lines).toContain("git switch -c");
+    expect(lines).toContain("--create-branch");
+    expect(lines).toContain("--seed-backlog");
+    expect(lines).toContain("--force");
+  });
+
+  it("loop run prints actionable remediation when refusing on a protected branch", async () => {
+    const proj = makeProject([pendingItem("001")]); // stays on `main`
+    const ctx = makeCtx({ args: [proj] });
+
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.CONFLICT);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain('default branch "main"'); // the refusal itself
+    expect(all).toContain("git switch -c");
+    expect(all).toContain("--create-branch");
+    expect(all).toContain("--seed-backlog");
+    expect(all).toContain("--force");
+    // It refused — the branch is unchanged and no loop ran.
+    expect(currentBranch(proj)).toBe("main");
+  });
+
+  it("loop run --create-branch switches off the protected branch and starts cleanly", async () => {
+    // Empty backlog: the loop selects no item and completes without spawning Claude.
+    const proj = makeProject([]);
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["create-branch", "feat/work"]]),
+    });
+
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    // The branch switch happened before the precondition check, which then passed.
+    expect(currentBranch(proj)).toBe("feat/work");
+    expect(out.stdout).toContain("Switched to new branch");
+  });
 });

@@ -558,8 +558,8 @@
         "Tests cover create-branch-then-passes-preconditions and an actionable refusal message",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T21:02:48.063Z",
       "dependsOn": [],
       "notes": "From dogfooding (onboarding cliff). Reuse execGit (git-exec.ts). Files: loop-commands.ts, git-status.ts, git-exec.ts.",
       "estimatedIterations": 1
