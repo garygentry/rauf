@@ -32,7 +32,10 @@ test-sandbox/.sandbox-git/
 # into a feature commit. Local-only; not tracked. See docs/DOGFOODING.md.
 plans/
 
-# Astro/Starlight generated (recreated by scripts/setup-docs.sh and astro dev/build)
+# Astro/Starlight generated (recreated by scripts/setup-docs.sh and astro dev/build).
+# The doc content pages under src/content/docs/ are committed symlinks (the Pages
+# deploy builds from them directly), so only the generated image symlinks there are
+# ignored — not the whole directory.
 packages/docs/.astro/
-packages/docs/src/content/docs/
+packages/docs/src/content/docs/images/
 packages/docs/public/images/

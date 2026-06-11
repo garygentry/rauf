@@ -11,7 +11,7 @@ Rauf installs, manages, and monitors AI coding loops across your local projects.
   <img src="docs/images/screenshots/dashboard.png" alt="Rauf Manager — Projects Dashboard" width="720" />
 </p>
 
-> **Self-hosted from day one.** Rauf built itself: 44 backlog items, each implemented, verified, and committed by its own loop. The screenshots below are rauf managing rauf.
+> **Self-hosted from day one.** Rauf built itself — every backlog item in this repo was implemented, verified, and committed by its own loop. The screenshots below are rauf managing rauf.
 
 ---
 
