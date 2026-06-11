@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0
+
 First stable release under the **rauf** name. Promotes `0.3.0-rc.2`; the
 `0.3.0-rc.1` and `0.3.0-rc.2` sections below carry the full per-candidate detail.
 

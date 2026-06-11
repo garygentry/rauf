@@ -1,6 +1,6 @@
 {
   "name": "rauf",
-  "version": "0.3.0-rc.2",
+  "version": "0.3.0",
   "private": true,
   "description": "Management tool for rauf autonomous coding loops",
   "repository": {
