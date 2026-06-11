@@ -577,8 +577,8 @@
         "A test parses the --ndjson output and asserts each line is valid JSON with a known event `type`",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T21:09:08.124Z",
       "dependsOn": [],
       "notes": "From dogfooding (monitoring was DIY). Server mode already has SSE; this brings parity to direct mode. Files: loop-commands.ts, schemas.ts.",
       "estimatedIterations": 1

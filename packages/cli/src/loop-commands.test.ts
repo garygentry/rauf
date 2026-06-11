@@ -6,6 +6,7 @@ import { execSync } from "node:child_process";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
+import { LoopEventSchema } from "@rauf/core";
 
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -645,5 +646,51 @@ describe("createLoopBranch & loop preconditions", () => {
     // The branch switch happened before the precondition check, which then passed.
     expect(currentBranch(proj)).toBe("feat/work");
     expect(out.stdout).toContain("Switched to new branch");
+  });
+
+  // ─── --ndjson machine-readable event stream (item 027) ───
+
+  it("loop run --ndjson emits valid JSON events + a trailing result line", async () => {
+    // Empty backlog: completes without spawning Claude, emitting loop_started
+    // and loop_completed events.
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/ndjson"); // off the protected branch → preconditions pass
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["ndjson", true]]),
+    });
+
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    const lines = out.stdout.split("\n").filter((l) => l.trim().length > 0);
+    // At least: one event line + the trailing result line.
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+
+    // Every line is valid JSON (NDJSON: one object per line).
+    const parsed = lines.map((l) => JSON.parse(l));
+
+    // All lines except the trailing result are valid LoopEvents with a known type.
+    const eventObjs = parsed.slice(0, -1);
+    expect(eventObjs.length).toBeGreaterThanOrEqual(1);
+    for (const obj of eventObjs) {
+      const result = LoopEventSchema.safeParse(obj);
+      expect(result.success).toBe(true);
+      expect(typeof obj.type).toBe("string");
+    }
+    // The first emitted event is loop_started.
+    expect(eventObjs[0].type).toBe("loop_started");
+
+    // The trailing line is the loop result (no event `type`, carries counts).
+    const resultLine = parsed[parsed.length - 1];
+    expect(resultLine.type).toBeUndefined();
+    expect(typeof resultLine.completedCount).toBe("number");
+    expect(typeof resultLine.blockedCount).toBe("number");
+
+    // The human renderer + diagnostic lines are suppressed → no leakage into stdout.
+    expect(out.stdout).not.toContain("Running loop directly");
+    expect(out.stdout).not.toContain("Loop finished");
   });
 });

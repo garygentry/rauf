@@ -44,7 +44,7 @@ import { LoopRunner, checkLoopPreconditions, execGit } from "@rauf/loop";
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
-import { c, info, print, error, warn, success, outputJson } from "./formatter.js";
+import { c, info, print, error, warn, success, outputJson, configureOutput } from "./formatter.js";
 import { StatusLine } from "./status-line.js";
 import {
   readServerState,
@@ -693,6 +693,15 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // by construction, but branch protection must stay on (unlike --force).
   const allowDirty = extractBoolFlag(ctx.flags, "allow-dirty");
 
+  // --ndjson: emit one JSON object per LoopEvent to stdout (plus a trailing
+  // JSON result line) and suppress the human renderer + StatusLine so stdout is
+  // a clean machine-readable stream. Forces no-color; diagnostic info/success
+  // lines are suppressed (json mode) and errors/warnings still go to stderr.
+  const ndjson = extractBoolFlag(ctx.flags, "ndjson");
+  if (ndjson) {
+    configureOutput({ noColor: true, json: true });
+  }
+
   // Refuse to run a loop on an unmigrated legacy ralph project — its
   // RALPH.md would instruct Claude to emit RALPH_* signals the new parser
   // rejects. Migration is required first (decision #3).
@@ -815,9 +824,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const runner = runnerResult.value;
 
   const statusLine = new StatusLine({
-    isTTY: process.stdout.isTTY ?? false,
+    isTTY: ndjson ? false : (process.stdout.isTTY ?? false),
     quiet: ctx.globalFlags.quiet,
-    json: ctx.globalFlags.json,
+    json: ctx.globalFlags.json || ndjson,
     noColor: ctx.globalFlags.noColor,
   });
 
@@ -855,6 +864,13 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   ];
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
+      // Machine-readable mode: one JSON object per event, no human renderer
+      // and no StatusLine — keeps stdout a clean NDJSON stream.
+      if (ndjson) {
+        process.stdout.write(JSON.stringify(event) + "\n");
+        return;
+      }
+
       // For streaming events, update the detail line without pausing
       switch (event.type) {
         case "llm_tool_activity": {
@@ -937,12 +953,12 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     statusLine.stop();
     if (sigintCount === 1) {
       runner.requestGracefulStop();
-      print("");
+      if (!ndjson) print("");
       info(
         c.yellow("Finishing current iteration... ") + c.dim("Press Ctrl+C again to force quit."),
       );
     } else {
-      print("");
+      if (!ndjson) print("");
       info(c.red("Force quitting..."));
       runner.cancel();
     }
@@ -959,7 +975,10 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   try {
     const result = await runner.start();
 
-    if (ctx.globalFlags.json) {
+    if (ndjson) {
+      // Trailing line: the final loop result as a single JSON object.
+      process.stdout.write(JSON.stringify(result) + "\n");
+    } else if (ctx.globalFlags.json) {
       outputJson(result);
     } else {
       print("");

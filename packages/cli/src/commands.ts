@@ -207,6 +207,10 @@ export const COMMANDS: CommandDef[] = [
             name: "--suppress-iteration-review",
             description: "Suppress per-iteration review hooks in child sessions",
           },
+          {
+            name: "--ndjson",
+            description: "Emit one JSON object per loop event to stdout (machine-readable)",
+          },
         ],
         handler: handleLoopRun,
       },
