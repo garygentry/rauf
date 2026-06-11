@@ -21,6 +21,30 @@ artifacts/variants/backlog-json/
     └── progress.md               # Empty progress template
 ```
 
+## .gitignore Entries
+
+During `install()` and `update()`, the installer appends rauf runtime entries to the target project's `.gitignore` (idempotently — never duplicated). The set mirrors `RUNTIME_EXCLUDE_PATHSPECS` in `packages/loop/src/git-commit.ts`:
+
+```
+**/.rauf/.loop.lock
+**/.rauf/state.json
+**/.rauf/DONE
+**/.rauf/CANCEL
+**/.rauf/iteration-status.json
+**/.rauf/rauf.log
+**/backlog.json.bak
+```
+
+These cover the root `.rauf/` directory as well as nested backlog dirs (`specs/<feature>/.rauf/`). The intentionally-tracked files (`backlog.json`, `progress.md`, `RAUF.md`, `REVIEW.md`, `archive/`) are **not** listed.
+
+> **Already tracking a runtime file?** If `.rauf/.loop.lock` (or another runtime file) was committed before the `.gitignore` was in place, untrack it once with:
+>
+> ```
+> git rm --cached .rauf/.loop.lock
+> ```
+>
+> Repeat for any other runtime files that appear in `git status`. The install/update warning lists all of them.
+
 ## Loop Runner
 
 The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner class, replacing the legacy shell scripts. The loop is started via:

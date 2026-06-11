@@ -313,8 +313,8 @@
         "Existing installer tests pass",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T09:21:40.878Z",
       "dependsOn": [],
       "notes": "Keep the ignore list in lockstep with RUNTIME_EXCLUDE_PATHSPECS so the two never drift.",
       "estimatedIterations": 1,

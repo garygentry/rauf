@@ -50,6 +50,28 @@ const CLAUDE_ADDON_FILE = "CLAUDE_ADDON.md";
 const RAUF_MD_MANAGED_START = "<!-- rauf:managed:start -->";
 const RAUF_MD_MANAGED_END = "<!-- rauf:managed:end -->";
 
+/**
+ * Runtime files the loop writes into a target project's .rauf/ dir. These must never be
+ * tracked in the target repo. Keep in sync with RUNTIME_EXCLUDE_PATHSPECS in
+ * packages/loop/src/git-commit.ts — both lists must cover the same files.
+ */
+export const RAUF_GITIGNORE_ENTRIES = [
+  "**/.rauf/.loop.lock",
+  "**/.rauf/state.json",
+  "**/.rauf/DONE",
+  "**/.rauf/CANCEL",
+  "**/.rauf/iteration-status.json",
+  "**/.rauf/rauf.log",
+  "**/backlog.json.bak",
+] as const;
+
+const RAUF_GITIGNORE_COMMENT = "# Rauf runtime — transient files that must never be tracked";
+
+const GIT_RM_CACHED_NOTE =
+  "If any rauf runtime files were previously committed, untrack them once with: " +
+  "git rm --cached .rauf/.loop.lock .rauf/state.json .rauf/DONE .rauf/CANCEL " +
+  ".rauf/iteration-status.json .rauf/rauf.log";
+
 // ─── Artifact reading ─────────────────────────────────────────────
 
 /**
@@ -292,6 +314,14 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
+  // 9b. Deploy .gitignore runtime entries
+  const gitignoreResult = deployGitignore(resolved);
+  if (!gitignoreResult.ok) return gitignoreResult;
+  actions.push(gitignoreResult.value);
+  if (gitignoreResult.value.action !== "skipped") {
+    warnings.push(GIT_RM_CACHED_NOTE);
+  }
+
   // 10. Write .rauf.json marker file
   // On re-install, preserve existing options unless explicitly overridden
   const markerOptions: MarkerOptions = {
@@ -417,6 +447,14 @@ export function update(
   const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
+
+  // Deploy .gitignore runtime entries (idempotent — backfills older installs)
+  const gitignoreResult = deployGitignore(resolved);
+  if (!gitignoreResult.ok) return gitignoreResult;
+  actions.push(gitignoreResult.value);
+  if (gitignoreResult.value.action !== "skipped") {
+    warnings.push(GIT_RM_CACHED_NOTE);
+  }
 
   // Never touch backlog.json or progress.md during update
   actions.push({
@@ -902,6 +940,46 @@ function safeUnlink(filePath: string): void {
   } catch {
     // File doesn't exist — that's fine
   }
+}
+
+/** Append missing rauf runtime entries to the target's .gitignore (idempotent, no duplicates) */
+function deployGitignore(projectPath: string): Result<InstallAction> {
+  const gitignorePath = path.join(projectPath, ".gitignore");
+
+  let existing = "";
+  const existed = fileExists(gitignorePath);
+  if (existed) {
+    try {
+      existing = fs.readFileSync(gitignorePath, "utf-8");
+    } catch {
+      // Unreadable — treat as empty; we'll overwrite with just our entries
+    }
+  }
+
+  const existingLines = new Set(existing.split("\n").map((l) => l.trim()));
+  const missingEntries = RAUF_GITIGNORE_ENTRIES.filter((entry) => !existingLines.has(entry));
+
+  if (missingEntries.length === 0) {
+    return ok({
+      file: ".gitignore",
+      action: "skipped",
+      detail: "rauf runtime entries already present",
+    });
+  }
+
+  const separator = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+  const block = `${separator}${RAUF_GITIGNORE_COMMENT}\n${missingEntries.join("\n")}\n`;
+  const newContent = existing + block;
+
+  const writeResult = atomicWrite(gitignorePath, newContent);
+  if (!writeResult.ok) return writeResult;
+
+  const action: InstallAction["action"] = existed ? "updated" : "created";
+  return ok({
+    file: ".gitignore",
+    action,
+    detail: `Added ${missingEntries.length} rauf runtime entr${missingEntries.length === 1 ? "y" : "ies"}`,
+  });
 }
 
 /** Try to remove a directory if it's empty */
