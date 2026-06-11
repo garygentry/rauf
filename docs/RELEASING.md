@@ -176,8 +176,8 @@ Prerequisite: the `release-tags` ruleset (§1.1) must be active.
 - [ ] **2. Prerelease publish** — the release attaches all five assets +
       `SHA256SUMS`, is marked **prerelease** (not "latest"), and its notes match
       the changelog section.
-- [ ] **3. Install the prerelease by tag** on **Unix and Windows**; `rauf
-    version` reports `0.3.0-rc.1`.
+- [ ] **3. Install the prerelease by tag** on **Unix and Windows**;
+      `rauf version` reports `0.3.0-rc.1`.
 - [ ] **4. Promote to stable** — the release becomes "latest" and the default
       install installs it; `rauf version` reports `0.3.0`.
 - [ ] **5–6. Negative paths** — drift check and re-release refusal both fail
