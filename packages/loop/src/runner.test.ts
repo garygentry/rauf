@@ -446,9 +446,11 @@ else echo "RAUF_DONE"; fi`,
       expect(events.filter((e) => e.type === "review_started")).toHaveLength(1);
     });
 
-    it("retries on 'none' signal and blocks after maxRetries", async () => {
+    it("retries on 'none' signal and DEFERS (not blocks) after maxRetries", async () => {
       setupProject(tmpDir, [pendingItem("001", "No signal task")]);
-      // Mock claude that produces no signal
+      // Mock claude that produces no signal and exits cleanly (code 0) — a
+      // genuine_retry, not an infra death. A missing signal must never, by
+      // itself, mark an item blocked: after maxRetries it is DEFERRED.
       writeMockClaude(binDir, 'echo "random output"');
 
       const events: LoopEvent[] = [];
@@ -458,14 +460,25 @@ else echo "RAUF_DONE"; fi`,
 
       const result = await runner.start();
 
-      // Should have retried once then blocked on the second attempt
-      expect(result.blockedCount).toBe(1);
+      // Deferred items are NOT counted as genuine blocks.
+      expect(result.blockedCount).toBe(0);
       const retryEvents = events.filter((e) => e.type === "item_retried");
       expect(retryEvents).toHaveLength(1);
       expect((retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>).attempt).toBe(1);
 
-      const blockedEvents = events.filter((e) => e.type === "item_blocked");
-      expect(blockedEvents).toHaveLength(1);
+      // The item ends status 'blocked' with the deferred flag and a runner reason.
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const item = backlog.items.find((i) => i.id === "001");
+      expect(item?.status).toBe("blocked");
+      expect(item?.deferred).toBe(true);
+      expect(item?.blockedReason).toContain("deferred by runner");
+
+      // It is tracked in state.deferredItems, not blockedItems.
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.deferredItems).toContain("001");
+      expect(state.blockedItems).not.toContain("001");
     });
   });
 

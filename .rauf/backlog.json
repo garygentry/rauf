@@ -124,8 +124,8 @@
         "writeState and buildSummary include deferredItems; existing sandbox scenarios still pass",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T08:02:04.099Z",
       "dependsOn": [
         "003",
         "004",

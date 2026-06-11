@@ -34,7 +34,7 @@ import { spawnClaude } from "./claude-process.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
-import { hasUsageLimitInText } from "./exit-classifier.js";
+import { hasUsageLimitInText, classifyExit } from "./exit-classifier.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -82,6 +82,10 @@ export class LoopRunner extends TypedEventEmitter {
   private completedItemIds: string[] = [];
   private blockedItemIds: string[] = [];
   private needsHumanItemIds: string[] = [];
+  /** Items the RUNTIME gave up on (no signal after retries) — distinct from genuine agent blocks. */
+  private deferredItemIds: string[] = [];
+  /** Consecutive infra_error exits; consumed by the circuit breaker (item 008). */
+  private consecutiveInfraFailures = 0;
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
@@ -607,6 +611,7 @@ export class LoopRunner extends TypedEventEmitter {
     // Handle signal
     switch (parsed.signal) {
       case "done": {
+        this.consecutiveInfraFailures = 0;
         updateItem(this.paths, item.id, { status: "done" });
         this.completedCount++;
         this.completedItemIds.push(item.id);
@@ -626,6 +631,7 @@ export class LoopRunner extends TypedEventEmitter {
       }
 
       case "blocked": {
+        this.consecutiveInfraFailures = 0;
         const reason = parsed.reason ?? "No reason provided";
         updateItem(this.paths, item.id, {
           status: "blocked",
@@ -643,6 +649,7 @@ export class LoopRunner extends TypedEventEmitter {
       }
 
       case "needs_human": {
+        this.consecutiveInfraFailures = 0;
         const reason = parsed.reason ?? "No reason provided";
         // Set the item aside as blocked + needsHuman so it is NOT reselected
         // (selectNextItem only picks pending) and is distinguishable from a
@@ -668,34 +675,83 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "review":
       case "none": {
-        // No signal — retry logic
-        const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
-        this.retryCounts.set(item.id, retries);
+        // No explicit signal. A missing signal must NEVER, by itself, mark an
+        // item blocked — classify WHY the spawn produced no signal and route on
+        // that. usage_limited/infra_error are environmental deaths (item stays
+        // pending); only a clean genuine_retry exhaustion DEFERS the item.
+        const exitClass = classifyExit(claudeResult.value, parsed);
+        switch (exitClass) {
+          case "usage_limited": {
+            // Belt-and-suspenders with the pre-signal usage check (item 005):
+            // route environmental usage death to the sleep-or-exit handler.
+            appendLog(this.paths, "Usage limit detected (post-signal classification)");
+            updateItem(this.paths, item.id, { status: "pending" });
+            this.currentItemId = null;
+            const usageResult = await this.handleStderrUsageLimit();
+            return usageResult === "exit" ? "exit" : "continue";
+          }
 
-        if (retries >= this.options.maxRetries) {
-          // Max retries reached — mark as blocked
-          const reason = `No signal after ${retries} attempts`;
-          updateItem(this.paths, item.id, {
-            status: "blocked",
-            blockedReason: reason,
-          });
-          this.blockedCount++;
-          this.blockedItemIds.push(item.id);
-          this.emitEvent("item_blocked", {
-            itemId: item.id,
-            reason,
-          });
-          appendLog(this.paths, `Item ${item.id} blocked after ${retries} retries`);
-          this.writeState("running", null, "error");
-        } else {
-          // Re-queue: reset to pending for retry
-          updateItem(this.paths, item.id, { status: "pending" });
-          this.emitEvent("item_retried", {
-            itemId: item.id,
-            attempt: retries,
-            maxRetries: this.options.maxRetries,
-          });
-          appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
+          case "timeout": {
+            // An item-specific real attempt that ran out of time — a genuine block.
+            const seconds = Math.round(durationMs / 1000);
+            const reason = `Timed out after ${seconds}s`;
+            updateItem(this.paths, item.id, {
+              status: "blocked",
+              blockedReason: reason,
+            });
+            this.consecutiveInfraFailures = 0;
+            this.blockedCount++;
+            this.blockedItemIds.push(item.id);
+            this.emitEvent("item_blocked", { itemId: item.id, reason });
+            appendLog(this.paths, `Item ${item.id} blocked: ${reason}`);
+            this.writeState("running", null, "error");
+            break;
+          }
+
+          case "infra_error": {
+            // Fast non-zero exit with no usage banner — environmental death.
+            // Leave the item pending and count the failure for the circuit
+            // breaker (item 008). Do NOT block a real work item on a flaky spawn.
+            this.consecutiveInfraFailures++;
+            updateItem(this.paths, item.id, { status: "pending" });
+            appendLog(
+              this.paths,
+              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending`,
+            );
+            break;
+          }
+
+          case "genuine_retry":
+          default: {
+            // A clean / long no-signal exit: genuinely retry up to maxRetries.
+            this.consecutiveInfraFailures = 0;
+            const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
+            this.retryCounts.set(item.id, retries);
+
+            if (retries >= this.options.maxRetries) {
+              // Runner gives up — DEFER (a false block), not a genuine agent block.
+              const reason = `No signal after ${retries} attempts (deferred by runner)`;
+              updateItem(this.paths, item.id, {
+                status: "blocked",
+                blockedReason: reason,
+                deferred: true,
+              });
+              this.deferredItemIds.push(item.id);
+              this.emitEvent("item_blocked", { itemId: item.id, reason });
+              appendLog(this.paths, `Item ${item.id} deferred after ${retries} attempts`);
+              this.writeState("running", null, "error");
+            } else {
+              // Re-queue: reset to pending for retry
+              updateItem(this.paths, item.id, { status: "pending" });
+              this.emitEvent("item_retried", {
+                itemId: item.id,
+                attempt: retries,
+                maxRetries: this.options.maxRetries,
+              });
+              appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
+            }
+            break;
+          }
         }
         break;
       }
@@ -904,6 +960,7 @@ export class LoopRunner extends TypedEventEmitter {
       startedAt: this.startedAt,
       completedItems: this.completedItemIds,
       blockedItems: this.blockedItemIds,
+      deferredItems: this.deferredItemIds,
       error: error ?? null,
     });
   }
@@ -1130,6 +1187,13 @@ export class LoopRunner extends TypedEventEmitter {
     if (this.needsHumanCount > 0) {
       parts.push(`needs_human=${this.needsHumanCount}`);
       parts.push(`needs_human_items=${this.needsHumanItemIds.join(",")}`);
+    }
+    // Items the runner deferred (no signal after retries). The "deferred" token
+    // contains no human/limit/error substring, so parseDoneFileState still
+    // classifies an otherwise-clean run as COMPLETE.
+    if (this.deferredItemIds.length > 0) {
+      parts.push(`deferred=${this.deferredItemIds.length}`);
+      parts.push(`deferred_items=${this.deferredItemIds.join(",")}`);
     }
     return parts.join(" ");
   }
