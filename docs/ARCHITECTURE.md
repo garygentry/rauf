@@ -63,6 +63,8 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 - `rauf loop run` creates a LoopRunner in-process (no server required)
 - `rauf loop start/stop/follow/review` route through the server API or run directly
 - `recovery.ts` provides shared helpers (`reconcileAndRequeue`, `guardLoopLock`, `recoverInterruptedLoop`) used by both `rauf reset` and `rauf resume`
+- `rauf loop run` is the **unattended-safe mode** — the loop runs in the CLI process, so `rauf server stop`/`restart` cannot kill it. `rauf loop start` routes through the server daemon and is interruptible.
+- `maxIterations` bounds a **single process run** of `rauf loop run` or `rauf loop start`, not the cumulative work across restarts. The iteration counter resets to zero each time the process starts. `rauf resume` applies a fresh budget for each continuation.
 - Outputs human-readable by default, `--json` for machine-readable
 - Exit codes follow standard (0=success, 1=error, 2=bad args, etc.)
 
@@ -108,7 +110,10 @@ LoopManager (singleton in web server)
 
 ```
 LoopRunner lifecycle:
-  1. Capture git baseline commit hash (for review diff)
+  1. Capture git baseline commit hash as `baseCommitHash` (persisted to state.json):
+     — used for the review-pass `git diff baseCommit..HEAD`
+     — used as `sinceRef` for bounded commit reconciliation (prevents false-recovery
+       from a prior backlog cycle; IDs restart at 001 for each new backlog)
   2. Clear DONE/CANCEL files
   3. Read .rauf.json marker options (autoSweep, model, etc.)
   4. Run auto-sweep if enabled
@@ -131,8 +136,9 @@ LoopRunner lifecycle:
                              do NOT block; iteration does not count toward budget
           - genuine_retry  → retry up to maxRetries; on exhaustion:
                              blocked + deferred:true, push to deferredItems
-     h. Pre-block reconciliation: if non-done outcome, check findItemCommit + isTreeClean
-        — if committed + clean: promote to done (recovered_via_commit), skip block
+     h. Pre-block reconciliation: if non-done outcome, check
+        findItemCommit(projectPath, itemId, baseCommitHash) — scoped to baseCommitHash..HEAD
+        AND isTreeClean — if committed + clean: promote to done (recovered_via_commit), skip block
      i. If dirty tree after non-done: stash abandoned work before next item
      j. Circuit breaker: if consecutiveInfraFailures >= threshold → halt with error state
      k. Write state.json, check CANCEL file, check usage limits between iterations

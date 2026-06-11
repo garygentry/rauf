@@ -163,6 +163,7 @@ interface LoopState {
   completedItems: string[]; // Item IDs
   blockedItems: string[]; // Item IDs (genuine agent blocks)
   deferredItems: string[]; // Item IDs the runner gave up on ("false blocks" — distinct from genuine agent blocks)
+  baseCommitHash: string | null; // HEAD commit captured at loop start — used as `sinceRef` to bound commit reconciliation to commits after the baseline (prevents false-recovery from a prior backlog cycle; see SPEC-CORE.md § Commit Reconciliation)
   error: string | null;
   sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit
 }

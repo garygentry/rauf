@@ -45,7 +45,7 @@ All Zod schemas corresponding to types in docs/SCHEMAS.md. Export both schemas a
 
 Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`, `LoopEventSchema`, `LoopStartOptionsSchema`, `LoopStateEnumSchema`, `RuntimeSchema`, `BacklogItemSourceSchema`, `AgentDelegationSchema`, `ReviewPayloadSchema`, `ReviewItemSchema`, `LockSummarySchema`, `BacklogSummarySchema`, `DerivedStatusSchema`.
 
-`LoopStartOptionsSchema` includes `review`, `reviewOnly`, `provider`, `backlogRoot`, `suppressIterationReview`, `childEnv`, `sleepOnLimit`, and `circuitBreakerThreshold` optional fields. `BacklogItemSchema` includes `agentDelegation`, `specReferences`, `provider`, `source`, `reviewBatch`, `needsHuman`, and `deferred` optional fields. `LoopStateSchema` includes `deferredItems` (default `[]`) and `paused_usage_limit` in `LoopStateStatusSchema`. `BacklogSummarySchema` includes optional `needsHuman` and `deferred` counts. `LockSummarySchema` captures lock-file liveness (present/pid/alive/stale).
+`LoopStartOptionsSchema` includes `review`, `reviewOnly`, `provider`, `backlogRoot`, `suppressIterationReview`, `childEnv`, `sleepOnLimit`, and `circuitBreakerThreshold` optional fields. `BacklogItemSchema` includes `agentDelegation`, `specReferences`, `provider`, `source`, `reviewBatch`, `needsHuman`, and `deferred` optional fields. `LoopStateSchema` includes `deferredItems` (default `[]`), `baseCommitHash` (nullable, default `null`), and `paused_usage_limit` in `LoopStateStatusSchema`. `BacklogSummarySchema` includes optional `needsHuman` and `deferred` counts. `LockSummarySchema` captures lock-file liveness (present/pid/alive/stale).
 
 Also exports `LOG_PATTERNS` (regex patterns for Tier 2 log-parsing fallback) and `VALID_STATUS_TRANSITIONS`.
 
@@ -506,12 +506,14 @@ This prevents the loop from spinning indefinitely when every spawn dies the same
 
 Before recording any non-done outcome for an item, the runner checks:
 
-1. `findItemCommit(projectPath, itemId)` — does a `[rauf] <id>:` commit exist in history?
+1. `findItemCommit(projectPath, itemId, sinceRef?)` — does a `[rauf] <id>:` commit exist in git history **after `sinceRef`**?
 2. `isTreeClean(projectPath)` — is the working tree clean?
 
 If both are true → the item is promoted to `done` (not blocked/deferred), `item_completed` is emitted, and `"recovered_via_commit: <hash>"` is appended to the log. This handles the case where the agent committed and verified but died before printing `RAUF_DONE`.
 
 If the tree is dirty after a non-done exit → abandoned work is stashed (excluding `.rauf/` and `backlog.json`) before the next item starts.
+
+**Why bounded reconciliation (`sinceRef`)?** Rauf restarts backlog IDs at `001` for every new backlog cycle (e.g. after `rauf backlog reset --clear`). An unbounded `git log` search for `[rauf] 001:` would find a commit from the _previous_ cycle and falsely promote a fresh item 001 to `done`. The runner captures the HEAD commit at loop start as `baseCommitHash`, persists it in `state.json`, and passes it as `sinceRef` to every `findItemCommit` call — so only commits made during this run can trigger recovery. `rauf reset`/`resume` read `baseCommitHash` from `state.json` and apply the same bound when reconciling on behalf of the user.
 
 ### Usage-Limit Pause/Resume
 

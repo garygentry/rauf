@@ -661,8 +661,8 @@
         "Names/flags match packages/core/src/schemas.ts and the CLI handlers; pnpm format:check passes",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T21:29:09.180Z",
       "dependsOn": [
         "021",
         "022",
