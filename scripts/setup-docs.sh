@@ -34,6 +34,8 @@ ln -sf "$REL/CONTRIBUTING.md"        "$DOCS_CONTENT/contributing.md"
 # Note: images/ is one level deeper than $DOCS_CONTENT, so we need an extra ../
 mkdir -p "$DOCS_CONTENT/images"
 ln -sf "../$REL/docs/images/architecture.svg" "$DOCS_CONTENT/images/architecture.svg"
+ln -sf "../$REL/docs/images/rauf-loop.png"    "$DOCS_CONTENT/images/rauf-loop.png"
+ln -sf "../$REL/docs/images/screenshots"      "$DOCS_CONTENT/images/screenshots"
 
 # Clear Astro's content cache to ensure clean builds after symlink changes
 rm -rf "$REPO_ROOT/packages/docs/.astro" "$REPO_ROOT/packages/docs/node_modules/.astro"
