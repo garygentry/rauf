@@ -539,8 +539,8 @@
         "Tests cover live-PID+fresh-iteration-status -> RUNNING and dead-PID+stale -> PAUSED",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T20:53:39.778Z",
       "dependsOn": [],
       "notes": "From feedback #2 F7. Item 013 added lock liveness to the DISPLAY only, not the derivation. Reuse checkLock + readIterationStatus. Files: status.ts.",
       "estimatedIterations": 1
