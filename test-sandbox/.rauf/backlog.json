@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1",
   "project": "test-sandbox",
   "description": "Integration test sandbox for rauf loop runner",
   "items": [
@@ -28,7 +29,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"]
+      "dependsOn": [
+        "001"
+      ]
     }
   ]
 }

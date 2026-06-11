@@ -244,6 +244,58 @@ assert_file_not_exists "$SANDBOX_DIR/specs/feature-a/.rauf/.loop.lock" "specs/fe
 # Note: default .rauf/state.json might exist from setup, but shouldn't have been updated
 # We verify the custom root got the state, which is the key assertion
 
+# ─── Usage-limit-in-stdout scenario ──────────────────────────────────
+
+# 7. usage-limit-stdout: the session-limit banner arrives ONLY in the
+#    reconstructed stdout stream (never in stderr), followed by a fast code=1
+#    exit. The runner must detect the banner in signalText, reset the item to
+#    pending, and pause/sleep — NOT fall through to signal 'none' and block.
+#    This is the incident's failure mode (all 24 false blocks).
+echo ""
+echo "=== Scenario: usage-limit-stdout ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+export MOCK_CLAUDE_SCENARIO="usage-limit-stdout"
+
+# The usage path sleeps (waiting for the limit to reset), so run in the
+# background, wait until the loop has detected the limit and started sleeping,
+# then stop it — we don't wait out the full sleep. The item is reset to
+# pending BEFORE the sleep, so it stays pending regardless of how we stop.
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 &
+LOOP_PID=$!
+
+reached_sleep=0
+for _ in $(seq 1 20); do
+  if [ -f "$SANDBOX_DIR/.rauf/state.json" ] &&
+    [ "$(jq -r '.status' "$SANDBOX_DIR/.rauf/state.json")" = "sleeping_limit" ]; then
+    reached_sleep=1
+    break
+  fi
+  sleep 0.5
+done
+
+kill "$LOOP_PID" 2>/dev/null || true
+wait "$LOOP_PID" 2>/dev/null || true
+
+# Item must stay pending (the bug wrongly blocked it)
+assert_item_status "001" "pending"
+
+# The loop must have paused/slept rather than blocking the item
+if [ "$reached_sleep" -eq 1 ]; then
+  pass "loop paused (state = sleeping_limit)"
+else
+  fail "loop did not reach sleeping_limit (usage limit not detected in stream?)"
+fi
+
+# Detection must have come from scanning the stream/stdout, not a fallthrough
+if grep -q "Usage limit detected" "$SANDBOX_DIR/.rauf/rauf.log"; then
+  pass "log shows usage-limit detection"
+else
+  fail "log missing usage-limit detection"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

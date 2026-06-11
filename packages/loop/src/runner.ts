@@ -34,6 +34,7 @@ import { spawnClaude } from "./claude-process.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
+import { hasUsageLimitInText } from "./exit-classifier.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -62,14 +63,6 @@ const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
-
-/** Usage limit patterns detected in stderr (case-insensitive) */
-const USAGE_LIMIT_PATTERNS = [
-  "usage limit",
-  "rate limit",
-  "claude ai usage limit",
-  "too many requests",
-];
 
 // ─── LoopRunner ─────────────────────────────────────────────────────
 
@@ -571,9 +564,16 @@ export class LoopRunner extends TypedEventEmitter {
       `Claude exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
     );
 
-    // Check stderr for usage limit patterns BEFORE normal signal parsing
-    if (exitCode !== 0 && this.hasUsageLimitInStderr(stderr)) {
-      appendLog(this.paths, "Usage limit detected in stderr");
+    // Compute signal text — prefer reconstructed text from stream-json, fall back to raw stdout
+    const signalText =
+      reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
+
+    // Check for usage-limit banners BEFORE normal signal parsing. The banner can
+    // arrive in EITHER stderr OR the reconstructed stdout stream (the session-limit
+    // banner lands in the stream), so scan BOTH. Otherwise a fast usage-limit
+    // death falls through to signal 'none' and is wrongly retried then blocked.
+    if (exitCode !== 0 && (hasUsageLimitInText(stderr) || hasUsageLimitInText(signalText))) {
+      appendLog(this.paths, "Usage limit detected in claude output");
       // Reset item to pending
       updateItem(this.paths, item.id, { status: "pending" });
       this.currentItemId = null;
@@ -587,9 +587,6 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    // Parse signal — prefer reconstructed text from stream-json, fall back to raw stdout
-    const signalText =
-      reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
     const parsed = parseSignal(signalText);
     this.emitEvent("signal_parsed", {
       itemId: item.id,
@@ -909,12 +906,6 @@ export class LoopRunner extends TypedEventEmitter {
       blockedItems: this.blockedItemIds,
       error: error ?? null,
     });
-  }
-
-  /** Check stderr for usage limit patterns (case-insensitive) */
-  private hasUsageLimitInStderr(stderr: string): boolean {
-    const lower = stderr.toLowerCase();
-    return USAGE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
   }
 
   /** Run pre-loop usage limit preflight check */
