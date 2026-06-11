@@ -16,6 +16,9 @@ import {
   readToolConfig,
   resolveRootDirectory,
   resolveBacklogRoot,
+  resolveBacklogPaths,
+  readBacklog,
+  computeMaxIterations,
   validatePath,
 } from "@rauf/core";
 
@@ -47,6 +50,22 @@ const StopLoopBodySchema = z
 const DEFAULT_MAX_ITERATIONS = 20;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
+
+/**
+ * Derive a backlog-sized iteration cap when the caller omits maxIterations.
+ * Mirrors the CLI default (computeMaxIterations). Falls back to the flat
+ * default when the backlog can't be read or has no pending work.
+ */
+function deriveDefaultMaxIterations(projectPath: string, backlogRoot?: string): number {
+  const rootResult = resolveBacklogRoot(projectPath, backlogRoot);
+  if (!rootResult.ok) return DEFAULT_MAX_ITERATIONS;
+  const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+  if (!pathsResult.ok) return DEFAULT_MAX_ITERATIONS;
+  const backlogResult = readBacklog(pathsResult.value);
+  if (!backlogResult.ok) return DEFAULT_MAX_ITERATIONS;
+  const estimate = computeMaxIterations(backlogResult.value);
+  return estimate.pending > 0 ? estimate.cap : DEFAULT_MAX_ITERATIONS;
+}
 
 // ─── SSE constants ───────────────────────────────────────────────
 
@@ -111,7 +130,7 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     }
 
     const options = LoopStartOptionsSchema.parse({
-      maxIterations: body.maxIterations ?? DEFAULT_MAX_ITERATIONS,
+      maxIterations: body.maxIterations ?? deriveDefaultMaxIterations(projectPath, backlogRoot),
       maxRetries: body.maxRetries ?? DEFAULT_MAX_RETRIES,
       model: body.model,
       sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,

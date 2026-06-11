@@ -446,9 +446,11 @@ else echo "RAUF_DONE"; fi`,
       expect(events.filter((e) => e.type === "review_started")).toHaveLength(1);
     });
 
-    it("retries on 'none' signal and blocks after maxRetries", async () => {
+    it("retries on 'none' signal and DEFERS (not blocks) after maxRetries", async () => {
       setupProject(tmpDir, [pendingItem("001", "No signal task")]);
-      // Mock claude that produces no signal
+      // Mock claude that produces no signal and exits cleanly (code 0) — a
+      // genuine_retry, not an infra death. A missing signal must never, by
+      // itself, mark an item blocked: after maxRetries it is DEFERRED.
       writeMockClaude(binDir, 'echo "random output"');
 
       const events: LoopEvent[] = [];
@@ -458,14 +460,25 @@ else echo "RAUF_DONE"; fi`,
 
       const result = await runner.start();
 
-      // Should have retried once then blocked on the second attempt
-      expect(result.blockedCount).toBe(1);
+      // Deferred items are NOT counted as genuine blocks.
+      expect(result.blockedCount).toBe(0);
       const retryEvents = events.filter((e) => e.type === "item_retried");
       expect(retryEvents).toHaveLength(1);
       expect((retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>).attempt).toBe(1);
 
-      const blockedEvents = events.filter((e) => e.type === "item_blocked");
-      expect(blockedEvents).toHaveLength(1);
+      // The item ends status 'blocked' with the deferred flag and a runner reason.
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const item = backlog.items.find((i) => i.id === "001");
+      expect(item?.status).toBe("blocked");
+      expect(item?.deferred).toBe(true);
+      expect(item?.blockedReason).toContain("deferred by runner");
+
+      // It is tracked in state.deferredItems, not blockedItems.
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.deferredItems).toContain("001");
+      expect(state.blockedItems).not.toContain("001");
     });
   });
 
@@ -673,6 +686,139 @@ echo "RAUF_DONE"`,
     });
   });
 
+  describe("usage limit budget / banner parse / sleepOnLimit (item 007)", () => {
+    it("parses the banner reset time and sleeps to it (no token)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      // Banner in stdout with a reset time; non-zero exit triggers the usage path.
+      writeMockClaude(binDir, 'echo "session limit reached - resets 5:30pm"\nexit 1');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("sleep_start", (e) => events.push(e));
+
+      // Unblock the (long) sleep-to-reset-time quickly.
+      setTimeout(() => runner.cancel(), 500);
+      await runner.start();
+
+      const sleep = events.find((e) => e.type === "sleep_start");
+      expect(sleep).toBeDefined();
+      // Reason reflects the parsed banner reset time, not the flat fallback.
+      expect(sleep && "reason" in sleep ? sleep.reason : "").toContain("banner reset 5:30pm");
+    }, 15_000);
+
+    it("falls back to 60s when the banner has no reset time", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, 'echo "session limit reached" >&2\nexit 1');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("sleep_start", (e) => events.push(e));
+
+      setTimeout(() => runner.cancel(), 500);
+      await runner.start();
+
+      const sleep = events.find((e) => e.type === "sleep_start");
+      expect(sleep).toBeDefined();
+      const reason = sleep && "reason" in sleep ? sleep.reason : "";
+      expect(reason).toContain("API unavailable");
+      expect(reason).not.toContain("banner reset");
+    }, 15_000);
+
+    it("sleepOnLimit=false halts with paused_usage_limit and a resume hint", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, 'echo "session limit reached - resets 5:30pm"\nexit 1');
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        sleepOnLimit: false,
+      });
+      // Exits cleanly without sleeping — no cancel needed.
+      await runner.start();
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("paused_usage_limit");
+
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(doneContent).toContain("paused_usage_limit");
+      expect(doneContent).toContain("rauf resume");
+      expect(doneContent).toContain("5:30pm");
+
+      // Item is reset to pending so `rauf resume` can pick it up.
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0].status).toBe("pending");
+    });
+
+    it("does not charge the iteration budget for an infra_error no-op", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(tmpDir, "attempt-count");
+      // First spawn fast-fails (infra_error, no banner); second succeeds.
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then
+  echo "boom" >&2
+  exit 1
+fi
+echo "RAUF_DONE"`,
+      );
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+
+      // The infra no-op attempt is rolled back (incremented to 1, then back to 0)
+      // and the rollback is logged.
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Iteration not counted (infra_error)");
+      expect(log).toContain("budget preserved at 0/5");
+    });
+
+    it("halts via the circuit breaker after consecutive infra failures", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      // Every spawn fast-fails (infra_error, no banner). Without the breaker the
+      // loop would spin forever because uncountIteration keeps the budget from
+      // advancing — so a high maxIterations also proves the breaker, not the
+      // budget ceiling, is what terminates the run.
+      writeMockClaude(binDir, `echo "boom" >&2\nexit 1`);
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 100,
+        circuitBreakerThreshold: 3,
+      });
+      runner.on("loop_error", (e) => errors.push(e.error));
+
+      const result = await runner.start();
+
+      // Halted with no work done, the item left pending (never blocked on a
+      // flaky spawn), and an error state + DONE summary written.
+      expect(result.completedCount).toBe(0);
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0].status).toBe("pending");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("error");
+      expect(state.error).toContain("Circuit breaker");
+
+      expect(errors.some((e) => e.includes("Circuit breaker"))).toBe(true);
+
+      const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(done).toContain("Circuit breaker: 3 consecutive infra failures");
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Circuit breaker threshold: 3");
+    });
+  });
+
   describe("state.json and rauf.log", () => {
     it("writes state.json throughout lifecycle", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
@@ -860,6 +1006,135 @@ echo "RAUF_DONE"`,
       const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       // gitCommit may succeed or fail depending on git setup — verify it was attempted
       expect(logContent).toMatch(/Committed:|Item 001 completed/);
+    });
+  });
+
+  describe("commit reconciliation (item 009)", () => {
+    // Runtime files must be gitignored for the tree to read clean after a
+    // commit — otherwise the recovery's isTreeClean check never passes. A real
+    // install ensures this in the target .gitignore (item 014); here we write it
+    // so the mock's commit leaves a genuinely clean tree.
+    const RUNTIME_GITIGNORE = [
+      ".rauf/.loop.lock",
+      ".rauf/state.json",
+      ".rauf/DONE",
+      ".rauf/CANCEL",
+      ".rauf/iteration-status.json",
+      ".rauf/rauf.log",
+      ".rauf/backlog.json.bak",
+      "",
+    ].join("\n");
+
+    it("recovers a committed-but-unsignalled item to done instead of blocking", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Recover me")]);
+      fs.writeFileSync(path.join(tmpDir, ".gitignore"), RUNTIME_GITIGNORE);
+
+      // The agent commits a proper `[rauf] 001:` change (staging everything, so
+      // the tree is clean) but exits WITHOUT printing RAUF_DONE — the signal is
+      // lost. `git add -A` also commits .gitignore, so the runtime files it
+      // names stop dirtying the tree for the reconciliation check.
+      writeMockClaude(
+        binDir,
+        `printf 'recovered\\n' > "${tmpDir}/recovered.txt"
+git -C "${tmpDir}" -c commit.gpgsign=false add -A
+git -C "${tmpDir}" -c commit.gpgsign=false commit -q -m "[rauf] 001: recovered via commit"
+echo "work finished but no signal printed"`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("item_completed", (e) => events.push(e));
+      const result = await runner.start();
+
+      // Recovered to done — NOT blocked or deferred.
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("done");
+      expect(backlog.items[0]?.deferred).toBeFalsy();
+      expect(result.completedCount).toBe(1);
+      expect(result.blockedCount).toBe(0);
+      expect(events.some((e) => e.type === "item_completed")).toBe(true);
+
+      // Logged as a commit recovery, and the runner did NOT commit a second time.
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("recovered_via_commit");
+      expect(log).not.toContain("deferred by runner");
+
+      // Exactly one `[rauf] 001:` commit exists — gitCommit was not re-invoked.
+      const commitCount = execSync('git log --grep="^\\[rauf\\] 001:" --oneline', {
+        cwd: tmpDir,
+        encoding: "utf-8",
+      })
+        .trim()
+        .split("\n")
+        .filter(Boolean).length;
+      expect(commitCount).toBe(1);
+    });
+
+    it("does not recover (stays deferred) when no commit landed", async () => {
+      setupProject(tmpDir, [pendingItem("001", "No commit")]);
+      fs.writeFileSync(path.join(tmpDir, ".gitignore"), RUNTIME_GITIGNORE);
+
+      // No signal, no commit — the runner must fall through to its normal
+      // deferral after exhausting retries (clean exit code = genuine_retry).
+      writeMockClaude(binDir, 'echo "no signal and no commit"');
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        maxRetries: 2,
+      });
+      await runner.start();
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("blocked");
+      expect(backlog.items[0]?.deferred).toBe(true);
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).not.toContain("recovered_via_commit");
+    });
+  });
+
+  describe("dirty-tree cleanup pathspec (item 019)", () => {
+    it("stashes an unrelated file named backlog.json instead of preserving it", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Leaves abandoned work")]);
+
+      // The agent leaves abandoned, uncommitted work in the tree — including an
+      // unrelated APPLICATION file that happens to be named backlog.json (NOT
+      // the rauf backlog) — then blocks. The dirty-tree cleanup must NOT treat
+      // that application file as loop bookkeeping: it should be stashed away so
+      // it can't be swept into the next item's commit. (A repo-wide
+      // `**/backlog.json` exclude would have wrongly preserved it.)
+      writeMockClaude(
+        binDir,
+        `mkdir -p "${tmpDir}/app/data"
+printf '{"app":"data"}\\n' > "${tmpDir}/app/data/backlog.json"
+printf 'half-finished\\n' > "${tmpDir}/app/feature.txt"
+echo "RAUF_BLOCKED:stopping here"`,
+      );
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      await runner.start();
+
+      // The item blocked, so the abandoned work was reverted.
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("blocked");
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Reverted dirty working tree");
+
+      // The unrelated application backlog.json was stashed — NOT preserved.
+      expect(fs.existsSync(path.join(tmpDir, "app", "data", "backlog.json"))).toBe(false);
+      // ...and so was the other abandoned work file.
+      expect(fs.existsSync(path.join(tmpDir, "app", "feature.txt"))).toBe(false);
+
+      // The REAL rauf backlog (loop bookkeeping) was preserved untouched.
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "backlog.json"))).toBe(true);
     });
   });
 

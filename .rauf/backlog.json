@@ -1,533 +1,453 @@
 {
   "schemaVersion": "1",
-  "project": "ralph",
-  "description": "Multi-backlog support — enables ralph to operate on any backlog location with isolated state, lock files, and per-root instruction resolution. Introduces BacklogPaths abstraction, --backlog CLI flag, and filesystem-based active root scanning.",
+  "project": "rauf",
+  "description": "Loop runner hardening against the usage-limit failure mode (R1–R7). Make the loop distinguish environmental death (pause/sleep/halt) from a genuinely blocked work item, reconcile committed-but-unrecorded work, add a circuit breaker, right-size the iteration budget, and ship first-class reset/resume. Source incident and rationale: plans/review-agent-feedback-on-playful-kahan.md.",
   "items": [
     {
       "id": "001",
-      "type": "chore",
+      "type": "refactor",
       "priority": 1,
-      "title": "Scaffold new core modules with types, constants, and barrel exports",
-      "description": "Create the foundation files for multi-backlog: type definitions, error codes, constants, and barrel export wiring.\n\n1. Create `packages/core/src/backlog-root.ts` with:\n   - `BacklogPaths` interface (all fields from spec 00 section 1.1): `projectPath`, `root`, `stateDir`, `backlog`, `state`, `log`, `done`, `cancel`, `progress`, `iterationStatus`, `archive`, `lock`\n   - `InstructionPaths` interface (spec 00 section 1.2): `ralphMd`, `reviewMd`\n   - Placeholder function stubs for `resolveBacklogRoot`, `resolveStateDir`, `resolveBacklogPaths`, `resolveInstructionPaths`, `ensureStateDir` — each should have the correct signature and a `throw new Error('not implemented')` body\n   - Constants: `LOCK_FILENAME = \".loop.lock\"`, `SCAN_SKIP_DIRS`, `STATE_FILENAME = \"state.json\"`, `BACKLOG_FILENAME = \"backlog.json\"`, `DEFAULT_ROOT_DIR = \".ralph\"`\n\n2. Create `packages/core/src/lock.ts` with:\n   - `LockFileContent` interface (spec 00 section 1.3): `pid`, `startedAt`, `processStartTime`\n   - `LockFileContentSchema` Zod schema (spec 00 section 1.6)\n   - `LockStatus` interface (spec 00 section 1.4): `locked`, `pid?`, `startedAt?`, `stale?`\n   - Placeholder function stubs for `acquireLock`, `releaseLock`, `checkLock`, `forceClearLock`\n\n3. Add `LOCK_CONFLICT` to `ErrorCodes` in `packages/core/src/errors.ts`\n\n4. Add `backlogRoot: z.string().optional()` to `LoopStartOptionsSchema` in `packages/core/src/schemas.ts`\n\n5. Update `packages/core/src/index.ts` barrel to add:\n   - `export * from \"./backlog-root.js\";` (before `./backlog.js`)\n   - `export * from \"./lock.js\";` (before `./backlog.js`)\n\n6. Ensure `test-helpers.ts` is NOT exported from the barrel.",
+      "title": "Extract execGit into a shared git-exec module",
+      "description": "Move the private execGit function out of packages/loop/src/git-commit.ts into a new packages/loop/src/git-exec.ts, exported as `execGit(cwd: string, args: string[]): Promise<string>`.\n\nPreserve exact behavior: on error, reject with an Error whose message is stderr||stdout||error.message and which carries `stdout` and `stderr` string properties (isNothingToCommit depends on them). Update git-commit.ts to import execGit from ./git-exec.js and delete its local copy. Do not change git-commit's public API, the commit message format, or RUNTIME_EXCLUDE_PATHSPECS. This is a pure extraction with no new behavior.",
       "acceptanceCriteria": [
-        "packages/core/src/backlog-root.ts exists and exports BacklogPaths, InstructionPaths, and 5 placeholder functions",
-        "packages/core/src/lock.ts exists and exports LockFileContent, LockFileContentSchema, LockStatus, and 4 placeholder functions",
-        "ErrorCodes in packages/core/src/errors.ts includes LOCK_CONFLICT",
-        "LoopStartOptionsSchema in packages/core/src/schemas.ts has optional backlogRoot field",
-        "packages/core/src/index.ts re-exports backlog-root.js and lock.js before backlog.js",
-        "Constants LOCK_FILENAME, SCAN_SKIP_DIRS, STATE_FILENAME, BACKLOG_FILENAME, DEFAULT_ROOT_DIR are exported from backlog-root.ts",
-        "pnpm typecheck passes"
+        "packages/loop/src/git-exec.ts exists and exports execGit(cwd, args)",
+        "The error path still attaches stdout and stderr properties to the thrown Error",
+        "git-commit.ts imports execGit from ./git-exec.js and no longer defines it locally",
+        "Existing git-commit behavior and tests are unchanged",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T05:19:16.501Z",
+      "completedAt": "2026-06-11T07:35:50.842Z",
       "dependsOn": [],
-      "notes": "Read spec 00-core-definitions.md completely for exact type definitions with JSDoc. Read spec 01-architecture-layout.md for barrel export ordering. The placeholder stubs let downstream items compile against the types immediately. Import paths use .js extension per project convention (e.g., './backlog-root.js').",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/00-core-definitions.md",
-        "specs/multi-backlog/01-architecture-layout.md"
-      ]
+      "notes": "Prerequisite for git-reconcile (002) and the reset/resume commands, which all shell out to git. Keep the function body byte-for-byte identical during the move.",
+      "estimatedIterations": 1
     },
     {
       "id": "002",
       "type": "feature",
       "priority": 1,
-      "title": "Implement backlog-root.ts resolution functions with unit tests and shared test helper",
-      "description": "Replace the placeholder stubs in `packages/core/src/backlog-root.ts` with full implementations, create the shared test helper, and write comprehensive unit tests.\n\n1. Implement `resolveBacklogRoot(projectPath, backlogFlag?)` in `packages/core/src/backlog-root.ts`:\n   - No flag → return `ok(path.join(path.resolve(projectPath), \".ralph\"))`\n   - With flag → resolve relative to projectPath, validate sandboxing via `validatePath()` from `./fs-utils.js`\n   - Return `PATH_VIOLATION` error if outside project root\n   - Import `validatePath` from `./fs-utils.js` and `Result, ok, err, ErrorCodes` from `./errors.js`\n\n2. Implement `resolveStateDir(backlogRoot)` — pure function:\n   - `path.basename(resolved) === \".ralph\"` → return resolved (no nesting)\n   - Otherwise → return `path.join(resolved, \".ralph\")`\n\n3. Implement `resolveBacklogPaths(projectPath, backlogRoot)` — returns `Result<BacklogPaths>`:\n   - Validate backlogRoot within projectPath\n   - Check backlogRoot directory exists\n   - Locate backlog.json: check root first, then stateDir fallback\n   - Build full BacklogPaths object per spec 02 section 2.3\n   - Use `fileExists()` from `./fs-utils.js` for existence checks\n\n4. Implement `resolveInstructionPaths(paths)` — synchronous:\n   - Check `{stateDir}/RALPH.md` first, fallback to `{projectPath}/.ralph/RALPH.md`\n   - Same for REVIEW.md\n   - Return null if neither exists\n   - Skip fallback when stateDir === projectRalphDir (default root case)\n\n5. Implement `ensureStateDir(paths)` — delegates to `ensureDir(paths.stateDir)` from `./fs-utils.js`\n\n6. Create `packages/core/src/test-helpers.ts` with `createMultiRootProject()` function per spec 07 section 2. This file must NOT be exported from the barrel.\n\n7. Create `packages/core/src/backlog-root.test.ts` with tests covering:\n   - resolveBacklogRoot: no flag default, custom path, path traversal rejection, empty string\n   - resolveStateDir: .ralph basename, custom basename\n   - resolveBacklogPaths: backlog.json in root, in stateDir, missing, nonexistent dir, all paths absolute\n   - resolveInstructionPaths: per-root RALPH.md, project-level fallback, missing everywhere, default root\n   - ensureStateDir: creates dir with parents, existing dir no-op",
+      "title": "Add git-reconcile helper: findItemCommit and isTreeClean",
+      "description": "Create packages/loop/src/git-reconcile.ts with two functions that use execGit from ./git-exec.js and return core Result types (never throw on git failure):\n\n1. findItemCommit(projectPath, itemId): Promise<Result<{ commitHash: string } | null>> — runs `git log --extended-regexp --grep='^\\[rauf\\] <id>:' --format=%H -n 1` and returns the first matching commit hash, or null when none. Anchor with `^\\[rauf\\] ` and the trailing colon so id 003 does not match 030 or 0030.\n2. isTreeClean(projectPath): Promise<Result<boolean>> — runs `git status --porcelain` and returns true when output is empty.\n\nExport both from the package barrel (src/index.ts). Add packages/loop/src/git-reconcile.test.ts that builds a temp git repo (init, set user, make commits with `[rauf] 001: ...` messages) and asserts: a matching id returns its hash, a missing id returns null, no prefix-matching, isTreeClean true on a clean tree and false after an uncommitted change.",
       "acceptanceCriteria": [
-        "resolveBacklogRoot with no flag returns {projectPath}/.ralph",
-        "resolveBacklogRoot with '../../outside' returns PATH_VIOLATION error",
-        "resolveStateDir for .ralph basename returns same directory (no nesting)",
-        "resolveStateDir for specs/auth returns specs/auth/.ralph",
-        "resolveBacklogPaths finds backlog.json in root directory first",
-        "resolveBacklogPaths falls back to stateDir for backlog.json",
-        "resolveBacklogPaths returns FILE_NOT_FOUND when no backlog.json exists",
-        "resolveInstructionPaths finds per-root RALPH.md when present",
-        "resolveInstructionPaths falls back to project-level RALPH.md",
-        "test-helpers.ts is NOT exported from packages/core/src/index.ts",
-        "pnpm typecheck passes",
-        "pnpm test packages/core/src/backlog-root.test.ts passes"
+        "findItemCommit returns the commit hash for a committed [rauf] <id>: item and null when absent",
+        "findItemCommit anchors the match so id 003 does not match 030 or 0030",
+        "isTreeClean returns true on a clean tree and false with uncommitted changes",
+        "Both functions return Result and never throw on git failure",
+        "git-reconcile.test.ts covers all the above against a temp repo",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T05:22:52.912Z",
+      "completedAt": "2026-06-11T07:38:55.131Z",
       "dependsOn": [
         "001"
       ],
-      "notes": "Read spec 02-backlog-root-resolution.md completely — it has exact implementation logic for each function. Use existing utilities: fileExists at packages/core/src/fs-utils.ts:163, validatePath at packages/core/src/fs-utils.ts:136, ensureDir at packages/core/src/fs-utils.ts:176. The test helper uses real temp directories (fs.mkdtempSync), not mocks.",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/02-backlog-root-resolution.md",
-        "specs/multi-backlog/07-testing-strategy.md"
-      ]
+      "notes": "Reuse execGit (item 001). These helpers back in-loop commit reconciliation (009) and the reset/resume commands (011/012).",
+      "estimatedIterations": 1
     },
     {
       "id": "003",
       "type": "feature",
       "priority": 1,
-      "title": "Implement lock.ts lock file management with unit tests",
-      "description": "Replace the placeholder stubs in `packages/core/src/lock.ts` with full implementations and write unit tests.\n\n1. Implement helper functions in `packages/core/src/lock.ts`:\n   - `isProcessAlive(pid)` — uses `process.kill(pid, 0)` in try/catch\n   - `isProcessRecycled(pid, recordedStartTime)` — reads `/proc/{pid}/stat` on Linux, returns false on non-Linux\n   - `getProcessStartTime(pid)` — reads `/proc/{pid}/stat` field 22, returns null on non-Linux\n   - For `/proc/{pid}/stat` parsing: find last `)`, split remainder, field 22 is at index 19 in post-paren fields\n\n2. Implement `acquireLock(paths)` in lock.ts:\n   - Call checkLock first\n   - If locked && !stale → return LOCK_CONFLICT error with pid, startedAt, and relative path in message\n   - If locked && stale → remove stale lock file\n   - Write new lock with `atomicWrite(paths.lock, ...)` containing pid, startedAt, processStartTime\n   - Import `atomicWrite` and `fileExists` from `./fs-utils.js`\n\n3. Implement `releaseLock(paths)` — fs.unlinkSync with ENOENT tolerance (idempotent)\n\n4. Implement `checkLock(paths)` — read lock file, validate with LockFileContentSchema, check PID liveness and recycling\n\n5. Implement `forceClearLock(paths)` — delegates to releaseLock\n\n6. Create `packages/core/src/lock.test.ts` with tests:\n   - acquireLock on fresh dir creates .loop.lock with valid JSON\n   - acquireLock when locked by current (live) PID returns LOCK_CONFLICT\n   - acquireLock when locked by dead PID (use PID 999999999) removes stale lock and acquires\n   - acquireLock with corrupt lock file treats as stale\n   - releaseLock removes lock file\n   - releaseLock returns ok when no lock exists\n   - checkLock returns { locked: false } when no lock\n   - checkLock returns { locked: true, stale: false } for live PID\n   - checkLock returns { locked: true, stale: true } for dead PID\n   - forceClearLock removes lock regardless",
+      "title": "Add exit-classifier module with classifyExit and hasUsageLimitInText",
+      "description": "Create packages/loop/src/exit-classifier.ts — a pure, side-effect-free classifier for a finished claude spawn.\n\n1. Move USAGE_LIMIT_PATTERNS out of runner.ts into this module and export `hasUsageLimitInText(text: string): boolean` (case-insensitive substring match).\n2. Export `type ExitClass = 'done' | 'blocked' | 'needs_human' | 'usage_limited' | 'timeout' | 'infra_error' | 'genuine_retry'`.\n3. Export `const INFRA_FAST_MS = 10_000`.\n4. Export classifyExit(result, signal: ParsedSignal): ExitClass where result has { exitCode, stdout, stderr, reconstructedText?, timedOut, durationMs }:\n   - explicit signal done/blocked/needs_human → that class\n   - else if hasUsageLimitInText(reconstructedText||stdout) OR hasUsageLimitInText(stderr) → usage_limited\n   - else if timedOut → timeout\n   - else if exitCode !== 0 && durationMs < INFRA_FAST_MS → infra_error\n   - else → genuine_retry\n\nAdd exit-classifier.test.ts covering every branch, including the incident banner \"You've hit your session limit · resets 5:30pm\" present ONLY in reconstructedText (must be usage_limited, not genuine_retry).",
       "acceptanceCriteria": [
-        "acquireLock creates .loop.lock with pid, startedAt, and processStartTime fields",
-        "acquireLock returns LOCK_CONFLICT when locked by a live process",
-        "acquireLock removes stale lock (dead PID) and acquires successfully",
-        "releaseLock removes .loop.lock file",
-        "releaseLock returns ok even when no lock file exists (idempotent)",
-        "checkLock returns { locked: false } when no lock file",
-        "checkLock returns stale: true for dead PID",
-        "forceClearLock removes lock regardless of PID status",
-        "Lock file JSON validates against LockFileContentSchema",
-        "pnpm typecheck passes",
-        "pnpm test packages/core/src/lock.test.ts passes"
+        "classifyExit returns each ExitClass for the documented inputs",
+        "Banner present only in reconstructedText classifies as usage_limited",
+        "Fast (<INFRA_FAST_MS) code!=0 exit with no banner classifies as infra_error",
+        "timedOut classifies as timeout; clean/long no-signal classifies as genuine_retry",
+        "hasUsageLimitInText and INFRA_FAST_MS are exported; tests cover all branches",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T05:26:09.632Z",
-      "dependsOn": [
-        "001"
-      ],
-      "notes": "Read spec 03-lock-file-management.md completely — it has exact implementation logic including the /proc/{pid}/stat parsing algorithm. Use process.pid for 'live PID' tests and 999999999 for 'dead PID' tests. The lock file path comes from paths.lock (set by resolveBacklogPaths). Use createMultiRootProject from test-helpers.ts (import via relative path '../test-helpers.js', NOT from barrel). The relative path in LOCK_CONFLICT error messages uses path.relative(paths.projectPath, paths.root).",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/03-lock-file-management.md",
-        "specs/multi-backlog/07-testing-strategy.md"
-      ]
+      "completedAt": "2026-06-11T07:41:25.475Z",
+      "dependsOn": [],
+      "notes": "Do NOT wire this into the runner here — that is item 006. Keep the module free of side effects and of imports beyond the ParsedSignal type (exported from ./signal-parser.js) so it stays trivially unit-testable.",
+      "estimatedIterations": 1
     },
     {
       "id": "004",
-      "type": "refactor",
+      "type": "chore",
       "priority": 1,
-      "title": "Refactor backlog.ts to accept BacklogPaths and update tests",
-      "description": "Change all exported functions in `packages/core/src/backlog.ts` from accepting `projectPath: string` to `paths: BacklogPaths`, and update all corresponding tests.\n\n1. In `packages/core/src/backlog.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete internal constants: `BACKLOG_DIR`, `BACKLOG_FILENAME`, `STATE_FILENAME`\n   - Delete internal helper functions: `getBacklogPath()`, `getStatePath()`\n   - Change first parameter of these functions from `projectPath: string` to `paths: BacklogPaths`:\n     - `readBacklog`, `writeBacklog`, `addItem`, `updateItem`, `deleteItem`, `restoreFromBackup`, `resetStalledItems`, `ensureBacklog`, `unblockItems`\n   - Replace all internal path construction:\n     - `getBacklogPath(projectPath)` → `paths.backlog`\n     - `getStatePath(projectPath)` → `paths.state`\n   - In `addItem`: change `readMarkerFile(projectPath)` → `readMarkerFile(paths.projectPath)`\n   - In `ensureBacklog`: update NOT_INSTALLED check per spec 04 section 2.4\n   - In `restoreFromBackup`: use `paths.backlog` for backup path\n   - Update internal calls: `readBacklog(projectPath)` → `readBacklog(paths)`, etc.\n   - Leave `selectNextItem(backlog)` and `validateStatusTransition()` unchanged (no projectPath param)\n\n2. Update `packages/core/src/backlog.test.ts`:\n   - Import `resolveBacklogPaths` from `./backlog-root.js` and `createMultiRootProject` from `./test-helpers.js`\n   - Replace all `readBacklog(projectPath)` calls with `readBacklog(paths)` pattern\n   - Use `createMultiRootProject()` for test setup where appropriate\n   - Add at least one test operating on a non-default root (e.g., `specs/auth`)",
+      "title": "Add deferred-vs-blocked distinction and paused_usage_limit to schemas",
+      "description": "Let the runner record items the RUNTIME gave up on, distinct from items the agent explicitly blocked. In packages/core/src/schemas.ts:\n\n1. BacklogItemSchema: add optional `deferred: z.boolean().optional()` (mirrors needsHuman). Do NOT add a status enum value — deferred items keep status 'blocked' plus this flag.\n2. LoopStateSchema: add `deferredItems: z.array(z.string())` (writers default to []; missing parses as []).\n3. LoopStateStatusSchema: add 'paused_usage_limit' (clean-halt status used by item 007).\n4. packages/core/src/status.ts: update writeLoopState to accept/persist deferredItems; update mapLoopStateStatus and parseDoneFileState to handle paused_usage_limit (map to a PAUSED-like derived state).\n5. packages/core/src/backlog.ts: in updateItem, clear the deferred flag when an item transitions to done or pending (as it already clears needsHuman on done).\n\nKeep backward compatibility: existing state.json without deferredItems must still parse.",
       "acceptanceCriteria": [
-        "All exported functions in backlog.ts accept BacklogPaths as first parameter",
-        "No internal path constants (BACKLOG_DIR, BACKLOG_FILENAME, STATE_FILENAME) remain in backlog.ts",
-        "No internal path helper functions (getBacklogPath, getStatePath) remain in backlog.ts",
-        "selectNextItem and validateStatusTransition signatures are unchanged",
-        "readMarkerFile still uses paths.projectPath (project root)",
-        "pnpm typecheck passes",
-        "pnpm test packages/core/src/backlog.test.ts passes"
+        "BacklogItem accepts an optional deferred boolean; deferred items keep status 'blocked'",
+        "LoopState has deferredItems and writeLoopState persists it",
+        "LoopStateStatus includes paused_usage_limit and status derivation handles it",
+        "updateItem clears deferred on transition to done or pending",
+        "Old state.json without deferredItems still parses; existing tests pass",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T05:45:14.274Z",
-      "dependsOn": [
-        "002"
-      ],
-      "notes": "Read spec 04-core-module-refactor.md section 2 completely. The ensureBacklog function has a special case for the NOT_INSTALLED check — for the default root, check if .ralph/ dir exists; for non-default roots, NOT_INSTALLED doesn't apply. Be careful with addItem's call to readMarkerFile — it still needs paths.projectPath, not paths.root. Also update any internal calls between functions (e.g., resetStalledItems calls readBacklog and updateItem).",
+      "completedAt": "2026-06-11T07:49:26.384Z",
+      "dependsOn": [],
+      "notes": "Foundational for runner wiring (006), reset (011), and status (013). Avoid a new status enum value for the item itself — a boolean flag keeps VALID_STATUS_TRANSITIONS untouched.",
       "estimatedIterations": 1,
       "specReferences": [
-        "specs/multi-backlog/04-core-module-refactor.md",
-        "specs/multi-backlog/07-testing-strategy.md"
+        "docs/SCHEMAS.md",
+        "docs/SPEC-CORE.md"
       ]
     },
     {
       "id": "005",
-      "type": "refactor",
+      "type": "bugfix",
       "priority": 1,
-      "title": "Refactor status.ts, add scanActiveRoots, and update tests",
-      "description": "Change all exported functions in `packages/core/src/status.ts` to accept `BacklogPaths`, add the `scanActiveRoots()` function, and update tests.\n\n1. In `packages/core/src/status.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete internal constants: `RALPH_DIR`, `STATE_FILENAME`, `LOG_FILENAME`, `DONE_FILENAME`, `CANCEL_FILENAME`\n   - Delete internal helper functions: `getStatePath()`, `getLogPath()`, `getDonePath()`, `getCancelPath()`\n   - Change first parameter from `projectPath: string` to `paths: BacklogPaths` for:\n     - `deriveStatus`, `readLogTail`, `watchLog`, `writeLoopState`, `appendLog`, `writeDoneFile`, `clearDoneFile`, `checkCancelRequested`, `clearCancelFile`\n   - Replace all path construction with direct field access on `paths`\n   - Update private `computeBacklogSummary` to accept `BacklogPaths`\n   - Update `deriveStatus` NOT_INSTALLED check per spec 04 section 3.4\n   - Keep `STALENESS_THRESHOLD_MS` and `LOG_ACTIVE_THRESHOLD_MS` (used by tests)\n\n2. Add `ActiveRoot` interface (from spec 00 section 1.5) in status.ts\n\n3. Implement `scanActiveRoots(projectPath: string): Result<ActiveRoot[]>`:\n   - Synchronous recursive walk using `fs.readdirSync` with `{ withFileTypes: true }`\n   - Skip directories in SCAN_SKIP_DIRS (import from `./backlog-root.js`)\n   - For each `.ralph` directory found, check for `state.json`\n   - Parse state.json, if status !== 'idle', compute backlog root and add to results\n   - Also check for `.loop.lock` files as activity indicators\n   - Sort results by `relativePath`\n   - See spec 04 section 3.5 for exact algorithm\n\n4. Update `packages/core/src/status.test.ts`:\n   - Update all existing tests to use BacklogPaths\n   - Add scanActiveRoots tests: 0 active roots, 1 active + 2 idle, skips node_modules, handles missing state.json\n   - Add test for non-default root",
+      "title": "Detect usage-limit banner in claude stdout/stream, not just stderr",
+      "description": "Current behavior: the runner checks only stderr for usage-limit banners (hasUsageLimitInStderr, runner.ts ~575 and ~915), but the session-limit banner arrives in the reconstructed stdout stream. A fast usage-limit death therefore falls through to signal 'none' and is wrongly retried then blocked. This single blind spot caused all 24 false blocks in the source incident.\n\nFix: in runIteration (packages/loop/src/runner.ts), after computing signalText (reconstructedText||stdout, ~591), change the pre-signal usage check to call hasUsageLimitInText (from item 003) on BOTH stderr AND signalText. Keep the existing routing: on detection, reset the item to pending and call handleStderrUsageLimit (sleep-or-exit). Remove the now-redundant private hasUsageLimitInStderr/USAGE_LIMIT_PATTERNS in favor of the shared helper.\n\nAdd test-sandbox/scenarios/usage-limit-stdout.sh: a mock claude that prints the session-limit banner to stream-json stdout and exits code=1 within ~1s. Add an assertion in test-sandbox/verify.sh that the item stays pending (NOT blocked) and the loop pauses/sleeps.",
       "acceptanceCriteria": [
-        "All exported functions in status.ts accept BacklogPaths as first parameter",
-        "No internal path constants or helper functions remain in status.ts",
-        "ActiveRoot interface is exported from status.ts",
-        "scanActiveRoots returns active roots sorted by relativePath",
-        "scanActiveRoots skips node_modules, .git, dist, build, coverage directories",
-        "scanActiveRoots handles missing/corrupt state.json gracefully",
-        "STALENESS_THRESHOLD_MS and LOG_ACTIVE_THRESHOLD_MS are preserved",
-        "pnpm typecheck passes",
-        "pnpm test packages/core/src/status.test.ts passes"
+        "The pre-signal usage check scans signalText as well as stderr",
+        "A fast code=1 exit with the banner only in the stream is treated as usage-limited; the item stays pending, not blocked",
+        "Private hasUsageLimitInStderr is replaced by the shared hasUsageLimitInText",
+        "test-sandbox/scenarios/usage-limit-stdout.sh added and asserted by verify.sh",
+        "bash test-sandbox/verify.sh passes",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:04:56.890Z",
+      "completedAt": "2026-06-11T07:56:18.268Z",
       "dependsOn": [
-        "002"
+        "003"
       ],
-      "notes": "Read spec 04-core-module-refactor.md sections 3.1 through 3.6 completely. The scanActiveRoots function is the most complex new function — follow the exact algorithm in section 3.5. Import SCAN_SKIP_DIRS from ./backlog-root.js. The LoopStateEnum type is imported from ./schemas.js. Don't recurse into .ralph directories during the scan walk.",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/04-core-module-refactor.md",
-        "specs/multi-backlog/07-testing-strategy.md"
-      ]
+      "notes": "Load-bearing fix: alone it prevents the 24 false blocks (incident reconstructed banner len=64). Here only EXTEND the existing pre-signal usage check; the full none-case dispatch rewrite is item 006.",
+      "estimatedIterations": 1
     },
     {
       "id": "006",
-      "type": "refactor",
+      "type": "feature",
       "priority": 1,
-      "title": "Refactor iteration-status.ts, archive.ts, and reset.ts with test updates",
-      "description": "Change all exported functions in three core modules to accept `BacklogPaths` and update tests.\n\n1. In `packages/core/src/iteration-status.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete: `STATUS_FILENAME` constant, `statusPath()` helper\n   - Change first param to `paths: BacklogPaths` for: `writeIterationStatus`, `readIterationStatus`, `clearIterationStatus`\n   - Replace `statusPath(projectPath)` → `paths.iterationStatus`\n   - Change throttle map key from `projectPath` to `paths.iterationStatus` (per spec 04 section 4.3)\n\n2. In `packages/core/src/archive.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete: `ARCHIVE_SUBDIR` constant, `getArchiveDir()`, `getArchiveFilePath()` helpers\n   - Change first param to `paths: BacklogPaths` for: `sweepBacklog`, `listArchiveMonths`, `readArchiveMonth`, `purgeArchive`\n   - Replace `getArchiveDir(projectPath)` → `paths.archive`\n   - Replace archive file path with inline `path.join(paths.archive, \\`${month}.json\\`)`\n   - Update internal calls to `readBacklog(paths)` and `writeBacklog(paths, ...)`\n\n3. In `packages/core/src/reset.ts`:\n   - Add import: `import type { BacklogPaths } from \"./backlog-root.js\";`\n   - Delete: `RALPH_DIR`, `STATE_FILENAME` constants\n   - Change first param to `paths: BacklogPaths` for: `resetProject`\n   - Replace all internal path construction with paths fields\n   - Update calls: `ensureBacklog(paths)`, `sweepBacklog(paths)`, `resetStalledItems(paths)`, `clearDoneFile(paths)`, `clearCancelFile(paths)`\n   - Update `deployProgress(ralphDir)` → `deployProgress(paths.stateDir)` — verify deployProgress accepts this\n   - Use `paths.archive`, `paths.progress`, `paths.state`\n\n4. Update test files for all three modules:\n   - `iteration-status.test.ts`: update to use BacklogPaths, add non-default root test\n   - `archive.test.ts`: update to use BacklogPaths, add non-default root test\n   - `reset.test.ts`: update to use BacklogPaths, add non-default root test",
+      "title": "Route no-signal exits through exit-classifier; never block on a missing signal",
+      "description": "Replace the `case 'review': case 'none':` retry-then-block block in runIteration (packages/loop/src/runner.ts ~672-704) with a dispatch on classifyExit(claudeResult.value, parsed) from item 003. A missing signal must NEVER, by itself, mark an item blocked.\n\nMapping:\n- usage_limited → reset item to pending, route to handleStderrUsageLimit; return its continue/exit (belt-and-suspenders with item 005).\n- timeout → item-specific real attempt: mark blocked with reason 'Timed out after <n>s'.\n- infra_error → reset item to pending; increment a consecutiveInfraFailures counter (consumed by the breaker in item 008); do NOT block; continue.\n- genuine_retry → keep the existing retry-up-to-maxRetries; on exhaustion set status 'blocked' with deferred: true and reason 'No signal after N attempts (deferred by runner)', push to a new deferredItemIds array, write state with deferredItems.\n\nTrack deferredItemIds alongside completedItemIds/blockedItemIds (~89-91) and include it in writeState (deferredItems) and buildSummary.",
       "acceptanceCriteria": [
-        "All exported functions in iteration-status.ts accept BacklogPaths as first parameter",
-        "All exported functions in archive.ts accept BacklogPaths as first parameter",
-        "resetProject in reset.ts accepts BacklogPaths as first parameter",
-        "No internal path constants or helpers remain in any of the three modules",
-        "Iteration status throttle key uses paths.iterationStatus, not projectPath",
-        "pnpm typecheck passes",
-        "pnpm test passes for iteration-status.test.ts, archive.test.ts, and reset.test.ts"
+        "No code path marks an item blocked solely because parseSignal returned none",
+        "usage_limited routes to the usage handler; timeout blocks with a timeout reason",
+        "infra_error leaves the item pending and increments the infra-failure counter",
+        "genuine_retry exhaustion sets status blocked + deferred:true and tracks it in deferredItems",
+        "writeState and buildSummary include deferredItems; existing sandbox scenarios still pass",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:12:10.940Z",
+      "completedAt": "2026-06-11T08:02:04.099Z",
       "dependsOn": [
-        "002",
+        "003",
         "004",
         "005"
       ],
-      "notes": "Read spec 04-core-module-refactor.md sections 4, 5, and 6. These three modules follow the same mechanical transformation pattern as backlog.ts and status.ts. The reset.ts module calls deployProgress — verify its current signature in packages/core/src/installer.ts before changing the call. The throttle key change in iteration-status.ts is subtle but important for multi-root correctness.",
-      "estimatedIterations": 1,
-      "agentDelegation": {
-        "recommendedConcurrency": 3,
-        "strategy": "Split by module. Each subagent handles one module's refactor and its test updates independently.",
-        "subtasks": [
-          "Refactor packages/core/src/iteration-status.ts: add BacklogPaths import, delete STATUS_FILENAME and statusPath(), change all function first params to paths: BacklogPaths, replace statusPath(projectPath) with paths.iterationStatus, change lastWriteAt map key from projectPath to paths.iterationStatus. Update packages/core/src/iteration-status.test.ts to construct BacklogPaths and add a non-default root test.",
-          "Refactor packages/core/src/archive.ts: add BacklogPaths import, delete ARCHIVE_SUBDIR/getArchiveDir/getArchiveFilePath, change all function first params to paths: BacklogPaths, replace path construction with paths.archive and inline path.join, update internal readBacklog/writeBacklog calls. Update packages/core/src/archive.test.ts to use BacklogPaths and add a non-default root test.",
-          "Refactor packages/core/src/reset.ts: add BacklogPaths import, delete RALPH_DIR/STATE_FILENAME, change resetProject first param to paths: BacklogPaths, update all internal core calls to use paths, update deployProgress call to use paths.stateDir. Update packages/core/src/reset.test.ts to use BacklogPaths and add a non-default root test."
-        ]
-      },
+      "notes": "Depends on the deferred schema (004) and classifier (003). Just MAINTAIN the consecutiveInfraFailures counter here; the breaker that acts on it is item 008.",
+      "estimatedIterations": 2,
       "specReferences": [
-        "specs/multi-backlog/04-core-module-refactor.md",
-        "specs/multi-backlog/07-testing-strategy.md"
+        "plans/review-agent-feedback-on-playful-kahan.md"
       ]
     },
     {
       "id": "007",
-      "type": "chore",
-      "priority": 1,
-      "title": "Update artifact templates to use path-agnostic wording",
-      "description": "Replace hardcoded `.ralph/` path references in installed artifact templates with generic filenames. The prompt-builder's 'Active Backlog Root' section (added in item 010) provides the actual paths at runtime.\n\n1. Edit `artifacts/variants/backlog-json/.ralph/RALPH.md.tmpl`:\n   - Replace `.ralph/RALPH.md` → `RALPH.md`\n   - Replace `.ralph/backlog.json` → `backlog.json` (or 'the backlog')\n   - Replace `.ralph/progress.md` → `progress.md`\n   - Replace `.ralph/state.json` → `state.json`\n   - Add note: '(The Active Backlog Root section in the prompt tells you the exact paths)'\n   - See spec 05 section 4.2 for exact before/after wording\n\n2. Edit `artifacts/variants/backlog-json/CLAUDE_ADDON.md`:\n   - Same path-agnostic replacements in the 'Autonomous Loop (Ralph)' section\n   - Replace `.ralph/RALPH.md` → `RALPH.md`\n   - Replace `.ralph/backlog.json` → `backlog.json`\n   - Replace `.ralph/progress.md` → `progress.md`\n   - Replace `.ralph/state.json` → `state.json`\n   - See spec 05 section 4.3\n\n3. Edit `artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl`:\n   - Same transformation as CLAUDE_ADDON.md for the ralph section\n   - See spec 05 section 4.4",
+      "type": "feature",
+      "priority": 2,
+      "title": "Stop burning iterations on no-op deaths; parse banner reset time; add paused_usage_limit halt",
+      "description": "Three budget/usage refinements in packages/loop/src/runner.ts:\n\n1. Iterations should count attempts, not API rejections. iterationCount is incremented at runIteration start (~378). When an iteration ends as usage_limited or infra_error with no work done, decrement iterationCount (or guard the increment) so these no-ops do not drain the budget; appendLog a note when an iteration is not counted.\n2. In handleStderrUsageLimit (~987-1006), when the OAuth token is unavailable, parse the reset time from the banner with /resets\\s+(\\d{1,2}(?::\\d{2})?\\s*[ap]m)/i and sleep until that local time plus a small buffer instead of the flat 60s; fall back to 60s if no match.\n3. Add a sleepOnLimit option (default true) to LoopRunner options. When false, on a 5h usage limit write state 'paused_usage_limit' (item 004), write a DONE summary with a one-line resume hint (e.g. 'paused_usage_limit:<resetsAt> — run `rauf resume`'), and exit cleanly instead of sleeping.",
       "acceptanceCriteria": [
-        "RALPH.md.tmpl contains no .ralph/ prefixed paths (uses bare filenames like backlog.json, state.json, progress.md)",
-        "CLAUDE_ADDON.md contains no .ralph/ prefixed paths in the Autonomous Loop section",
-        "CLAUDE_GREENFIELD.md.tmpl contains no .ralph/ prefixed paths in the ralph section",
-        "All three files still convey the same instructions (just with generic paths)",
-        "pnpm typecheck passes"
+        "usage_limited/infra_error no-op iterations do not consume the iteration budget and are logged",
+        "Missing-token usage handling parses the banner reset time and sleeps to it (60s fallback)",
+        "sleepOnLimit=false halts with status paused_usage_limit and a resume hint in DONE",
+        "sleepOnLimit defaults true (unattended sleep behavior unchanged)",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:14:17.616Z",
-      "dependsOn": [],
-      "notes": "Read spec 05-loop-runner-integration.md section 4 completely for exact before/after wording. These template changes are safe because: (1) existing installations only use the default root, (2) the prompt-builder injects the actual paths at runtime. Be careful not to change the meaning of the instructions — only the path references.",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md"
-      ]
+      "completedAt": "2026-06-11T08:11:43.660Z",
+      "dependsOn": [
+        "006"
+      ],
+      "notes": "Reset-time parsing only applies when the API token is unavailable (the OAuth path already returns resetsAt). The paused_usage_limit DONE summary is consumed by `rauf resume` (item 012).",
+      "estimatedIterations": 1
     },
     {
       "id": "008",
-      "type": "chore",
-      "priority": 1,
-      "title": "Regenerate embedded-artifacts.ts after template changes",
-      "description": "Regenerate the embedded artifacts TypeScript file that contains string literals of the template content.\n\n1. Run the existing generation script:\n   ```bash\n   node scripts/generate-embedded-artifacts.ts\n   ```\n   Or, if it uses bun:\n   ```bash\n   bun scripts/generate-embedded-artifacts.ts\n   ```\n\n2. Verify that `packages/core/src/embedded-artifacts.ts` has been updated with the new template content (check that the old `.ralph/` prefixed paths are no longer present in the embedded strings).\n\n3. If the generation script doesn't exist at that path, search for it — it may be at a different location. Look for files matching `*generate*artifact*` or `*embed*artifact*` in the scripts/ directory.",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add a circuit breaker for consecutive infra failures",
+      "description": "Stop the loop from grinding through the whole budget when every spawn dies the same way. In packages/loop/src/runner.ts, use the consecutiveInfraFailures counter from item 006 (incremented on each infra_error, reset to 0 on any done/blocked/needs_human/real attempt). Add a circuitBreakerThreshold option (default 3). When consecutiveInfraFailures >= threshold, halt the loop: write state 'error' with a clear message ('Circuit breaker: N consecutive infra failures — halting'), emit the appropriate loop_error/loop_completed events, write a DONE summary, release the lock, and stop spawning. Log the threshold in the run-header at startup.\n\nAdd test-sandbox/scenarios/fast-infra-death.sh (repeated fast code=1, no banner) and assert in verify.sh that the breaker halts before maxIterations.",
       "acceptanceCriteria": [
-        "packages/core/src/embedded-artifacts.ts is regenerated with updated template content",
-        "The embedded RALPH.md.tmpl content in embedded-artifacts.ts uses generic filenames (no .ralph/ prefixes)",
-        "The embedded CLAUDE_ADDON.md content uses generic filenames",
-        "pnpm typecheck passes",
-        "pnpm test passes (embedded artifacts content matches source templates)"
+        "consecutiveInfraFailures resets on any real outcome and only infra_error increments it",
+        "Reaching circuitBreakerThreshold (default 3) halts the loop with a clear error status and DONE summary instead of continuing to maxIterations",
+        "The threshold is configurable and logged in the run header",
+        "test-sandbox/scenarios/fast-infra-death.sh added and asserted; bash test-sandbox/verify.sh passes",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:16:29.744Z",
+      "completedAt": "2026-06-11T08:21:41.204Z",
       "dependsOn": [
-        "007"
+        "006"
       ],
-      "notes": "The generation script reads all files under artifacts/ and embeds them as string literals in a TypeScript file. This is an existing build step. If the script path is different, check scripts/ directory. The generated file should be committed alongside the template changes.",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md"
-      ]
+      "notes": "usage_limited deaths are handled by the usage path (sleep/halt) and must NOT count toward the infra breaker — only no-banner infra_error exits increment it.",
+      "estimatedIterations": 1
     },
     {
       "id": "009",
       "type": "feature",
-      "priority": 1,
-      "title": "Update LoopRunner to use BacklogPaths and lock lifecycle",
-      "description": "Modify `packages/loop/src/runner.ts` to use the `BacklogPaths` abstraction, acquire/release locks, and thread paths through all core function calls.\n\n1. Add imports to `packages/loop/src/runner.ts`:\n   ```typescript\n   import {\n     resolveBacklogPaths, resolveInstructionPaths, ensureStateDir,\n     acquireLock, releaseLock,\n     type BacklogPaths, type InstructionPaths,\n   } from \"@rauf/core\";\n   ```\n\n2. Convert LoopRunner to use a static factory pattern:\n   - Add `private readonly paths: BacklogPaths` field\n   - Add `private instructionPaths!: InstructionPaths` field\n   - Create `static create(projectPath, options): Result<LoopRunner>` that resolves BacklogPaths from `options.backlogRoot`\n   - Make the constructor private, accepting `(projectPath, paths, options)`\n   - See spec 05 section 2.1 for exact signatures\n\n3. Update `start()` method:\n   - Call `ensureStateDir(this.paths)` before any state file access\n   - Call `acquireLock(this.paths)` — return early with error event on LOCK_CONFLICT\n   - Call `resolveInstructionPaths(this.paths)` to set `this.instructionPaths`\n   - Log which backlog root is active via `appendLog(this.paths, ...)`\n   - Add `releaseLock(this.paths)` in the finally block\n   - See spec 05 section 2.2 for exact lifecycle\n\n4. Replace ALL core function calls from `this.projectPath` to `this.paths`:\n   - `clearDoneFile`, `clearCancelFile`, `readBacklog`, `updateItem`, `addItem`, `writeLoopState`, `appendLog`, `writeDoneFile`, `checkCancelRequested`, `sweepBacklog`, `writeIterationStatus`, `clearIterationStatus`\n   - Update the private `writeState()` helper method to pass `this.paths` to `writeLoopState` (see spec 05 section 2.6)\n   - Keep `readMarkerFile(this.projectPath)` unchanged (reads .ralph.json at project root)\n   - See spec 05 section 2.3 for complete list\n\n5. Update `buildPrompt` call: `buildPrompt(this.paths, this.instructionPaths, item, backlog)`\n\n6. Update `buildReviewPrompt` call: `buildReviewPrompt(this.paths, this.instructionPaths, completedItems, diff)`",
+      "priority": 2,
+      "title": "Reconcile committed work before recording a non-done outcome",
+      "description": "An iteration can pass verify and commit `[rauf] <id>:` but die before printing RAUF_DONE (the incident's item 003, committed yet marked blocked). Before the runner records any non-done outcome for the current item (blocked/deferred/infra/timeout paths in runIteration), call findItemCommit(projectPath, item.id) and isTreeClean(projectPath) from item 002.\n\n- If a matching commit exists AND the tree is clean → record the item done (updateItem status done), push to completedItemIds, emit item_completed, appendLog 'recovered_via_commit: <hash>', and do NOT call gitCommit again. Skip the would-be block/defer.\n- If the tree is dirty after a failed iteration → appendLog and revert to a clean base (git reset --hard via execGit, or stash with a note) before the next iteration so the next item never starts on a half-finished tree.\n\nAdd test-sandbox/scenarios/commit-no-signal.sh: a mock claude that commits a `[rauf] <id>:` change then exits with no signal; assert the item ends done (recovered_via_commit), not blocked.",
       "acceptanceCriteria": [
-        "LoopRunner has a static create() method returning Result<LoopRunner>",
-        "LoopRunner constructor is private",
-        "LoopRunner.create() resolves BacklogPaths from options.backlogRoot",
-        "start() calls ensureStateDir before any state file access",
-        "start() calls acquireLock and returns early on LOCK_CONFLICT",
-        "finally block calls releaseLock",
-        "All core function calls use this.paths instead of this.projectPath",
-        "readMarkerFile still uses this.projectPath (project root)",
-        "buildPrompt receives BacklogPaths + InstructionPaths",
-        "pnpm typecheck passes"
+        "When a [rauf] <id>: commit landed and the tree is clean, the item is recorded done (recovered_via_commit) rather than blocked/deferred",
+        "A dirty tree after a failed iteration is reverted/stashed before the next item",
+        "gitCommit is not double-invoked on recovery",
+        "The reconciliation check runs for ALL non-done exit classes before the block/defer is written",
+        "test-sandbox/scenarios/commit-no-signal.sh added and asserted; bash test-sandbox/verify.sh passes",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:28:03.217Z",
+      "completedAt": "2026-06-11T08:38:59.540Z",
       "dependsOn": [
         "002",
-        "003",
-        "004",
-        "005",
         "006"
       ],
-      "notes": "Read spec 05-loop-runner-integration.md sections 1-2 completely. This is a large but mechanical change — every core function call in runner.ts changes from projectPath to this.paths. The key architectural change is the static factory pattern (create instead of constructor). The event emission still uses this.projectPath for project identification — don't change that. The LoopRunner currently stores this.projectPath — keep it alongside this.paths.",
-      "estimatedIterations": 2,
-      "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md"
-      ]
+      "notes": "Use git-reconcile (002) and execGit (001). This single check would have correctly recorded the incident's item 003 as done.",
+      "estimatedIterations": 1
     },
     {
       "id": "010",
       "type": "feature",
-      "priority": 1,
-      "title": "Update prompt-builder.ts for BacklogPaths and InstructionPaths with tests",
-      "description": "Modify `packages/loop/src/prompt-builder.ts` to receive BacklogPaths and InstructionPaths instead of constructing paths internally, and update tests.\n\n1. In `packages/loop/src/prompt-builder.ts`:\n   - Add import: `import type { BacklogPaths, InstructionPaths } from \"@rauf/core\";`\n   - Delete internal constants: `RALPH_DIR`, `RALPH_MD`, `REVIEW_MD`, `PROGRESS_MD`\n   - Change `buildPrompt` signature to: `(paths: BacklogPaths, instructionPaths: InstructionPaths, item: BacklogItem, backlog: Backlog): Result<string>`\n   - Change `buildReviewPrompt` signature to: `(paths: BacklogPaths, instructionPaths: InstructionPaths, completedItems: BacklogItem[], gitDiff: string): Result<string>`\n\n2. Update RALPH.md reading:\n   - Use `instructionPaths.ralphMd` — if null, return FILE_NOT_FOUND error\n   - Remove internal path construction\n\n3. Update progress.md reading:\n   - Use `paths.progress` directly (always per-root, no fallback)\n\n4. Add 'Active Backlog Root' section to the prompt (ALWAYS, including default root):\n   ```\n   ## Active Backlog Root\n   You are working against the backlog at: {relative backlog path}\n   State directory: {relative state dir}/\n   Progress log: {relative progress path}\n   Do NOT modify files outside this state directory.\n   ```\n   - Compute relative paths via `path.relative(paths.projectPath, ...)`\n\n5. Update 'Do NOT modify' reminder to use relative paths from BacklogPaths\n\n6. Update `buildReviewPrompt`:\n   - Use `instructionPaths.reviewMd` for REVIEW.md (with embedded template fallback)\n   - Use `paths.progress` for progress.md\n   - Use `readMarkerFile(paths.projectPath)` for verify command\n\n7. Update `packages/loop/src/prompt-builder.test.ts`:\n   - Update all tests to pass BacklogPaths + InstructionPaths\n   - Test: RALPH.md from per-root stateDir\n   - Test: RALPH.md fallback to project-level\n   - Test: Missing RALPH.md returns error\n   - Test: progress.md always from stateDir\n   - Test: 'Active Backlog Root' section is present in output\n   - Test: Review prompt uses per-root REVIEW.md\n   - Test: Review prompt falls back to embedded template",
+      "priority": 2,
+      "title": "Right-size maxIterations from the backlog and surface the math",
+      "description": "Replace the flat DEFAULT_MAX_ITERATIONS=20 default with a backlog-derived estimate when --iterations is not given.\n\n1. Add computeMaxIterations(backlog, opts?: { safety?: number; retryHeadroom?: number }): { cap, pending, avgIters, needed } to packages/core/src (new budget.ts, exported from the barrel). cap = ceil(pending * avgEstimatedIterations * safety) + retryHeadroom; safety default 1.5, retryHeadroom a small constant; avgEstimatedIterations from items' estimatedIterations (default 1); pending counts status 'pending'. Keep 20 as a floor when there are pending items.\n2. In packages/cli/src/loop-commands.ts (loop run and loop start), when --iterations is omitted, use cap and log: '<pending> pending × ~<avg> iter = ~<needed> needed; cap <cap> (<x>× headroom)'.\n3. Mirror the default in packages/web/src/server/routes/loop.ts.\n4. Unit-test computeMaxIterations (empty backlog, mixed estimatedIterations, all-pending).",
       "acceptanceCriteria": [
-        "buildPrompt accepts (paths, instructionPaths, item, backlog) signature",
-        "buildReviewPrompt accepts (paths, instructionPaths, completedItems, gitDiff) signature",
-        "No hardcoded .ralph/ path constants remain in prompt-builder.ts",
-        "buildPrompt uses instructionPaths.ralphMd (returns error if null)",
-        "buildPrompt uses paths.progress for progress.md (per-root, no fallback)",
-        "Active Backlog Root section is ALWAYS injected into the prompt",
-        "buildReviewPrompt uses instructionPaths.reviewMd with embedded template fallback",
-        "pnpm typecheck passes",
-        "pnpm test packages/loop/src/prompt-builder.test.ts passes"
+        "computeMaxIterations returns the documented cap and inputs and floors at 20 when pending items exist",
+        "loop run/start use it when --iterations is omitted and log the budget math",
+        "An explicit --iterations still overrides the computed cap",
+        "The web loop route uses the same default",
+        "Unit tests cover empty/mixed/all-pending backlogs",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:32:53.412Z",
-      "dependsOn": [
-        "002",
-        "008",
-        "009"
-      ],
-      "notes": "Read spec 05-loop-runner-integration.md sections 3.1-3.6 completely. The 'Active Backlog Root' section is the key new feature here — it tells the agent which backlog root is active at runtime, compensating for the path-agnostic templates. This section is ALWAYS injected, even for the default root. Use path.relative(paths.projectPath, ...) for all displayed paths. The getEmbeddedArtifact function is used for the REVIEW.md fallback.",
+      "completedAt": "2026-06-11T08:44:45.194Z",
+      "dependsOn": [],
+      "notes": "Combined with item 007 (no-op iterations don't count), this keeps the budget meaningful for long backlogs that straddle a usage reset.",
       "estimatedIterations": 1,
       "specReferences": [
-        "specs/multi-backlog/05-loop-runner-integration.md",
-        "specs/multi-backlog/07-testing-strategy.md"
+        "docs/SPEC-CLI.md"
       ]
     },
     {
       "id": "011",
       "type": "feature",
-      "priority": 1,
-      "title": "Add --backlog flag to CLI loop commands",
-      "description": "Add `--backlog` flag extraction and BacklogPaths resolution to all CLI loop commands in `packages/cli/src/loop-commands.ts`.\n\n1. Add imports:\n   ```typescript\n   import { resolveBacklogRoot, resolveBacklogPaths, checkLock, forceClearLock, type BacklogPaths } from \"@rauf/core\";\n   ```\n\n2. Update `handleLoopRun`:\n   - Extract `--backlog` flag: `const backlogFlag = extractStringFlag(ctx.flags, \"backlog\")`\n   - Extract `--force` flag: `const force = extractBoolFlag(ctx.flags, \"force\")`\n   - Resolve paths using the 3-line preamble (resolveBacklogRoot → resolveBacklogPaths)\n   - If `--force`: check lock, warn, and force-clear per spec 06 section 2.2\n   - Pass `backlogRoot: backlogRootResult.value` in LoopStartOptions\n   - Use `LoopRunner.create()` static factory instead of `new LoopRunner()`\n\n3. Update `handleLoopStart`:\n   - Extract `--backlog` flag\n   - Pass `backlogRoot` in POST body to server\n\n4. Update `handleLoopStop`:\n   - Extract `--backlog` flag\n   - Pass `backlogRoot` in POST body to server\n\n5. Update `handleLoopFollow`:\n   - Extract `--backlog` flag\n   - If server mode: append `?backlog=` query param to SSE URL\n   - If direct mode: resolve paths and use `paths.log` for `watchLog`\n\n6. Update `handleLoopReview` (if it exists):\n   - Extract `--backlog` flag and resolve paths",
+      "priority": 2,
+      "title": "Add `rauf reset` command with commit reconciliation and false-block requeue",
+      "description": "Add a top-level `rauf reset [--keep-done]` command (register in packages/cli/src/commands.ts; new handler packages/cli/src/reset-commands.ts) so recovery is one command, not manual JSON edits. Steps, in order:\n1. Refuse if the loop lock PID is alive (reuse checkLock / staleness from packages/core/src/lock.ts); proceed only when the lock is stale/absent, and clear a stale lock.\n2. Commit reconciliation: for each non-done item, if findItemCommit + isTreeClean (item 002) show a landed clean commit, mark it done.\n3. Requeue FALSE blocks: items with deferred:true → back to pending (clear deferred/blockedReason). Items with an explicit agent block (status blocked, not deferred, not needsHuman) stay blocked and are reported.\n4. resetStalledItems (in_progress → pending), clear state.json/blockedItems, remove .rauf/DONE.\nPrint a summary (recovered, requeued, kept-blocked, lock cleared). Build on existing resetProject/unblockItems where possible; --keep-done leaves done items as-is (the default).",
       "acceptanceCriteria": [
-        "ralph loop run . --backlog specs/auth resolves to specs/auth/backlog.json",
-        "ralph loop run . (no flag) uses .ralph/backlog.json (unchanged behavior)",
-        "ralph loop run . --backlog ../../outside produces PATH_VIOLATION error",
-        "ralph loop run . --backlog specs/auth --force clears existing lock before starting",
-        "handleLoopStart passes backlogRoot in POST body",
-        "handleLoopStop passes backlogRoot in POST body",
-        "handleLoopFollow appends backlog query param to SSE URL",
-        "LoopRunner.create() is used instead of new LoopRunner()",
-        "pnpm typecheck passes"
+        "rauf reset refuses when a live loop holds the lock and clears a stale lock",
+        "Committed-clean non-done items are promoted to done",
+        "deferred false-blocks return to pending while genuine agent blocks stay blocked and are reported",
+        "state.json/blockedItems and .rauf/DONE are cleared; a summary is printed",
+        "rauf backlog validate . still passes after a reset",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:38:41.328Z",
+      "completedAt": "2026-06-11T08:55:08.893Z",
       "dependsOn": [
-        "009"
+        "002",
+        "004"
       ],
-      "notes": "Read spec 06-cli-web-integration.md sections 2.1-2.3 completely. The resolution pattern is the same 3-line preamble for every command. The --force flag is only relevant for loop run (direct mode). Use extractStringFlag and extractBoolFlag — check existing CLI code for the exact utility names. Error messages should show relative paths (path.relative(process.cwd(), absolutePath)).",
-      "estimatedIterations": 1,
+      "notes": "Distinguish genuine blocks via the deferred flag (004): deferred=requeue, plain blocked (agent said RAUF_BLOCKED)=keep. Reuse git-reconcile (002) and core lock/reset helpers.",
+      "estimatedIterations": 2,
       "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
+        "docs/SPEC-CLI.md"
       ]
     },
     {
       "id": "012",
       "type": "feature",
-      "priority": 1,
-      "title": "Add --backlog flag to CLI backlog, status, reset, log, and progress commands",
-      "description": "Add `--backlog` flag to all remaining CLI commands that operate on backlogs or state.\n\n1. In `packages/cli/src/backlog-commands.ts`:\n   - Add imports: `resolveBacklogRoot`, `resolveBacklogPaths`, `BacklogPaths` from `@rauf/core`\n   - Update ALL backlog handlers with the 3-line resolution preamble:\n     - `handleBacklogList`, `handleBacklogAdd`, `handleBacklogEdit`, `handleBacklogDelete`, `handleBacklogShow`, `handleBacklogRestore`, `handleBacklogSweep`, `handleBacklogReset`, `handleBacklogUnblock`\n   - Replace `readBacklog(resolved)` → `readBacklog(paths)` etc.\n   - See spec 06 section 2.5\n\n2. In `packages/cli/src/status-commands.ts`:\n   - Add imports including `scanActiveRoots`\n   - Update `handleStatus`:\n     - With `--backlog`: show status for that specific root only\n     - Without `--backlog`: show default root status + list active non-default roots via `scanActiveRoots`\n     - Each active root shown with relative path, state label, and current item\n     - Skip default root (.ralph) in the active roots list (already shown)\n   - Fix any inline `.ralph/progress.md` path references\n   - See spec 06 section 2.4\n\n3. In `packages/cli/src/status-commands.ts` (or wherever handleProgress/handleLog live):\n   - Update `handleProgress` to use `paths.progress` instead of hardcoded `.ralph/progress.md`\n   - Update `handleLog` to use `readLogTail(paths, lines)` instead of `readLogTail(resolved, lines)`\n   - Update `handleReset` to use `resetProject(paths, options)`\n   - See spec 06 sections 2.6-2.8",
+      "priority": 2,
+      "title": "Add `rauf resume` command to continue an interrupted loop",
+      "description": "Add a top-level `rauf resume` command (commands.ts + handler) that detects an interrupted run and continues it:\n1. Read derived status / state.json. Recognize resumable states: paused_usage_limit, limit_reached, error (circuit breaker), or a dead lock with non-done items.\n2. Apply the same reconciliation + false-block requeue as `rauf reset` — extract a shared helper rather than duplicating the logic.\n3. Continue from the first non-done item by launching the loop via the normal entrypoint (same path as `rauf loop run`/`loop start`), honoring --backlog and a recomputed budget (item 010).\nIf the lock PID is alive, refuse with a message that a loop is already running.",
       "acceptanceCriteria": [
-        "ralph backlog list . --backlog specs/auth lists items from specs/auth/backlog.json",
-        "ralph backlog add . --backlog specs/auth adds to the correct backlog",
-        "ralph status . shows default root + lists active non-default roots",
-        "ralph status . --backlog specs/auth shows only that root's status",
-        "Active roots display includes relative path, loop state, and current item",
-        "ralph progress . --backlog specs/auth reads from specs/auth/.ralph/progress.md",
-        "ralph log . --backlog specs/auth reads from specs/auth/.ralph/ralph.log",
-        "ralph reset . --backlog specs/auth resets the correct root",
-        "pnpm typecheck passes"
+        "rauf resume detects paused_usage_limit/limit_reached/error/dead-lock states",
+        "It applies commit reconciliation and requeues false blocks before relaunching",
+        "It refuses when a live loop holds the lock",
+        "It continues from the first non-done item using the normal loop entrypoint",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:48:39.332Z",
+      "completedAt": "2026-06-11T09:06:45.446Z",
       "dependsOn": [
-        "004",
-        "005",
-        "006"
+        "011",
+        "009"
       ],
-      "notes": "Read spec 06-cli-web-integration.md sections 2.4-2.8 completely. The status command has the most complex logic — it shows the default root first, then scans for active non-default roots. Use chalk (imported as c) for colored output. The backlog commands are all mechanical — same 3-line preamble pattern. Check which file contains handleProgress and handleLog — they may be in status-commands.ts or their own files.",
+      "notes": "Resume = reconcile + requeue-false-blocks + relaunch. Share the reconciliation/requeue helper with item 011 to avoid drift.",
       "estimatedIterations": 1,
-      "agentDelegation": {
-        "recommendedConcurrency": 2,
-        "strategy": "Split by command file. One subagent handles backlog-commands.ts, the other handles status-commands.ts and related handlers.",
-        "subtasks": [
-          "Update packages/cli/src/backlog-commands.ts: add resolveBacklogRoot/resolveBacklogPaths imports from @rauf/core. Add the 3-line --backlog resolution preamble to every handler: handleBacklogList, handleBacklogAdd, handleBacklogEdit, handleBacklogDelete, handleBacklogShow, handleBacklogRestore, handleBacklogSweep, handleBacklogReset, handleBacklogUnblock. Replace all readBacklog(resolved)/writeBacklog(resolved,...) calls with readBacklog(paths)/writeBacklog(paths,...) pattern.",
-          "Update packages/cli/src/status-commands.ts (and any file containing handleProgress, handleLog, handleReset): add scanActiveRoots import. Update handleStatus for --backlog flag: specific root when flag present, default root + scanActiveRoots listing when absent. Update handleProgress to use paths.progress, handleLog to use readLogTail(paths, lines), handleReset to use resetProject(paths, options). Fix any inline .ralph/progress.md path references."
-        ]
-      },
       "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
+        "docs/SPEC-CLI.md"
       ]
     },
     {
       "id": "013",
       "type": "feature",
-      "priority": 1,
-      "title": "Update web API routes and LoopManager for backlog root",
-      "description": "Add backlog root parameter support to the web API routes and re-key LoopManager's internal maps.\n\n1. In `packages/web/src/server/routes/loop.ts`:\n   - Add `backlogRoot: z.string().optional()` to `StartLoopBodySchema`\n   - In start handler: resolve `backlogRoot` from body using `resolveBacklogRoot`\n   - Pass resolved `backlogRoot` in LoopStartOptions\n   - In stop handler: accept `backlogRoot` in body, pass to `manager.stopLoop`\n   - See spec 06 section 3.1\n\n2. In web status and backlog routes:\n   - Accept `backlog` query parameter on GET endpoints: `/:id/status`, `/:id/backlog`, `/:id/backlog/:itemId`\n   - Accept `backlogRoot` in body for POST/PUT/DELETE endpoints\n   - Resolve backlog root from the parameter using `resolveBacklogRoot` + `resolveBacklogPaths`\n   - Pass `paths` to core functions\n\n3. In `packages/web/src/server/loop-manager.ts`:\n   - Re-key `activeLoops` map from `projectPath` to resolved `backlogRoot` path\n   - Re-key `listeners` map similarly\n   - Update `startLoop()` to use `LoopRunner.create()` static factory\n   - Update `stopLoop()` and `isRunning()` to accept optional `backlogRoot` parameter\n   - Default key: `path.join(projectPath, \".ralph\")` when backlogRoot not specified\n   - See spec 06 section 3.2",
+      "priority": 3,
+      "title": "Enrich `rauf status` with lock liveness and blocked/deferred breakdown",
+      "description": "Extend `rauf status` output (packages/cli/src/status-commands.ts) to make a usage-limit aftermath legible. Add:\n1. A lock line: whether .rauf/.loop.lock exists and whether its PID is alive (reuse checkLock from packages/core/src/lock.ts) — e.g. 'Lock: PID 1234 (alive)', 'stale', or 'none'.\n2. The last signal from state.json (lastSignal).\n3. A backlog breakdown splitting blocked into genuine blocked (explicit agent block / needsHuman) vs deferred (deferred:true, runner gave up), using item-flag counts.\nKeep the existing exit-code mapping; add the new lines to both human and --json output.",
       "acceptanceCriteria": [
-        "POST /:id/loop/start accepts backlogRoot in request body",
-        "POST /:id/loop/stop accepts backlogRoot in request body",
-        "GET /:id/status accepts backlog query parameter",
-        "GET /:id/backlog accepts backlog query parameter",
-        "LoopManager keys active loops by backlog root path, not project path",
-        "Two concurrent loops on different roots do not conflict in LoopManager",
-        "Default backlog root is {projectPath}/.ralph when not specified",
-        "pnpm typecheck passes"
+        "rauf status shows lock presence and PID liveness",
+        "rauf status shows the last signal",
+        "rauf status shows a blocked-vs-deferred split derived from item flags",
+        "--json output includes the new fields; existing status exit codes unchanged",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T06:58:57.813Z",
+      "completedAt": "2026-06-11T09:16:03.290Z",
       "dependsOn": [
-        "009",
-        "011"
+        "004"
       ],
-      "notes": "Read spec 06-cli-web-integration.md section 3 completely. The web changes are intentionally minimal — no UI changes (out of scope per PRD). The LoopManager re-keying is the most important change: it enables multiple loops on different roots within the same project (future feature, but the data structure needs to support it now). Import resolveBacklogRoot from @rauf/core for path validation in routes.",
+      "notes": "Reuse lock staleness detection from core — do not reimplement PID checks. The deferred flag comes from item 004.",
       "estimatedIterations": 1,
       "specReferences": [
-        "specs/multi-backlog/06-cli-web-integration.md"
+        "docs/SPEC-CLI.md"
       ]
     },
     {
       "id": "014",
       "type": "chore",
-      "priority": 2,
-      "title": "Update test-sandbox for --backlog flag testing",
-      "description": "Add a multi-backlog test scenario to the test-sandbox and update scripts to support the `--backlog` flag.\n\n1. Create `test-sandbox/scenarios/multi-backlog/` directory with:\n   - `specs/feature-a/backlog.json` — a backlog with 1-2 simple items (e.g., create a file, echo a message)\n   - No `.ralph/` state dir pre-created (to test auto-creation via ensureStateDir)\n\n2. Update `test-sandbox/run.sh`:\n   - Accept an optional `--backlog <dir>` argument\n   - Pass it through to the `ralph loop run` command\n   - Example: `bash test-sandbox/run.sh stream-done --backlog specs/feature-a`\n\n3. Add to `test-sandbox/verify.sh`:\n   - New test case for multi-backlog scenario\n   - Assert state files written to `specs/feature-a/.ralph/` (not `.ralph/`)\n   - Assert `.loop.lock` was created during run and cleaned up after\n   - Assert `progress.md` written to `specs/feature-a/.ralph/progress.md`\n   - Assert `state.json` written to `specs/feature-a/.ralph/state.json`",
+      "priority": 3,
+      "title": "Deploy runtime .gitignore entries into target projects on install",
+      "description": "New rauf installs can leave runtime files (.rauf/.loop.lock, state.json, DONE, CANCEL, iteration-status.json, rauf.log, backlog.json.bak) trackable in the target repo — the source incident committed .loop.lock. git-commit already excludes them per-commit, but the target's .gitignore should also cover them. In packages/core/src/installer.ts, during install/init, ensure the target project's .gitignore contains the `**/.rauf/<runtime>` and `**/backlog.json.bak` ignore lines (append idempotently if missing; never duplicate). Mirror the entries in this repo's root .gitignore and keep them in sync with RUNTIME_EXCLUDE_PATHSPECS in packages/loop/src/git-commit.ts. Surface a note (docs/SPEC-ARTIFACTS.md or installer output) that a pre-existing tracked lock needs `git rm --cached .rauf/.loop.lock` once.",
       "acceptanceCriteria": [
-        "test-sandbox/scenarios/multi-backlog/ directory exists with specs/feature-a/backlog.json",
-        "test-sandbox/run.sh accepts --backlog flag and passes to ralph loop run",
-        "test-sandbox/verify.sh includes multi-backlog scenario assertions",
-        "State files are created in specs/feature-a/.ralph/ (not .ralph/)",
-        "bash test-sandbox/verify.sh passes (including multi-backlog scenario)"
+        "install/init ensures the target .gitignore contains the rauf runtime ignore lines (idempotent, no duplicates)",
+        "The ignore set matches the runtime-exclude set used by git-commit",
+        "A `git rm --cached` note for already-tracked locks is surfaced (docs or installer output)",
+        "Existing installer tests pass",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T07:07:52.255Z",
-      "dependsOn": [
-        "011"
-      ],
-      "notes": "Read spec 07-testing-strategy.md section 4.2. The test-sandbox uses mock Claude scripts (not real API calls). Look at existing test-sandbox/scenarios/ for the pattern. The backlog items should be trivially completable by the mock scripts.",
+      "completedAt": "2026-06-11T09:21:40.878Z",
+      "dependsOn": [],
+      "notes": "Keep the ignore list in lockstep with RUNTIME_EXCLUDE_PATHSPECS so the two never drift.",
       "estimatedIterations": 1,
+      "model": "claude-sonnet-4-6",
       "specReferences": [
-        "specs/multi-backlog/07-testing-strategy.md"
+        "docs/SPEC-ARTIFACTS.md"
       ]
     },
     {
       "id": "015",
       "type": "chore",
-      "priority": 2,
-      "title": "End-to-end verification and integration testing",
-      "description": "Run all verification checks to ensure the complete multi-backlog feature works end-to-end.\n\n1. Run the full test suite:\n   ```bash\n   pnpm test\n   ```\n   Fix any failures.\n\n2. Run type checking:\n   ```bash\n   pnpm typecheck\n   ```\n   Fix any errors.\n\n3. Run linting:\n   ```bash\n   pnpm lint\n   ```\n   Fix any violations.\n\n4. Run the test-sandbox verification:\n   ```bash\n   bash test-sandbox/verify.sh\n   ```\n\n5. Manual verification (if possible):\n   - `ralph backlog list . --backlog specs/multi-backlog` should list items from the multi-backlog feature's own backlog\n   - `ralph status .` should show default root status\n\n6. Check for any remaining hardcoded `.ralph/` path references that should have been updated:\n   - Search `packages/core/src/backlog.ts` for `.ralph` string literals\n   - Search `packages/core/src/status.ts` for `.ralph` string literals\n   - Search `packages/loop/src/` for `.ralph` string literals (excluding test files)\n   - Any found outside of test fixtures or the DEFAULT_ROOT_DIR constant are likely bugs\n\n7. Verify no circular dependencies between new and existing modules.",
+      "priority": 3,
+      "title": "Document exit taxonomy, reconciliation, budget, and reset/resume",
+      "description": "Update the specs to match the hardened loop:\n- docs/SCHEMAS.md: BacklogItem.deferred, LoopState.deferredItems, the paused_usage_limit status.\n- docs/SPEC-CORE.md: the exit taxonomy (done/blocked/needs_human/usage_limited/infra_error/timeout/genuine_retry), the 'never block on a missing signal' rule, commit reconciliation (recovered_via_commit), the circuit breaker, and computeMaxIterations.\n- docs/SPEC-CLI.md: `rauf reset`, `rauf resume`, and the enriched `rauf status`.\n- docs/ARCHITECTURE.md: update the loop-lifecycle description to include exit classification, usage-limit pause/resume, reconciliation, and the circuit breaker.\nCross-check every enum/status/symbol name against packages/core/src/schemas.ts so docs and code agree.",
       "acceptanceCriteria": [
-        "pnpm test passes with no failures",
-        "pnpm typecheck passes with no errors",
-        "pnpm lint passes",
-        "bash test-sandbox/verify.sh passes",
-        "No hardcoded .ralph/ path references remain in core modules (outside of constants and test fixtures)",
-        "No circular dependencies between backlog-root.ts, lock.ts, and other core modules"
+        "SCHEMAS, SPEC-CORE, SPEC-CLI, and ARCHITECTURE are updated to match the implemented behavior and names",
+        "No references to removed or renamed symbols remain",
+        "Status/enum names in docs match packages/core/src/schemas.ts",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T07:16:13.956Z",
+      "completedAt": "2026-06-11T09:30:34.233Z",
       "dependsOn": [
+        "004",
+        "006",
+        "007",
+        "008",
+        "009",
+        "010",
         "011",
         "012",
-        "013",
-        "014"
+        "013"
       ],
-      "notes": "This is the final verification item. If tests fail, fix them in this iteration rather than creating new backlog items. The test-sandbox may not work if the ralph binary hasn't been rebuilt — run pnpm build first if needed.",
+      "notes": "Do this last so docs match the final code.",
       "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/07-testing-strategy.md"
-      ]
+      "model": "claude-sonnet-4-6"
     },
     {
       "id": "016",
-      "type": "chore",
-      "priority": 2,
-      "title": "Create MIGRATION.md migration guide with agent prompt",
-      "description": "Create specs/multi-backlog/MIGRATION.md per PRD section 7. Include: (1) step-by-step instructions for updating a legacy single-backlog project, (2) a self-contained agent prompt that can be pasted into a Claude Code session, (3) note that projects using only .ralph/ default root need no migration.",
+      "type": "bugfix",
+      "priority": 1,
+      "title": "Fix exit-classifier reconstructedText empty-string fallback",
+      "description": "In packages/loop/src/exit-classifier.ts (~line 64), classifyExit computes `const signalText = result.reconstructedText ?? result.stdout`. The `??` operator only falls back on null/undefined, so an empty-string reconstructedText (\"\") skips the stdout usage-banner scan — inconsistent with the runner, which uses a length-check. A usage banner present only in stdout (with an empty reconstructedText) would then misclassify as genuine_retry.\n\nFix: change to `const signalText = result.reconstructedText && result.reconstructedText.length > 0 ? result.reconstructedText : result.stdout;`. Add a test in packages/loop/src/exit-classifier.test.ts: a no-signal result with reconstructedText:\"\" and stdout containing the incident banner classifies as 'usage_limited' (not 'genuine_retry').",
       "acceptanceCriteria": [
-        "specs/multi-backlog/MIGRATION.md exists",
-        "Contains step-by-step instructions for updating legacy single-backlog projects",
-        "Contains a self-contained agent prompt for automated migration",
-        "Notes that projects using only .ralph/ default root need no migration"
+        "classifyExit uses a length-based fallback (not ??) for reconstructedText -> stdout",
+        "A no-signal result with reconstructedText:'' and the banner in stdout classifies as usage_limited",
+        "exit-classifier.test.ts covers the empty-reconstructedText case",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-03-25T07:18:18.167Z",
-      "dependsOn": [
-        "006"
-      ],
-      "notes": "PRD section 7 requires this deliverable. The default root layout is unchanged, so migration is only needed for projects that want to use non-default backlog roots.",
-      "estimatedIterations": 1,
-      "specReferences": [
-        "specs/multi-backlog/PRD.md"
-      ]
+      "completedAt": "2026-06-11T13:45:33.730Z",
+      "dependsOn": [],
+      "notes": "From Codex review of the loop-hardening branch (MEDIUM). Masked in the live runner path by the item-005 pre-check, but classifyExit is the authoritative belt-and-suspenders dispatch and must be correct standalone.",
+      "estimatedIterations": 1
     },
     {
       "id": "017",
-      "type": "bug",
+      "type": "bugfix",
       "priority": 2,
-      "title": "Loop runner's `git add -A` commits transient runtime state into git history",
-      "description": "The loop runner commits via `git add -A && git commit` (packages/loop/src/git-commit.ts), which sweeps its OWN runtime files into the per-item commit: .loop.lock (a lock file!), state.json, backlog.json.bak, and the DONE marker. Observed during the release-automation loop (commit 62190f2 contained .rauf/.loop.lock + state.json + backlog.json.bak). Lock/marker files must never enter history. Fix: gitignore the per-backlog .rauf/ runtime files (lock, state.json, *.bak, DONE, rauf.log) and/or scope the runner's staging to exclude its own state dir via pathspec. NOTE: the agent-self-commit half of this was already fixed live in .rauf/RAUF.md (commit 656d8c6); this item is the runner-side staging hygiene follow-up.",
+      "title": "Escape itemId in findItemCommit grep pattern",
+      "description": "packages/loop/src/git-reconcile.ts (~line 25) interpolates itemId raw into an extended-regex grep: `--grep=^\\[rauf\\] ${itemId}:`. Backlog IDs are usually numeric but the schema allows any non-empty string, so an ID containing ERE metacharacters could overmatch or error.\n\nFix: escape the itemId's ERE metacharacters (. ^ $ * + ? ( ) [ ] { } | \\) before interpolation, keeping the existing `^\\[rauf\\] ` anchor and trailing colon. Add a test in git-reconcile.test.ts: an itemId like \"1.0\" must NOT match a commit message `[rauf] 1x0:` (the dot is treated literally).",
       "acceptanceCriteria": [
-        "After a loop run, git log shows NO .loop.lock, state.json, *.bak, or DONE files in any [rauf] commit",
-        "Per-backlog .rauf/ runtime files are gitignored or excluded from the runner's git add via pathspec",
-        "backlog.json itself remains tracked and committed normally",
-        "Exactly one commit is produced per completed item (no duplicate agent+runner commits)",
-        "pnpm test && pnpm typecheck && pnpm lint && pnpm build pass"
+        "itemId ERE metacharacters are escaped before being embedded in the grep pattern",
+        "The anchor and trailing colon are preserved (003 still does not match 030)",
+        "git-reconcile.test.ts covers a metacharacter id not overmatching",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-06-10T22:10:50.018Z",
-      "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10.",
-      "estimatedIterations": 2
+      "completedAt": "2026-06-11T13:48:10.236Z",
+      "dependsOn": [],
+      "notes": "From Codex review (LOW). Prereq for 018, which extends findItemCommit's signature. Keep the helper returning Result and never throwing.",
+      "estimatedIterations": 1
     },
     {
       "id": "018",
       "type": "feature",
-      "priority": 3,
-      "title": "Single-gate review for loops — suppress per-iteration security/review hooks in child sessions",
-      "description": "When a commit/Stop-triggered review hook (e.g. the security-guidance plugin) is installed globally, the loop's child agent sessions trigger it every iteration. With the agent self-commit removed (RAUF.md 656d8c6) the heavyweight commit-review no longer fires, but the Stop-hook diff review still runs per child session, and there is no first-class way to run a loop with per-iteration review hooks suppressed in favor of ONE review over the cumulative branch diff. For human-in-the-loop autonomous dev, per-item review inside autonomous child sessions is the wrong altitude (the agent rubber-stamps findings); review belongs at the gate, surfaced to the human. Add: a documented/opt-in way for the loop to spawn child sessions with per-iteration review hooks disabled (e.g. propagate ENABLE_CODE_SECURITY_REVIEW=0 or a generic hook-suppression env), plus a post-loop gate review over main..HEAD.",
+      "priority": 1,
+      "title": "Bound commit reconciliation to the run baseline (no stale-commit recovery)",
+      "description": "findItemCommit greps ALL git history, so on a clean tree any item whose ID ever had a `[rauf] <id>:` commit is falsely promoted to done. This is critical because rauf restarts IDs at 001 for every new backlog — an old `[rauf] 001:` from a prior cycle would falsely recover a fresh item 001 during reset/resume or in-loop reconciliation.\n\n1. Schema: add `baseCommitHash: z.string().nullable()` (optional, default null) to LoopStateSchema in packages/core/src/schemas.ts; writeLoopState persists it; old state.json without it still parses.\n2. git-reconcile.ts: add an optional `sinceRef?: string` param to findItemCommit; when provided, scope the search with a `<sinceRef>..HEAD` range so only commits after the baseline match.\n3. runner.ts: at loop start capture current HEAD (execGit rev-parse HEAD) as baseCommitHash, persist it in state, and pass it as sinceRef to the in-loop reconciliation (~line 992).\n4. packages/cli/src/recovery.ts (reset/resume): read baseCommitHash from state and pass it as sinceRef; when state has no baseCommitHash, do NOT auto-promote genuine `blocked` (non-deferred) items, to avoid false recovery.\n5. Tests: a clean repo with an old `[rauf] 001:` commit and a current pending/blocked 001 must NOT be recovered when sinceRef excludes it; a commit after the baseline IS recovered.",
       "acceptanceCriteria": [
-        "Loop provides a documented, opt-in flag/config to run child sessions without per-iteration review-hook noise",
-        "A single review over the cumulative branch diff (main..HEAD) is run or documented as the gate step after the loop",
-        "The mechanism is generic (not hardcoded to one plugin) and documented in docs/SPEC-* and rauf guidance",
-        "Default behavior is unchanged unless explicitly opted in",
-        "pnpm test && pnpm typecheck && pnpm lint pass"
+        "LoopState carries an optional baseCommitHash; old state.json without it still parses",
+        "findItemCommit accepts an optional sinceRef and scopes the search to <sinceRef>..HEAD",
+        "The runner records baseCommitHash at loop start and the in-loop reconciliation uses it",
+        "reset/resume recovery uses baseCommitHash and does not promote stale historical commits",
+        "Tests cover stale-commit-no-recovery and post-baseline recovery",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-06-10T22:26:41.611Z",
-      "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10. The harness auto-mode classifier also blocks ad-hoc ENABLE_CODE_SECURITY_REVIEW=0 on the loop command, reinforcing the need for a first-class, intentional mechanism.",
-      "estimatedIterations": 3
+      "completedAt": "2026-06-11T13:57:06.033Z",
+      "dependsOn": [
+        "017"
+      ],
+      "notes": "From Codex review (HIGH) — the most important review fix. recovery.ts is shared with 020, so land this first.",
+      "estimatedIterations": 2
     },
     {
       "id": "019",
-      "type": "feature",
+      "type": "bugfix",
       "priority": 2,
-      "title": "Loop autonomy: RAUF_NEEDS_HUMAN sets item aside and continues (no halt)",
-      "description": "needs_human now sets the item aside (blocked + needsHuman flag) and the loop continues with other runnable items instead of halting; also restores the --review pass on that path. Implemented manually in commit 90cffe0.",
+      "title": "Narrow dirty-tree cleanup to the rauf backlog path, not all backlog.json",
+      "description": "packages/loop/src/runner.ts (~line 1048) dirty-tree cleanup excludes every `**/backlog.json` in the repo, so a failed item that left an application file literally named backlog.json dirty would have that change swept into the next item's commit.\n\nFix: restrict the exclusion to the resolved rauf backlog path (paths.backlog) and its `.bak` sibling, plus the `.rauf/**` runtime files — all relative to projectPath — instead of a repo-wide `**/backlog.json` glob. Behavior for the actual rauf backlog/runtime files must stay identical. Add a regression test asserting an unrelated dirty file named backlog.json elsewhere in the tree is NOT preserved by the cleanup.",
       "acceptanceCriteria": [
-        "needs_human item is stored blocked+needsHuman and not reselected",
-        "loop continues to other runnable items; dependents stay pending",
-        "review pass runs after a needs_human set-aside when items completed",
-        "pnpm test && pnpm typecheck && pnpm lint pass"
+        "Dirty-tree cleanup excludes only the resolved rauf backlog (+ .bak) and .rauf runtime files, not arbitrary backlog.json files",
+        "A dirty unrelated file named backlog.json elsewhere in the tree is not preserved by the cleanup",
+        "A regression test covers the narrowed pathspec",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-06-10T22:06:15.906Z",
-      "notes": "Dogfooding fix surfaced during forge-5-loop on release-automation, 2026-06-10."
+      "completedAt": "2026-06-11T14:08:58.097Z",
+      "dependsOn": [],
+      "notes": "From Codex review (MEDIUM). Keep behavior identical for the real rauf backlog/runtime files.",
+      "estimatedIterations": 1
     },
     {
       "id": "020",
-      "type": "bug",
-      "priority": 3,
-      "title": "test-sandbox verify.sh trips the loop dirty-tree guard (fixture drift + no --force)",
-      "description": "Committed sandbox fixtures (test-sandbox/.rauf/backlog.json, specs/feature-a/backlog.json) still say 'ralph loop runner' while setup.sh regenerates them as 'rauf', so the tree is dirty after setup and the loop refuses to run. The sandbox harness also never passes --force despite the loop mutating tracked backlog fixtures during a run. Fix: regenerate+commit the fixtures (rename leftover) AND/OR have run.sh/verify.sh pass --force (the sandbox intentionally mutates fixtures). Surfaced while verifying the needs_human autonomy fix 2026-06-10.",
+      "type": "bugfix",
+      "priority": 1,
+      "title": "Hold the loop lock across reset/resume recovery (close TOCTOU race)",
+      "description": "packages/cli/src/reset-commands.ts (~49) and resume-commands.ts (~137) guard with guardLoopLock() (check) then mutate backlog/state in recoverInterruptedLoop() — a check-then-mutate TOCTOU race lets a concurrent `rauf loop run` acquire the lock and start between the check and the mutation.\n\nFix: acquire the loop lock (core acquireLock from packages/core/src/lock.ts) for the recovery window, refuse with a clear LOCK_CONFLICT message if a live lock exists, and release it in a finally block before any relaunch. Use owner-aware release so recovery never deletes a lock owned by a live different PID. Reuse acquireLock/releaseLock/checkLock — do not reimplement PID checks. For resume, hand off cleanly: release the recovery lock before launching the loop via the normal entrypoint (which acquires its own lock).",
       "acceptanceCriteria": [
-        "bash test-sandbox/verify.sh passes from a clean checkout",
-        "committed sandbox fixtures match setup.sh output (no 'ralph' leftovers)"
+        "reset/resume acquire the loop lock before mutating state and release it in finally",
+        "A live lock held by another alive PID makes reset/resume refuse with LOCK_CONFLICT and perform no mutation",
+        "Recovery never deletes a lock owned by a live different PID",
+        "A test simulates a live lock and asserts reset/resume refuse without mutating",
+        "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
       "status": "done",
-      "completedAt": "2026-06-10T22:37:37.195Z"
+      "completedAt": "2026-06-11T14:04:47.967Z",
+      "dependsOn": [
+        "018"
+      ],
+      "notes": "From Codex review (HIGH). Land after 018 (both edit recovery.ts). Reuse core lock staleness; resume must release before relaunch so the loop's own lock acquisition succeeds.",
+      "estimatedIterations": 1
     }
   ]
 }

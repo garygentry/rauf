@@ -12,6 +12,7 @@ import {
   isCommandInPath,
   RAUF_MD_MANAGED_START,
   RAUF_MD_MANAGED_END,
+  RAUF_GITIGNORE_ENTRIES,
   type InstallOptions,
 } from "./installer.js";
 import { readMarkerFile, MARKER_FILENAME } from "./config.js";
@@ -836,5 +837,76 @@ describe("preflight — no jq check", () => {
     const result = preflight(tmpDir);
     expect(result.checks).toHaveLength(4);
     expect(result.checks.find((c) => c.name === "jq_available")).toBeUndefined();
+  });
+});
+
+// ─── .gitignore deployment ────────────────────────────────────────
+
+describe("install — .gitignore entries", () => {
+  it("creates .gitignore with all rauf runtime entries", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    for (const entry of RAUF_GITIGNORE_ENTRIES) {
+      expect(gitignore).toContain(entry);
+    }
+  });
+
+  it("appends entries to an existing .gitignore without touching other lines", () => {
+    createFakeProject(tmpDir, { git: true });
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), "node_modules/\ndist/\n");
+    install(tmpDir, installOpts());
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    expect(gitignore).toContain("node_modules/");
+    expect(gitignore).toContain("dist/");
+    expect(gitignore).toContain("**/.rauf/.loop.lock");
+  });
+
+  it("does not duplicate entries already present in .gitignore", () => {
+    createFakeProject(tmpDir, { git: true });
+    const preExisting = RAUF_GITIGNORE_ENTRIES.join("\n") + "\n";
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), preExisting);
+
+    install(tmpDir, installOpts());
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    const lockCount = (gitignore.match(/\*\*\/\.rauf\/\.loop\.lock/g) ?? []).length;
+    expect(lockCount).toBe(1);
+  });
+
+  it("includes .gitignore in the install actions report", () => {
+    createFakeProject(tmpDir, { git: true });
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const actionFiles = result.value.actions.map((a) => a.file);
+    expect(actionFiles).toContain(".gitignore");
+  });
+
+  it("second install does not duplicate .gitignore entries (idempotent)", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+    install(tmpDir, installOpts());
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    const lockCount = (gitignore.match(/\*\*\/\.rauf\/\.loop\.lock/g) ?? []).length;
+    expect(lockCount).toBe(1);
+  });
+
+  it("update backfills .gitignore entries for older installs", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    // Simulate an older install that left no .gitignore
+    fs.unlinkSync(path.join(tmpDir, ".gitignore"));
+
+    const updateResult = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(updateResult.ok).toBe(true);
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    expect(gitignore).toContain("**/.rauf/.loop.lock");
   });
 });

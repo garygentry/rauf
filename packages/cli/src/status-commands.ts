@@ -454,14 +454,29 @@ function printStatusSummary(status: DerivedStatus): void {
     print(`${c.bold("Last Signal:")} ${status.lastSignal}`);
   }
 
+  print(`${c.bold("Lock:")}        ${formatLockLine(status.lock)}`);
+
   const s = status.backlogSummary;
+  // `blocked` is the total; `deferred` is the runner-gave-up subset. The
+  // remainder is the genuine blocks (explicit agent block / needs-human).
+  const deferred = s.deferred ?? 0;
+  const genuineBlocked = Math.max(0, s.blocked - deferred);
   print("");
   print(c.bold("Backlog:"));
   print(`  Pending:     ${s.pending}`);
   print(`  In Progress: ${s.inProgress}`);
-  print(`  Blocked:     ${s.blocked}`);
+  print(`  Blocked:     ${genuineBlocked}`);
+  print(`  Deferred:    ${deferred}`);
   print(`  Done:        ${s.done}`);
   print(`  Total:       ${s.total}`);
+}
+
+/** Format the lock liveness line — "PID 1234 (alive)", "PID 1234 (stale)", or "none". */
+function formatLockLine(lock: DerivedStatus["lock"]): string {
+  if (!lock || !lock.present) return c.dim("none");
+  const who = lock.pid !== null ? `PID ${lock.pid}` : "present";
+  if (lock.stale) return `${who} ${c.yellow("(stale)")}`;
+  return `${who} ${c.green("(alive)")}`;
 }
 
 /** Format a countdown to an ISO timestamp as "in 4h 32m", "in 3d", etc. */

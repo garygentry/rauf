@@ -43,9 +43,9 @@ Non-throwing existence check.
 
 All Zod schemas corresponding to types in docs/SCHEMAS.md. Export both schemas and inferred TypeScript types.
 
-Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`, `LoopEventSchema`, `LoopStartOptionsSchema`, `LoopStateEnumSchema`, `RuntimeSchema`, `BacklogItemSourceSchema`, `AgentDelegationSchema`, `ReviewPayloadSchema`, `ReviewItemSchema`.
+Key schemas: `BacklogItemSchema`, `BacklogSchema`, `MarkerFileSchema`, `LoopStateSchema`, `ToolConfigSchema`, `ProfileCommandsSchema`, `ProjectProfileSchema`, `LoopEventSchema`, `LoopStartOptionsSchema`, `LoopStateEnumSchema`, `RuntimeSchema`, `BacklogItemSourceSchema`, `AgentDelegationSchema`, `ReviewPayloadSchema`, `ReviewItemSchema`, `LockSummarySchema`, `BacklogSummarySchema`, `DerivedStatusSchema`.
 
-`LoopStartOptionsSchema` includes `review`, `reviewOnly`, and `provider` optional fields. `BacklogItemSchema` includes `agentDelegation`, `specReferences`, `provider`, `source`, and `reviewBatch` optional fields.
+`LoopStartOptionsSchema` includes `review`, `reviewOnly`, `provider`, `backlogRoot`, `suppressIterationReview`, `childEnv`, `sleepOnLimit`, and `circuitBreakerThreshold` optional fields. `BacklogItemSchema` includes `agentDelegation`, `specReferences`, `provider`, `source`, `reviewBatch`, `needsHuman`, and `deferred` optional fields. `LoopStateSchema` includes `deferredItems` (default `[]`) and `paused_usage_limit` in `LoopStateStatusSchema`. `BacklogSummarySchema` includes optional `needsHuman` and `deferred` counts. `LockSummarySchema` captures lock-file liveness (present/pid/alive/stale).
 
 Also exports `LOG_PATTERNS` (regex patterns for Tier 2 log-parsing fallback) and `VALID_STATUS_TRANSITIONS`.
 
@@ -254,7 +254,7 @@ Watch rauf.log for changes using fs.watch. Call callback with new lines. Return 
 
 ### writeLoopState(projectPath, state) → Result\<void\>
 
-Atomic write of `.rauf/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema` — returns `VALIDATION_ERROR` if invalid.
+Atomic write of `.rauf/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema` — returns `VALIDATION_ERROR` if invalid. The `deferredItems` field defaults to `[]` when omitted, keeping existing callers compatible.
 
 ### appendLog(projectPath, message) → Result\<void\>
 
@@ -380,6 +380,36 @@ Moves done backlog items into monthly archive files under `.rauf/archive/YYYY-MM
 - If `month` provided: validate, delete that file. Non-existent month returns `ok({ purgedCount: 0 })`.
 - If no `month`: list all months, delete each, attempt `rmdir` on archive dir.
 
+## Module: budget.ts
+
+Derives a right-sized iteration cap from the backlog's pending work instead of a flat default.
+
+### computeMaxIterations(backlog, opts?)
+
+```typescript
+interface ComputeMaxIterationsOptions {
+  safety?: number; // Multiplier on the raw estimate (default: 1.5)
+  retryHeadroom?: number; // Flat iterations added for retry headroom (default: 5)
+}
+
+interface MaxIterationsEstimate {
+  cap: number; // Derived iteration cap (floored at MIN_MAX_ITERATIONS=20 when pending > 0)
+  pending: number; // Items with status "pending"
+  avgIters: number; // Mean estimatedIterations across pending items (missing defaults to 1)
+  needed: number; // Raw estimate before floor: ceil(pending * avgIters * safety) + retryHeadroom
+}
+
+function computeMaxIterations(
+  backlog: Backlog,
+  opts?: ComputeMaxIterationsOptions,
+): MaxIterationsEstimate;
+```
+
+- When `pending === 0`, returns `cap: 0` (floor does not apply — nothing to budget for)
+- Used by CLI commands (`loop run`, `loop start`) and the web loop route when `--iterations` is omitted
+- An explicit `--iterations` flag always overrides the computed cap
+- `formatBudgetMath(estimate)` returns a human-readable budget line for the CLI
+
 ## Module: reset.ts
 
 Orchestrates a full project reset for a fresh backlog cycle.
@@ -418,3 +448,77 @@ Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`) — never overwrites 
 | discovery.ts     | (read-only)                                                                 |
 | profile.ts       | (read-only, result stored by installer)                                     |
 | template.ts      | (pure functions, no direct file I/O unless renderTemplateFile)              |
+| budget.ts        | (pure function — no file I/O)                                               |
+
+---
+
+## Loop Runner Hardening (packages/loop)
+
+The following behaviors live in `packages/loop` but are documented here because they directly interact with core schemas and the backlog/state files managed by `packages/core`.
+
+### Exit Taxonomy
+
+Every finished claude spawn is classified into one of seven `ExitClass` values by `exit-classifier.ts`. Classification is pure/side-effect-free.
+
+| ExitClass       | Trigger                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `done`          | Explicit `RAUF_DONE` signal                                                         |
+| `blocked`       | Explicit `RAUF_BLOCKED` signal                                                      |
+| `needs_human`   | Explicit `RAUF_NEEDS_HUMAN` signal                                                  |
+| `usage_limited` | Usage-limit banner found in `reconstructedText`/`stdout` **or** `stderr`            |
+| `timeout`       | Process killed by the session timeout                                               |
+| `infra_error`   | Fast non-zero exit (< `INFRA_FAST_MS` = 10 s) with no usage banner                  |
+| `genuine_retry` | All other no-signal exits (long-running, exit 0, or slow non-zero without a banner) |
+
+**Classification precedence (evaluated top-down):**
+
+1. Explicit signal (done/blocked/needs_human) → that class
+2. Usage banner in `reconstructedText ?? stdout` OR in `stderr` → `usage_limited`
+3. `timedOut` → `timeout`
+4. `exitCode !== 0 && durationMs < INFRA_FAST_MS` → `infra_error`
+5. Otherwise → `genuine_retry`
+
+### Never Block on a Missing Signal
+
+A missing signal (`none`) **never**, by itself, marks an item `blocked`. The `ExitClass` determines what happens:
+
+- `usage_limited` → reset item to `pending`, route to usage-limit handler (sleep or halt)
+- `timeout` → genuine block with reason `"Timed out after Ns"`
+- `infra_error` → item stays `pending`, increment `consecutiveInfraFailures` counter
+- `genuine_retry` → retry up to `maxRetries`; on exhaustion, set `blocked + deferred: true` with reason `"No signal after N attempts (deferred by runner)"` and push to `deferredItems`
+
+The `deferred` flag on `BacklogItem` distinguishes a runner "false block" from a genuine agent block — `rauf reset`/`resume` requeue deferred items to `pending` while leaving genuine blocks untouched.
+
+No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget — `iterationCount` is decremented and a note is appended to the log.
+
+### Circuit Breaker
+
+When `consecutiveInfraFailures >= circuitBreakerThreshold` (default 3), the loop halts immediately:
+
+- Writes state `error` with message `"Circuit breaker: N consecutive infra failures — halting"`
+- Emits `loop_error` event and writes DONE summary
+- The counter resets to 0 on any real outcome (done/blocked/needs_human/timeout/genuine_retry exhaustion)
+- Usage-limit deaths do NOT increment the counter
+
+This prevents the loop from spinning indefinitely when every spawn dies the same way (e.g. a broken CLI install).
+
+### Commit Reconciliation (`recovered_via_commit`)
+
+Before recording any non-done outcome for an item, the runner checks:
+
+1. `findItemCommit(projectPath, itemId)` — does a `[rauf] <id>:` commit exist in history?
+2. `isTreeClean(projectPath)` — is the working tree clean?
+
+If both are true → the item is promoted to `done` (not blocked/deferred), `item_completed` is emitted, and `"recovered_via_commit: <hash>"` is appended to the log. This handles the case where the agent committed and verified but died before printing `RAUF_DONE`.
+
+If the tree is dirty after a non-done exit → abandoned work is stashed (excluding `.rauf/` and `backlog.json`) before the next item starts.
+
+### Usage-Limit Pause/Resume
+
+When a usage limit is hit and `sleepOnLimit` is `false` (default: `true`):
+
+- Loop writes state `paused_usage_limit` and a DONE summary with the hint `"paused_usage_limit:<resetsAt> — run \`rauf resume\`"`
+- Exits cleanly instead of sleeping
+- `rauf resume` detects this state, applies reconciliation + false-block requeue, and relaunches the loop
+
+When `sleepOnLimit` is `true` (default), the runner parses the reset time from the banner (`/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i`) and sleeps until that local time + 60 s buffer, falling back to 60 s if no match.

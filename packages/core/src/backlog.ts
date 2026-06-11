@@ -44,6 +44,7 @@ export interface UpdateItemInput {
   status?: BacklogItemStatus;
   blockedReason?: string;
   needsHuman?: boolean;
+  deferred?: boolean;
   dependsOn?: string[];
   notes?: string;
   estimatedIterations?: number;
@@ -228,6 +229,7 @@ export function updateItem(
   if (updates.status !== undefined) updatedItem.status = updates.status;
   if (updates.blockedReason !== undefined) updatedItem.blockedReason = updates.blockedReason;
   if (updates.needsHuman !== undefined) updatedItem.needsHuman = updates.needsHuman;
+  if (updates.deferred !== undefined) updatedItem.deferred = updates.deferred;
   if (updates.dependsOn !== undefined) updatedItem.dependsOn = updates.dependsOn;
   if (updates.notes !== undefined) updatedItem.notes = updates.notes;
   if (updates.estimatedIterations !== undefined)
@@ -239,6 +241,11 @@ export function updateItem(
   if (updates.status === "done") {
     updatedItem.completedAt = new Date().toISOString();
     delete updatedItem.needsHuman;
+  }
+  // Clear the runner-deferred flag once the item leaves the deferred-blocked
+  // limbo (promoted to done, or requeued to pending by reset/resume/unblock).
+  if (updates.status === "done" || updates.status === "pending") {
+    delete updatedItem.deferred;
   }
 
   // 6. Write
@@ -439,6 +446,7 @@ export function unblockItems(
     item.status = "pending";
     delete item.blockedReason;
     delete item.needsHuman;
+    delete item.deferred;
 
     const writeResult = writeBacklog(paths, backlog);
     if (!writeResult.ok) return writeResult;
@@ -456,6 +464,7 @@ export function unblockItems(
     item.status = "pending";
     delete item.blockedReason;
     delete item.needsHuman;
+    delete item.deferred;
   }
 
   const writeResult = writeBacklog(paths, backlog);

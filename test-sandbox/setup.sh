@@ -41,9 +41,23 @@ if [ ! -d "$SBX_GIT_DIR" ]; then
   sbx_git init -q
   # Use a non-default branch so the loop's protected-branch guard passes.
   sbx_git symbolic-ref HEAD refs/heads/sandbox
-  # Keep the git dir itself out of its own work tree.
-  printf '.sandbox-git/\n' >"$SBX_GIT_DIR/info/exclude"
 fi
+# Keep the git dir itself AND the loop's runtime files out of the work tree's
+# status. gitCommit (git add -A) excludes these runtime files per-commit, so
+# without ignoring them here a freshly-committed tree would still read "dirty"
+# (untracked state.json/rauf.log/DONE) and the commit-reconciliation recovery
+# (item 009) — which requires a clean tree — could never fire. Mirrors what a
+# real install does to the target project's .gitignore.
+cat >"$SBX_GIT_DIR/info/exclude" <<'EOF'
+.sandbox-git/
+**/.rauf/.loop.lock
+**/.rauf/state.json
+**/.rauf/DONE
+**/.rauf/CANCEL
+**/.rauf/iteration-status.json
+**/.rauf/rauf.log
+**/backlog.json.bak
+EOF
 # Commit the freshly-reset state as the clean baseline (no-op if unchanged).
 sbx_git add -A
 sbx_git commit -q -m "sandbox baseline" >/dev/null 2>&1 || true

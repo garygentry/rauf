@@ -27,6 +27,9 @@ import {
   checkLock,
   forceClearLock,
   detectMigrationState,
+  readBacklog,
+  computeMaxIterations,
+  formatBudgetMath,
   type BacklogPaths,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
@@ -51,6 +54,21 @@ const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
 
 // ─── Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Derive a backlog-sized iteration cap and log the budget math. Falls back to
+ * the flat default when the backlog can't be read or has no pending work.
+ */
+function deriveMaxIterations(paths: BacklogPaths): number {
+  const backlogResult = readBacklog(paths);
+  if (!backlogResult.ok) return DEFAULT_MAX_ITERATIONS;
+
+  const estimate = computeMaxIterations(backlogResult.value);
+  if (estimate.pending === 0) return DEFAULT_MAX_ITERATIONS;
+
+  info(c.dim(formatBudgetMath(estimate)));
+  return estimate.cap;
+}
 
 /** Resolve the project path from the first positional arg (default: cwd) */
 function resolveProjectPath(ctx: CommandContext): string {
@@ -151,7 +169,27 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const model = extractStringFlag(ctx.flags, "model");
   const timeout = extractNumberFlag(ctx.flags, "timeout");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
-  if (iterations !== null) body.maxIterations = iterations;
+  if (iterations !== null) {
+    body.maxIterations = iterations;
+  } else {
+    // No explicit --iterations: derive the cap from the backlog and log the
+    // math here (the server runs detached and can't write to this terminal).
+    // The web route applies the same default for any value we don't send.
+    const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+    if (brResult.ok) {
+      const prResult = resolveBacklogPaths(projectPath, brResult.value);
+      if (prResult.ok) {
+        const backlogResult = readBacklog(prResult.value);
+        if (backlogResult.ok) {
+          const estimate = computeMaxIterations(backlogResult.value);
+          if (estimate.pending > 0) {
+            info(c.dim(formatBudgetMath(estimate)));
+            body.maxIterations = estimate.cap;
+          }
+        }
+      }
+    }
+  }
   if (retries !== null) body.maxRetries = retries;
   if (model !== null) body.model = model;
   if (timeout !== null) body.sessionTimeoutMinutes = timeout;
@@ -562,6 +600,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const force = extractBoolFlag(ctx.flags, "force");
+  // `rauf resume` sets this: recovery rewrites bookkeeping so the tree is dirty
+  // by construction, but branch protection must stay on (unlike --force).
+  const allowDirty = extractBoolFlag(ctx.flags, "allow-dirty");
 
   // Refuse to run a loop on an unmigrated legacy ralph project — its
   // RALPH.md would instruct Claude to emit RALPH_* signals the new parser
@@ -595,7 +636,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // sweep unrelated work into a loop commit. --force bypasses (and, below, also
   // force-clears any lock — there is currently no way to skip the guard alone).
   if (!force) {
-    const preconditions = await checkLoopPreconditions(projectPath);
+    const preconditions = await checkLoopPreconditions(projectPath, { allowDirty });
     if (!preconditions.ok) {
       error(preconditions.error.message);
       info("Commit or stash and switch to a feature branch, or pass `--force`.");
@@ -614,7 +655,8 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     }
   }
 
-  const iterations = extractNumberFlag(ctx.flags, "iterations") ?? DEFAULT_MAX_ITERATIONS;
+  const iterationsFlag = extractNumberFlag(ctx.flags, "iterations");
+  const iterations = iterationsFlag ?? deriveMaxIterations(paths);
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
   const model = extractStringFlag(ctx.flags, "model") ?? undefined;
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;

@@ -1,7 +1,7 @@
-import { execFile } from "node:child_process";
-
 import type { Result } from "@rauf/core";
 import { ok, err, ErrorCodes } from "@rauf/core";
+
+import { execGit } from "./git-exec.js";
 
 export interface GitCommitSuccess {
   commitHash: string;
@@ -62,22 +62,6 @@ export async function gitCommit(
       message: `git commit failed: ${e instanceof Error ? e.message : String(e)}`,
     });
   }
-}
-
-function execGit(cwd: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd }, (error, stdout, stderr) => {
-      if (error) {
-        const msg = stderr.trim() || stdout.trim() || error.message;
-        const gitError = new Error(msg);
-        (gitError as Error & { stdout: string; stderr: string }).stdout = stdout;
-        (gitError as Error & { stdout: string; stderr: string }).stderr = stderr;
-        reject(gitError);
-      } else {
-        resolve(stdout);
-      }
-    });
-  });
 }
 
 function extractCommitHash(stdout: string): string {

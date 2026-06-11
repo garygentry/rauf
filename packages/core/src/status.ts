@@ -5,6 +5,7 @@ import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, fileExists, atomicWrite } from "./fs-utils.js";
 import { readBacklog } from "./backlog.js";
 import { type BacklogPaths, SCAN_SKIP_DIRS } from "./backlog-root.js";
+import { checkLock } from "./lock.js";
 import {
   LoopStateSchema,
   LOG_PATTERNS,
@@ -12,6 +13,7 @@ import {
   type LoopStateEnum,
   type DerivedStatus,
   type BacklogSummary,
+  type LockSummary,
 } from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -55,12 +57,35 @@ function computeBacklogSummary(paths: BacklogPaths): BacklogSummary {
   return {
     pending: items.filter((i) => i.status === "pending").length,
     inProgress: items.filter((i) => i.status === "in_progress").length,
-    // `blocked` includes needs-human items (they ARE blocked-status);
-    // `needsHuman` is the human-decision subset, so totals stay consistent.
+    // `blocked` is the total blocked-status count; `needsHuman` and `deferred`
+    // are disjoint subsets of it (a human-decision block vs a runner "false
+    // block"), so the genuine-vs-deferred split stays derivable from the flags.
     blocked: items.filter((i) => i.status === "blocked").length,
     needsHuman: items.filter((i) => i.status === "blocked" && i.needsHuman === true).length,
+    deferred: items.filter((i) => i.status === "blocked" && i.deferred === true).length,
     done: items.filter((i) => i.status === "done").length,
     total: items.length,
+  };
+}
+
+// ─── LockSummary ─────────────────────────────────────────────────
+
+/**
+ * Derive the lock-liveness summary for a backlog root from core's `checkLock`.
+ * Never reimplements PID checks — purely reshapes the LockStatus for display.
+ */
+function computeLockSummary(paths: BacklogPaths): LockSummary {
+  const result = checkLock(paths);
+  if (!result.ok || !result.value.locked) {
+    return { present: false, pid: null, startedAt: null, alive: false, stale: false };
+  }
+  const { pid, startedAt, stale } = result.value;
+  return {
+    present: true,
+    pid: pid ?? null,
+    startedAt: startedAt ?? null,
+    alive: stale !== true,
+    stale: stale === true,
   };
 }
 
@@ -80,6 +105,8 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",
     reviewing: "RUNNING",
+    // Clean usage-limit halt — resumable, so surface as PAUSED (not a new enum value).
+    paused_usage_limit: "PAUSED",
   };
   return mapping[status];
 }
@@ -195,6 +222,9 @@ function parseDoneFileState(content: string): LoopStateEnum {
 
   const lower = content.toLowerCase();
   if (lower.includes("human") || lower.includes("needs_human")) return "PAUSED_HUMAN";
+  // Check before the generic "limit" rule: a clean usage-limit pause is resumable
+  // (PAUSED-like), not the terminal LIMIT_REACHED state.
+  if (lower.includes("paused_usage_limit")) return "PAUSED";
   if (lower.includes("limit")) return "LIMIT_REACHED";
   if (lower.includes("error")) return "ERROR";
   return "COMPLETE";
@@ -288,12 +318,16 @@ export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus> {
   const tier1Result = deriveFromStateJson(paths);
   if (!tier1Result.ok) return tier1Result;
 
+  // Lock liveness is orthogonal to which tier produced the status, so resolve
+  // it once and attach to whichever derivation wins.
+  const lock = computeLockSummary(paths);
+
   if (tier1Result.value !== null) {
-    return ok(tier1Result.value);
+    return ok({ ...tier1Result.value, lock });
   }
 
   // Tier 2: Fall back to log parsing
-  return ok(deriveFromLogParsing(paths));
+  return ok({ ...deriveFromLogParsing(paths), lock });
 }
 
 // ─── readLogTail ────────────────────────────────────────────────
@@ -386,10 +420,16 @@ export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => voi
 
 export function writeLoopState(
   paths: BacklogPaths,
-  state: Omit<LoopState, "updatedAt"> & { updatedAt?: string },
+  state: Omit<LoopState, "updatedAt" | "deferredItems" | "baseCommitHash"> & {
+    updatedAt?: string;
+    deferredItems?: string[];
+    baseCommitHash?: string | null;
+  },
 ): Result<void> {
   const stateWithTimestamp: LoopState = {
     ...state,
+    deferredItems: state.deferredItems ?? [],
+    baseCommitHash: state.baseCommitHash ?? null,
     updatedAt: new Date().toISOString(),
   };
 

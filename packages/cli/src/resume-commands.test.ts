@@ -1,0 +1,266 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import { execSync } from "node:child_process";
+
+import { handleResume } from "./resume-commands.js";
+import { ExitCode } from "./commands.js";
+import type { CommandContext } from "./commands.js";
+import { configureOutput } from "./formatter.js";
+
+// ─── Fixtures ──────────────────────────────────────────────────────
+
+let tmpDir: string;
+
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-resume-"));
+  configureOutput({ noColor: true, quiet: true, json: false });
+});
+
+afterEach(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+function git(cwd: string, args: string): void {
+  execSync(`git ${args}`, { cwd, stdio: "ignore" });
+}
+
+/** Project dir that is its own git repo with runtime files git-ignored. */
+function createProject(items: object[]): string {
+  const projectDir = path.join(tmpDir, "proj");
+  const raufDir = path.join(projectDir, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+
+  const backlog = {
+    schemaVersion: "1",
+    project: "test-project",
+    description: "Test project backlog",
+    items,
+  };
+  fs.writeFileSync(path.join(raufDir, "backlog.json"), JSON.stringify(backlog, null, 2) + "\n");
+  fs.writeFileSync(
+    path.join(projectDir, ".gitignore"),
+    [
+      ".rauf/state.json",
+      ".rauf/DONE",
+      ".rauf/CANCEL",
+      ".rauf/.loop.lock",
+      ".rauf/rauf.log",
+      "",
+    ].join("\n"),
+  );
+
+  git(projectDir, "init");
+  git(projectDir, 'config user.email "test@test.com"');
+  git(projectDir, 'config user.name "Test"');
+  git(projectDir, "add -A");
+  git(projectDir, 'commit -m "baseline"');
+
+  return projectDir;
+}
+
+function commitItemWork(projectDir: string, id: string): void {
+  fs.writeFileSync(path.join(projectDir, `work-${id}.txt`), `work for ${id}\n`);
+  git(projectDir, "add -A");
+  git(projectDir, `commit -m "[rauf] ${id}: did the work"`);
+}
+
+function writeState(projectDir: string, status: string): void {
+  const state = {
+    status,
+    iteration: 2,
+    maxIterations: 20,
+    currentItem: null,
+    lastSignal: null,
+    startedAt: "2026-06-11T00:00:00.000Z",
+    updatedAt: "2026-06-11T00:00:00.000Z",
+    completedItems: [],
+    blockedItems: [],
+    deferredItems: [],
+  };
+  fs.writeFileSync(
+    path.join(projectDir, ".rauf", "state.json"),
+    JSON.stringify(state, null, 2) + "\n",
+  );
+}
+
+function readBacklogItems(
+  projectDir: string,
+): Record<string, { status: string; deferred?: boolean }> {
+  const raw = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+  const parsed = JSON.parse(raw) as { items: { id: string; status: string; deferred?: boolean }[] };
+  const map: Record<string, { status: string; deferred?: boolean }> = {};
+  for (const i of parsed.items) map[i.id] = { status: i.status, deferred: i.deferred };
+  return map;
+}
+
+function makeCtx(overrides?: Partial<CommandContext>): CommandContext {
+  return {
+    args: [],
+    flags: new Map(),
+    globalFlags: { json: false, noColor: true, quiet: true, root: null },
+    rawArgv: [],
+    ...overrides,
+  };
+}
+
+function item(id: string, status: string, extra: Record<string, unknown> = {}): object {
+  return {
+    id,
+    type: "feature",
+    priority: 2,
+    title: `Item ${id}`,
+    description: `Description ${id}`,
+    status,
+    completedAt: status === "done" ? "2026-06-01T00:00:00.000Z" : null,
+    acceptanceCriteria: ["Works"],
+    ...extra,
+  };
+}
+
+/** A runLoop stub that records the ctx it was launched with. */
+function captureRunLoop() {
+  const calls: CommandContext[] = [];
+  const runLoop = async (ctx: CommandContext): Promise<number> => {
+    calls.push(ctx);
+    return ExitCode.SUCCESS;
+  };
+  return { calls, runLoop };
+}
+
+// ─── Tests ─────────────────────────────────────────────────────────
+
+describe("handleResume — lock handling", () => {
+  it("refuses when a live loop holds the lock and does not relaunch", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    fs.writeFileSync(
+      path.join(projectDir, ".rauf", ".loop.lock"),
+      JSON.stringify({ pid: process.pid, startedAt: "now", processStartTime: null }),
+    );
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.CONFLICT);
+    expect(calls).toHaveLength(0);
+    // state.json untouched (not cleared) when refusing.
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "state.json"))).toBe(true);
+  });
+
+  it("clears a stale lock and proceeds", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    const lockPath = path.join(projectDir, ".rauf", ".loop.lock");
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: 2147483646, startedAt: "old", processStartTime: null }),
+    );
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(fs.existsSync(lockPath)).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("handleResume — resumable-state detection", () => {
+  for (const status of ["paused_usage_limit", "limit_reached", "error"] as const) {
+    it(`detects ${status} and resumes`, async () => {
+      const projectDir = createProject([
+        item("001", "blocked", { deferred: true }),
+        item("002", "pending"),
+      ]);
+      writeState(projectDir, status);
+
+      const { calls, runLoop } = captureRunLoop();
+      const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(calls).toHaveLength(1);
+      // deferred false-block was requeued; state.json cleared.
+      expect(readBacklogItems(projectDir)["001"]?.status).toBe("pending");
+      expect(fs.existsSync(path.join(projectDir, ".rauf", "state.json"))).toBe(false);
+      // Launch forwards --allow-dirty and the project path.
+      expect(calls[0]!.flags.get("allow-dirty")).toBe(true);
+      expect(calls[0]!.args[0]).toBe(projectDir);
+    });
+  }
+
+  it("detects a dead lock with non-done items and resumes (no state.json)", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    fs.writeFileSync(
+      path.join(projectDir, ".rauf", ".loop.lock"),
+      JSON.stringify({ pid: 2147483646, startedAt: "old", processStartTime: null }),
+    );
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("handleResume — recovery before relaunch", () => {
+  it("promotes a committed-clean item to done before resuming", async () => {
+    const projectDir = createProject([
+      item("001", "blocked", { deferred: true }),
+      item("002", "pending"),
+    ]);
+    writeState(projectDir, "paused_usage_limit");
+    commitItemWork(projectDir, "001");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const after = readBacklogItems(projectDir);
+    expect(after["001"]?.status).toBe("done");
+    expect(after["001"]?.deferred).toBeUndefined();
+    // 002 still pending → loop relaunches.
+    expect(calls).toHaveLength(1);
+  });
+
+  it("resets a stalled in_progress item to pending before resuming", async () => {
+    const projectDir = createProject([item("001", "in_progress")]);
+    writeState(projectDir, "error");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("pending");
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("handleResume — nothing to resume", () => {
+  it("returns success without relaunching when all items are done", async () => {
+    const projectDir = createProject([item("001", "done")]);
+    writeState(projectDir, "complete");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("does not relaunch when only genuine blocks remain after recovery", async () => {
+    const projectDir = createProject([
+      item("001", "blocked", { blockedReason: "RAUF_BLOCKED: missing dep" }),
+    ]);
+    writeState(projectDir, "error");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    // Genuine block stays blocked; no eligible pending item → no relaunch.
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("blocked");
+    expect(calls).toHaveLength(0);
+  });
+});

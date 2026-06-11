@@ -21,33 +21,38 @@ packages/core ──imports──►  (nothing — standalone)
 
 All filesystem operations and business logic. Zero UI or CLI concerns.
 
-| Module          | Responsibility                                                                 |
-| --------------- | ------------------------------------------------------------------------------ |
-| `discovery.ts`  | Scan ROOT_DIRECTORY for .rauf.json files, return project list                  |
-| `config.ts`     | Read/write .rauf.json marker files, read/write ~/.rauf/config.json             |
-| `profile.ts`    | Tech-stack detection heuristics, profile management                            |
-| `template.ts`   | Render .tmpl files with {{variable}} interpolation, sentinel block handling    |
-| `installer.ts`  | Orchestrate artifact installation (existing projects)                          |
-| `greenfield.ts` | Orchestrate greenfield project initialization                                  |
-| `backlog.ts`    | CRUD operations on backlog.json, validation, atomic writes                     |
-| `status.ts`     | Derive loop state from state.json (primary) or rauf.log (fallback)             |
-| `fs-utils.ts`   | Atomic write, JSON read with error handling, path validation, hash computation |
-| `schemas.ts`    | Zod schemas + TypeScript types for all data structures                         |
-| `errors.ts`     | Result type, error codes, structured error types                               |
+| Module          | Responsibility                                                                      |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `discovery.ts`  | Scan ROOT_DIRECTORY for .rauf.json files, return project list                       |
+| `config.ts`     | Read/write .rauf.json marker files, read/write ~/.rauf/config.json                  |
+| `profile.ts`    | Tech-stack detection heuristics, profile management                                 |
+| `template.ts`   | Render .tmpl files with {{variable}} interpolation, sentinel block handling         |
+| `installer.ts`  | Orchestrate artifact installation (existing projects)                               |
+| `greenfield.ts` | Orchestrate greenfield project initialization                                       |
+| `backlog.ts`    | CRUD operations on backlog.json, validation, atomic writes                          |
+| `status.ts`     | Derive loop state from state.json (primary) or rauf.log (fallback); lock liveness   |
+| `fs-utils.ts`   | Atomic write, JSON read with error handling, path validation, hash computation      |
+| `schemas.ts`    | Zod schemas + TypeScript types for all data structures                              |
+| `errors.ts`     | Result type, error codes, structured error types                                    |
+| `budget.ts`     | Derive right-sized iteration cap from backlog pending work (`computeMaxIterations`) |
 
 ### packages/loop
 
 Loop runner engine. Orchestrates the autonomous coding loop lifecycle.
 
-| Module              | Responsibility                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------ |
-| `runner.ts`         | LoopRunner class — main loop lifecycle, iteration management                                           |
-| `events.ts`         | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent                                    |
-| `claude-process.ts` | Spawn `claude -p` as child process with timeout and cancellation                                       |
-| `signal-parser.ts`  | Parse RAUF_DONE/BLOCKED/NEEDS_HUMAN/RAUF_REVIEW from Claude stdout                                     |
-| `prompt-builder.ts` | Build the prompt string from RAUF.md, item, backlog, and progress; build review prompts from REVIEW.md |
-| `usage-checker.ts`  | Check Claude API usage limits, interruptible sleep                                                     |
-| `git-commit.ts`     | Run `git add -A && git commit` after successful iterations                                             |
+| Module               | Responsibility                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `runner.ts`          | LoopRunner class — main loop lifecycle, iteration management, exit classification, circuit breaker     |
+| `events.ts`          | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent                                    |
+| `claude-process.ts`  | Spawn `claude -p` as child process with timeout and cancellation                                       |
+| `signal-parser.ts`   | Parse RAUF_DONE/BLOCKED/NEEDS_HUMAN/RAUF_REVIEW from Claude stdout                                     |
+| `prompt-builder.ts`  | Build the prompt string from RAUF.md, item, backlog, and progress; build review prompts from REVIEW.md |
+| `usage-checker.ts`   | Check Claude API usage limits, interruptible sleep                                                     |
+| `git-commit.ts`      | Run `git add -A && git commit` after successful iterations                                             |
+| `git-exec.ts`        | Shared `execGit(cwd, args)` helper used by all git operations in the loop package                      |
+| `git-reconcile.ts`   | `findItemCommit` and `isTreeClean` — detect committed-but-unrecorded work for recovery                 |
+| `exit-classifier.ts` | Pure classifier: `classifyExit` maps a finished spawn to an `ExitClass`; exports `hasUsageLimitInText` |
+| `review-hooks.ts`    | `REVIEW_HOOK_SUPPRESSION_ENV` map and `resolveChildEnv` for single-gate review suppression             |
 
 ### packages/cli
 
@@ -57,6 +62,7 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 - Can call core functions directly (headless) or HTTP API (when server running)
 - `rauf loop run` creates a LoopRunner in-process (no server required)
 - `rauf loop start/stop/follow/review` route through the server API or run directly
+- `recovery.ts` provides shared helpers (`reconcileAndRequeue`, `guardLoopLock`, `recoverInterruptedLoop`) used by both `rauf reset` and `rauf resume`
 - Outputs human-readable by default, `--json` for machine-readable
 - Exit codes follow standard (0=success, 1=error, 2=bad args, etc.)
 
@@ -107,18 +113,32 @@ LoopRunner lifecycle:
   3. Read .rauf.json marker options (autoSweep, model, etc.)
   4. Run auto-sweep if enabled
   5. Pre-loop usage limit preflight (weekly check, 5h check)
-  6. Main loop:
+     — if sleepOnLimit=false and 5h limit hit: write paused_usage_limit state + DONE, exit
+  6. Main loop (iterationCount < maxIterations, no-op iterations don't count):
      a. Select next eligible item (dependency-aware priority queue)
      b. Resolve model (item.model > options.model > marker.model)
      c. Build prompt (RAUF.md + item + backlog + progress)
-     d. Spawn claude -p with timeout
-     e. Check stderr for usage limit patterns
+     d. Spawn claude -p with timeout (child env from childEnv/suppressIterationReview)
+     e. Pre-signal check: scan reconstructedText/stdout AND stderr for usage-limit banner
+        — if detected: reset item to pending, route to usage handler (sleep or halt)
      f. Parse exit signal (DONE/BLOCKED/NEEDS_HUMAN/REVIEW/none)
-     g. Update item status, write state.json, git commit on DONE
-     h. Check usage limits + cancel between iterations
+     g. For explicit DONE: git commit, update item done
+        For explicit BLOCKED/NEEDS_HUMAN: record as genuine block
+        For no signal (none/review): classifyExit → ExitClass dispatch:
+          - usage_limited  → reset pending, route to usage handler
+          - timeout        → genuine block ("Timed out after Ns")
+          - infra_error    → item stays pending, consecutiveInfraFailures++,
+                             do NOT block; iteration does not count toward budget
+          - genuine_retry  → retry up to maxRetries; on exhaustion:
+                             blocked + deferred:true, push to deferredItems
+     h. Pre-block reconciliation: if non-done outcome, check findItemCommit + isTreeClean
+        — if committed + clean: promote to done (recovered_via_commit), skip block
+     i. If dirty tree after non-done: stash abandoned work before next item
+     j. Circuit breaker: if consecutiveInfraFailures >= threshold → halt with error state
+     k. Write state.json, check CANCEL file, check usage limits between iterations
   7. After main loop: if --review enabled, run review pass
   8. If review creates items and not --review-only, re-enter main loop for fix iterations
-  9. Write DONE file on all terminal exit paths
+  9. Write DONE file on all terminal exit paths (includes paused_usage_limit resume hint)
   10. Crash cleanup: try/finally resets in_progress items
 ```
 

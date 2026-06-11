@@ -47,6 +47,14 @@ export const BacklogItemSchema = z.object({
    * re-runs (`--retry-blocked`/`unblock`, which clears this flag).
    */
   needsHuman: z.boolean().optional(),
+  /**
+   * When true, this item is `blocked` because the RUNTIME gave up on it
+   * (e.g. no signal after N retries), as opposed to the agent explicitly
+   * blocking it (RAUF_BLOCKED) or asking for a human (needsHuman). A deferred
+   * item keeps status `blocked`; this flag distinguishes a runner "false block"
+   * — which `rauf reset`/`resume` requeue to pending — from a genuine block.
+   */
+  deferred: z.boolean().optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
@@ -160,6 +168,8 @@ export const LoopStateStatusSchema = z.enum([
   "sleeping_limit",
   "weekly_limit",
   "reviewing",
+  /** Clean halt when a usage limit is hit and sleepOnLimit is false — resumable via `rauf resume`. */
+  "paused_usage_limit",
 ]);
 
 export const LoopStateSignalSchema = z.enum(["clean", "blocked", "needs_human", "error"]);
@@ -174,8 +184,23 @@ export const LoopStateSchema = z.object({
   updatedAt: z.string().nullable(),
   completedItems: z.array(z.string()),
   blockedItems: z.array(z.string()),
+  /**
+   * Items the runtime gave up on (deferred "false blocks"), distinct from
+   * blockedItems (genuine agent blocks). Optional-with-default so existing
+   * state.json predating this field still parses (missing → []).
+   */
+  deferredItems: z.array(z.string()).default([]),
   error: z.string().nullable(),
   sleepUntil: z.string().nullable().optional(),
+  /**
+   * HEAD commit hash captured at loop start, used as the baseline (`sinceRef`)
+   * for commit reconciliation so only commits made during THIS run can recover
+   * an item. Prevents a stale `[rauf] <id>:` commit from a prior backlog cycle
+   * (rauf restarts ids at 001 every backlog) from falsely promoting a fresh
+   * item. Optional-with-default so existing state.json predating this field
+   * still parses (missing → null).
+   */
+  baseCommitHash: z.string().nullable().default(null),
 });
 
 // ─── ToolConfig (~/.rauf/config.json) ─────────────────────────────
@@ -208,11 +233,31 @@ export const LoopStateEnumSchema = z.enum([
 export const BacklogSummarySchema = z.object({
   pending: z.number().int().nonnegative(),
   inProgress: z.number().int().nonnegative(),
+  /** Every item with status `blocked` — includes both genuine blocks and runner-deferred ones. */
   blocked: z.number().int().nonnegative(),
   /** Subset of `blocked` that is blocked on a human decision (needsHuman flag). */
   needsHuman: z.number().int().nonnegative().optional(),
+  /** Subset of `blocked` the runner gave up on (deferred flag — a "false block"). */
+  deferred: z.number().int().nonnegative().optional(),
   done: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
+});
+
+/**
+ * Liveness of a backlog root's `.loop.lock`, as surfaced in DerivedStatus.
+ * Derived from core's `checkLock` — never reimplements PID checks.
+ */
+export const LockSummarySchema = z.object({
+  /** Whether a lock file is present on disk. */
+  present: z.boolean(),
+  /** PID recorded in the lock file, if any. */
+  pid: z.number().int().nullable(),
+  /** ISO timestamp the lock was acquired, if recorded. */
+  startedAt: z.string().nullable(),
+  /** A live process still holds the lock (present, not stale). */
+  alive: z.boolean(),
+  /** The lock is stale — its PID is dead, recycled, or unreadable. */
+  stale: z.boolean(),
 });
 
 export const DerivedStatusSchema = z.object({
@@ -225,6 +270,8 @@ export const DerivedStatusSchema = z.object({
   startedAt: z.string().nullable(),
   elapsed: z.number().nullable(),
   backlogSummary: BacklogSummarySchema,
+  /** Lock-file liveness for this backlog root (present/alive/stale + PID). */
+  lock: LockSummarySchema.optional(),
   sleepUntil: z.string().nullable().optional(),
 });
 
@@ -336,6 +383,20 @@ export const LoopStartOptionsSchema = z.object({
    * use this to opt out of any hook that honors an env var.
    */
   childEnv: z.record(z.string(), z.string()).optional(),
+  /**
+   * When a 5-hour usage limit is hit, sleep until reset and continue (default,
+   * unattended behavior). When false, halt cleanly instead: write the
+   * `paused_usage_limit` state plus a DONE summary with a resume hint, and exit
+   * so the run can be picked back up later with `rauf resume`.
+   */
+  sleepOnLimit: z.boolean().optional(),
+  /**
+   * Halt the loop after this many CONSECUTIVE infra_error spawn deaths (fast
+   * non-zero exits with no usage banner). Prevents the loop from grinding
+   * through the whole iteration budget when every spawn dies the same way.
+   * Reset to 0 on any real outcome. Defaults to 3 when unset.
+   */
+  circuitBreakerThreshold: z.number().int().positive().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
@@ -563,6 +624,7 @@ export type ToolConfigTheme = z.infer<typeof ToolConfigThemeSchema>;
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 export type LoopStateEnum = z.infer<typeof LoopStateEnumSchema>;
 export type BacklogSummary = z.infer<typeof BacklogSummarySchema>;
+export type LockSummary = z.infer<typeof LockSummarySchema>;
 export type DerivedStatus = z.infer<typeof DerivedStatusSchema>;
 export type DiscoveredProject = z.infer<typeof DiscoveredProjectSchema>;
 export type InstallAction = z.infer<typeof InstallActionSchema>;

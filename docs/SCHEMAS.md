@@ -32,7 +32,7 @@ interface SweepResult {
 ```typescript
 interface BacklogItem {
   id: string; // Zero-padded sequential: "001", "002", ...
-  type: "bug" | "refactor" | "feature" | "chore";
+  type: "bug" | "bugfix" | "refactor" | "feature" | "chore" | "test";
   priority: 1 | 2 | 3 | 4; // 1 = highest
   title: string; // Non-empty
   description: string;
@@ -40,6 +40,8 @@ interface BacklogItem {
   status: "pending" | "in_progress" | "done" | "blocked";
   completedAt: string | null; // ISO 8601 datetime or null
   blockedReason?: string; // Present when status is "blocked"
+  needsHuman?: boolean; // When true, item is blocked awaiting a human decision (RAUF_NEEDS_HUMAN) — `rauf reset`/`resume` leave these blocked
+  deferred?: boolean; // When true, item is blocked because the runner gave up (no signal after maxRetries) — a "false block" requeued by `rauf reset`/`resume`
   dependsOn?: string[]; // Item IDs this depends on
   notes?: string; // Free-text context, links, hints
   estimatedIterations?: number; // Expected iterations to complete
@@ -150,7 +152,8 @@ interface LoopState {
     | "error"
     | "sleeping_limit" // Sleeping until 5-hour Claude usage window resets
     | "weekly_limit" // 7-day weekly Claude usage cap exhausted
-    | "reviewing"; // Running post-loop review pass
+    | "reviewing" // Running post-loop review pass
+    | "paused_usage_limit"; // Clean halt when usage limit hit and sleepOnLimit=false — resumable via `rauf resume`
   iteration: number;
   maxIterations: number;
   currentItem: string | null; // Backlog item ID
@@ -158,25 +161,27 @@ interface LoopState {
   startedAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
   completedItems: string[]; // Item IDs
-  blockedItems: string[]; // Item IDs
+  blockedItems: string[]; // Item IDs (genuine agent blocks)
+  deferredItems: string[]; // Item IDs the runner gave up on ("false blocks" — distinct from genuine agent blocks)
   error: string | null;
   sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit
 }
 ```
 
-| Status value     | Meaning                                          |
-| ---------------- | ------------------------------------------------ |
-| `idle`           | No loop active (initial state)                   |
-| `starting`       | Loop initializing                                |
-| `running`        | Actively processing an item                      |
-| `paused`         | Gracefully stopped (CANCEL signal)               |
-| `complete`       | All items resolved                               |
-| `paused_human`   | Waiting for human input (`RAUF_NEEDS_HUMAN`)     |
-| `limit_reached`  | Max iterations config exceeded                   |
-| `error`          | Unexpected termination                           |
-| `sleeping_limit` | Sleeping until 5-hour Claude usage window resets |
-| `weekly_limit`   | 7-day weekly Claude usage cap exhausted          |
-| `reviewing`      | Running post-loop review pass                    |
+| Status value         | Meaning                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `idle`               | No loop active (initial state)                                                               |
+| `starting`           | Loop initializing                                                                            |
+| `running`            | Actively processing an item                                                                  |
+| `paused`             | Gracefully stopped (CANCEL signal)                                                           |
+| `complete`           | All items resolved                                                                           |
+| `paused_human`       | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                 |
+| `limit_reached`      | Max iterations config exceeded                                                               |
+| `error`              | Unexpected termination                                                                       |
+| `sleeping_limit`     | Sleeping until 5-hour Claude usage window resets                                             |
+| `weekly_limit`       | 7-day weekly Claude usage cap exhausted                                                      |
+| `reviewing`          | Running post-loop review pass                                                                |
+| `paused_usage_limit` | Usage limit hit with `sleepOnLimit=false` — loop halted cleanly, resumable via `rauf resume` |
 
 File: `.rauf/state.json` (written by the loop runner, read by status derivation)
 
@@ -189,6 +194,20 @@ interface ToolConfig {
   theme: "light" | "dark" | "system"; // Default: "system"
   defaultProvider?: string; // Default LLM provider
   providers?: Record<string, Record<string, unknown>>; // Per-provider configuration
+}
+```
+
+## LockSummary
+
+Liveness of a backlog root's `.loop.lock`, included in `DerivedStatus`. Derived from `checkLock` in `packages/core` — never reimplements PID checks.
+
+```typescript
+interface LockSummary {
+  present: boolean; // Whether a lock file exists on disk
+  pid: number | null; // PID recorded in the lock file, if any
+  startedAt: string | null; // ISO timestamp the lock was acquired, if recorded
+  alive: boolean; // A live process still holds the lock (present and not stale)
+  stale: boolean; // The lock is stale — its PID is dead, recycled, or unreadable
 }
 ```
 
@@ -205,13 +224,16 @@ interface DerivedStatus {
   startedAt: string | null;
   elapsed: number | null; // Seconds
   backlogSummary: BacklogSummary;
+  lock?: LockSummary; // Lock-file liveness (present/alive/stale + PID)
   sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT
 }
 
 interface BacklogSummary {
   pending: number;
   inProgress: number;
-  blocked: number;
+  blocked: number; // All items with status "blocked" (genuine + deferred)
+  needsHuman?: number; // Subset of blocked awaiting a human decision (needsHuman flag)
+  deferred?: number; // Subset of blocked the runner gave up on (deferred flag — "false blocks")
   done: number;
   total: number;
 }
@@ -311,13 +333,18 @@ Options passed to LoopRunner when starting a loop.
 
 ```typescript
 interface LoopStartOptions {
-  maxIterations: number; // Positive integer. Max loop iterations before stopping.
-  maxRetries: number; // Positive integer. Max retries per item on "none" signal before marking blocked.
+  maxIterations: number; // Positive integer. Max loop iterations. See computeMaxIterations for the default derivation.
+  maxRetries: number; // Positive integer. Max retries on genuine_retry before deferring the item.
   model?: string; // Optional model override (e.g., "claude-opus-4-6"). Overridden by per-item BacklogItem.model.
   sessionTimeoutMinutes: number; // Positive integer. Max minutes per Claude session before kill+retry.
   provider?: string; // Optional LLM provider override.
   review?: boolean; // Enable post-loop review pass after all items complete.
   reviewOnly?: boolean; // Review only — create fix items but don't process them (implies review).
+  backlogRoot?: string; // Override the backlog root directory (default: .rauf/).
+  suppressIterationReview?: boolean; // Suppress per-iteration review/security hooks in child sessions (single-gate review model). Default: false.
+  childEnv?: Record<string, string>; // Generic env var overrides applied to every child session. Takes precedence over the suppressIterationReview suppression set.
+  sleepOnLimit?: boolean; // When false, halt with paused_usage_limit instead of sleeping at a usage limit. Default: true (sleep and continue).
+  circuitBreakerThreshold?: number; // Halt after N consecutive infra_error spawn deaths (fast non-zero exits, no usage banner). Default: 3.
 }
 ```
 
@@ -334,7 +361,7 @@ interface LoopEventBase {
 }
 ```
 
-### All 20 Event Types
+### All 23 Event Types
 
 | Type                  | Additional Fields                                             | Emitted When                                      |
 | --------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
@@ -352,12 +379,15 @@ interface LoopEventBase {
 | `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                    | Usage limit window reset                          |
 | `sleep_start`         | `sleepUntil`, `reason`                                        | Loop enters sleep (usage limit)                   |
 | `sleep_end`           | _(base only)_                                                 | Loop wakes from sleep                             |
-| `loop_completed`      | `completedCount`, `blockedCount`                              | Loop finishes normally                            |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`          | Loop finishes normally                            |
 | `loop_error`          | `error`                                                       | Unexpected error terminates loop                  |
 | `loop_cancelled`      | _(base only)_                                                 | Loop cancelled via AbortController or CANCEL file |
 | `review_started`      | `completedItemIds`                                            | Post-loop review pass begins                      |
 | `review_completed`    | `itemsCreated`, `summary`                                     | Review pass finished                              |
 | `review_failed`       | `reason`                                                      | Review pass failed (non-fatal)                    |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")              | Tool call starts or finishes in child session     |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                       | Token count update from child session             |
+| `llm_stuck_warning`   | `itemId`, `silentMs`                                          | Child session silent for too long                 |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -466,7 +496,30 @@ type LoopEvent =
       itemsCreated: number;
       summary: string;
     }
-  | { type: "review_failed"; timestamp: string; projectPath: string; reason: string };
+  | { type: "review_failed"; timestamp: string; projectPath: string; reason: string }
+  | {
+      type: "llm_tool_activity";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      toolName: string;
+      phase: "start" | "end";
+    }
+  | {
+      type: "llm_token_update";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      inputTokens: number;
+      outputTokens: number;
+    }
+  | {
+      type: "llm_stuck_warning";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      silentMs: number;
+    };
 ```
 
 ## ReviewPayload / ReviewItem
@@ -475,7 +528,7 @@ Parsed from the `RAUF_REVIEW:{json}` signal emitted during a review pass.
 
 ```typescript
 interface ReviewItem {
-  type: "bug" | "refactor" | "feature" | "chore";
+  type: "bug" | "bugfix" | "refactor" | "feature" | "chore" | "test";
   priority: 1 | 2 | 3 | 4;
   title: string; // Non-empty
   description: string;

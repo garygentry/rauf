@@ -115,6 +115,8 @@ export function createMultiRootProject(options?: {
         updatedAt: null,
         completedItems: [],
         blockedItems: [],
+        deferredItems: [],
+        baseCommitHash: null,
         error: null,
         ...root.state,
       };

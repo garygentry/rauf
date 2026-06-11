@@ -75,6 +75,13 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | [log](#rauf-log-path)           | Tail the rauf loop log file                           |
 | [progress](#rauf-progress-path) | Display the project's `progress.md` accumulation file |
 
+### [reset / resume](#recovery) — Recover from an interrupted loop
+
+| Command                     | Description                                                      |
+| --------------------------- | ---------------------------------------------------------------- |
+| [reset](#rauf-reset-path)   | Reconcile committed work, requeue false blocks, clear stale lock |
+| [resume](#rauf-resume-path) | Recover an interrupted loop and continue from where it stopped   |
+
 ### [profile](#profile) — Manage per-project tech stack profile
 
 | Command                                         | Description                                       |
@@ -134,7 +141,7 @@ Subcommands that run and manage the autonomous coding loop. The loop processes b
 
 Start a loop for the project at `[path]` (defaults to `.`) via the server API. Auto-starts the server daemon if not already running.
 
-- `--iterations N`: max iterations (default: 20)
+- `--iterations N`: max iterations (default: derived from backlog via `computeMaxIterations` — `ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20; the math is logged at startup)
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override (e.g., `claude-opus-4-6`)
 - `--timeout N`: session timeout in minutes (default: 60)
@@ -164,7 +171,7 @@ Attach to a running loop and stream its events to the terminal.
 
 Run the loop directly in-process without the server. Equivalent to `loop start + loop follow` but self-contained.
 
-- `--iterations N`: max iterations (default: 20)
+- `--iterations N`: max iterations (default: derived from backlog via `computeMaxIterations` — `ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20; the math is logged at startup)
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override
 - `--timeout N`: session timeout in minutes (default: 60)
@@ -416,19 +423,22 @@ Commands to monitor a project's loop state and logs.
 
 Show a status summary for the project at `[path]`.
 
-- Output: loop state, current iteration, current item, elapsed time, backlog counts
+- Output: loop state, current iteration, current item, elapsed time, backlog counts, lock liveness, and blocked/deferred breakdown
+- **Lock line:** whether `.rauf/.loop.lock` exists and whether its PID is alive (e.g. `Lock: PID 1234 (alive)`, `Lock: stale`, `Lock: none`)
+- **Last signal:** the `lastSignal` from `state.json` (e.g. `clean`, `blocked`, `needs_human`)
+- **Blocked breakdown:** `Blocked: N` (genuine agent blocks) and `Deferred: N` (runner false-blocks — items with `deferred: true`) are shown separately so the aftermath of a usage-limit event is legible
 - Indicates state source: "via state.json" or "via log parsing (fallback)"
 - `--watch`: continuously refresh the status display (clears and redraws screen)
 - `--interval N`: refresh interval in seconds (default: 2, requires `--watch`)
 
 **Machine-friendly exit codes for `rauf status`:**
 
-| Code | Loop State                                      |
-| ---- | ----------------------------------------------- |
-| 0    | IDLE, COMPLETE, PAUSED, ERROR, or NOT_INSTALLED |
-| 1    | RUNNING                                         |
-| 2    | PAUSED_HUMAN (needs human input)                |
-| 3    | LIMIT_REACHED                                   |
+| Code | Loop State                                                                    |
+| ---- | ----------------------------------------------------------------------------- |
+| 0    | IDLE, COMPLETE, PAUSED, ERROR, SLEEPING_LIMIT, WEEKLY_LIMIT, or NOT_INSTALLED |
+| 1    | RUNNING                                                                       |
+| 2    | PAUSED_HUMAN (needs human input)                                              |
+| 3    | LIMIT_REACHED                                                                 |
 
 ### rauf log [path]
 
@@ -442,6 +452,63 @@ Tail the rauf loop log file (`.rauf/rauf.log`) for the project at `[path]`.
 Display the contents of `.rauf/progress.md` — the accumulation file where the loop records project learnings.
 
 - `--json`: output `{ content: "..." }` or `{ content: null }` if the file does not exist
+
+---
+
+## recovery
+
+Commands to recover from an interrupted or corrupted loop state without manual JSON editing.
+
+### rauf reset [path]
+
+Reconcile committed work, requeue runner false-blocks, and clear stale state so the loop can be restarted cleanly.
+
+- `[path]`: project path (default: `.`)
+- Refuses with exit code 5 if a live loop holds the lock (live PID detected)
+- Clears a stale lock (dead or recycled PID) automatically
+
+**Steps (in order):**
+
+1. **Lock gate** — refuse if lock PID is alive; release stale lock
+2. **Commit reconciliation** — for each non-done item, if `findItemCommit` finds a `[rauf] <id>:` commit AND the working tree is clean, promote the item to `done` (`recovered_via_commit`)
+3. **False-block requeue** — items with `deferred: true` are reset to `pending` (clear `deferred` + `blockedReason`); items with an explicit agent block (`RAUF_BLOCKED`/`RAUF_NEEDS_HUMAN`) stay blocked and are reported
+4. **Stalled items** — remaining `in_progress` items reset to `pending`
+5. **State clear** — delete `state.json`, clear `.rauf/DONE` and `.rauf/CANCEL`
+
+Output summary: recovered, requeued, kept-blocked, lock-cleared counts.
+
+`--keep-done` (default, no-op flag) — does not sweep done items; recovery preserves them. This flag is accepted for forward-compatibility but has no effect.
+
+`--json`: emit the result as `{ recovered, requeued, keptBlocked, stalledReset, lockCleared, stateCleared, treeClean }`.
+
+> **Note:** `rauf reset` is a **recovery** command distinct from `rauf backlog reset` (which orchestrates a full backlog cycle sweep). `rauf reset` never sweeps done items.
+
+### rauf resume [path]
+
+Detect an interrupted loop and continue it from where it stopped.
+
+- `[path]`: project path (default: `.`)
+- Refuses with exit code 5 if a live loop holds the lock
+
+**Resumable states detected:**
+
+- `paused_usage_limit` — loop halted cleanly at a usage limit with `sleepOnLimit=false`
+- `limit_reached` — iteration budget exhausted but non-done items remain
+- `error` — circuit breaker or unexpected termination
+- `paused`, `sleeping_limit`, `weekly_limit` — interrupted sleep or graceful pause
+- Dead lock with non-done items remaining
+
+**Steps:**
+
+1. Check lock — refuse if alive
+2. Detect resumable state (reads `state.json` + derives status)
+3. Apply the same reconciliation + false-block requeue as `rauf reset`
+4. Relaunch the loop via the normal `rauf loop run` entrypoint with a recomputed budget (`computeMaxIterations`) and `--allow-dirty` (since recovery may leave `.rauf/backlog.json` uncommitted)
+
+**Early exits:**
+
+- All items done → report "all done", no relaunch
+- No eligible items after recovery (only genuine blocks/needsHuman remain) → report and exit without spawning
 
 ---
 
