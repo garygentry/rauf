@@ -50,6 +50,7 @@ import {
 } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
 import { handleReset } from "./reset-commands.js";
+import { handleResume } from "./resume-commands.js";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -220,6 +221,12 @@ export const COMMANDS: CommandDef[] = [
       "Recover an interrupted loop: reconcile commits, requeue false blocks, clear state",
     usage: "rauf reset [path] [--keep-done] [--backlog <dir>] [--json]",
     handler: handleReset,
+  },
+  {
+    name: "resume",
+    description: "Continue an interrupted loop: recover state, then relaunch from the next item",
+    usage: "rauf resume [path] [--backlog <dir>] [--iterations N] [--json]",
+    handler: handleResume,
   },
   {
     name: "status",

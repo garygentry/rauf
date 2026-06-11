@@ -12,25 +12,15 @@
 // Done items are kept by default (this IS what `--keep-done` expresses); reset
 // never sweeps or destroys completed work.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 
-import {
-  resolveBacklogRoot,
-  resolveBacklogPaths,
-  checkLock,
-  releaseLock,
-  resetStalledItems,
-  clearDoneFile,
-  clearCancelFile,
-  ErrorCodes,
-} from "@rauf/core";
+import { resolveBacklogRoot, resolveBacklogPaths, ErrorCodes } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractStringFlag, extractBoolFlag } from "./parser.js";
 import { c, info, print, error, success, warn, outputJson, symbols } from "./formatter.js";
-import { reconcileAndRequeue, type ReconcileSummary } from "./recovery.js";
+import { guardLoopLock, recoverInterruptedLoop, type RecoverySummary } from "./recovery.js";
 
 // ─── handleReset ─────────────────────────────────────────────────
 
@@ -56,15 +46,13 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
   const paths = pathsResult.value;
 
   // 1. Lock check — refuse if a live loop holds the lock; clear a stale one.
-  const lockResult = checkLock(paths);
-  if (!lockResult.ok) {
-    error(lockResult.error.message);
+  const lockGuard = guardLoopLock(paths);
+  if (!lockGuard.ok) {
+    error(lockGuard.error.message);
     return ExitCode.ERROR;
   }
-  const lock = lockResult.value;
-  let lockCleared = false;
-  if (lock.locked && !lock.stale) {
-    const msg = `A loop is already running (PID ${lock.pid}, started ${lock.startedAt}). Stop it before resetting.`;
+  if (lockGuard.value.alive) {
+    const msg = `A loop is already running (PID ${lockGuard.value.pid}, started ${lockGuard.value.startedAt}). Stop it before resetting.`;
     if (ctx.globalFlags.json) {
       outputJson({ error: { code: ErrorCodes.CONFLICT, message: msg } });
     } else {
@@ -73,75 +61,38 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
     }
     return ExitCode.CONFLICT;
   }
-  if (lock.locked && lock.stale) {
-    const cleared = releaseLock(paths);
-    if (!cleared.ok) {
-      error(cleared.error.message);
-      return ExitCode.ERROR;
-    }
-    lockCleared = true;
-  }
+  const lockCleared = lockGuard.value.cleared;
 
-  // 2 + 3. Reconcile committed work and requeue runner-deferred false blocks.
-  const reconcileResult = await reconcileAndRequeue(paths);
-  if (!reconcileResult.ok) {
-    error(reconcileResult.error.message);
+  // 2–4. Reconcile committed work, requeue false blocks, reset stalled items,
+  // and clear loop state + markers (shared with `rauf resume`).
+  const recoveryResult = await recoverInterruptedLoop(paths);
+  if (!recoveryResult.ok) {
+    error(recoveryResult.error.message);
     return ExitCode.ERROR;
   }
-  const summary = reconcileResult.value;
-
-  // 4. Reset stalled items (in_progress → pending).
-  const stalledResult = resetStalledItems(paths);
-  if (!stalledResult.ok) {
-    error(stalledResult.error.message);
-    return ExitCode.ERROR;
-  }
-  const stalledReset = stalledResult.value.resetCount;
-
-  // 4. Clear loop state and markers (state.json carries blockedItems/deferredItems).
-  let stateCleared = false;
-  try {
-    fs.unlinkSync(paths.state);
-    stateCleared = true;
-  } catch (e) {
-    if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code !== "ENOENT") {
-      error(`Failed to delete state.json: ${e.message}`);
-      return ExitCode.ERROR;
-    }
-  }
-
-  const doneResult = clearDoneFile(paths);
-  if (!doneResult.ok) {
-    error(doneResult.error.message);
-    return ExitCode.ERROR;
-  }
-  const cancelResult = clearCancelFile(paths);
-  if (!cancelResult.ok) {
-    error(cancelResult.error.message);
-    return ExitCode.ERROR;
-  }
+  const summary = recoveryResult.value;
 
   if (ctx.globalFlags.json) {
     outputJson({
       recovered: summary.recovered,
       requeued: summary.requeued,
       keptBlocked: summary.keptBlocked,
-      stalledReset,
+      stalledReset: summary.stalledReset,
       lockCleared,
-      stateCleared,
+      stateCleared: summary.stateCleared,
       treeClean: summary.treeClean,
     });
     return ExitCode.SUCCESS;
   }
 
-  printSummary(summary, { stalledReset, lockCleared });
+  printSummary(summary, { stalledReset: summary.stalledReset, lockCleared });
   return ExitCode.SUCCESS;
 }
 
 // ─── Summary rendering ───────────────────────────────────────────
 
 function printSummary(
-  summary: ReconcileSummary,
+  summary: RecoverySummary,
   extra: { stalledReset: number; lockCleared: boolean },
 ): void {
   if (extra.lockCleared) {

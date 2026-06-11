@@ -14,7 +14,22 @@
 // done and returns runner-deferred items to pending, while leaving genuine
 // agent blocks (RAUF_BLOCKED / needsHuman) untouched so a human can see them.
 
-import { readBacklog, writeBacklog, ok, type BacklogPaths, type Result } from "@rauf/core";
+import * as fs from "node:fs";
+
+import {
+  readBacklog,
+  writeBacklog,
+  checkLock,
+  releaseLock,
+  resetStalledItems,
+  clearDoneFile,
+  clearCancelFile,
+  ok,
+  err,
+  ErrorCodes,
+  type BacklogPaths,
+  type Result,
+} from "@rauf/core";
 import { findItemCommit, isTreeClean } from "@rauf/loop";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -115,4 +130,100 @@ export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<R
   if (!writeResult.ok) return writeResult;
 
   return ok({ recovered, requeued, keptBlocked, treeClean });
+}
+
+// ─── guardLoopLock ───────────────────────────────────────────────
+
+/** Outcome of inspecting (and possibly clearing) the loop lock. */
+export interface LockGuard {
+  /** A live loop holds the lock — the caller MUST refuse to recover/resume. */
+  alive: boolean;
+  /** PID recorded in the lock file, if a lock was present. */
+  pid?: number;
+  /** When the lock was acquired, if a lock was present. */
+  startedAt?: string;
+  /** A stale lock (dead/recycled PID) was found and removed. */
+  cleared: boolean;
+}
+
+/**
+ * Inspect the loop lock before a recovery/resume operation.
+ *
+ * - A live lock (present, not stale) → `alive: true`; the caller refuses so we
+ *   never mutate a backlog out from under a running loop.
+ * - A stale lock (dead or recycled PID) → removed, `cleared: true`.
+ * - No lock → `alive: false, cleared: false`.
+ *
+ * Shared by `rauf reset` and `rauf resume` so both gate on the lock identically.
+ */
+export function guardLoopLock(paths: BacklogPaths): Result<LockGuard> {
+  const lockResult = checkLock(paths);
+  if (!lockResult.ok) return lockResult;
+  const lock = lockResult.value;
+
+  if (lock.locked && !lock.stale) {
+    return ok({ alive: true, pid: lock.pid, startedAt: lock.startedAt, cleared: false });
+  }
+
+  if (lock.locked && lock.stale) {
+    const cleared = releaseLock(paths);
+    if (!cleared.ok) return cleared;
+    return ok({ alive: false, pid: lock.pid, startedAt: lock.startedAt, cleared: true });
+  }
+
+  return ok({ alive: false, cleared: false });
+}
+
+// ─── recoverInterruptedLoop ──────────────────────────────────────
+
+export interface RecoverySummary extends ReconcileSummary {
+  /** Count of stalled `in_progress` items reset back to `pending`. */
+  stalledReset: number;
+  /** Whether state.json was present and removed. */
+  stateCleared: boolean;
+}
+
+/**
+ * Full recovery sequence for an interrupted loop, shared by `rauf reset` and
+ * `rauf resume` so the two can never drift:
+ *   1. Reconcile committed work + requeue runner-deferred false blocks.
+ *   2. Reset stalled (`in_progress` → `pending`) items so the loop can pick
+ *      them up again (`selectNextItem` only chooses `pending`).
+ *   3. Clear state.json (which carries blockedItems/deferredItems), the DONE
+ *      marker, and the CANCEL marker (so a relaunched loop isn't instantly
+ *      killed by a leftover CANCEL).
+ *
+ * Does NOT touch the lock — call `guardLoopLock` first.
+ */
+export async function recoverInterruptedLoop(
+  paths: BacklogPaths,
+): Promise<Result<RecoverySummary>> {
+  const reconcileResult = await reconcileAndRequeue(paths);
+  if (!reconcileResult.ok) return reconcileResult;
+  const summary = reconcileResult.value;
+
+  const stalledResult = resetStalledItems(paths);
+  if (!stalledResult.ok) return stalledResult;
+  const stalledReset = stalledResult.value.resetCount;
+
+  let stateCleared = false;
+  try {
+    fs.unlinkSync(paths.state);
+    stateCleared = true;
+  } catch (e) {
+    if (e instanceof Error && "code" in e && (e as NodeJS.ErrnoException).code !== "ENOENT") {
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message: `Failed to delete state.json: ${e.message}`,
+        details: { path: paths.state },
+      });
+    }
+  }
+
+  const doneResult = clearDoneFile(paths);
+  if (!doneResult.ok) return doneResult;
+  const cancelResult = clearCancelFile(paths);
+  if (!cancelResult.ok) return cancelResult;
+
+  return ok({ ...summary, stalledReset, stateCleared });
 }

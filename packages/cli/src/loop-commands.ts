@@ -600,6 +600,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const force = extractBoolFlag(ctx.flags, "force");
+  // `rauf resume` sets this: recovery rewrites bookkeeping so the tree is dirty
+  // by construction, but branch protection must stay on (unlike --force).
+  const allowDirty = extractBoolFlag(ctx.flags, "allow-dirty");
 
   // Refuse to run a loop on an unmigrated legacy ralph project — its
   // RALPH.md would instruct Claude to emit RALPH_* signals the new parser
@@ -633,7 +636,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // sweep unrelated work into a loop commit. --force bypasses (and, below, also
   // force-clears any lock — there is currently no way to skip the guard alone).
   if (!force) {
-    const preconditions = await checkLoopPreconditions(projectPath);
+    const preconditions = await checkLoopPreconditions(projectPath, { allowDirty });
     if (!preconditions.ok) {
       error(preconditions.error.message);
       info("Commit or stash and switch to a feature branch, or pass `--force`.");

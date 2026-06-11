@@ -17,8 +17,16 @@ const PROTECTED_BRANCHES = new Set(["main", "master"]);
  *
  * Returns ok when on a feature branch with a clean tree, and also when the
  * directory is not a git repository (nothing for the loop to sweep into).
+ *
+ * `opts.allowDirty` skips the dirty-tree check while keeping the branch and
+ * detached-HEAD guards. `rauf resume` uses this: recovering an interrupted loop
+ * necessarily rewrites bookkeeping (`.rauf/backlog.json`), so the tree is dirty
+ * by construction — but we still must not auto-commit onto a protected branch.
  */
-export async function checkLoopPreconditions(projectPath: string): Promise<Result<void>> {
+export async function checkLoopPreconditions(
+  projectPath: string,
+  opts: { allowDirty?: boolean } = {},
+): Promise<Result<void>> {
   let branch: string;
   try {
     branch = (await execGit(projectPath, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
@@ -44,6 +52,10 @@ export async function checkLoopPreconditions(projectPath: string): Promise<Resul
         "The loop auto-commits with `git add -A`; switch to a feature branch, " +
         "or pass --force to override.",
     });
+  }
+
+  if (opts.allowDirty) {
+    return ok(undefined);
   }
 
   let status: string;

@@ -1,0 +1,235 @@
+// ─── Resume Command Handler ──────────────────────────────────────
+//
+// `rauf resume [path] [--backlog <dir>] [--iterations N] [...loop flags]`
+//
+// Continue an interrupted loop in one step:
+//   1. Refuse if a live loop holds the lock; clear a stale lock.
+//   2. Detect a resumable state (paused_usage_limit / limit_reached / error /
+//      a dead lock with non-done work).
+//   3. Reconcile committed work + requeue runner-deferred false blocks + reset
+//      stalled items + clear state/markers (shared with `rauf reset`).
+//   4. Relaunch the loop via the normal `rauf loop run` entrypoint so it picks
+//      up the first eligible item with a recomputed budget — honoring --backlog.
+//
+// Resume passes `--allow-dirty` to the launch: recovery rewrites `.rauf/
+// backlog.json`, so the tree is dirty by construction. Branch protection stays
+// on (only the dirty-tree guard is relaxed).
+
+import * as path from "node:path";
+
+import {
+  resolveBacklogRoot,
+  resolveBacklogPaths,
+  readBacklog,
+  readJsonFile,
+  deriveStatus,
+  selectNextItem,
+  LoopStateSchema,
+  ErrorCodes,
+  type BacklogPaths,
+  type LoopState,
+  type LoopStateEnum,
+} from "@rauf/core";
+
+import type { CommandContext } from "./commands.js";
+import { ExitCode } from "./commands.js";
+import { extractStringFlag } from "./parser.js";
+import { c, info, error, success, warn, outputJson } from "./formatter.js";
+import { guardLoopLock, recoverInterruptedLoop } from "./recovery.js";
+import { handleLoopRun } from "./loop-commands.js";
+
+// ─── Resumable-state detection ───────────────────────────────────
+
+/**
+ * Raw state.json statuses that mark an interrupted-but-resumable loop. A clean
+ * usage-limit pause, a hit usage limit, and a circuit-breaker error all stop
+ * the loop with work still outstanding; `paused`/`sleeping_limit`/`weekly_limit`
+ * are the crash/sleep variants.
+ */
+const RESUMABLE_RAW_STATUSES = new Set<LoopState["status"]>([
+  "paused_usage_limit",
+  "limit_reached",
+  "error",
+  "paused",
+  "sleeping_limit",
+  "weekly_limit",
+]);
+
+/** Derived states that indicate a stopped loop with work potentially left. */
+const RESUMABLE_DERIVED_STATES = new Set<LoopStateEnum>([
+  "PAUSED",
+  "LIMIT_REACHED",
+  "ERROR",
+  "WEEKLY_LIMIT",
+  "SLEEPING_LIMIT",
+]);
+
+interface ResumeDetection {
+  /** Whether an interrupted-loop marker (state / dead lock) was found. */
+  resumable: boolean;
+  /** Short label of what was detected, for the user-facing message. */
+  label: string;
+  /** Count of non-done backlog items. */
+  nonDone: number;
+}
+
+function detectResumeState(paths: BacklogPaths, deadLockCleared: boolean): ResumeDetection {
+  let nonDone = 0;
+  const backlogResult = readBacklog(paths);
+  if (backlogResult.ok) {
+    nonDone = backlogResult.value.items.filter((i) => i.status !== "done").length;
+  }
+
+  // Prefer the precise raw status from state.json (deriveStatus collapses
+  // paused_usage_limit → PAUSED, which would lose the distinction).
+  const rawResult = readJsonFile(paths.state, LoopStateSchema);
+  const rawStatus = rawResult.ok ? rawResult.value.status : null;
+
+  const derived = deriveStatus(paths);
+  const loopState = derived.ok ? derived.value.loopState : null;
+
+  const rawResumable = rawStatus !== null && RESUMABLE_RAW_STATUSES.has(rawStatus);
+  const derivedResumable = loopState !== null && RESUMABLE_DERIVED_STATES.has(loopState);
+  const deadLockResumable = deadLockCleared && nonDone > 0;
+
+  const resumable = rawResumable || derivedResumable || deadLockResumable;
+
+  let label: string;
+  if (rawResumable && rawStatus) {
+    label = rawStatus;
+  } else if (derivedResumable && loopState) {
+    label = loopState;
+  } else if (deadLockResumable) {
+    label = "dead lock";
+  } else {
+    label = loopState ?? rawStatus ?? "unknown";
+  }
+
+  return { resumable, label, nonDone };
+}
+
+// ─── handleResume ────────────────────────────────────────────────
+
+export interface ResumeDeps {
+  /** Loop launcher — injectable for tests. Defaults to `handleLoopRun`. */
+  runLoop?: (ctx: CommandContext) => Promise<number>;
+}
+
+export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): Promise<number> {
+  const runLoop = deps.runLoop ?? handleLoopRun;
+  const targetPath = ctx.args[0] ?? ".";
+  const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.INVALID_ARGS;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
+
+  // 1. Lock check — refuse if a live loop holds the lock; clear a stale one.
+  const lockGuard = guardLoopLock(paths);
+  if (!lockGuard.ok) {
+    error(lockGuard.error.message);
+    return ExitCode.ERROR;
+  }
+  if (lockGuard.value.alive) {
+    const msg = `A loop is already running (PID ${lockGuard.value.pid}, started ${lockGuard.value.startedAt}). Nothing to resume.`;
+    if (ctx.globalFlags.json) {
+      outputJson({ error: { code: ErrorCodes.CONFLICT, message: msg } });
+    } else {
+      error(msg);
+      info(`Check with: ${c.cyan(`rauf status ${targetPath}`)}`);
+    }
+    return ExitCode.CONFLICT;
+  }
+  if (lockGuard.value.cleared) {
+    info("Cleared a stale loop lock.");
+  }
+
+  // 2. Detect a resumable state.
+  const detection = detectResumeState(paths, lockGuard.value.cleared);
+
+  if (detection.nonDone === 0) {
+    if (ctx.globalFlags.json) {
+      outputJson({ resumed: false, reason: "all_items_done", detectedState: detection.label });
+    } else {
+      success("Nothing to resume — all backlog items are done.");
+    }
+    return ExitCode.SUCCESS;
+  }
+
+  if (detection.resumable) {
+    info(`Detected interrupted loop (${c.cyan(detection.label)}) — recovering and resuming.`);
+  } else {
+    // No interruption marker, but non-done work remains (e.g. the loop exhausted
+    // its budget with pending items left). Resuming is still valid.
+    warn(
+      `No interrupted-loop marker found (state: ${detection.label}), but ${detection.nonDone} non-done item(s) remain — continuing.`,
+    );
+  }
+
+  // 3. Reconcile committed work, requeue false blocks, reset stalled items,
+  // and clear loop state + markers.
+  const recoveryResult = await recoverInterruptedLoop(paths);
+  if (!recoveryResult.ok) {
+    error(recoveryResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const summary = recoveryResult.value;
+
+  if (!summary.treeClean) {
+    warn(
+      "Working tree is dirty — skipped commit reconciliation (uncommitted work was not marked done).",
+    );
+  }
+  const recoveryParts: string[] = [];
+  if (summary.recovered.length > 0) recoveryParts.push(`recovered ${summary.recovered.join(", ")}`);
+  if (summary.requeued.length > 0) recoveryParts.push(`requeued ${summary.requeued.join(", ")}`);
+  if (summary.stalledReset > 0) recoveryParts.push(`reset ${summary.stalledReset} stalled`);
+  if (recoveryParts.length > 0) info(c.dim(`Recovery: ${recoveryParts.join("; ")}.`));
+
+  // 4. Bail before launching if no eligible item remains (only genuine blocks /
+  // needs-human left) — the loop would spawn and immediately complete otherwise.
+  const postBacklog = readBacklog(paths);
+  if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
+    if (ctx.globalFlags.json) {
+      outputJson({
+        resumed: false,
+        reason: "no_eligible_items",
+        recovered: summary.recovered,
+        requeued: summary.requeued,
+        keptBlocked: summary.keptBlocked,
+      });
+    } else {
+      success("Recovery complete, but no eligible pending items remain to run.");
+      if (summary.keptBlocked.length > 0) {
+        info(
+          `${summary.keptBlocked.length} genuine block(s) need attention — resolve them, then ${c.cyan("rauf backlog unblock")}.`,
+        );
+      }
+    }
+    return ExitCode.SUCCESS;
+  }
+
+  // 5. Relaunch via the normal loop entrypoint. Forward the user's flags and add
+  // --allow-dirty so the bookkeeping-dirty tree doesn't trip the precondition
+  // guard (branch protection stays on). The recomputed budget (item 010) and
+  // --backlog handling come for free from handleLoopRun.
+  const runCtx: CommandContext = {
+    args: ctx.args,
+    flags: new Map(ctx.flags),
+    globalFlags: ctx.globalFlags,
+    rawArgv: ctx.rawArgv,
+  };
+  if (backlogFlag !== null) runCtx.flags.set("backlog", backlogFlag);
+  runCtx.flags.set("allow-dirty", true);
+
+  return runLoop(runCtx);
+}
