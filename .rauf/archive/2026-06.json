@@ -1,0 +1,70 @@
+{
+  "month": "2026-06",
+  "items": [
+    {
+      "id": "017",
+      "type": "bug",
+      "priority": 2,
+      "title": "Loop runner's `git add -A` commits transient runtime state into git history",
+      "description": "The loop runner commits via `git add -A && git commit` (packages/loop/src/git-commit.ts), which sweeps its OWN runtime files into the per-item commit: .loop.lock (a lock file!), state.json, backlog.json.bak, and the DONE marker. Observed during the release-automation loop (commit 62190f2 contained .rauf/.loop.lock + state.json + backlog.json.bak). Lock/marker files must never enter history. Fix: gitignore the per-backlog .rauf/ runtime files (lock, state.json, *.bak, DONE, rauf.log) and/or scope the runner's staging to exclude its own state dir via pathspec. NOTE: the agent-self-commit half of this was already fixed live in .rauf/RAUF.md (commit 656d8c6); this item is the runner-side staging hygiene follow-up.",
+      "acceptanceCriteria": [
+        "After a loop run, git log shows NO .loop.lock, state.json, *.bak, or DONE files in any [rauf] commit",
+        "Per-backlog .rauf/ runtime files are gitignored or excluded from the runner's git add via pathspec",
+        "backlog.json itself remains tracked and committed normally",
+        "Exactly one commit is produced per completed item (no duplicate agent+runner commits)",
+        "pnpm test && pnpm typecheck && pnpm lint && pnpm build pass"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T22:10:50.018Z",
+      "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10.",
+      "estimatedIterations": 2
+    },
+    {
+      "id": "018",
+      "type": "feature",
+      "priority": 3,
+      "title": "Single-gate review for loops — suppress per-iteration security/review hooks in child sessions",
+      "description": "When a commit/Stop-triggered review hook (e.g. the security-guidance plugin) is installed globally, the loop's child agent sessions trigger it every iteration. With the agent self-commit removed (RAUF.md 656d8c6) the heavyweight commit-review no longer fires, but the Stop-hook diff review still runs per child session, and there is no first-class way to run a loop with per-iteration review hooks suppressed in favor of ONE review over the cumulative branch diff. For human-in-the-loop autonomous dev, per-item review inside autonomous child sessions is the wrong altitude (the agent rubber-stamps findings); review belongs at the gate, surfaced to the human. Add: a documented/opt-in way for the loop to spawn child sessions with per-iteration review hooks disabled (e.g. propagate ENABLE_CODE_SECURITY_REVIEW=0 or a generic hook-suppression env), plus a post-loop gate review over main..HEAD.",
+      "acceptanceCriteria": [
+        "Loop provides a documented, opt-in flag/config to run child sessions without per-iteration review-hook noise",
+        "A single review over the cumulative branch diff (main..HEAD) is run or documented as the gate step after the loop",
+        "The mechanism is generic (not hardcoded to one plugin) and documented in docs/SPEC-* and rauf guidance",
+        "Default behavior is unchanged unless explicitly opted in",
+        "pnpm test && pnpm typecheck && pnpm lint pass"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T22:26:41.611Z",
+      "notes": "Surfaced while dogfooding forge-5-loop on release-automation, 2026-06-10. The harness auto-mode classifier also blocks ad-hoc ENABLE_CODE_SECURITY_REVIEW=0 on the loop command, reinforcing the need for a first-class, intentional mechanism.",
+      "estimatedIterations": 3
+    },
+    {
+      "id": "019",
+      "type": "feature",
+      "priority": 2,
+      "title": "Loop autonomy: RAUF_NEEDS_HUMAN sets item aside and continues (no halt)",
+      "description": "needs_human now sets the item aside (blocked + needsHuman flag) and the loop continues with other runnable items instead of halting; also restores the --review pass on that path. Implemented manually in commit 90cffe0.",
+      "acceptanceCriteria": [
+        "needs_human item is stored blocked+needsHuman and not reselected",
+        "loop continues to other runnable items; dependents stay pending",
+        "review pass runs after a needs_human set-aside when items completed",
+        "pnpm test && pnpm typecheck && pnpm lint pass"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T22:06:15.906Z",
+      "notes": "Dogfooding fix surfaced during forge-5-loop on release-automation, 2026-06-10."
+    },
+    {
+      "id": "020",
+      "type": "bug",
+      "priority": 3,
+      "title": "test-sandbox verify.sh trips the loop dirty-tree guard (fixture drift + no --force)",
+      "description": "Committed sandbox fixtures (test-sandbox/.rauf/backlog.json, specs/feature-a/backlog.json) still say 'ralph loop runner' while setup.sh regenerates them as 'rauf', so the tree is dirty after setup and the loop refuses to run. The sandbox harness also never passes --force despite the loop mutating tracked backlog fixtures during a run. Fix: regenerate+commit the fixtures (rename leftover) AND/OR have run.sh/verify.sh pass --force (the sandbox intentionally mutates fixtures). Surfaced while verifying the needs_human autonomy fix 2026-06-10.",
+      "acceptanceCriteria": [
+        "bash test-sandbox/verify.sh passes from a clean checkout",
+        "committed sandbox fixtures match setup.sh output (no 'ralph' leftovers)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-10T22:37:37.195Z"
+    }
+  ]
+}

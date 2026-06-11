@@ -28,11 +28,21 @@
       "Bash(rauf-stable version *)",
       "Bash(rauf-stable loop *)",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(python3 -c 'import json,sys; d=json.load\\(sys.stdin\\); print\\('\\\\''project:'\\\\'',d.get\\('\\\\''project'\\\\''\\)\\); print\\('\\\\''description:'\\\\'',d.get\\('\\\\''description'\\\\''\\)\\); items=d.get\\('\\\\''items'\\\\'',[]\\); print\\('\\\\''item count:'\\\\'',len\\(items\\)\\); print\\('\\\\''last 5 ids:'\\\\'',[i['\\\\''id'\\\\''] for i in items[-5:]]\\); *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('profile',d\\),indent=2\\)\\)\")",
+      "Bash(./scripts/bin/rauf backlog *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('project:',d.get\\('project'\\)\\); print\\('items:',len\\(d.get\\('items',[]\\)\\)\\)\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(echo \"---exit: $?\")",
+      "Bash(command -v claude)",
+      "Bash(claude --version)",
+      "Bash(git check-ignore *)"
     ],
     "additionalDirectories": [
       "/home/gary/workspace/agent-plugins/plugins/feature-forge",
-      "/home/gary/workspace/agent-plugins"
+      "/home/gary/workspace/agent-plugins",
+      "/home/gary/workspace/feature-forge"
     ]
   }
 }
