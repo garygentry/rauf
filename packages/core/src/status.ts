@@ -80,6 +80,8 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",
     reviewing: "RUNNING",
+    // Clean usage-limit halt — resumable, so surface as PAUSED (not a new enum value).
+    paused_usage_limit: "PAUSED",
   };
   return mapping[status];
 }
@@ -195,6 +197,9 @@ function parseDoneFileState(content: string): LoopStateEnum {
 
   const lower = content.toLowerCase();
   if (lower.includes("human") || lower.includes("needs_human")) return "PAUSED_HUMAN";
+  // Check before the generic "limit" rule: a clean usage-limit pause is resumable
+  // (PAUSED-like), not the terminal LIMIT_REACHED state.
+  if (lower.includes("paused_usage_limit")) return "PAUSED";
   if (lower.includes("limit")) return "LIMIT_REACHED";
   if (lower.includes("error")) return "ERROR";
   return "COMPLETE";
@@ -386,10 +391,14 @@ export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => voi
 
 export function writeLoopState(
   paths: BacklogPaths,
-  state: Omit<LoopState, "updatedAt"> & { updatedAt?: string },
+  state: Omit<LoopState, "updatedAt" | "deferredItems"> & {
+    updatedAt?: string;
+    deferredItems?: string[];
+  },
 ): Result<void> {
   const stateWithTimestamp: LoopState = {
     ...state,
+    deferredItems: state.deferredItems ?? [],
     updatedAt: new Date().toISOString(),
   };
 

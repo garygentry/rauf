@@ -165,6 +165,7 @@ describe("BacklogItemSchema", () => {
       ...validBacklogItem,
       blockedReason: "Waiting on upstream",
       needsHuman: true,
+      deferred: true,
       dependsOn: ["001"],
       notes: "See issue #42",
       estimatedIterations: 3,
@@ -172,6 +173,7 @@ describe("BacklogItemSchema", () => {
     const result = BacklogItemSchema.parse(item);
     expect(result.blockedReason).toBe("Waiting on upstream");
     expect(result.needsHuman).toBe(true);
+    expect(result.deferred).toBe(true);
     expect(result.dependsOn).toEqual(["001"]);
     expect(result.notes).toBe("See issue #42");
     expect(result.estimatedIterations).toBe(3);
@@ -180,6 +182,11 @@ describe("BacklogItemSchema", () => {
   it("accepts an item without needsHuman (optional, backward-compat)", () => {
     const result = BacklogItemSchema.parse(validBacklogItem);
     expect(result.needsHuman).toBeUndefined();
+  });
+
+  it("accepts an item without deferred (optional, backward-compat)", () => {
+    const result = BacklogItemSchema.parse(validBacklogItem);
+    expect(result.deferred).toBeUndefined();
   });
 
   it("rejects empty title", () => {
@@ -684,6 +691,27 @@ describe("LoopStateSchema", () => {
   it("allows sleepUntil to be absent", () => {
     const result = LoopStateSchema.safeParse(validLoopState);
     expect(result.success).toBe(true);
+  });
+
+  it("accepts paused_usage_limit status", () => {
+    const result = LoopStateSchema.safeParse({
+      ...validLoopState,
+      status: "paused_usage_limit",
+      currentItem: null,
+      lastSignal: "error",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("defaults deferredItems to [] when absent (backward compat)", () => {
+    // Old state.json predates deferredItems — must still parse, defaulting to [].
+    const result = LoopStateSchema.parse(validLoopState);
+    expect(result.deferredItems).toEqual([]);
+  });
+
+  it("preserves deferredItems when present", () => {
+    const result = LoopStateSchema.parse({ ...validLoopState, deferredItems: ["005", "006"] });
+    expect(result.deferredItems).toEqual(["005", "006"]);
   });
 });
 

@@ -47,6 +47,14 @@ export const BacklogItemSchema = z.object({
    * re-runs (`--retry-blocked`/`unblock`, which clears this flag).
    */
   needsHuman: z.boolean().optional(),
+  /**
+   * When true, this item is `blocked` because the RUNTIME gave up on it
+   * (e.g. no signal after N retries), as opposed to the agent explicitly
+   * blocking it (RAUF_BLOCKED) or asking for a human (needsHuman). A deferred
+   * item keeps status `blocked`; this flag distinguishes a runner "false block"
+   * — which `rauf reset`/`resume` requeue to pending — from a genuine block.
+   */
+  deferred: z.boolean().optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
@@ -160,6 +168,8 @@ export const LoopStateStatusSchema = z.enum([
   "sleeping_limit",
   "weekly_limit",
   "reviewing",
+  /** Clean halt when a usage limit is hit and sleepOnLimit is false — resumable via `rauf resume`. */
+  "paused_usage_limit",
 ]);
 
 export const LoopStateSignalSchema = z.enum(["clean", "blocked", "needs_human", "error"]);
@@ -174,6 +184,12 @@ export const LoopStateSchema = z.object({
   updatedAt: z.string().nullable(),
   completedItems: z.array(z.string()),
   blockedItems: z.array(z.string()),
+  /**
+   * Items the runtime gave up on (deferred "false blocks"), distinct from
+   * blockedItems (genuine agent blocks). Optional-with-default so existing
+   * state.json predating this field still parses (missing → []).
+   */
+  deferredItems: z.array(z.string()).default([]),
   error: z.string().nullable(),
   sleepUntil: z.string().nullable().optional(),
 });

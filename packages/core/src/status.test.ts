@@ -97,6 +97,7 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
     updatedAt: new Date().toISOString(),
     completedItems: ["001", "002"],
     blockedItems: [],
+    deferredItems: [],
     error: null,
     ...overrides,
   };

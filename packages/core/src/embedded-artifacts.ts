@@ -236,6 +236,9 @@ RAUF_DONE
           "needsHuman": {
             "type": "boolean"
           },
+          "deferred": {
+            "type": "boolean"
+          },
           "dependsOn": {
             "type": "array",
             "items": {

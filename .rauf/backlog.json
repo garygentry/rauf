@@ -78,8 +78,8 @@
         "Old state.json without deferredItems still parses; existing tests pass",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T07:49:26.384Z",
       "dependsOn": [],
       "notes": "Foundational for runner wiring (006), reset (011), and status (013). Avoid a new status enum value for the item itself — a boolean flag keeps VALID_STATUS_TRANSITIONS untouched.",
       "estimatedIterations": 1,

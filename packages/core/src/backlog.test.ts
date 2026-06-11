@@ -127,6 +127,7 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
     updatedAt: new Date().toISOString(),
     completedItems: [],
     blockedItems: [],
+    deferredItems: [],
     error: null,
     ...overrides,
   };
@@ -943,6 +944,45 @@ describe("updateItem", () => {
     if (!result.ok) return;
     expect(result.value.status).toBe("done");
     expect(result.value.needsHuman).toBeUndefined();
+  });
+
+  it("persists the deferred flag (in_progress → blocked + deferred)", () => {
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
+
+    const result = updateItem(paths, "001", {
+      status: "blocked",
+      blockedReason: "No signal after 3 attempts (deferred by runner)",
+      deferred: true,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("blocked");
+    expect(result.value.deferred).toBe(true);
+
+    const reread = readBacklog(paths);
+    if (!reread.ok) return;
+    expect(reread.value.items[0]!.deferred).toBe(true);
+  });
+
+  it("clears deferred when a deferred item transitions to done", () => {
+    // A deferred item is requeued (→ pending) then picked up (→ in_progress)
+    // before completing; the deferred flag must not survive completion.
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress", deferred: true })]));
+
+    const result = updateItem(paths, "001", { status: "done" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.deferred).toBeUndefined();
+  });
+
+  it("clears deferred when a deferred item is requeued to pending", () => {
+    writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "blocked", deferred: true })]));
+
+    const result = updateItem(paths, "001", { status: "pending" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("pending");
+    expect(result.value.deferred).toBeUndefined();
   });
 
   it("allows valid status transition: in_progress → done", () => {
