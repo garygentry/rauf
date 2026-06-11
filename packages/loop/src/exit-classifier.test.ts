@@ -73,6 +73,20 @@ describe("classifyExit", () => {
     expect(classifyExit(result, NONE)).toBe("usage_limited");
   });
 
+  it("falls back to stdout when reconstructedText is an empty string (usage_limited, not genuine_retry)", () => {
+    // An empty-string reconstructedText must not skip the stdout banner scan —
+    // a `??` fallback would only catch null/undefined and misclassify this as
+    // genuine_retry. The length-based fallback scans stdout instead.
+    const result = makeResult({
+      reconstructedText: "",
+      stdout: INCIDENT_BANNER,
+      stderr: "",
+      exitCode: 1,
+      durationMs: 800,
+    });
+    expect(classifyExit(result, NONE)).toBe("usage_limited");
+  });
+
   it("classifies a usage banner ahead of a timeout", () => {
     const result = makeResult({
       reconstructedText: INCIDENT_BANNER,

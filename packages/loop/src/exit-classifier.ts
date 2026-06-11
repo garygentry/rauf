@@ -61,7 +61,10 @@ export function classifyExit(result: ExitResult, signal: ParsedSignal): ExitClas
   if (signal.signal === "blocked") return "blocked";
   if (signal.signal === "needs_human") return "needs_human";
 
-  const signalText = result.reconstructedText ?? result.stdout;
+  const signalText =
+    result.reconstructedText && result.reconstructedText.length > 0
+      ? result.reconstructedText
+      : result.stdout;
   if (hasUsageLimitInText(signalText) || hasUsageLimitInText(result.stderr)) {
     return "usage_limited";
   }
