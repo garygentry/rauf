@@ -258,22 +258,22 @@
         "Step 8 (checksum tamper) makes the install scripts hard-fail with MISMATCH",
         "All 8 steps recorded as executed against a real prerelease→stable cycle (human-run RAUF_NEEDS_HUMAN gate, not loop-automatable)"
       ],
-      "status": "blocked",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T04:30:00.000Z",
       "dependsOn": [
         "008",
         "009",
         "010"
       ],
-      "notes": "RAUF_NEEDS_HUMAN — an autonomous loop cannot push real tags, drive GitHub Actions, or install on Windows; it must emit RAUF_NEEDS_HUMAN and stop rather than mark this done. This item exists so spec 07 §4's gate ('executed at least once before the feature is considered done') is visible rather than implied-covered. The release-tags ruleset (item 010) must be active before step 2.",
+      "notes": "Validated against a real prerelease→stable cycle on 2026-06-11 (maintainer-run). Step 1 dry-runs (rc.2 and 0.3.0) printed the seven edits, no writes. Step 2: v0.3.0-rc.2 published 5 binaries + SHA256SUMS as prerelease (not latest), notes matched the changelog. Step 3: installed the prerelease by tag on Unix (this no-AVX2 host → 0.3.0-rc.2) and on Windows (maintainer confirmed install + run). Step 4: promoted to stable v0.3.0 (latest); default unpinned install resolves to it and reports 0.3.0. Steps 5–7: drift-negative (preflight tag/version mismatch), re-release refusal, and the prep-guard sweep (invalid version, non-incrementing, existing tag, empty changelog, dirty tree) each failed before any publish with a distinct drift:/refusing: line and mutated nothing. Step 8: checksum-tamper made install-binary.sh hard-fail with MISMATCH (exit 1, download deleted, nothing installed). Bonus: this cycle also fixed the AVX2 SIGILL portability bug (x64 binaries now -baseline) found during the original validation attempt; the broken v0.3.0-rc.1 release was deleted.",
       "estimatedIterations": 1,
       "specReferences": [
         "specs/release-automation/07-testing-strategy.md",
         "specs/release-automation/04-ci-preflight-and-workflow.md",
         "specs/release-automation/05-install-scripts.md"
       ],
-      "blockedReason": "Item 011 is a designed human-gate — manual end-to-end release validation requires a human operator with repo admin rights to push real git tags, drive GitHub Actions end-to-end, and run install-binary.ps1 on Windows (all impossible from an autonomous loop). Dependencies 008/009/010 are done and the release-tags ruleset must be active; a maintainer must execute the 8-step prerelease→stable cycle in spec 07 §4 and record the results.",
-      "needsHuman": true
+      "blockedReason": null,
+      "needsHuman": false
     }
   ]
 }
