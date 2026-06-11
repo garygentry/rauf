@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0-rc.1
+
 ### Changed (BREAKING) — Ralph is now Rauf
 
 The tool was renamed from `ralph` to `rauf` to disambiguate it from the generic
