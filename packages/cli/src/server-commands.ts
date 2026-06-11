@@ -234,6 +234,50 @@ export async function pingHealthEndpoint(port: number): Promise<HealthData | nul
   }
 }
 
+// ─── Active-loop probe ───────────────────────────────────────────
+
+/** A single in-flight loop reported by GET /api/loops. */
+export interface ActiveLoopInfo {
+  projectPath: string;
+}
+
+/**
+ * Ask the running server which loops are in-flight (GET /api/loops).
+ *
+ * Returns the list of active loops, or null when the server can't be
+ * reached or returns an unexpected response. Callers treat null as
+ * "couldn't determine" — a server-wide stop/restart should not be
+ * blocked by an unreachable endpoint (use --force to override either
+ * way).
+ */
+export async function fetchActiveLoops(port: number): Promise<ActiveLoopInfo[] | null> {
+  const url = `http://127.0.0.1:${port}/api/loops`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HEALTH_PING_TIMEOUT_MS);
+    try {
+      const resp = await fetch(url, { signal: controller.signal });
+      if (!resp.ok) return null;
+      const body = (await resp.json()) as { data?: { loops?: unknown } };
+      const loops = body.data?.loops;
+      if (!Array.isArray(loops)) return null;
+      return loops
+        .filter((l): l is { projectPath: string } => {
+          return (
+            typeof l === "object" &&
+            l !== null &&
+            typeof (l as { projectPath?: unknown }).projectPath === "string"
+          );
+        })
+        .map((l) => ({ projectPath: l.projectPath }));
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return null;
+  }
+}
+
 // ─── Port resolution ─────────────────────────────────────────────
 
 /** Get the configured server port (from tool config, default 5173). */
@@ -558,6 +602,33 @@ export async function handleServerStop(ctx: CommandContext): Promise<number> {
       info("No server is currently running.");
     }
     return ExitCode.SUCCESS;
+  }
+
+  // ── Refuse if loops are in-flight (the server is shared across all
+  //    projects, so stopping it cancels EVERY project's loop). ──────
+  const force = extractBoolFlag(ctx.flags, "force");
+  if (!force) {
+    const activeLoops = await fetchActiveLoops(state.port);
+    if (activeLoops !== null && activeLoops.length > 0) {
+      if (ctx.globalFlags.json) {
+        outputJson({
+          error: {
+            code: "LOOPS_IN_FLIGHT",
+            message: `Refusing to stop: ${activeLoops.length} loop(s) in flight`,
+            loops: activeLoops.map((l) => l.projectPath),
+          },
+        });
+      } else {
+        error(
+          `Refusing to stop the server: ${activeLoops.length} loop(s) in flight would be cancelled.`,
+        );
+        for (const loop of activeLoops) {
+          print(`  - ${loop.projectPath}`);
+        }
+        print(`Re-run with ${c.cyan("--force")} to stop anyway.`);
+      }
+      return ExitCode.CONFLICT;
+    }
   }
 
   // Send SIGTERM for graceful shutdown

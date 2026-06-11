@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "project": "rauf",
-  "description": "Loop runner hardening against the usage-limit failure mode (R1\u2013R7). Make the loop distinguish environmental death (pause/sleep/halt) from a genuinely blocked work item, reconcile committed-but-unrecorded work, add a circuit breaker, right-size the iteration budget, and ship first-class reset/resume. Source incident and rationale: plans/review-agent-feedback-on-playful-kahan.md.",
+  "description": "Loop runner hardening against the usage-limit failure mode (R1–R7). Make the loop distinguish environmental death (pause/sleep/halt) from a genuinely blocked work item, reconcile committed-but-unrecorded work, add a circuit breaker, right-size the iteration budget, and ship first-class reset/resume. Source incident and rationale: plans/review-agent-feedback-on-playful-kahan.md.",
   "items": [
     {
       "id": "001",
@@ -27,7 +27,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Add git-reconcile helper: findItemCommit and isTreeClean",
-      "description": "Create packages/loop/src/git-reconcile.ts with two functions that use execGit from ./git-exec.js and return core Result types (never throw on git failure):\n\n1. findItemCommit(projectPath, itemId): Promise<Result<{ commitHash: string } | null>> \u2014 runs `git log --extended-regexp --grep='^\\[rauf\\] <id>:' --format=%H -n 1` and returns the first matching commit hash, or null when none. Anchor with `^\\[rauf\\] ` and the trailing colon so id 003 does not match 030 or 0030.\n2. isTreeClean(projectPath): Promise<Result<boolean>> \u2014 runs `git status --porcelain` and returns true when output is empty.\n\nExport both from the package barrel (src/index.ts). Add packages/loop/src/git-reconcile.test.ts that builds a temp git repo (init, set user, make commits with `[rauf] 001: ...` messages) and asserts: a matching id returns its hash, a missing id returns null, no prefix-matching, isTreeClean true on a clean tree and false after an uncommitted change.",
+      "description": "Create packages/loop/src/git-reconcile.ts with two functions that use execGit from ./git-exec.js and return core Result types (never throw on git failure):\n\n1. findItemCommit(projectPath, itemId): Promise<Result<{ commitHash: string } | null>> — runs `git log --extended-regexp --grep='^\\[rauf\\] <id>:' --format=%H -n 1` and returns the first matching commit hash, or null when none. Anchor with `^\\[rauf\\] ` and the trailing colon so id 003 does not match 030 or 0030.\n2. isTreeClean(projectPath): Promise<Result<boolean>> — runs `git status --porcelain` and returns true when output is empty.\n\nExport both from the package barrel (src/index.ts). Add packages/loop/src/git-reconcile.test.ts that builds a temp git repo (init, set user, make commits with `[rauf] 001: ...` messages) and asserts: a matching id returns its hash, a missing id returns null, no prefix-matching, isTreeClean true on a clean tree and false after an uncommitted change.",
       "acceptanceCriteria": [
         "findItemCommit returns the commit hash for a committed [rauf] <id>: item and null when absent",
         "findItemCommit anchors the match so id 003 does not match 030 or 0030",
@@ -49,7 +49,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Add exit-classifier module with classifyExit and hasUsageLimitInText",
-      "description": "Create packages/loop/src/exit-classifier.ts \u2014 a pure, side-effect-free classifier for a finished claude spawn.\n\n1. Move USAGE_LIMIT_PATTERNS out of runner.ts into this module and export `hasUsageLimitInText(text: string): boolean` (case-insensitive substring match).\n2. Export `type ExitClass = 'done' | 'blocked' | 'needs_human' | 'usage_limited' | 'timeout' | 'infra_error' | 'genuine_retry'`.\n3. Export `const INFRA_FAST_MS = 10_000`.\n4. Export classifyExit(result, signal: ParsedSignal): ExitClass where result has { exitCode, stdout, stderr, reconstructedText?, timedOut, durationMs }:\n   - explicit signal done/blocked/needs_human \u2192 that class\n   - else if hasUsageLimitInText(reconstructedText||stdout) OR hasUsageLimitInText(stderr) \u2192 usage_limited\n   - else if timedOut \u2192 timeout\n   - else if exitCode !== 0 && durationMs < INFRA_FAST_MS \u2192 infra_error\n   - else \u2192 genuine_retry\n\nAdd exit-classifier.test.ts covering every branch, including the incident banner \"You've hit your session limit \u00b7 resets 5:30pm\" present ONLY in reconstructedText (must be usage_limited, not genuine_retry).",
+      "description": "Create packages/loop/src/exit-classifier.ts — a pure, side-effect-free classifier for a finished claude spawn.\n\n1. Move USAGE_LIMIT_PATTERNS out of runner.ts into this module and export `hasUsageLimitInText(text: string): boolean` (case-insensitive substring match).\n2. Export `type ExitClass = 'done' | 'blocked' | 'needs_human' | 'usage_limited' | 'timeout' | 'infra_error' | 'genuine_retry'`.\n3. Export `const INFRA_FAST_MS = 10_000`.\n4. Export classifyExit(result, signal: ParsedSignal): ExitClass where result has { exitCode, stdout, stderr, reconstructedText?, timedOut, durationMs }:\n   - explicit signal done/blocked/needs_human → that class\n   - else if hasUsageLimitInText(reconstructedText||stdout) OR hasUsageLimitInText(stderr) → usage_limited\n   - else if timedOut → timeout\n   - else if exitCode !== 0 && durationMs < INFRA_FAST_MS → infra_error\n   - else → genuine_retry\n\nAdd exit-classifier.test.ts covering every branch, including the incident banner \"You've hit your session limit · resets 5:30pm\" present ONLY in reconstructedText (must be usage_limited, not genuine_retry).",
       "acceptanceCriteria": [
         "classifyExit returns each ExitClass for the documented inputs",
         "Banner present only in reconstructedText classifies as usage_limited",
@@ -61,7 +61,7 @@
       "status": "done",
       "completedAt": "2026-06-11T07:41:25.475Z",
       "dependsOn": [],
-      "notes": "Do NOT wire this into the runner here \u2014 that is item 006. Keep the module free of side effects and of imports beyond the ParsedSignal type (exported from ./signal-parser.js) so it stays trivially unit-testable.",
+      "notes": "Do NOT wire this into the runner here — that is item 006. Keep the module free of side effects and of imports beyond the ParsedSignal type (exported from ./signal-parser.js) so it stays trivially unit-testable.",
       "estimatedIterations": 1
     },
     {
@@ -69,7 +69,7 @@
       "type": "chore",
       "priority": 1,
       "title": "Add deferred-vs-blocked distinction and paused_usage_limit to schemas",
-      "description": "Let the runner record items the RUNTIME gave up on, distinct from items the agent explicitly blocked. In packages/core/src/schemas.ts:\n\n1. BacklogItemSchema: add optional `deferred: z.boolean().optional()` (mirrors needsHuman). Do NOT add a status enum value \u2014 deferred items keep status 'blocked' plus this flag.\n2. LoopStateSchema: add `deferredItems: z.array(z.string())` (writers default to []; missing parses as []).\n3. LoopStateStatusSchema: add 'paused_usage_limit' (clean-halt status used by item 007).\n4. packages/core/src/status.ts: update writeLoopState to accept/persist deferredItems; update mapLoopStateStatus and parseDoneFileState to handle paused_usage_limit (map to a PAUSED-like derived state).\n5. packages/core/src/backlog.ts: in updateItem, clear the deferred flag when an item transitions to done or pending (as it already clears needsHuman on done).\n\nKeep backward compatibility: existing state.json without deferredItems must still parse.",
+      "description": "Let the runner record items the RUNTIME gave up on, distinct from items the agent explicitly blocked. In packages/core/src/schemas.ts:\n\n1. BacklogItemSchema: add optional `deferred: z.boolean().optional()` (mirrors needsHuman). Do NOT add a status enum value — deferred items keep status 'blocked' plus this flag.\n2. LoopStateSchema: add `deferredItems: z.array(z.string())` (writers default to []; missing parses as []).\n3. LoopStateStatusSchema: add 'paused_usage_limit' (clean-halt status used by item 007).\n4. packages/core/src/status.ts: update writeLoopState to accept/persist deferredItems; update mapLoopStateStatus and parseDoneFileState to handle paused_usage_limit (map to a PAUSED-like derived state).\n5. packages/core/src/backlog.ts: in updateItem, clear the deferred flag when an item transitions to done or pending (as it already clears needsHuman on done).\n\nKeep backward compatibility: existing state.json without deferredItems must still parse.",
       "acceptanceCriteria": [
         "BacklogItem accepts an optional deferred boolean; deferred items keep status 'blocked'",
         "LoopState has deferredItems and writeLoopState persists it",
@@ -81,7 +81,7 @@
       "status": "done",
       "completedAt": "2026-06-11T07:49:26.384Z",
       "dependsOn": [],
-      "notes": "Foundational for runner wiring (006), reset (011), and status (013). Avoid a new status enum value for the item itself \u2014 a boolean flag keeps VALID_STATUS_TRANSITIONS untouched.",
+      "notes": "Foundational for runner wiring (006), reset (011), and status (013). Avoid a new status enum value for the item itself — a boolean flag keeps VALID_STATUS_TRANSITIONS untouched.",
       "estimatedIterations": 1,
       "specReferences": [
         "docs/SCHEMAS.md",
@@ -115,7 +115,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Route no-signal exits through exit-classifier; never block on a missing signal",
-      "description": "Replace the `case 'review': case 'none':` retry-then-block block in runIteration (packages/loop/src/runner.ts ~672-704) with a dispatch on classifyExit(claudeResult.value, parsed) from item 003. A missing signal must NEVER, by itself, mark an item blocked.\n\nMapping:\n- usage_limited \u2192 reset item to pending, route to handleStderrUsageLimit; return its continue/exit (belt-and-suspenders with item 005).\n- timeout \u2192 item-specific real attempt: mark blocked with reason 'Timed out after <n>s'.\n- infra_error \u2192 reset item to pending; increment a consecutiveInfraFailures counter (consumed by the breaker in item 008); do NOT block; continue.\n- genuine_retry \u2192 keep the existing retry-up-to-maxRetries; on exhaustion set status 'blocked' with deferred: true and reason 'No signal after N attempts (deferred by runner)', push to a new deferredItemIds array, write state with deferredItems.\n\nTrack deferredItemIds alongside completedItemIds/blockedItemIds (~89-91) and include it in writeState (deferredItems) and buildSummary.",
+      "description": "Replace the `case 'review': case 'none':` retry-then-block block in runIteration (packages/loop/src/runner.ts ~672-704) with a dispatch on classifyExit(claudeResult.value, parsed) from item 003. A missing signal must NEVER, by itself, mark an item blocked.\n\nMapping:\n- usage_limited → reset item to pending, route to handleStderrUsageLimit; return its continue/exit (belt-and-suspenders with item 005).\n- timeout → item-specific real attempt: mark blocked with reason 'Timed out after <n>s'.\n- infra_error → reset item to pending; increment a consecutiveInfraFailures counter (consumed by the breaker in item 008); do NOT block; continue.\n- genuine_retry → keep the existing retry-up-to-maxRetries; on exhaustion set status 'blocked' with deferred: true and reason 'No signal after N attempts (deferred by runner)', push to a new deferredItemIds array, write state with deferredItems.\n\nTrack deferredItemIds alongside completedItemIds/blockedItemIds (~89-91) and include it in writeState (deferredItems) and buildSummary.",
       "acceptanceCriteria": [
         "No code path marks an item blocked solely because parseSignal returned none",
         "usage_limited routes to the usage handler; timeout blocks with a timeout reason",
@@ -142,7 +142,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Stop burning iterations on no-op deaths; parse banner reset time; add paused_usage_limit halt",
-      "description": "Three budget/usage refinements in packages/loop/src/runner.ts:\n\n1. Iterations should count attempts, not API rejections. iterationCount is incremented at runIteration start (~378). When an iteration ends as usage_limited or infra_error with no work done, decrement iterationCount (or guard the increment) so these no-ops do not drain the budget; appendLog a note when an iteration is not counted.\n2. In handleStderrUsageLimit (~987-1006), when the OAuth token is unavailable, parse the reset time from the banner with /resets\\s+(\\d{1,2}(?::\\d{2})?\\s*[ap]m)/i and sleep until that local time plus a small buffer instead of the flat 60s; fall back to 60s if no match.\n3. Add a sleepOnLimit option (default true) to LoopRunner options. When false, on a 5h usage limit write state 'paused_usage_limit' (item 004), write a DONE summary with a one-line resume hint (e.g. 'paused_usage_limit:<resetsAt> \u2014 run `rauf resume`'), and exit cleanly instead of sleeping.",
+      "description": "Three budget/usage refinements in packages/loop/src/runner.ts:\n\n1. Iterations should count attempts, not API rejections. iterationCount is incremented at runIteration start (~378). When an iteration ends as usage_limited or infra_error with no work done, decrement iterationCount (or guard the increment) so these no-ops do not drain the budget; appendLog a note when an iteration is not counted.\n2. In handleStderrUsageLimit (~987-1006), when the OAuth token is unavailable, parse the reset time from the banner with /resets\\s+(\\d{1,2}(?::\\d{2})?\\s*[ap]m)/i and sleep until that local time plus a small buffer instead of the flat 60s; fall back to 60s if no match.\n3. Add a sleepOnLimit option (default true) to LoopRunner options. When false, on a 5h usage limit write state 'paused_usage_limit' (item 004), write a DONE summary with a one-line resume hint (e.g. 'paused_usage_limit:<resetsAt> — run `rauf resume`'), and exit cleanly instead of sleeping.",
       "acceptanceCriteria": [
         "usage_limited/infra_error no-op iterations do not consume the iteration budget and are logged",
         "Missing-token usage handling parses the banner reset time and sleeps to it (60s fallback)",
@@ -163,7 +163,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Add a circuit breaker for consecutive infra failures",
-      "description": "Stop the loop from grinding through the whole budget when every spawn dies the same way. In packages/loop/src/runner.ts, use the consecutiveInfraFailures counter from item 006 (incremented on each infra_error, reset to 0 on any done/blocked/needs_human/real attempt). Add a circuitBreakerThreshold option (default 3). When consecutiveInfraFailures >= threshold, halt the loop: write state 'error' with a clear message ('Circuit breaker: N consecutive infra failures \u2014 halting'), emit the appropriate loop_error/loop_completed events, write a DONE summary, release the lock, and stop spawning. Log the threshold in the run-header at startup.\n\nAdd test-sandbox/scenarios/fast-infra-death.sh (repeated fast code=1, no banner) and assert in verify.sh that the breaker halts before maxIterations.",
+      "description": "Stop the loop from grinding through the whole budget when every spawn dies the same way. In packages/loop/src/runner.ts, use the consecutiveInfraFailures counter from item 006 (incremented on each infra_error, reset to 0 on any done/blocked/needs_human/real attempt). Add a circuitBreakerThreshold option (default 3). When consecutiveInfraFailures >= threshold, halt the loop: write state 'error' with a clear message ('Circuit breaker: N consecutive infra failures — halting'), emit the appropriate loop_error/loop_completed events, write a DONE summary, release the lock, and stop spawning. Log the threshold in the run-header at startup.\n\nAdd test-sandbox/scenarios/fast-infra-death.sh (repeated fast code=1, no banner) and assert in verify.sh that the breaker halts before maxIterations.",
       "acceptanceCriteria": [
         "consecutiveInfraFailures resets on any real outcome and only infra_error increments it",
         "Reaching circuitBreakerThreshold (default 3) halts the loop with a clear error status and DONE summary instead of continuing to maxIterations",
@@ -176,7 +176,7 @@
       "dependsOn": [
         "006"
       ],
-      "notes": "usage_limited deaths are handled by the usage path (sleep/halt) and must NOT count toward the infra breaker \u2014 only no-banner infra_error exits increment it.",
+      "notes": "usage_limited deaths are handled by the usage path (sleep/halt) and must NOT count toward the infra breaker — only no-banner infra_error exits increment it.",
       "estimatedIterations": 1
     },
     {
@@ -184,7 +184,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Reconcile committed work before recording a non-done outcome",
-      "description": "An iteration can pass verify and commit `[rauf] <id>:` but die before printing RAUF_DONE (the incident's item 003, committed yet marked blocked). Before the runner records any non-done outcome for the current item (blocked/deferred/infra/timeout paths in runIteration), call findItemCommit(projectPath, item.id) and isTreeClean(projectPath) from item 002.\n\n- If a matching commit exists AND the tree is clean \u2192 record the item done (updateItem status done), push to completedItemIds, emit item_completed, appendLog 'recovered_via_commit: <hash>', and do NOT call gitCommit again. Skip the would-be block/defer.\n- If the tree is dirty after a failed iteration \u2192 appendLog and revert to a clean base (git reset --hard via execGit, or stash with a note) before the next iteration so the next item never starts on a half-finished tree.\n\nAdd test-sandbox/scenarios/commit-no-signal.sh: a mock claude that commits a `[rauf] <id>:` change then exits with no signal; assert the item ends done (recovered_via_commit), not blocked.",
+      "description": "An iteration can pass verify and commit `[rauf] <id>:` but die before printing RAUF_DONE (the incident's item 003, committed yet marked blocked). Before the runner records any non-done outcome for the current item (blocked/deferred/infra/timeout paths in runIteration), call findItemCommit(projectPath, item.id) and isTreeClean(projectPath) from item 002.\n\n- If a matching commit exists AND the tree is clean → record the item done (updateItem status done), push to completedItemIds, emit item_completed, appendLog 'recovered_via_commit: <hash>', and do NOT call gitCommit again. Skip the would-be block/defer.\n- If the tree is dirty after a failed iteration → appendLog and revert to a clean base (git reset --hard via execGit, or stash with a note) before the next iteration so the next item never starts on a half-finished tree.\n\nAdd test-sandbox/scenarios/commit-no-signal.sh: a mock claude that commits a `[rauf] <id>:` change then exits with no signal; assert the item ends done (recovered_via_commit), not blocked.",
       "acceptanceCriteria": [
         "When a [rauf] <id>: commit landed and the tree is clean, the item is recorded done (recovered_via_commit) rather than blocked/deferred",
         "A dirty tree after a failed iteration is reverted/stashed before the next item",
@@ -207,7 +207,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Right-size maxIterations from the backlog and surface the math",
-      "description": "Replace the flat DEFAULT_MAX_ITERATIONS=20 default with a backlog-derived estimate when --iterations is not given.\n\n1. Add computeMaxIterations(backlog, opts?: { safety?: number; retryHeadroom?: number }): { cap, pending, avgIters, needed } to packages/core/src (new budget.ts, exported from the barrel). cap = ceil(pending * avgEstimatedIterations * safety) + retryHeadroom; safety default 1.5, retryHeadroom a small constant; avgEstimatedIterations from items' estimatedIterations (default 1); pending counts status 'pending'. Keep 20 as a floor when there are pending items.\n2. In packages/cli/src/loop-commands.ts (loop run and loop start), when --iterations is omitted, use cap and log: '<pending> pending \u00d7 ~<avg> iter = ~<needed> needed; cap <cap> (<x>\u00d7 headroom)'.\n3. Mirror the default in packages/web/src/server/routes/loop.ts.\n4. Unit-test computeMaxIterations (empty backlog, mixed estimatedIterations, all-pending).",
+      "description": "Replace the flat DEFAULT_MAX_ITERATIONS=20 default with a backlog-derived estimate when --iterations is not given.\n\n1. Add computeMaxIterations(backlog, opts?: { safety?: number; retryHeadroom?: number }): { cap, pending, avgIters, needed } to packages/core/src (new budget.ts, exported from the barrel). cap = ceil(pending * avgEstimatedIterations * safety) + retryHeadroom; safety default 1.5, retryHeadroom a small constant; avgEstimatedIterations from items' estimatedIterations (default 1); pending counts status 'pending'. Keep 20 as a floor when there are pending items.\n2. In packages/cli/src/loop-commands.ts (loop run and loop start), when --iterations is omitted, use cap and log: '<pending> pending × ~<avg> iter = ~<needed> needed; cap <cap> (<x>× headroom)'.\n3. Mirror the default in packages/web/src/server/routes/loop.ts.\n4. Unit-test computeMaxIterations (empty backlog, mixed estimatedIterations, all-pending).",
       "acceptanceCriteria": [
         "computeMaxIterations returns the documented cap and inputs and floors at 20 when pending items exist",
         "loop run/start use it when --iterations is omitted and log the budget math",
@@ -230,7 +230,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Add `rauf reset` command with commit reconciliation and false-block requeue",
-      "description": "Add a top-level `rauf reset [--keep-done]` command (register in packages/cli/src/commands.ts; new handler packages/cli/src/reset-commands.ts) so recovery is one command, not manual JSON edits. Steps, in order:\n1. Refuse if the loop lock PID is alive (reuse checkLock / staleness from packages/core/src/lock.ts); proceed only when the lock is stale/absent, and clear a stale lock.\n2. Commit reconciliation: for each non-done item, if findItemCommit + isTreeClean (item 002) show a landed clean commit, mark it done.\n3. Requeue FALSE blocks: items with deferred:true \u2192 back to pending (clear deferred/blockedReason). Items with an explicit agent block (status blocked, not deferred, not needsHuman) stay blocked and are reported.\n4. resetStalledItems (in_progress \u2192 pending), clear state.json/blockedItems, remove .rauf/DONE.\nPrint a summary (recovered, requeued, kept-blocked, lock cleared). Build on existing resetProject/unblockItems where possible; --keep-done leaves done items as-is (the default).",
+      "description": "Add a top-level `rauf reset [--keep-done]` command (register in packages/cli/src/commands.ts; new handler packages/cli/src/reset-commands.ts) so recovery is one command, not manual JSON edits. Steps, in order:\n1. Refuse if the loop lock PID is alive (reuse checkLock / staleness from packages/core/src/lock.ts); proceed only when the lock is stale/absent, and clear a stale lock.\n2. Commit reconciliation: for each non-done item, if findItemCommit + isTreeClean (item 002) show a landed clean commit, mark it done.\n3. Requeue FALSE blocks: items with deferred:true → back to pending (clear deferred/blockedReason). Items with an explicit agent block (status blocked, not deferred, not needsHuman) stay blocked and are reported.\n4. resetStalledItems (in_progress → pending), clear state.json/blockedItems, remove .rauf/DONE.\nPrint a summary (recovered, requeued, kept-blocked, lock cleared). Build on existing resetProject/unblockItems where possible; --keep-done leaves done items as-is (the default).",
       "acceptanceCriteria": [
         "rauf reset refuses when a live loop holds the lock and clears a stale lock",
         "Committed-clean non-done items are promoted to done",
@@ -256,7 +256,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Add `rauf resume` command to continue an interrupted loop",
-      "description": "Add a top-level `rauf resume` command (commands.ts + handler) that detects an interrupted run and continues it:\n1. Read derived status / state.json. Recognize resumable states: paused_usage_limit, limit_reached, error (circuit breaker), or a dead lock with non-done items.\n2. Apply the same reconciliation + false-block requeue as `rauf reset` \u2014 extract a shared helper rather than duplicating the logic.\n3. Continue from the first non-done item by launching the loop via the normal entrypoint (same path as `rauf loop run`/`loop start`), honoring --backlog and a recomputed budget (item 010).\nIf the lock PID is alive, refuse with a message that a loop is already running.",
+      "description": "Add a top-level `rauf resume` command (commands.ts + handler) that detects an interrupted run and continues it:\n1. Read derived status / state.json. Recognize resumable states: paused_usage_limit, limit_reached, error (circuit breaker), or a dead lock with non-done items.\n2. Apply the same reconciliation + false-block requeue as `rauf reset` — extract a shared helper rather than duplicating the logic.\n3. Continue from the first non-done item by launching the loop via the normal entrypoint (same path as `rauf loop run`/`loop start`), honoring --backlog and a recomputed budget (item 010).\nIf the lock PID is alive, refuse with a message that a loop is already running.",
       "acceptanceCriteria": [
         "rauf resume detects paused_usage_limit/limit_reached/error/dead-lock states",
         "It applies commit reconciliation and requeues false blocks before relaunching",
@@ -281,7 +281,7 @@
       "type": "feature",
       "priority": 3,
       "title": "Enrich `rauf status` with lock liveness and blocked/deferred breakdown",
-      "description": "Extend `rauf status` output (packages/cli/src/status-commands.ts) to make a usage-limit aftermath legible. Add:\n1. A lock line: whether .rauf/.loop.lock exists and whether its PID is alive (reuse checkLock from packages/core/src/lock.ts) \u2014 e.g. 'Lock: PID 1234 (alive)', 'stale', or 'none'.\n2. The last signal from state.json (lastSignal).\n3. A backlog breakdown splitting blocked into genuine blocked (explicit agent block / needsHuman) vs deferred (deferred:true, runner gave up), using item-flag counts.\nKeep the existing exit-code mapping; add the new lines to both human and --json output.",
+      "description": "Extend `rauf status` output (packages/cli/src/status-commands.ts) to make a usage-limit aftermath legible. Add:\n1. A lock line: whether .rauf/.loop.lock exists and whether its PID is alive (reuse checkLock from packages/core/src/lock.ts) — e.g. 'Lock: PID 1234 (alive)', 'stale', or 'none'.\n2. The last signal from state.json (lastSignal).\n3. A backlog breakdown splitting blocked into genuine blocked (explicit agent block / needsHuman) vs deferred (deferred:true, runner gave up), using item-flag counts.\nKeep the existing exit-code mapping; add the new lines to both human and --json output.",
       "acceptanceCriteria": [
         "rauf status shows lock presence and PID liveness",
         "rauf status shows the last signal",
@@ -294,7 +294,7 @@
       "dependsOn": [
         "004"
       ],
-      "notes": "Reuse lock staleness detection from core \u2014 do not reimplement PID checks. The deferred flag comes from item 004.",
+      "notes": "Reuse lock staleness detection from core — do not reimplement PID checks. The deferred flag comes from item 004.",
       "estimatedIterations": 1,
       "specReferences": [
         "docs/SPEC-CLI.md"
@@ -305,7 +305,7 @@
       "type": "chore",
       "priority": 3,
       "title": "Deploy runtime .gitignore entries into target projects on install",
-      "description": "New rauf installs can leave runtime files (.rauf/.loop.lock, state.json, DONE, CANCEL, iteration-status.json, rauf.log, backlog.json.bak) trackable in the target repo \u2014 the source incident committed .loop.lock. git-commit already excludes them per-commit, but the target's .gitignore should also cover them. In packages/core/src/installer.ts, during install/init, ensure the target project's .gitignore contains the `**/.rauf/<runtime>` and `**/backlog.json.bak` ignore lines (append idempotently if missing; never duplicate). Mirror the entries in this repo's root .gitignore and keep them in sync with RUNTIME_EXCLUDE_PATHSPECS in packages/loop/src/git-commit.ts. Surface a note (docs/SPEC-ARTIFACTS.md or installer output) that a pre-existing tracked lock needs `git rm --cached .rauf/.loop.lock` once.",
+      "description": "New rauf installs can leave runtime files (.rauf/.loop.lock, state.json, DONE, CANCEL, iteration-status.json, rauf.log, backlog.json.bak) trackable in the target repo — the source incident committed .loop.lock. git-commit already excludes them per-commit, but the target's .gitignore should also cover them. In packages/core/src/installer.ts, during install/init, ensure the target project's .gitignore contains the `**/.rauf/<runtime>` and `**/backlog.json.bak` ignore lines (append idempotently if missing; never duplicate). Mirror the entries in this repo's root .gitignore and keep them in sync with RUNTIME_EXCLUDE_PATHSPECS in packages/loop/src/git-commit.ts. Surface a note (docs/SPEC-ARTIFACTS.md or installer output) that a pre-existing tracked lock needs `git rm --cached .rauf/.loop.lock` once.",
       "acceptanceCriteria": [
         "install/init ensures the target .gitignore contains the rauf runtime ignore lines (idempotent, no duplicates)",
         "The ignore set matches the runtime-exclude set used by git-commit",
@@ -357,7 +357,7 @@
       "type": "bugfix",
       "priority": 1,
       "title": "Fix exit-classifier reconstructedText empty-string fallback",
-      "description": "In packages/loop/src/exit-classifier.ts (~line 64), classifyExit computes `const signalText = result.reconstructedText ?? result.stdout`. The `??` operator only falls back on null/undefined, so an empty-string reconstructedText (\"\") skips the stdout usage-banner scan \u2014 inconsistent with the runner, which uses a length-check. A usage banner present only in stdout (with an empty reconstructedText) would then misclassify as genuine_retry.\n\nFix: change to `const signalText = result.reconstructedText && result.reconstructedText.length > 0 ? result.reconstructedText : result.stdout;`. Add a test in packages/loop/src/exit-classifier.test.ts: a no-signal result with reconstructedText:\"\" and stdout containing the incident banner classifies as 'usage_limited' (not 'genuine_retry').",
+      "description": "In packages/loop/src/exit-classifier.ts (~line 64), classifyExit computes `const signalText = result.reconstructedText ?? result.stdout`. The `??` operator only falls back on null/undefined, so an empty-string reconstructedText (\"\") skips the stdout usage-banner scan — inconsistent with the runner, which uses a length-check. A usage banner present only in stdout (with an empty reconstructedText) would then misclassify as genuine_retry.\n\nFix: change to `const signalText = result.reconstructedText && result.reconstructedText.length > 0 ? result.reconstructedText : result.stdout;`. Add a test in packages/loop/src/exit-classifier.test.ts: a no-signal result with reconstructedText:\"\" and stdout containing the incident banner classifies as 'usage_limited' (not 'genuine_retry').",
       "acceptanceCriteria": [
         "classifyExit uses a length-based fallback (not ??) for reconstructedText -> stdout",
         "A no-signal result with reconstructedText:'' and the banner in stdout classifies as usage_limited",
@@ -393,7 +393,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Bound commit reconciliation to the run baseline (no stale-commit recovery)",
-      "description": "findItemCommit greps ALL git history, so on a clean tree any item whose ID ever had a `[rauf] <id>:` commit is falsely promoted to done. This is critical because rauf restarts IDs at 001 for every new backlog \u2014 an old `[rauf] 001:` from a prior cycle would falsely recover a fresh item 001 during reset/resume or in-loop reconciliation.\n\n1. Schema: add `baseCommitHash: z.string().nullable()` (optional, default null) to LoopStateSchema in packages/core/src/schemas.ts; writeLoopState persists it; old state.json without it still parses.\n2. git-reconcile.ts: add an optional `sinceRef?: string` param to findItemCommit; when provided, scope the search with a `<sinceRef>..HEAD` range so only commits after the baseline match.\n3. runner.ts: at loop start capture current HEAD (execGit rev-parse HEAD) as baseCommitHash, persist it in state, and pass it as sinceRef to the in-loop reconciliation (~line 992).\n4. packages/cli/src/recovery.ts (reset/resume): read baseCommitHash from state and pass it as sinceRef; when state has no baseCommitHash, do NOT auto-promote genuine `blocked` (non-deferred) items, to avoid false recovery.\n5. Tests: a clean repo with an old `[rauf] 001:` commit and a current pending/blocked 001 must NOT be recovered when sinceRef excludes it; a commit after the baseline IS recovered.",
+      "description": "findItemCommit greps ALL git history, so on a clean tree any item whose ID ever had a `[rauf] <id>:` commit is falsely promoted to done. This is critical because rauf restarts IDs at 001 for every new backlog — an old `[rauf] 001:` from a prior cycle would falsely recover a fresh item 001 during reset/resume or in-loop reconciliation.\n\n1. Schema: add `baseCommitHash: z.string().nullable()` (optional, default null) to LoopStateSchema in packages/core/src/schemas.ts; writeLoopState persists it; old state.json without it still parses.\n2. git-reconcile.ts: add an optional `sinceRef?: string` param to findItemCommit; when provided, scope the search with a `<sinceRef>..HEAD` range so only commits after the baseline match.\n3. runner.ts: at loop start capture current HEAD (execGit rev-parse HEAD) as baseCommitHash, persist it in state, and pass it as sinceRef to the in-loop reconciliation (~line 992).\n4. packages/cli/src/recovery.ts (reset/resume): read baseCommitHash from state and pass it as sinceRef; when state has no baseCommitHash, do NOT auto-promote genuine `blocked` (non-deferred) items, to avoid false recovery.\n5. Tests: a clean repo with an old `[rauf] 001:` commit and a current pending/blocked 001 must NOT be recovered when sinceRef excludes it; a commit after the baseline IS recovered.",
       "acceptanceCriteria": [
         "LoopState carries an optional baseCommitHash; old state.json without it still parses",
         "findItemCommit accepts an optional sinceRef and scopes the search to <sinceRef>..HEAD",
@@ -407,7 +407,7 @@
       "dependsOn": [
         "017"
       ],
-      "notes": "From Codex review (HIGH) \u2014 the most important review fix. recovery.ts is shared with 020, so land this first.",
+      "notes": "From Codex review (HIGH) — the most important review fix. recovery.ts is shared with 020, so land this first.",
       "estimatedIterations": 2
     },
     {
@@ -415,7 +415,7 @@
       "type": "bugfix",
       "priority": 2,
       "title": "Narrow dirty-tree cleanup to the rauf backlog path, not all backlog.json",
-      "description": "packages/loop/src/runner.ts (~line 1048) dirty-tree cleanup excludes every `**/backlog.json` in the repo, so a failed item that left an application file literally named backlog.json dirty would have that change swept into the next item's commit.\n\nFix: restrict the exclusion to the resolved rauf backlog path (paths.backlog) and its `.bak` sibling, plus the `.rauf/**` runtime files \u2014 all relative to projectPath \u2014 instead of a repo-wide `**/backlog.json` glob. Behavior for the actual rauf backlog/runtime files must stay identical. Add a regression test asserting an unrelated dirty file named backlog.json elsewhere in the tree is NOT preserved by the cleanup.",
+      "description": "packages/loop/src/runner.ts (~line 1048) dirty-tree cleanup excludes every `**/backlog.json` in the repo, so a failed item that left an application file literally named backlog.json dirty would have that change swept into the next item's commit.\n\nFix: restrict the exclusion to the resolved rauf backlog path (paths.backlog) and its `.bak` sibling, plus the `.rauf/**` runtime files — all relative to projectPath — instead of a repo-wide `**/backlog.json` glob. Behavior for the actual rauf backlog/runtime files must stay identical. Add a regression test asserting an unrelated dirty file named backlog.json elsewhere in the tree is NOT preserved by the cleanup.",
       "acceptanceCriteria": [
         "Dirty-tree cleanup excludes only the resolved rauf backlog (+ .bak) and .rauf runtime files, not arbitrary backlog.json files",
         "A dirty unrelated file named backlog.json elsewhere in the tree is not preserved by the cleanup",
@@ -433,7 +433,7 @@
       "type": "bugfix",
       "priority": 1,
       "title": "Hold the loop lock across reset/resume recovery (close TOCTOU race)",
-      "description": "packages/cli/src/reset-commands.ts (~49) and resume-commands.ts (~137) guard with guardLoopLock() (check) then mutate backlog/state in recoverInterruptedLoop() \u2014 a check-then-mutate TOCTOU race lets a concurrent `rauf loop run` acquire the lock and start between the check and the mutation.\n\nFix: acquire the loop lock (core acquireLock from packages/core/src/lock.ts) for the recovery window, refuse with a clear LOCK_CONFLICT message if a live lock exists, and release it in a finally block before any relaunch. Use owner-aware release so recovery never deletes a lock owned by a live different PID. Reuse acquireLock/releaseLock/checkLock \u2014 do not reimplement PID checks. For resume, hand off cleanly: release the recovery lock before launching the loop via the normal entrypoint (which acquires its own lock).",
+      "description": "packages/cli/src/reset-commands.ts (~49) and resume-commands.ts (~137) guard with guardLoopLock() (check) then mutate backlog/state in recoverInterruptedLoop() — a check-then-mutate TOCTOU race lets a concurrent `rauf loop run` acquire the lock and start between the check and the mutation.\n\nFix: acquire the loop lock (core acquireLock from packages/core/src/lock.ts) for the recovery window, refuse with a clear LOCK_CONFLICT message if a live lock exists, and release it in a finally block before any relaunch. Use owner-aware release so recovery never deletes a lock owned by a live different PID. Reuse acquireLock/releaseLock/checkLock — do not reimplement PID checks. For resume, hand off cleanly: release the recovery lock before launching the loop via the normal entrypoint (which acquires its own lock).",
       "acceptanceCriteria": [
         "reset/resume acquire the loop lock before mutating state and release it in finally",
         "A live lock held by another alive PID makes reset/resume refuse with LOCK_CONFLICT and perform no mutation",
@@ -454,7 +454,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Make server stop/restart loop-aware (refuse with in-flight loops)",
-      "description": "The shared server daemon (one process on 127.0.0.1:5173 across all projects) has a SIGTERM handler in packages/web/src/server/start.ts (~118) that calls manager.shutdownAll(), cancelling EVERY project's in-flight loop \u2014 so unrelated server ops kill your loop. Per-project keying already exists (packages/web/src/server/loop-manager.ts resolveKey/stopLoop). Make destructive ops deliberate:\n1. Add LoopManager.listActive(): { projectPath: string }[] and a GET /api/loops route (packages/web/src/server/routes/loop.ts) returning the in-flight loops.\n2. In packages/cli/src/server-commands.ts handleServerStop/handleServerRestart: before SIGTERM, fetch /api/loops; if any loop is in-flight, REFUSE (non-zero exit) and list the affected projects unless --force is passed.\n3. Verify ensureServerRunning (packages/cli/src/loop-commands.ts ~104) never restarts a healthy server; add a test asserting it no-ops when the server is healthy.\n4. On rauf loop start, print a one-line notice that a server stop/restart will interrupt this loop and that `rauf loop run` is the unattended-safe mode.\nDo NOT try to re-adopt a killed loop's claude child (it dies with the server) \u2014 out of scope.",
+      "description": "The shared server daemon (one process on 127.0.0.1:5173 across all projects) has a SIGTERM handler in packages/web/src/server/start.ts (~118) that calls manager.shutdownAll(), cancelling EVERY project's in-flight loop — so unrelated server ops kill your loop. Per-project keying already exists (packages/web/src/server/loop-manager.ts resolveKey/stopLoop). Make destructive ops deliberate:\n1. Add LoopManager.listActive(): { projectPath: string }[] and a GET /api/loops route (packages/web/src/server/routes/loop.ts) returning the in-flight loops.\n2. In packages/cli/src/server-commands.ts handleServerStop/handleServerRestart: before SIGTERM, fetch /api/loops; if any loop is in-flight, REFUSE (non-zero exit) and list the affected projects unless --force is passed.\n3. Verify ensureServerRunning (packages/cli/src/loop-commands.ts ~104) never restarts a healthy server; add a test asserting it no-ops when the server is healthy.\n4. On rauf loop start, print a one-line notice that a server stop/restart will interrupt this loop and that `rauf loop run` is the unattended-safe mode.\nDo NOT try to re-adopt a killed loop's claude child (it dies with the server) — out of scope.",
       "acceptanceCriteria": [
         "rauf server stop and restart refuse (non-zero exit) and list affected projects when any loop is in-flight, unless --force",
         "LoopManager exposes the active-loop list and GET /api/loops returns it",
@@ -462,8 +462,8 @@
         "rauf loop start prints a notice that a server restart interrupts it and names `loop run` as unattended-safe",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T20:16:52.987Z",
       "dependsOn": [],
       "notes": "From feedback #2 F1 (critical operational hazard). Per-project keying already exists; only shutdownAll ignores it. Re-adoption of the child is explicitly out of scope. Files: server-commands.ts, loop-manager.ts, routes/loop.ts, loop-commands.ts.",
       "estimatedIterations": 2
@@ -473,7 +473,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Recover verified-but-uncommitted work on resume (re-verify + commit)",
-      "description": "A kill in the verify->commit window leaves verified work UNCOMMITTED with no `[rauf] <id>:` commit; commit-reconciliation (item 009) only recovers when a commit exists. Today packages/cli/src/recovery.ts reconcileAndRequeue (~103-132) skips reconciliation when the tree is dirty, and reset/resume/loop run either refuse or stash it.\n1. recovery.ts: when the tree is DIRTY and an item is in_progress with NO commit at/after baseCommitHash, classify it as an interrupted iteration and report it distinctly: 'item <id> left uncommitted changes (interrupted before commit)' \u2014 not the generic dirty-tree refusal.\n2. rauf resume (resume-commands.ts) gains --recover: re-run the project's verify command (resolved from the .rauf.json/RAUF.md profile via packages/core/src/profile.ts) for the interrupted item; on green, commit the changes as `[rauf] <id>: <title>` and mark the item done; on failure, leave the work untouched and report. Default (no --recover) only surfaces, never mutates.\n3. git-status.ts: the dirty-tree refusal message points to `rauf resume --recover`.",
+      "description": "A kill in the verify->commit window leaves verified work UNCOMMITTED with no `[rauf] <id>:` commit; commit-reconciliation (item 009) only recovers when a commit exists. Today packages/cli/src/recovery.ts reconcileAndRequeue (~103-132) skips reconciliation when the tree is dirty, and reset/resume/loop run either refuse or stash it.\n1. recovery.ts: when the tree is DIRTY and an item is in_progress with NO commit at/after baseCommitHash, classify it as an interrupted iteration and report it distinctly: 'item <id> left uncommitted changes (interrupted before commit)' — not the generic dirty-tree refusal.\n2. rauf resume (resume-commands.ts) gains --recover: re-run the project's verify command (resolved from the .rauf.json/RAUF.md profile via packages/core/src/profile.ts) for the interrupted item; on green, commit the changes as `[rauf] <id>: <title>` and mark the item done; on failure, leave the work untouched and report. Default (no --recover) only surfaces, never mutates.\n3. git-status.ts: the dirty-tree refusal message points to `rauf resume --recover`.",
       "acceptanceCriteria": [
         "A dirty tree with an in_progress item and no baseline commit is reported as an interrupted iteration, not a generic dirty-tree refusal",
         "rauf resume --recover re-runs verify and, on green, commits the work as [rauf] <id>: and marks the item done",
@@ -493,7 +493,7 @@
       "type": "bugfix",
       "priority": 2,
       "title": "Intercept --help/-h before side effects + per-subcommand flag help",
-      "description": "Current incorrect behavior: `rauf loop start --help` STARTS the loop \u2014 packages/cli/src/main.ts only intercepts --version/-V before dispatch, so --help falls through to handleLoopStart. Also `rauf help loop start` only lists subcommand names; the per-subcommand `usage` (defined in commands.ts) is never rendered and there is no flag-level help.\nFix:\n1. In main.ts (and/or parser.ts): detect --help/-h in the parsed flags BEFORE invoking any command/subcommand handler, and route to help output \u2014 before any side-effecting action.\n2. In packages/cli/src/commands.ts showCommandHelp: when help targets a command+subcommand, render the subcommand `usage` plus a flag list. Add a flags description (name + meaning) to the loop run/start subcommand defs and render it.\n3. Unknown flags on side-effecting commands surface help rather than silently starting work.",
+      "description": "Current incorrect behavior: `rauf loop start --help` STARTS the loop — packages/cli/src/main.ts only intercepts --version/-V before dispatch, so --help falls through to handleLoopStart. Also `rauf help loop start` only lists subcommand names; the per-subcommand `usage` (defined in commands.ts) is never rendered and there is no flag-level help.\nFix:\n1. In main.ts (and/or parser.ts): detect --help/-h in the parsed flags BEFORE invoking any command/subcommand handler, and route to help output — before any side-effecting action.\n2. In packages/cli/src/commands.ts showCommandHelp: when help targets a command+subcommand, render the subcommand `usage` plus a flag list. Add a flags description (name + meaning) to the loop run/start subcommand defs and render it.\n3. Unknown flags on side-effecting commands surface help rather than silently starting work.",
       "acceptanceCriteria": [
         "rauf loop start --help (and -h) prints help and does NOT start the loop or daemon",
         "rauf loop run --help prints the flag list (--iterations/--retries/--timeout/--model/--backlog/--force/--create-branch/--ndjson/etc.) and does not run",
@@ -512,7 +512,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Resolve maxIterations by precedence and log the source",
-      "description": "maxIterations resolution is confusing: the CLI computes a default from the backlog (item 010) when --iterations is omitted but IGNORES `.rauf.json` options.maxIterations. Establish one logged precedence in packages/cli/src/loop-commands.ts (loop run + loop start), mirrored in packages/web/src/server/routes/loop.ts:\n1. Resolve as: explicit --iterations flag > `.rauf.json` options.maxIterations (read via packages/core/src/profile.ts readMarkerFile) > computeMaxIterations(backlog).\n2. Log the resolved value AND its source at startup: `maxIterations=<n> (flag|.rauf.json|computed)`.\n3. Keep the computeMaxIterations budget-math line (item 010) only when the source is `computed`.\nDo NOT change the runner's options plumbing \u2014 only where the value is resolved before LoopRunner.create / the API request body.",
+      "description": "maxIterations resolution is confusing: the CLI computes a default from the backlog (item 010) when --iterations is omitted but IGNORES `.rauf.json` options.maxIterations. Establish one logged precedence in packages/cli/src/loop-commands.ts (loop run + loop start), mirrored in packages/web/src/server/routes/loop.ts:\n1. Resolve as: explicit --iterations flag > `.rauf.json` options.maxIterations (read via packages/core/src/profile.ts readMarkerFile) > computeMaxIterations(backlog).\n2. Log the resolved value AND its source at startup: `maxIterations=<n> (flag|.rauf.json|computed)`.\n3. Keep the computeMaxIterations budget-math line (item 010) only when the source is `computed`.\nDo NOT change the runner's options plumbing — only where the value is resolved before LoopRunner.create / the API request body.",
       "acceptanceCriteria": [
         "maxIterations precedence is flag > .rauf.json options.maxIterations > computed-from-backlog",
         "Startup logs the resolved value and its source (flag / .rauf.json / computed)",
@@ -523,7 +523,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": [],
-      "notes": "From feedback #2 F6 (medium). The marker schema already defines options.maxIterations (packages/core/src/schemas.ts) \u2014 it was simply never consulted. Files: loop-commands.ts, routes/loop.ts, profile.ts.",
+      "notes": "From feedback #2 F6 (medium). The marker schema already defines options.maxIterations (packages/core/src/schemas.ts) — it was simply never consulted. Files: loop-commands.ts, routes/loop.ts, profile.ts.",
       "estimatedIterations": 1
     },
     {
@@ -531,7 +531,7 @@
       "type": "bugfix",
       "priority": 2,
       "title": "Derive status RUNNING vs PAUSED from liveness, not staleness",
-      "description": "Current incorrect behavior: packages/core/src/status.ts deriveFromStateJson (~114-149) downgrades running->PAUSED when state.json updatedAt is older than ~5 min (STALENESS_THRESHOLD_MS). state.json is only written between iterations, so a long (15-30 min) active iteration is mislabeled PAUSED. Expected: an actively-working loop shows RUNNING.\nFix: before the running->PAUSED staleness downgrade, consult liveness signals:\n1. Lock-PID liveness via packages/core/src/lock.ts checkLock \u2014 if the lock PID is alive, keep RUNNING.\n2. iteration-status.json freshness via packages/core/src/iteration-status.ts readIterationStatus \u2014 if its updatedAt/mtime is recent, keep RUNNING (it is written ~every 5s with token counts during an iteration).\nOnly downgrade to PAUSED when the lock PID is dead OR no fresh iteration-status exists. Keep current behavior for genuinely dead/stale loops. Do not spawn subprocesses (status derivation reads files only).",
+      "description": "Current incorrect behavior: packages/core/src/status.ts deriveFromStateJson (~114-149) downgrades running->PAUSED when state.json updatedAt is older than ~5 min (STALENESS_THRESHOLD_MS). state.json is only written between iterations, so a long (15-30 min) active iteration is mislabeled PAUSED. Expected: an actively-working loop shows RUNNING.\nFix: before the running->PAUSED staleness downgrade, consult liveness signals:\n1. Lock-PID liveness via packages/core/src/lock.ts checkLock — if the lock PID is alive, keep RUNNING.\n2. iteration-status.json freshness via packages/core/src/iteration-status.ts readIterationStatus — if its updatedAt/mtime is recent, keep RUNNING (it is written ~every 5s with token counts during an iteration).\nOnly downgrade to PAUSED when the lock PID is dead OR no fresh iteration-status exists. Keep current behavior for genuinely dead/stale loops. Do not spawn subprocesses (status derivation reads files only).",
       "acceptanceCriteria": [
         "A long active iteration (stale state.json updatedAt but live lock PID and fresh iteration-status.json) reports RUNNING, not PAUSED",
         "A genuinely dead loop (dead lock PID, stale iteration-status) still reports PAUSED",
@@ -550,7 +550,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Add `rauf loop run --create-branch` + actionable refuse message",
-      "description": "packages/loop/src/git-status.ts checkLoopPreconditions refuses on the default branch / dirty tree with only generic advice, so reaching a runnable state is manual. In packages/cli/src/loop-commands.ts handleLoopRun (mirror in handleLoopStart):\n1. Parse --create-branch <name> (extractStringFlag). When set and not already on that branch, switch via execGit(projectPath, ['switch','-c',name]) (packages/loop/src/git-exec.ts) BEFORE checkLoopPreconditions; fail cleanly if the branch exists or the switch errors.\n2. When checkLoopPreconditions refuses, print exact copy-pasteable remediation: the `git switch -c <branch>` command, the `--seed-backlog` step (item 028), and the `--force` escape \u2014 replacing the generic 'commit or stash' line.\nKeep --force behavior intact.",
+      "description": "packages/loop/src/git-status.ts checkLoopPreconditions refuses on the default branch / dirty tree with only generic advice, so reaching a runnable state is manual. In packages/cli/src/loop-commands.ts handleLoopRun (mirror in handleLoopStart):\n1. Parse --create-branch <name> (extractStringFlag). When set and not already on that branch, switch via execGit(projectPath, ['switch','-c',name]) (packages/loop/src/git-exec.ts) BEFORE checkLoopPreconditions; fail cleanly if the branch exists or the switch errors.\n2. When checkLoopPreconditions refuses, print exact copy-pasteable remediation: the `git switch -c <branch>` command, the `--seed-backlog` step (item 028), and the `--force` escape — replacing the generic 'commit or stash' line.\nKeep --force behavior intact.",
       "acceptanceCriteria": [
         "rauf loop run . --create-branch feat/x switches to a new branch before the precondition check and starts cleanly",
         "The precondition refusal prints exact commands to fix it (branch + seed + --force)",
@@ -588,7 +588,7 @@
       "type": "feature",
       "priority": 3,
       "title": "Add `rauf loop run --seed-backlog` to auto-commit the backlog",
-      "description": "backlog.json is git-tracked (correctly \u2014 its status changes are meaningful), so an uncommitted freshly-authored backlog gets swept into item 001's commit when the loop marks the first item in_progress. Add a --seed-backlog flag to handleLoopRun (packages/cli/src/loop-commands.ts): when set, before checkLoopPreconditions, run `git status --porcelain` via execGit; if the ONLY dirty paths are the resolved rauf backlog file(s) (paths.backlog and its .bak) plus other .rauf bookkeeping, stage and commit them as `[rauf] backlog: seed <project>`; if ANY other file is dirty, do NOT auto-commit \u2014 refuse and list the other dirty files. Reuse execGit and the exclude-pathspec approach from packages/loop/src/runner.ts revertAbandonedWork to decide 'only backlog dirty'. Do NOT add backlog.json to RUNTIME_EXCLUDE_PATHSPECS (would break progress tracking).",
+      "description": "backlog.json is git-tracked (correctly — its status changes are meaningful), so an uncommitted freshly-authored backlog gets swept into item 001's commit when the loop marks the first item in_progress. Add a --seed-backlog flag to handleLoopRun (packages/cli/src/loop-commands.ts): when set, before checkLoopPreconditions, run `git status --porcelain` via execGit; if the ONLY dirty paths are the resolved rauf backlog file(s) (paths.backlog and its .bak) plus other .rauf bookkeeping, stage and commit them as `[rauf] backlog: seed <project>`; if ANY other file is dirty, do NOT auto-commit — refuse and list the other dirty files. Reuse execGit and the exclude-pathspec approach from packages/loop/src/runner.ts revertAbandonedWork to decide 'only backlog dirty'. Do NOT add backlog.json to RUNTIME_EXCLUDE_PATHSPECS (would break progress tracking).",
       "acceptanceCriteria": [
         "rauf loop run . --seed-backlog commits an otherwise-clean tree's backlog file(s) as [rauf] backlog: seed <project> before the precondition check",
         "When non-backlog files are dirty, --seed-backlog refuses and lists them (no auto-commit)",
@@ -609,7 +609,7 @@
       "type": "chore",
       "priority": 3,
       "title": "Make usage-preflight diagnostics specific + document the fallback",
-      "description": "packages/loop/src/runner.ts runUsagePreflight logs a vague 'OAuth token unavailable, skipping usage preflight' when readClaudeOAuthToken fails, hiding WHY (FILE_NOT_FOUND vs malformed vs validation) and that protection is degraded. No behavior change \u2014 reactive banner detection (items 005/006) still covers it.\n1. When readClaudeOAuthToken fails, log the specific error code+message and a one-line remediation hint (token = ~/.config/claude-code/credentials.json -> claudeAiOauth.accessToken; ensure Claude Code is authenticated), plus 'relying on reactive banner detection'.\n2. Add a runUsagePreflight degradation test (mock readClaudeOAuthToken failing -> asserts the specific diagnostic is logged and the loop continues).\n3. Document the OAuth token source + reactive fallback in docs/SPEC-CORE.md.",
+      "description": "packages/loop/src/runner.ts runUsagePreflight logs a vague 'OAuth token unavailable, skipping usage preflight' when readClaudeOAuthToken fails, hiding WHY (FILE_NOT_FOUND vs malformed vs validation) and that protection is degraded. No behavior change — reactive banner detection (items 005/006) still covers it.\n1. When readClaudeOAuthToken fails, log the specific error code+message and a one-line remediation hint (token = ~/.config/claude-code/credentials.json -> claudeAiOauth.accessToken; ensure Claude Code is authenticated), plus 'relying on reactive banner detection'.\n2. Add a runUsagePreflight degradation test (mock readClaudeOAuthToken failing -> asserts the specific diagnostic is logged and the loop continues).\n3. Document the OAuth token source + reactive fallback in docs/SPEC-CORE.md.",
       "acceptanceCriteria": [
         "A failed token read logs the specific cause (code: message) + remediation hint + 'relying on reactive banner detection'",
         "runUsagePreflight still returns continue (no behavior change) when the token is unavailable",
@@ -622,17 +622,17 @@
       "dependsOn": [],
       "notes": "From feedback #2 F9 / dogfooding. The credentials path + format are in packages/core/src/config.ts readClaudeOAuthToken. Files: runner.ts, docs/SPEC-CORE.md.",
       "estimatedIterations": 1,
+      "model": "claude-sonnet-4-6",
       "specReferences": [
         "docs/SPEC-CORE.md"
-      ],
-      "model": "claude-sonnet-4-6"
+      ]
     },
     {
       "id": "030",
       "type": "test",
       "priority": 3,
       "title": "Add a reset -> validate chained test",
-      "description": "A Codex-review acceptance criterion ('rauf backlog validate still passes after reset') has no explicit test. Reset mutates backlog.json (clears deferred flags, requeues to pending, in_progress->pending); a regression could leave it schema-invalid undetected. Add a test in packages/cli/src/reset-commands.test.ts: build a mixed backlog (deferred:true blocked / in_progress / done / genuine blocked), run handleReset, then run handleBacklogValidate and assert it returns ExitCode.SUCCESS. Reuse the file's existing createProject / item / makeCtx helpers and import handleBacklogValidate from backlog-commands. Test-only \u2014 do not modify reset logic unless the test reveals a real bug (then STOP and signal).",
+      "description": "A Codex-review acceptance criterion ('rauf backlog validate still passes after reset') has no explicit test. Reset mutates backlog.json (clears deferred flags, requeues to pending, in_progress->pending); a regression could leave it schema-invalid undetected. Add a test in packages/cli/src/reset-commands.test.ts: build a mixed backlog (deferred:true blocked / in_progress / done / genuine blocked), run handleReset, then run handleBacklogValidate and assert it returns ExitCode.SUCCESS. Reuse the file's existing createProject / item / makeCtx helpers and import handleBacklogValidate from backlog-commands. Test-only — do not modify reset logic unless the test reveals a real bug (then STOP and signal).",
       "acceptanceCriteria": [
         "reset-commands.test.ts has a test chaining handleReset -> handleBacklogValidate over a mixed backlog",
         "The test asserts validate returns SUCCESS (backlog stays schema-valid after reset)",
@@ -652,7 +652,7 @@
       "type": "chore",
       "priority": 3,
       "title": "Docs catch-up: baseCommitHash, new flags, semantics, migration note",
-      "description": "Several merged/new behaviors are undocumented because item 015's docs pass predated items 016-020. Update docs/{SCHEMAS,SPEC-CORE,SPEC-CLI,ARCHITECTURE}.md:\n1. SCHEMAS.md: LoopState.baseCommitHash.\n2. SPEC-CORE.md + ARCHITECTURE.md: commit reconciliation is bounded to <baseCommitHash>..HEAD (the sinceRef param of findItemCommit) and WHY \u2014 rauf restarts ids at 001, so an unbounded search would false-recover a prior cycle's [rauf] <id>: commit (item 018).\n3. SPEC-CLI.md: the new flags --create-branch / --seed-backlog / --ndjson (026/028/027) and the --help behavior (023); maxIterations precedence + source logging (024); the loop-aware server stop/restart refusal (021); rauf resume --recover (022).\n4. ARCHITECTURE.md / SPEC-CLI.md: `loop run` (in-process) is the unattended-safe mode, and the per-run iteration counter resets each restart (maxIterations bounds one process run, not total work \u2014 F8).\n5. An existing-install migration note: `git rm --cached .rauf/state.json` for projects installed before the gitignore deployment (item 014) \u2014 F4.\nCross-check every name/flag against packages/core/src/schemas.ts and the CLI handlers.",
+      "description": "Several merged/new behaviors are undocumented because item 015's docs pass predated items 016-020. Update docs/{SCHEMAS,SPEC-CORE,SPEC-CLI,ARCHITECTURE}.md:\n1. SCHEMAS.md: LoopState.baseCommitHash.\n2. SPEC-CORE.md + ARCHITECTURE.md: commit reconciliation is bounded to <baseCommitHash>..HEAD (the sinceRef param of findItemCommit) and WHY — rauf restarts ids at 001, so an unbounded search would false-recover a prior cycle's [rauf] <id>: commit (item 018).\n3. SPEC-CLI.md: the new flags --create-branch / --seed-backlog / --ndjson (026/028/027) and the --help behavior (023); maxIterations precedence + source logging (024); the loop-aware server stop/restart refusal (021); rauf resume --recover (022).\n4. ARCHITECTURE.md / SPEC-CLI.md: `loop run` (in-process) is the unattended-safe mode, and the per-run iteration counter resets each restart (maxIterations bounds one process run, not total work — F8).\n5. An existing-install migration note: `git rm --cached .rauf/state.json` for projects installed before the gitignore deployment (item 014) — F4.\nCross-check every name/flag against packages/core/src/schemas.ts and the CLI handlers.",
       "acceptanceCriteria": [
         "baseCommitHash and bounded reconciliation (sinceRef + the ids-restart rationale) are documented in SCHEMAS/SPEC-CORE/ARCHITECTURE",
         "SPEC-CLI documents --create-branch/--seed-backlog/--ndjson/--help, maxIterations precedence+source, server stop/restart refusal, and resume --recover",
@@ -670,13 +670,13 @@
       ],
       "notes": "From dogfooding + feedback #2 (F8, F4) + Codex review. Do this after 021/022/024 land so docs match. Files: docs/{SCHEMAS,SPEC-CORE,SPEC-CLI,ARCHITECTURE}.md.",
       "estimatedIterations": 1,
+      "model": "claude-sonnet-4-6",
       "specReferences": [
         "docs/SCHEMAS.md",
         "docs/SPEC-CORE.md",
         "docs/SPEC-CLI.md",
         "docs/ARCHITECTURE.md"
-      ],
-      "model": "claude-sonnet-4-6"
+      ]
     }
   ]
 }

@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import * as http from "node:http";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
@@ -7,8 +8,8 @@ import type { LoopEvent } from "@rauf/core";
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
-import { formatAndPrintEvent } from "./loop-commands.js";
-import { SERVER_STATE_FILE } from "./server-commands.js";
+import { formatAndPrintEvent, ensureServerRunning } from "./loop-commands.js";
+import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -428,4 +429,71 @@ describe("path resolution", () => {
       output.stderr.includes("Failed to connect");
     expect(stderrHasExpectedError).toBe(true);
   });
+});
+
+describe("ensureServerRunning", () => {
+  let savedState: string | null = null;
+
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    removeServerState();
+  });
+
+  afterEach(() => {
+    removeServerState();
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
+  });
+
+  /** Start a throwaway server answering GET /api/health like a live rauf server. */
+  async function startHealthyServer(): Promise<{ port: number; close: () => Promise<void> }> {
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    return {
+      port,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  it("no-ops (does not restart) when a healthy server is already running", async () => {
+    const { port, close } = await startHealthyServer();
+    try {
+      // Alive PID (our own) + a live health endpoint → already running.
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+
+      const output = await captureOutput(async () => {
+        const ready = await ensureServerRunning(makeCtx());
+        expect(ready).toBe(true);
+      });
+
+      // It must NOT have attempted to (re)start the daemon.
+      expect(output.stdout).not.toContain("Starting daemon");
+      // State file is untouched (no new PID written).
+      expect(readState().pid).toBe(process.pid);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  function readState(): { pid: number } {
+    return JSON.parse(fs.readFileSync(SERVER_STATE_FILE, "utf-8")) as { pid: number };
+  }
 });

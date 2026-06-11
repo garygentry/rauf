@@ -71,6 +71,25 @@ function deriveDefaultMaxIterations(projectPath: string, backlogRoot?: string): 
 
 const SSE_HEARTBEAT_MS = 15_000;
 
+// ─── createLoopsRouter ───────────────────────────────────────────
+//
+// GET /api/loops → list every in-flight loop across all projects.
+//
+// Read-only; mounted at the top level (not under a project id) so the
+// CLI can ask "is anything running anywhere?" before a server-wide
+// stop/restart, which would otherwise cancel every project's loop.
+
+export function createLoopsRouter(): Hono {
+  const router = new Hono();
+
+  router.get("/", (c) => {
+    const manager = getLoopManager();
+    return c.json({ data: { loops: manager.listActive() } });
+  });
+
+  return router;
+}
+
 // ─── createLoopRouter ────────────────────────────────────────────
 
 export function createLoopRouter(rootDirectoryOverride?: string): Hono {

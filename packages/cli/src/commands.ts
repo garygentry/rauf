@@ -111,8 +111,18 @@ export const COMMANDS: CommandDef[] = [
     usage: "rauf server <subcommand>",
     subcommands: [
       { name: "start", description: "Start the web server", handler: handleServerStart },
-      { name: "stop", description: "Stop the web server", handler: handleServerStop },
-      { name: "restart", description: "Restart the web server", handler: handleServerRestart },
+      {
+        name: "stop",
+        description: "Stop the web server",
+        usage: "rauf server stop [--force]",
+        handler: handleServerStop,
+      },
+      {
+        name: "restart",
+        description: "Restart the web server",
+        usage: "rauf server restart [--force]",
+        handler: handleServerRestart,
+      },
       { name: "status", description: "Show server status", handler: handleServerStatus },
       { name: "logs", description: "View server logs", handler: handleServerLogs },
     ],

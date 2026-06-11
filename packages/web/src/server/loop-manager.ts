@@ -168,6 +168,17 @@ export class LoopManager {
   }
 
   /**
+   * List all in-flight loops with their project paths. Used by the
+   * GET /api/loops route so destructive server ops (stop/restart) can
+   * refuse to cancel work that's actively running.
+   */
+  listActive(): { projectPath: string }[] {
+    return Array.from(this.activeLoops.values(), (active) => ({
+      projectPath: active.projectPath,
+    }));
+  }
+
+  /**
    * Recover stale loops on server startup.
    * Scans all discovered projects and resets any stale in_progress items.
    */

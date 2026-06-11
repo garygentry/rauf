@@ -100,8 +100,14 @@ function isServerRunning(): boolean {
   return state !== null && isProcessAlive(state.pid);
 }
 
-/** Auto-start server daemon if not running. Returns true if server is ready. */
-async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
+/**
+ * Auto-start server daemon if not running. Returns true if server is ready.
+ *
+ * No-ops when a healthy server is already running: it never restarts a live
+ * server (restarting would cancel every project's in-flight loop). Exported
+ * for testing this contract.
+ */
+export async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
   if (isServerRunning()) {
     // Verify health endpoint actually responds
     const port = getPort();
@@ -213,6 +219,12 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
         outputJson(data);
       } else {
         success(`Loop started for ${c.cyan(id)}`);
+        info(
+          c.dim(
+            `Note: a ${c.cyan("rauf server stop")}/${c.cyan("restart")} interrupts this loop. ` +
+              `Use ${c.cyan("rauf loop run")} for the unattended-safe (in-process) mode.`,
+          ),
+        );
       }
 
       if (follow) {

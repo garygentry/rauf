@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { VERSION, readToolConfig, resolveRootDirectory, discoverProjects } from "@rauf/core";
 import { createProjectsRouter } from "./routes/projects.js";
 import { createStatusRouter } from "./routes/status.js";
-import { createLoopRouter } from "./routes/loop.js";
+import { createLoopRouter, createLoopsRouter } from "./routes/loop.js";
 import { createProfileRouter, createConfigRouter } from "./routes/profile-config.js";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -99,6 +99,10 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
   // ── Loop routes ─────────────────────────────────────────────
 
   app.route("/api/projects", createLoopRouter(appOptions.rootDirectory));
+
+  // ── Active-loops list route (server-wide, not per project) ────
+
+  app.route("/api/loops", createLoopsRouter());
 
   // ── Profile routes ────────────────────────────────────────────
 
