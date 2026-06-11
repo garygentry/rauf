@@ -497,6 +497,7 @@ describe("deriveStatus — BacklogSummary", () => {
       inProgress: 1,
       blocked: 1,
       needsHuman: 0,
+      deferred: 0,
       done: 2,
       total: 6,
     });
@@ -525,6 +526,34 @@ describe("deriveStatus — BacklogSummary", () => {
     expect(result.value.backlogSummary.needsHuman).toBe(1);
   });
 
+  it("counts deferred (runner false-block) as a subset of blocked", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", status: "blocked", blockedReason: "agent said RAUF_BLOCKED" }),
+      makeItem({
+        id: "002",
+        status: "blocked",
+        blockedReason: "No signal after N attempts (deferred by runner)",
+        deferred: true,
+      }),
+      makeItem({
+        id: "003",
+        status: "blocked",
+        blockedReason: "another deferral",
+        deferred: true,
+      }),
+    ]);
+    writeBacklog(backlog);
+    writeStateJson(makeLoopState());
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // All three are blocked-status; only the two flagged ones are deferred.
+    expect(result.value.backlogSummary.blocked).toBe(3);
+    expect(result.value.backlogSummary.deferred).toBe(2);
+  });
+
   it("populates backlogSummary with correct counts from log-parsing path", () => {
     const backlog = makeBacklog([
       makeItem({ id: "001", status: "done", completedAt: "2026-01-01" }),
@@ -542,6 +571,7 @@ describe("deriveStatus — BacklogSummary", () => {
       inProgress: 0,
       blocked: 0,
       needsHuman: 0,
+      deferred: 0,
       done: 1,
       total: 2,
     });
@@ -574,6 +604,70 @@ describe("deriveStatus — BacklogSummary", () => {
     if (!result.ok) return;
 
     expect(result.value.backlogSummary.total).toBe(0);
+  });
+});
+
+// ─── deriveStatus: lock summary ──────────────────────────────────
+
+describe("deriveStatus — lock summary", () => {
+  /** Write a .loop.lock with the given content */
+  function writeLock(content: object): void {
+    createRaufDir();
+    const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOCK_FILENAME);
+    fs.writeFileSync(filePath, JSON.stringify(content, null, 2) + "\n");
+  }
+
+  it("reports lock absent when no .loop.lock exists", () => {
+    writeBacklog(makeBacklog());
+    writeStateJson(makeLoopState());
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.lock).toEqual({
+      present: false,
+      pid: null,
+      startedAt: null,
+      alive: false,
+      stale: false,
+    });
+  });
+
+  it("reports lock alive for the current (live) process PID", () => {
+    writeBacklog(makeBacklog());
+    writeStateJson(makeLoopState());
+    writeLock({
+      pid: process.pid,
+      startedAt: "2026-06-11T00:00:00.000Z",
+      processStartTime: null,
+    });
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.lock?.present).toBe(true);
+    expect(result.value.lock?.pid).toBe(process.pid);
+    expect(result.value.lock?.alive).toBe(true);
+    expect(result.value.lock?.stale).toBe(false);
+    expect(result.value.lock?.startedAt).toBe("2026-06-11T00:00:00.000Z");
+  });
+
+  it("reports lock stale for a dead PID", () => {
+    writeBacklog(makeBacklog());
+    writeStateJson(makeLoopState());
+    // 2147483646 — a PID that is effectively guaranteed not to be running.
+    writeLock({ pid: 2147483646, startedAt: "2026-06-11T00:00:00.000Z", processStartTime: null });
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.lock?.present).toBe(true);
+    expect(result.value.lock?.pid).toBe(2147483646);
+    expect(result.value.lock?.alive).toBe(false);
+    expect(result.value.lock?.stale).toBe(true);
   });
 });
 

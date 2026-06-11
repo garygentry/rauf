@@ -351,6 +351,128 @@ describe("handleStatus", () => {
     expect(parsed.backlogSummary.total).toBe(2);
   });
 
+  it("includes lock liveness and deferred count in --json output", async () => {
+    const projectDir = path.join(tmpDir, "lock-json-project");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir, [
+      {
+        id: "001",
+        type: "feature",
+        priority: 1,
+        title: "Genuine block",
+        description: "desc",
+        status: "blocked",
+        completedAt: null,
+        blockedReason: "agent said RAUF_BLOCKED",
+        acceptanceCriteria: ["x"],
+      },
+      {
+        id: "002",
+        type: "feature",
+        priority: 2,
+        title: "Runner deferral",
+        description: "desc",
+        status: "blocked",
+        completedAt: null,
+        deferred: true,
+        blockedReason: "No signal after N attempts (deferred by runner)",
+        acceptanceCriteria: ["x"],
+      },
+    ]);
+    createStateJson(raufDir, { status: "running" });
+    // Live lock held by this very process.
+    fs.writeFileSync(
+      path.join(raufDir, ".loop.lock"),
+      JSON.stringify(
+        { pid: process.pid, startedAt: new Date().toISOString(), processStartTime: null },
+        null,
+        2,
+      ),
+    );
+
+    let output = "";
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+
+    const ctx = makeCtx([projectDir], {}, { json: true, quiet: false });
+    configureOutput({ noColor: true, quiet: false, json: true });
+    await handleStatus(ctx);
+
+    process.stdout.write = origWrite;
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    const parsed = JSON.parse(output);
+    expect(parsed.lock).toMatchObject({
+      present: true,
+      pid: process.pid,
+      alive: true,
+      stale: false,
+    });
+    expect(parsed.backlogSummary.blocked).toBe(2);
+    expect(parsed.backlogSummary.deferred).toBe(1);
+  });
+
+  it("shows lock liveness and blocked/deferred split in text output", async () => {
+    const projectDir = path.join(tmpDir, "lock-text-project");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir, [
+      {
+        id: "001",
+        type: "feature",
+        priority: 1,
+        title: "Genuine block",
+        description: "desc",
+        status: "blocked",
+        completedAt: null,
+        blockedReason: "agent said RAUF_BLOCKED",
+        acceptanceCriteria: ["x"],
+      },
+      {
+        id: "002",
+        type: "feature",
+        priority: 2,
+        title: "Runner deferral",
+        description: "desc",
+        status: "blocked",
+        completedAt: null,
+        deferred: true,
+        blockedReason: "No signal after N attempts (deferred by runner)",
+        acceptanceCriteria: ["x"],
+      },
+    ]);
+    createStateJson(raufDir, { status: "running" });
+    fs.writeFileSync(
+      path.join(raufDir, ".loop.lock"),
+      JSON.stringify(
+        { pid: process.pid, startedAt: new Date().toISOString(), processStartTime: null },
+        null,
+        2,
+      ),
+    );
+
+    let output = "";
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+
+    const ctx = makeCtx([projectDir], {}, { json: false, quiet: false });
+    configureOutput({ noColor: true, quiet: false, json: false });
+    await handleStatus(ctx);
+
+    process.stdout.write = origWrite;
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    expect(output).toMatch(new RegExp(`Lock:\\s+PID ${process.pid} \\(alive\\)`));
+    // Genuine blocked = blocked(2) - deferred(1) = 1; Deferred = 1.
+    expect(output).toMatch(/Blocked:\s+1/);
+    expect(output).toMatch(/Deferred:\s+1/);
+  });
+
   it("handles stale running state (>5min) as PAUSED", async () => {
     const projectDir = path.join(tmpDir, "stale-project");
     const raufDir = createRaufProject(projectDir);

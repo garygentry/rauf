@@ -289,8 +289,8 @@
         "--json output includes the new fields; existing status exit codes unchanged",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T09:16:03.290Z",
       "dependsOn": [
         "004"
       ],

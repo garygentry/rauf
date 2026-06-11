@@ -224,11 +224,31 @@ export const LoopStateEnumSchema = z.enum([
 export const BacklogSummarySchema = z.object({
   pending: z.number().int().nonnegative(),
   inProgress: z.number().int().nonnegative(),
+  /** Every item with status `blocked` — includes both genuine blocks and runner-deferred ones. */
   blocked: z.number().int().nonnegative(),
   /** Subset of `blocked` that is blocked on a human decision (needsHuman flag). */
   needsHuman: z.number().int().nonnegative().optional(),
+  /** Subset of `blocked` the runner gave up on (deferred flag — a "false block"). */
+  deferred: z.number().int().nonnegative().optional(),
   done: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
+});
+
+/**
+ * Liveness of a backlog root's `.loop.lock`, as surfaced in DerivedStatus.
+ * Derived from core's `checkLock` — never reimplements PID checks.
+ */
+export const LockSummarySchema = z.object({
+  /** Whether a lock file is present on disk. */
+  present: z.boolean(),
+  /** PID recorded in the lock file, if any. */
+  pid: z.number().int().nullable(),
+  /** ISO timestamp the lock was acquired, if recorded. */
+  startedAt: z.string().nullable(),
+  /** A live process still holds the lock (present, not stale). */
+  alive: z.boolean(),
+  /** The lock is stale — its PID is dead, recycled, or unreadable. */
+  stale: z.boolean(),
 });
 
 export const DerivedStatusSchema = z.object({
@@ -241,6 +261,8 @@ export const DerivedStatusSchema = z.object({
   startedAt: z.string().nullable(),
   elapsed: z.number().nullable(),
   backlogSummary: BacklogSummarySchema,
+  /** Lock-file liveness for this backlog root (present/alive/stale + PID). */
+  lock: LockSummarySchema.optional(),
   sleepUntil: z.string().nullable().optional(),
 });
 
@@ -593,6 +615,7 @@ export type ToolConfigTheme = z.infer<typeof ToolConfigThemeSchema>;
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 export type LoopStateEnum = z.infer<typeof LoopStateEnumSchema>;
 export type BacklogSummary = z.infer<typeof BacklogSummarySchema>;
+export type LockSummary = z.infer<typeof LockSummarySchema>;
 export type DerivedStatus = z.infer<typeof DerivedStatusSchema>;
 export type DiscoveredProject = z.infer<typeof DiscoveredProjectSchema>;
 export type InstallAction = z.infer<typeof InstallActionSchema>;
