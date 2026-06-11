@@ -17,13 +17,17 @@ mkdir -p "$DOCS_CONTENT"
 # Relative path from packages/docs/src/content/docs/ to repo root is ../../../../../
 REL="../../../../.."
 
-# Symlink spec and architecture docs (relative paths for portability)
-ln -sf "$REL/docs/ARCHITECTURE.md"   "$DOCS_CONTENT/architecture.md"
-ln -sf "$REL/docs/SCHEMAS.md"        "$DOCS_CONTENT/schemas.md"
-ln -sf "$REL/docs/SPEC-CORE.md"      "$DOCS_CONTENT/spec-core.md"
-ln -sf "$REL/docs/SPEC-CLI.md"       "$DOCS_CONTENT/spec-cli.md"
-ln -sf "$REL/docs/SPEC-WEB.md"       "$DOCS_CONTENT/spec-web.md"
-ln -sf "$REL/docs/SPEC-ARTIFACTS.md" "$DOCS_CONTENT/spec-artifacts.md"
+# Symlink spec and architecture docs (relative paths for portability).
+# Must stay in sync with the Starlight sidebar in astro.config.mjs — every
+# sidebar slug needs a matching page here.
+ln -sf "$REL/docs/ARCHITECTURE.md"               "$DOCS_CONTENT/architecture.md"
+ln -sf "$REL/docs/SCHEMAS.md"                    "$DOCS_CONTENT/schemas.md"
+ln -sf "$REL/docs/CLAUDE-CODE-TASKS.md"          "$DOCS_CONTENT/claude-code-tasks.md"
+ln -sf "$REL/docs/SPEC-BACKLOG-TOOL-CONTRACT.md" "$DOCS_CONTENT/spec-backlog-tool-contract.md"
+ln -sf "$REL/docs/SPEC-CORE.md"                  "$DOCS_CONTENT/spec-core.md"
+ln -sf "$REL/docs/SPEC-CLI.md"                   "$DOCS_CONTENT/spec-cli.md"
+ln -sf "$REL/docs/SPEC-WEB.md"                   "$DOCS_CONTENT/spec-web.md"
+ln -sf "$REL/docs/SPEC-ARTIFACTS.md"             "$DOCS_CONTENT/spec-artifacts.md"
 
 # Symlink contributing guide from repo root
 ln -sf "$REL/CONTRIBUTING.md"        "$DOCS_CONTENT/contributing.md"
@@ -32,10 +36,13 @@ ln -sf "$REL/CONTRIBUTING.md"        "$DOCS_CONTENT/contributing.md"
 # pipeline can resolve relative paths (e.g. "images/architecture.svg" in markdown).
 # This keeps the same relative path working on both GitHub and Starlight.
 # Note: images/ is one level deeper than $DOCS_CONTENT, so we need an extra ../
+# Use -n (--no-dereference) so re-running replaces an existing dir symlink in
+# place instead of dereferencing it and nesting a link inside the target dir
+# (e.g. docs/images/screenshots/screenshots).
 mkdir -p "$DOCS_CONTENT/images"
-ln -sf "../$REL/docs/images/architecture.svg" "$DOCS_CONTENT/images/architecture.svg"
-ln -sf "../$REL/docs/images/rauf-loop.png"    "$DOCS_CONTENT/images/rauf-loop.png"
-ln -sf "../$REL/docs/images/screenshots"      "$DOCS_CONTENT/images/screenshots"
+ln -sfn "../$REL/docs/images/architecture.svg" "$DOCS_CONTENT/images/architecture.svg"
+ln -sfn "../$REL/docs/images/rauf-loop.png"    "$DOCS_CONTENT/images/rauf-loop.png"
+ln -sfn "../$REL/docs/images/screenshots"      "$DOCS_CONTENT/images/screenshots"
 
 # Clear Astro's content cache to ensure clean builds after symlink changes
 rm -rf "$REPO_ROOT/packages/docs/.astro" "$REPO_ROOT/packages/docs/node_modules/.astro"
