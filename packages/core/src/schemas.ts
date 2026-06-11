@@ -192,6 +192,15 @@ export const LoopStateSchema = z.object({
   deferredItems: z.array(z.string()).default([]),
   error: z.string().nullable(),
   sleepUntil: z.string().nullable().optional(),
+  /**
+   * HEAD commit hash captured at loop start, used as the baseline (`sinceRef`)
+   * for commit reconciliation so only commits made during THIS run can recover
+   * an item. Prevents a stale `[rauf] <id>:` commit from a prior backlog cycle
+   * (rauf restarts ids at 001 every backlog) from falsely promoting a fresh
+   * item. Optional-with-default so existing state.json predating this field
+   * still parses (missing → null).
+   */
+  baseCommitHash: z.string().nullable().default(null),
 });
 
 // ─── ToolConfig (~/.rauf/config.json) ─────────────────────────────

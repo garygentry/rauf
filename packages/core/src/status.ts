@@ -420,14 +420,16 @@ export function watchLog(paths: BacklogPaths, callback: (lines: string[]) => voi
 
 export function writeLoopState(
   paths: BacklogPaths,
-  state: Omit<LoopState, "updatedAt" | "deferredItems"> & {
+  state: Omit<LoopState, "updatedAt" | "deferredItems" | "baseCommitHash"> & {
     updatedAt?: string;
     deferredItems?: string[];
+    baseCommitHash?: string | null;
   },
 ): Result<void> {
   const stateWithTimestamp: LoopState = {
     ...state,
     deferredItems: state.deferredItems ?? [],
+    baseCommitHash: state.baseCommitHash ?? null,
     updatedAt: new Date().toISOString(),
   };
 

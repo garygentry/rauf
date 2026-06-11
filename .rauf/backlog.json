@@ -402,8 +402,8 @@
         "Tests cover stale-commit-no-recovery and post-baseline recovery",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T13:57:06.033Z",
       "dependsOn": [
         "017"
       ],

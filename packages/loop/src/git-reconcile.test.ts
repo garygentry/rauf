@@ -124,6 +124,53 @@ describe("git-reconcile", () => {
         fs.rmSync(nonGitDir, { recursive: true, force: true });
       }
     });
+
+    describe("with sinceRef (run baseline)", () => {
+      it("does NOT match a stale [rauf] <id>: commit before the baseline", async () => {
+        // A prior backlog cycle committed item 001…
+        commit(tmpDir, "old.txt", "old", "[rauf] 001: stale from a prior cycle");
+        // …then the new run starts here (its baseline), with no work yet for 001.
+        const baseline = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        commit(tmpDir, "unrelated.txt", "x", "[rauf] 002: some other item this run");
+
+        const result = await findItemCommit(tmpDir, "001", baseline);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value).toBeNull();
+        }
+      });
+
+      it("matches a commit made after the baseline", async () => {
+        commit(tmpDir, "old.txt", "old", "[rauf] 001: stale from a prior cycle");
+        const baseline = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        // This run actually re-did 001 and committed it after the baseline.
+        commit(tmpDir, "new.txt", "new", "[rauf] 001: done this run");
+        const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+
+        const result = await findItemCommit(tmpDir, "001", baseline);
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value).not.toBeNull();
+          // The post-baseline commit, NOT the stale one.
+          expect(result.value?.commitHash).toBe(head);
+        }
+      });
+
+      it("falls back to an unbounded search when sinceRef is omitted", async () => {
+        commit(tmpDir, "old.txt", "old", "[rauf] 001: stale from a prior cycle");
+        const stale = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        commit(tmpDir, "unrelated.txt", "x", "[rauf] 002: some other item this run");
+
+        const result = await findItemCommit(tmpDir, "001");
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value?.commitHash).toBe(stale);
+        }
+      });
+    });
   });
 
   describe("isTreeClean", () => {

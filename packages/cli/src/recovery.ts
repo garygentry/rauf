@@ -19,6 +19,7 @@ import * as fs from "node:fs";
 import {
   readBacklog,
   writeBacklog,
+  readJsonFile,
   checkLock,
   releaseLock,
   resetStalledItems,
@@ -27,6 +28,7 @@ import {
   ok,
   err,
   ErrorCodes,
+  LoopStateSchema,
   type BacklogPaths,
   type Result,
 } from "@rauf/core";
@@ -73,12 +75,27 @@ export interface ReconcileSummary {
  * Commit promotion is gated on a clean working tree because an uncommitted work
  * tree means the item's changes have NOT all landed — marking it done would lose
  * work. Requeue and block-reporting are independent of tree state and always run.
+ *
+ * Commit reconciliation is bounded to the run baseline (`baseCommitHash` from
+ * state.json) so only commits made during the interrupted run can recover an
+ * item — a stale `[rauf] <id>:` commit from a prior backlog cycle (rauf restarts
+ * ids at 001 each backlog) is excluded. When state.json carries no baseline (an
+ * old pre-baseline state, or none at all), genuine agent blocks (status
+ * `blocked`, not `deferred`) are NOT auto-promoted via commit, since an unbounded
+ * search could falsely mark a real block done; pending/deferred items still
+ * reconcile so legitimately-landed work is recovered.
  */
 export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<ReconcileSummary>> {
   const backlogResult = readBacklog(paths);
   if (!backlogResult.ok) return backlogResult;
   const backlog = backlogResult.value;
   const projectPath = paths.projectPath;
+
+  // Run baseline for commit reconciliation: only commits after this hash can
+  // recover an item. Missing (old/absent state.json) → null (unbounded search,
+  // restricted below for genuine blocks).
+  const stateResult = readJsonFile(paths.state, LoopStateSchema);
+  const baseCommitHash = stateResult.ok ? stateResult.value.baseCommitHash : null;
 
   // A clean tree is required before any commit-based promotion: uncommitted
   // changes mean the item's work has not fully landed.
@@ -94,8 +111,13 @@ export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<R
     if (item.status === "done") continue;
 
     // 1. Commit reconciliation — recover work that landed before the loop died.
-    if (treeClean) {
-      const commitResult = await findItemCommit(projectPath, item.id);
+    // Without a run baseline, skip commit-promotion for genuine agent blocks
+    // (status blocked, not deferred): an unbounded history search could promote
+    // a real block on a matching stale commit.
+    const isGenuineBlock = item.status === "blocked" && !item.deferred;
+    const allowCommitPromotion = treeClean && (baseCommitHash !== null || !isGenuineBlock);
+    if (allowCommitPromotion) {
+      const commitResult = await findItemCommit(projectPath, item.id, baseCommitHash ?? undefined);
       if (!commitResult.ok) return commitResult;
       if (commitResult.value) {
         item.status = "done";

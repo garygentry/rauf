@@ -71,6 +71,33 @@ function commitItemWork(projectDir: string, id: string): void {
   git(projectDir, `commit -m "[rauf] ${id}: did the work"`);
 }
 
+/** Current HEAD hash of the project's git repo. */
+function headHash(projectDir: string): string {
+  return execSync("git rev-parse HEAD", { cwd: projectDir, encoding: "utf-8" }).trim();
+}
+
+/** Write a minimal valid state.json carrying the given run baseline. */
+function writeStateBaseline(projectDir: string, baseCommitHash: string | null): void {
+  const state = {
+    status: "error",
+    iteration: 1,
+    maxIterations: 20,
+    currentItem: null,
+    lastSignal: "error",
+    startedAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    completedItems: [],
+    blockedItems: [],
+    deferredItems: [],
+    baseCommitHash,
+    error: null,
+  };
+  fs.writeFileSync(
+    path.join(projectDir, ".rauf", "state.json"),
+    JSON.stringify(state, null, 2) + "\n",
+  );
+}
+
 function readBacklogItems(
   projectDir: string,
 ): Record<string, { status: string; deferred?: boolean }> {
@@ -163,6 +190,66 @@ describe("handleReset — commit reconciliation", () => {
 
     // No commit-promotion; deferred false-block still requeued to pending.
     expect(readBacklogItems(projectDir)["001"]?.status).toBe("pending");
+  });
+});
+
+describe("handleReset — baseline-bounded reconciliation (item 018)", () => {
+  it("does NOT recover a genuine block from a stale pre-baseline commit", async () => {
+    const projectDir = createProject([
+      item("001", "blocked", { blockedReason: "RAUF_BLOCKED: real block" }),
+    ]);
+    // A prior cycle's `[rauf] 001:` commit, then this run's baseline AFTER it.
+    commitItemWork(projectDir, "001");
+    const baseline = headHash(projectDir);
+    writeStateBaseline(projectDir, baseline);
+
+    const code = await handleReset(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.SUCCESS);
+
+    // The stale commit predates the baseline → not recovered; genuine block stays.
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("blocked");
+  });
+
+  it("recovers a genuine block when its commit landed after the baseline", async () => {
+    const projectDir = createProject([
+      item("001", "blocked", { blockedReason: "RAUF_BLOCKED: real block" }),
+    ]);
+    // Baseline is the initial commit; the `[rauf] 001:` commit lands afterward.
+    const baseline = headHash(projectDir);
+    writeStateBaseline(projectDir, baseline);
+    commitItemWork(projectDir, "001");
+
+    const code = await handleReset(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.SUCCESS);
+
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("done");
+  });
+
+  it("does NOT recover a genuine block when state carries no baseline", async () => {
+    const projectDir = createProject([
+      item("001", "blocked", { blockedReason: "RAUF_BLOCKED: real block" }),
+    ]);
+    // A stale `[rauf] 001:` commit exists but there is no run baseline to bound
+    // the search — a genuine block must not be promoted on an unbounded match.
+    commitItemWork(projectDir, "001");
+    // No state.json written → no baseCommitHash.
+
+    const code = await handleReset(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.SUCCESS);
+
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("blocked");
+  });
+
+  it("still recovers a deferred false-block from an unbounded match (no baseline)", async () => {
+    const projectDir = createProject([item("001", "blocked", { deferred: true })]);
+    commitItemWork(projectDir, "001");
+    // No state.json → no baseline; deferred items are not genuine blocks, so the
+    // unbounded fallback still recovers legitimately-landed work.
+
+    const code = await handleReset(makeCtx({ args: [projectDir] }));
+    expect(code).toBe(ExitCode.SUCCESS);
+
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("done");
   });
 });
 

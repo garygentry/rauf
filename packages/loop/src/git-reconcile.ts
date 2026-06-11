@@ -22,22 +22,32 @@ function escapeEre(value: string): string {
  * mid-message does not count. The id itself is ERE-escaped so metacharacters in
  * it are matched literally.
  *
+ * When `sinceRef` is provided, the search is scoped to the `<sinceRef>..HEAD`
+ * commit range so only commits made AFTER that baseline can match. This bounds
+ * reconciliation to the current run and prevents a stale `[rauf] <id>:` commit
+ * from a prior backlog cycle (rauf restarts ids at 001) from matching.
+ *
  * Returns ok with `{ commitHash }` for the newest match, ok with `null` when no
  * commit matches, and err on git failure. Never throws.
  */
 export async function findItemCommit(
   projectPath: string,
   itemId: string,
+  sinceRef?: string,
 ): Promise<Result<{ commitHash: string } | null>> {
   try {
-    const stdout = await execGit(projectPath, [
+    const args = [
       "log",
       "--extended-regexp",
       `--grep=^\\[rauf\\] ${escapeEre(itemId)}:`,
       "--format=%H",
       "-n",
       "1",
-    ]);
+    ];
+    if (sinceRef) {
+      args.push(`${sinceRef}..HEAD`);
+    }
+    const stdout = await execGit(projectPath, args);
     const commitHash = stdout.trim().split("\n")[0]?.trim() ?? "";
     return ok(commitHash ? { commitHash } : null);
   } catch (e) {

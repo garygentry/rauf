@@ -989,7 +989,15 @@ export class LoopRunner extends TypedEventEmitter {
    * the normal block/defer handling). (item 009)
    */
   private async reconcileCommittedWork(item: Backlog["items"][number]): Promise<boolean> {
-    const commitResult = await findItemCommit(this.projectPath, item.id);
+    // Scope the search to commits made during THIS run (baseCommitHash..HEAD)
+    // so a stale `[rauf] <id>:` commit from a prior backlog cycle can't recover
+    // a fresh item (rauf restarts ids at 001 each backlog). When the baseline
+    // is unavailable (not a git repo), fall back to an unscoped search.
+    const commitResult = await findItemCommit(
+      this.projectPath,
+      item.id,
+      this.baseCommitHash ?? undefined,
+    );
     if (!commitResult.ok) {
       appendLog(
         this.paths,
@@ -1117,6 +1125,7 @@ export class LoopRunner extends TypedEventEmitter {
       completedItems: this.completedItemIds,
       blockedItems: this.blockedItemIds,
       deferredItems: this.deferredItemIds,
+      baseCommitHash: this.baseCommitHash,
       error: error ?? null,
     });
   }
