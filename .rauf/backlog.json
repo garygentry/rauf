@@ -16,8 +16,8 @@
         "Existing git-commit behavior and tests are unchanged",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T07:35:50.842Z",
       "dependsOn": [],
       "notes": "Prerequisite for git-reconcile (002) and the reset/resume commands, which all shell out to git. Keep the function body byte-for-byte identical during the move.",
       "estimatedIterations": 1
@@ -38,7 +38,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Reuse execGit (item 001). These helpers back in-loop commit reconciliation (009) and the reset/resume commands (011/012).",
       "estimatedIterations": 1
     },
@@ -79,9 +81,12 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": [],
-      "specReferences": ["docs/SCHEMAS.md", "docs/SPEC-CORE.md"],
       "notes": "Foundational for runner wiring (006), reset (011), and status (013). Avoid a new status enum value for the item itself — a boolean flag keeps VALID_STATUS_TRANSITIONS untouched.",
-      "estimatedIterations": 1
+      "estimatedIterations": 1,
+      "specReferences": [
+        "docs/SCHEMAS.md",
+        "docs/SPEC-CORE.md"
+      ]
     },
     {
       "id": "005",
@@ -99,7 +104,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003"],
+      "dependsOn": [
+        "003"
+      ],
       "notes": "Load-bearing fix: alone it prevents the 24 false blocks (incident reconstructed banner len=64). Here only EXTEND the existing pre-signal usage check; the full none-case dispatch rewrite is item 006.",
       "estimatedIterations": 1
     },
@@ -119,10 +126,16 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "004", "005"],
-      "specReferences": ["plans/review-agent-feedback-on-playful-kahan.md"],
+      "dependsOn": [
+        "003",
+        "004",
+        "005"
+      ],
       "notes": "Depends on the deferred schema (004) and classifier (003). Just MAINTAIN the consecutiveInfraFailures counter here; the breaker that acts on it is item 008.",
-      "estimatedIterations": 2
+      "estimatedIterations": 2,
+      "specReferences": [
+        "plans/review-agent-feedback-on-playful-kahan.md"
+      ]
     },
     {
       "id": "007",
@@ -139,7 +152,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["006"],
+      "dependsOn": [
+        "006"
+      ],
       "notes": "Reset-time parsing only applies when the API token is unavailable (the OAuth path already returns resetsAt). The paused_usage_limit DONE summary is consumed by `rauf resume` (item 012).",
       "estimatedIterations": 1
     },
@@ -158,7 +173,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["006"],
+      "dependsOn": [
+        "006"
+      ],
       "notes": "usage_limited deaths are handled by the usage path (sleep/halt) and must NOT count toward the infra breaker — only no-banner infra_error exits increment it.",
       "estimatedIterations": 1
     },
@@ -178,7 +195,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "006"],
+      "dependsOn": [
+        "002",
+        "006"
+      ],
       "notes": "Use git-reconcile (002) and execGit (001). This single check would have correctly recorded the incident's item 003 as done.",
       "estimatedIterations": 1
     },
@@ -199,9 +219,11 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": [],
-      "specReferences": ["docs/SPEC-CLI.md"],
       "notes": "Combined with item 007 (no-op iterations don't count), this keeps the budget meaningful for long backlogs that straddle a usage reset.",
-      "estimatedIterations": 1
+      "estimatedIterations": 1,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "011",
@@ -219,10 +241,15 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "004"],
-      "specReferences": ["docs/SPEC-CLI.md"],
+      "dependsOn": [
+        "002",
+        "004"
+      ],
       "notes": "Distinguish genuine blocks via the deferred flag (004): deferred=requeue, plain blocked (agent said RAUF_BLOCKED)=keep. Reuse git-reconcile (002) and core lock/reset helpers.",
-      "estimatedIterations": 2
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "012",
@@ -239,10 +266,15 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011", "009"],
-      "specReferences": ["docs/SPEC-CLI.md"],
+      "dependsOn": [
+        "011",
+        "009"
+      ],
       "notes": "Resume = reconcile + requeue-false-blocks + relaunch. Share the reconciliation/requeue helper with item 011 to avoid drift.",
-      "estimatedIterations": 1
+      "estimatedIterations": 1,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "013",
@@ -259,10 +291,14 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["004"],
-      "specReferences": ["docs/SPEC-CLI.md"],
+      "dependsOn": [
+        "004"
+      ],
       "notes": "Reuse lock staleness detection from core — do not reimplement PID checks. The deferred flag comes from item 004.",
-      "estimatedIterations": 1
+      "estimatedIterations": 1,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "014",
@@ -280,10 +316,12 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": [],
-      "specReferences": ["docs/SPEC-ARTIFACTS.md"],
       "notes": "Keep the ignore list in lockstep with RUNTIME_EXCLUDE_PATHSPECS so the two never drift.",
       "estimatedIterations": 1,
-      "model": "claude-sonnet-4-6"
+      "model": "claude-sonnet-4-6",
+      "specReferences": [
+        "docs/SPEC-ARTIFACTS.md"
+      ]
     },
     {
       "id": "015",
@@ -299,7 +337,17 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["004", "006", "007", "008", "009", "010", "011", "012", "013"],
+      "dependsOn": [
+        "004",
+        "006",
+        "007",
+        "008",
+        "009",
+        "010",
+        "011",
+        "012",
+        "013"
+      ],
       "notes": "Do this last so docs match the final code.",
       "estimatedIterations": 1,
       "model": "claude-sonnet-4-6"

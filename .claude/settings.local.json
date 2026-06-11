@@ -37,7 +37,8 @@
       "Bash(echo \"---exit: $?\")",
       "Bash(command -v claude)",
       "Bash(claude --version)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(./scripts/bin/rauf status *)"
     ],
     "additionalDirectories": [
       "/home/gary/workspace/agent-plugins/plugins/feature-forge",
