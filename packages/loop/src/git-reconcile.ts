@@ -4,12 +4,23 @@ import { ok, err, ErrorCodes } from "@rauf/core";
 import { execGit } from "./git-exec.js";
 
 /**
+ * Escapes POSIX extended-regex (ERE) metacharacters so an item id can be
+ * embedded literally in a `git log --extended-regexp --grep` pattern. Backlog
+ * ids are usually numeric, but the schema allows any non-empty string, so an id
+ * containing ERE metacharacters (e.g. `1.0`) must not overmatch or error.
+ */
+function escapeEre(value: string): string {
+  return value.replace(/[.^$*+?()[\]{}|\\]/g, "\\$&");
+}
+
+/**
  * Finds the most recent commit whose message is a rauf per-item commit for the
  * given item id (`[rauf] <id>: <title>`).
  *
  * The grep is anchored with `^\[rauf\] ` and the trailing colon so that id
  * `003` does not match `030` or `0030`, and so a stray mention of `[rauf]`
- * mid-message does not count.
+ * mid-message does not count. The id itself is ERE-escaped so metacharacters in
+ * it are matched literally.
  *
  * Returns ok with `{ commitHash }` for the newest match, ok with `null` when no
  * commit matches, and err on git failure. Never throws.
@@ -22,7 +33,7 @@ export async function findItemCommit(
     const stdout = await execGit(projectPath, [
       "log",
       "--extended-regexp",
-      `--grep=^\\[rauf\\] ${itemId}:`,
+      `--grep=^\\[rauf\\] ${escapeEre(itemId)}:`,
       "--format=%H",
       "-n",
       "1",

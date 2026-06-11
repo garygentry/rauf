@@ -382,8 +382,8 @@
         "git-reconcile.test.ts covers a metacharacter id not overmatching",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T13:48:10.236Z",
       "dependsOn": [],
       "notes": "From Codex review (LOW). Prereq for 018, which extends findItemCommit's signature. Keep the helper returning Result and never throwing.",
       "estimatedIterations": 1

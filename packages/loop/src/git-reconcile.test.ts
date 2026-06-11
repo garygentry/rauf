@@ -67,6 +67,30 @@ describe("git-reconcile", () => {
       }
     });
 
+    it("treats ERE metacharacters in the id literally (1.0 does not match 1x0)", async () => {
+      commit(tmpDir, "a.txt", "a", "[rauf] 1x0: dot-as-wildcard would overmatch this");
+
+      const result = await findItemCommit(tmpDir, "1.0");
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBeNull();
+      }
+    });
+
+    it("matches an id containing ERE metacharacters when present verbatim", async () => {
+      commit(tmpDir, "a.txt", "a", "[rauf] 1.0: literal dotted id");
+
+      const result = await findItemCommit(tmpDir, "1.0");
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).not.toBeNull();
+        const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        expect(result.value?.commitHash).toBe(head);
+      }
+    });
+
     it("does not match when [rauf] is not at the start of the message", async () => {
       commit(tmpDir, "a.txt", "a", "fixup of [rauf] 007: not really a rauf commit");
 
