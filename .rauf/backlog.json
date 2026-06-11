@@ -520,8 +520,8 @@
         "A unit test covers all three precedence sources",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T20:48:45.364Z",
       "dependsOn": [],
       "notes": "From feedback #2 F6 (medium). The marker schema already defines options.maxIterations (packages/core/src/schemas.ts) — it was simply never consulted. Files: loop-commands.ts, routes/loop.ts, profile.ts.",
       "estimatedIterations": 1

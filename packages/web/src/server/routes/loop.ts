@@ -14,11 +14,12 @@ import { z } from "zod";
 import {
   LoopStartOptionsSchema,
   readToolConfig,
+  readMarkerFile,
   resolveRootDirectory,
   resolveBacklogRoot,
   resolveBacklogPaths,
   readBacklog,
-  computeMaxIterations,
+  resolveMaxIterations,
   validatePath,
 } from "@rauf/core";
 
@@ -52,19 +53,34 @@ const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
 
 /**
- * Derive a backlog-sized iteration cap when the caller omits maxIterations.
- * Mirrors the CLI default (computeMaxIterations). Falls back to the flat
- * default when the backlog can't be read or has no pending work.
+ * Resolve maxIterations by the same precedence as the CLI:
+ * request body (flag) > `.rauf.json` options.maxIterations > computed-from-backlog.
+ * Falls back to the flat default when nothing resolves. No logging (server-side).
  */
-function deriveDefaultMaxIterations(projectPath: string, backlogRoot?: string): number {
+function resolveRequestMaxIterations(
+  projectPath: string,
+  flag: number | null,
+  backlogRoot?: string,
+): number {
+  const markerResult = readMarkerFile(projectPath);
+  const markerMaxIterations = markerResult.ok ? markerResult.value.options.maxIterations : null;
+
+  let backlog = null;
   const rootResult = resolveBacklogRoot(projectPath, backlogRoot);
-  if (!rootResult.ok) return DEFAULT_MAX_ITERATIONS;
-  const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
-  if (!pathsResult.ok) return DEFAULT_MAX_ITERATIONS;
-  const backlogResult = readBacklog(pathsResult.value);
-  if (!backlogResult.ok) return DEFAULT_MAX_ITERATIONS;
-  const estimate = computeMaxIterations(backlogResult.value);
-  return estimate.pending > 0 ? estimate.cap : DEFAULT_MAX_ITERATIONS;
+  if (rootResult.ok) {
+    const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+    if (pathsResult.ok) {
+      const backlogResult = readBacklog(pathsResult.value);
+      if (backlogResult.ok) backlog = backlogResult.value;
+    }
+  }
+
+  return resolveMaxIterations({
+    flag,
+    markerMaxIterations,
+    backlog,
+    fallback: DEFAULT_MAX_ITERATIONS,
+  }).value;
 }
 
 // ─── SSE constants ───────────────────────────────────────────────
@@ -149,7 +165,11 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     }
 
     const options = LoopStartOptionsSchema.parse({
-      maxIterations: body.maxIterations ?? deriveDefaultMaxIterations(projectPath, backlogRoot),
+      maxIterations: resolveRequestMaxIterations(
+        projectPath,
+        body.maxIterations ?? null,
+        backlogRoot,
+      ),
       maxRetries: body.maxRetries ?? DEFAULT_MAX_RETRIES,
       model: body.model,
       sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,

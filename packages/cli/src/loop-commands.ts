@@ -28,8 +28,10 @@ import {
   forceClearLock,
   detectMigrationState,
   readBacklog,
-  computeMaxIterations,
+  readMarkerFile,
   formatBudgetMath,
+  resolveMaxIterations,
+  formatMaxIterationsSource,
   type BacklogPaths,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
@@ -56,18 +58,32 @@ const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Derive a backlog-sized iteration cap and log the budget math. Falls back to
- * the flat default when the backlog can't be read or has no pending work.
+ * Resolve maxIterations by precedence (flag > `.rauf.json` options.maxIterations
+ * > computed-from-backlog) and log the resolved value plus its source. The
+ * budget-math line (item 010) is only printed when the source is `computed`.
  */
-function deriveMaxIterations(paths: BacklogPaths): number {
+function resolveLoopMaxIterations(
+  projectPath: string,
+  paths: BacklogPaths,
+  flag: number | null,
+): number {
+  const markerResult = readMarkerFile(projectPath);
+  const markerMaxIterations = markerResult.ok ? markerResult.value.options.maxIterations : null;
   const backlogResult = readBacklog(paths);
-  if (!backlogResult.ok) return DEFAULT_MAX_ITERATIONS;
+  const backlog = backlogResult.ok ? backlogResult.value : null;
 
-  const estimate = computeMaxIterations(backlogResult.value);
-  if (estimate.pending === 0) return DEFAULT_MAX_ITERATIONS;
+  const resolved = resolveMaxIterations({
+    flag,
+    markerMaxIterations,
+    backlog,
+    fallback: DEFAULT_MAX_ITERATIONS,
+  });
 
-  info(c.dim(formatBudgetMath(estimate)));
-  return estimate.cap;
+  if (resolved.source === "computed" && resolved.estimate) {
+    info(c.dim(formatBudgetMath(resolved.estimate)));
+  }
+  info(c.dim(formatMaxIterationsSource(resolved)));
+  return resolved.value;
 }
 
 /** Resolve the project path from the first positional arg (default: cwd) */
@@ -175,26 +191,17 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const model = extractStringFlag(ctx.flags, "model");
   const timeout = extractNumberFlag(ctx.flags, "timeout");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
-  if (iterations !== null) {
+  // Resolve maxIterations CLI-side (flag > .rauf.json > computed) and log the
+  // source/budget math here — the server runs detached and can't write to this
+  // terminal. The web route applies the same precedence for any value we don't
+  // send. Skip resolution silently when paths can't be resolved (server default
+  // applies).
+  const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  const prResult = brResult.ok ? resolveBacklogPaths(projectPath, brResult.value) : null;
+  if (prResult && prResult.ok) {
+    body.maxIterations = resolveLoopMaxIterations(projectPath, prResult.value, iterations);
+  } else if (iterations !== null) {
     body.maxIterations = iterations;
-  } else {
-    // No explicit --iterations: derive the cap from the backlog and log the
-    // math here (the server runs detached and can't write to this terminal).
-    // The web route applies the same default for any value we don't send.
-    const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-    if (brResult.ok) {
-      const prResult = resolveBacklogPaths(projectPath, brResult.value);
-      if (prResult.ok) {
-        const backlogResult = readBacklog(prResult.value);
-        if (backlogResult.ok) {
-          const estimate = computeMaxIterations(backlogResult.value);
-          if (estimate.pending > 0) {
-            info(c.dim(formatBudgetMath(estimate)));
-            body.maxIterations = estimate.cap;
-          }
-        }
-      }
-    }
   }
   if (retries !== null) body.maxRetries = retries;
   if (model !== null) body.model = model;
@@ -668,7 +675,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   }
 
   const iterationsFlag = extractNumberFlag(ctx.flags, "iterations");
-  const iterations = iterationsFlag ?? deriveMaxIterations(paths);
+  const iterations = resolveLoopMaxIterations(projectPath, paths, iterationsFlag);
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
   const model = extractStringFlag(ctx.flags, "model") ?? undefined;
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
