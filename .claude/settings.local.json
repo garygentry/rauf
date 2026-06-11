@@ -38,7 +38,8 @@
       "Bash(command -v claude)",
       "Bash(claude --version)",
       "Bash(git check-ignore *)",
-      "Bash(./scripts/bin/rauf status *)"
+      "Bash(./scripts/bin/rauf status *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); from collections import Counter; print\\(dict\\(Counter\\(i['status'] for i in d['items']\\)\\), 'total', len\\(d['items']\\)\\); print\\('pending ids:', [i['id'] for i in d['items'] if i['status']=='pending']\\)\")"
     ],
     "additionalDirectories": [
       "/home/gary/workspace/agent-plugins/plugins/feature-forge",

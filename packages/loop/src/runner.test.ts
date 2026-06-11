@@ -1258,4 +1258,33 @@ fi`,
       expect(fs.existsSync(path.join(tmpDir, ".rauf", "DONE"))).toBe(true);
     });
   });
+
+  describe("runUsagePreflight degradation", () => {
+    it("logs specific diagnostic when readClaudeOAuthToken fails and loop continues", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Preflight test")]);
+      // Mock claude signals done immediately so the loop finishes cleanly.
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      // Redirect HOME so readClaudeOAuthToken looks for credentials at
+      // ${tmpDir}/.config/claude-code/credentials.json (which doesn't exist),
+      // returning FILE_NOT_FOUND without touching the real credentials file.
+      const origHome = process.env.HOME;
+      process.env.HOME = tmpDir;
+      try {
+        const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+        const result = await runner.start();
+
+        // The loop still continues — item completes, no hard exit.
+        expect(result.completedCount).toBe(1);
+
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).toContain("OAuth token unavailable");
+        expect(log).toContain("FILE_NOT_FOUND");
+        expect(log).toContain("claudeAiOauth.accessToken");
+        expect(log).toContain("Relying on reactive banner detection");
+      } finally {
+        process.env.HOME = origHome;
+      }
+    });
+  });
 });

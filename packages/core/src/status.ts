@@ -6,6 +6,7 @@ import { readJsonFile, fileExists, atomicWrite } from "./fs-utils.js";
 import { readBacklog } from "./backlog.js";
 import { type BacklogPaths, SCAN_SKIP_DIRS } from "./backlog-root.js";
 import { checkLock } from "./lock.js";
+import { readIterationStatus } from "./iteration-status.js";
 import {
   LoopStateSchema,
   LOG_PATTERNS,
@@ -23,6 +24,14 @@ const STALENESS_THRESHOLD_MS = 5 * 60 * 1000;
 
 /** Log mtime threshold for "active" detection in milliseconds (60 seconds) */
 const LOG_ACTIVE_THRESHOLD_MS = 60 * 1000;
+
+/**
+ * Freshness window for iteration-status.json (60 seconds). It is written
+ * ~every 5s during an active iteration, so an updatedAt within this window
+ * means the loop is actively working — even when state.json (written only
+ * between iterations) looks stale.
+ */
+const ITERATION_STATUS_FRESH_MS = 60 * 1000;
 
 /** Maximum lines to read for log tail display */
 const MAX_LOG_TAIL_LINES = 10_000;
@@ -111,6 +120,35 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
   return mapping[status];
 }
 
+/**
+ * Decide whether an apparently-stale running loop is in fact still alive.
+ *
+ * state.json is only written between iterations, so a long (15-30 min) active
+ * iteration looks stale by `updatedAt` alone and would be wrongly downgraded to
+ * PAUSED. Consult liveness signals — reading files only, never spawning
+ * subprocesses (status derivation rule):
+ *   1. The lock PID is alive (a non-stale `.loop.lock`).
+ *   2. iteration-status.json was written recently (it ticks ~every 5s with
+ *      token counts during an iteration).
+ * Either signal means the loop is genuinely RUNNING.
+ */
+function isLoopLive(paths: BacklogPaths, now: number): boolean {
+  const lock = checkLock(paths);
+  if (lock.ok && lock.value.locked && lock.value.stale !== true) {
+    return true;
+  }
+
+  const iterationStatus = readIterationStatus(paths);
+  if (iterationStatus) {
+    const updatedAt = new Date(iterationStatus.updatedAt).getTime();
+    if (!Number.isNaN(updatedAt) && now - updatedAt < ITERATION_STATUS_FRESH_MS) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> {
   const stateResult = readJsonFile(paths.state, LoopStateSchema);
 
@@ -122,12 +160,15 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
   const state = stateResult.value;
   let loopState = mapLoopStateStatus(state.status);
 
-  // Staleness check: running >5min old → PAUSED
+  // Staleness check: running >5min old → PAUSED, UNLESS a liveness signal shows
+  // the loop is mid-iteration. state.json is only written between iterations, so
+  // a long active iteration looks stale by updatedAt alone; consult checkLock +
+  // readIterationStatus before downgrading.
   // sleeping_limit and weekly_limit are intentionally long-lived — never downgrade them
   if ((state.status === "running" || state.status === "starting") && state.updatedAt) {
     const updatedAt = new Date(state.updatedAt).getTime();
     const now = Date.now();
-    if (now - updatedAt > STALENESS_THRESHOLD_MS) {
+    if (now - updatedAt > STALENESS_THRESHOLD_MS && !isLoopLive(paths, now)) {
       loopState = "PAUSED";
     }
   }

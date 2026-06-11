@@ -3,6 +3,8 @@ import { describe, it, expect } from "vitest";
 import {
   computeMaxIterations,
   formatBudgetMath,
+  resolveMaxIterations,
+  formatMaxIterationsSource,
   DEFAULT_RETRY_HEADROOM,
   MIN_MAX_ITERATIONS,
 } from "./budget.js";
@@ -129,5 +131,69 @@ describe("formatBudgetMath", () => {
       ]),
     );
     expect(formatBudgetMath(estimate)).toContain("~1.3 iter");
+  });
+});
+
+describe("resolveMaxIterations", () => {
+  const backlog = makeBacklog([makeItem("001", "pending"), makeItem("002", "pending")]);
+
+  it("prefers the explicit flag over .rauf.json and the computed cap", () => {
+    const resolved = resolveMaxIterations({
+      flag: 7,
+      markerMaxIterations: 100,
+      backlog,
+    });
+    expect(resolved).toEqual({ value: 7, source: "flag" });
+  });
+
+  it("uses .rauf.json options.maxIterations when no flag is given", () => {
+    const resolved = resolveMaxIterations({
+      flag: null,
+      markerMaxIterations: 100,
+      backlog,
+    });
+    expect(resolved).toEqual({ value: 100, source: ".rauf.json" });
+  });
+
+  it("computes from the backlog when neither flag nor marker is set", () => {
+    const resolved = resolveMaxIterations({
+      flag: null,
+      markerMaxIterations: null,
+      backlog,
+    });
+    expect(resolved.source).toBe("computed");
+    expect(resolved.value).toBe(MIN_MAX_ITERATIONS);
+    expect(resolved.estimate).toBeDefined();
+    expect(resolved.estimate?.pending).toBe(2);
+  });
+
+  it("falls back to the flat default (computed) when there is no pending work", () => {
+    const resolved = resolveMaxIterations({
+      flag: null,
+      markerMaxIterations: null,
+      backlog: makeBacklog([makeItem("001", "done")]),
+      fallback: 20,
+    });
+    expect(resolved).toEqual({ value: 20, source: "computed" });
+    expect(resolved.estimate).toBeUndefined();
+  });
+
+  it("falls back to the default when nothing is provided", () => {
+    const resolved = resolveMaxIterations({});
+    expect(resolved).toEqual({ value: MIN_MAX_ITERATIONS, source: "computed" });
+  });
+});
+
+describe("formatMaxIterationsSource", () => {
+  it("renders the resolved value and its source", () => {
+    expect(formatMaxIterationsSource({ value: 42, source: "flag" })).toBe(
+      "maxIterations=42 (flag)",
+    );
+    expect(formatMaxIterationsSource({ value: 100, source: ".rauf.json" })).toBe(
+      "maxIterations=100 (.rauf.json)",
+    );
+    expect(formatMaxIterationsSource({ value: 20, source: "computed" })).toBe(
+      "maxIterations=20 (computed)",
+    );
   });
 });

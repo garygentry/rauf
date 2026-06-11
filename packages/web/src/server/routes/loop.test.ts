@@ -270,6 +270,47 @@ describe("GET /:id/loop/events", () => {
   });
 });
 
+// ─── GET /api/loops ──────────────────────────────────────────────
+
+describe("GET /api/loops", () => {
+  it("returns an empty list when no loops are running", async () => {
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/loops", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { loops: Array<{ projectPath: string }> } };
+    expect(body.data.loops).toEqual([]);
+  });
+
+  it("lists in-flight loops with their project paths", async () => {
+    const projectPath = createProject("test-project", [pendingItem]);
+    setupLongRunningClaude();
+    const app = makeApp(tmpDir);
+
+    // Start a loop so it stays in-flight
+    const startRes = await app.request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: {
+        "X-Rauf-Request": "true",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ maxIterations: 5 }),
+    });
+    expect(startRes.status).toBe(200);
+
+    const res = await app.request("/api/loops", { method: "GET" });
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { loops: Array<{ projectPath: string }> } };
+    expect(body.data.loops).toEqual([{ projectPath }]);
+
+    // Stop it so afterEach doesn't leave a dangling sleep
+    await app.request("/api/projects/test-project/loop/stop", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true" },
+    });
+  });
+});
+
 // ─── Route mounting ──────────────────────────────────────────────
 
 describe("Route mounting", () => {

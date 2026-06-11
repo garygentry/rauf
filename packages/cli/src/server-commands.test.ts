@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as http from "node:http";
+import * as child_process from "node:child_process";
 
 import {
   handleServerStart,
@@ -16,6 +18,7 @@ import {
   removeServerError,
   isProcessAlive,
   resolveServerEntry,
+  fetchActiveLoops,
   SERVER_STATE_FILE,
   SERVER_LOG_FILE,
   SERVER_ERROR_FILE,
@@ -144,6 +147,28 @@ function captureStdout(fn: () => Promise<number>): Promise<{ code: number; outpu
       process.stdout.write = orig;
       throw err;
     });
+}
+
+/** Start a throwaway HTTP server that answers GET /api/loops with `loops`. */
+async function startLoopsServer(
+  loops: { projectPath: string }[],
+): Promise<{ port: number; close: () => Promise<void> }> {
+  const server = http.createServer((req, res) => {
+    if (req.url === "/api/loops") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: { loops } }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const addr = server.address();
+  const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+  return {
+    port,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
 }
 
 // ─── readServerState / writeServerState / removeServerState ──────
@@ -334,6 +359,74 @@ describe("handleServerStop", () => {
     // We need to remove the state file ourselves after to avoid side effects.
     // Skip this test if it would kill our own test process.
     removeServerState();
+  });
+
+  it("refuses (CONFLICT) and lists projects when loops are in-flight", async () => {
+    const { port, close } = await startLoopsServer([
+      { projectPath: "/work/proj-a" },
+      { projectPath: "/work/proj-b" },
+    ]);
+    try {
+      // Alive PID (our own) + a port whose /api/loops reports in-flight loops.
+      // Stop must refuse BEFORE any SIGTERM, so our process stays alive.
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      configureOutput({ noColor: true, quiet: false, json: false });
+      const { code, output } = await captureStdout(() => handleServerStop(makeCtx()));
+      configureOutput({ noColor: true, quiet: true, json: false });
+
+      expect(code).toBe(ExitCode.CONFLICT);
+      expect(output).toContain("/work/proj-a");
+      expect(output).toContain("/work/proj-b");
+      // We must NOT have signalled our own process.
+      expect(isProcessAlive(process.pid)).toBe(true);
+      // State must be left intact (server still running).
+      expect(readServerState()).not.toBeNull();
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("refuses with a JSON error listing affected projects", async () => {
+    const { port, close } = await startLoopsServer([{ projectPath: "/work/proj-c" }]);
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      configureOutput({ noColor: true, quiet: false, json: true });
+      const { code, output } = await captureStdout(() =>
+        handleServerStop(makeCtx({}, { json: true })),
+      );
+      configureOutput({ noColor: true, quiet: true, json: false });
+
+      expect(code).toBe(ExitCode.CONFLICT);
+      const parsed = JSON.parse(output) as { error: { code: string; loops: string[] } };
+      expect(parsed.error.code).toBe("LOOPS_IN_FLIGHT");
+      expect(parsed.error.loops).toEqual(["/work/proj-c"]);
+      expect(isProcessAlive(process.pid)).toBe(true);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("stops even with loops in-flight when --force is passed", async () => {
+    // Use a spawned child as the 'server' so SIGTERM doesn't hit the test runner.
+    const child = child_process.spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"]);
+    await new Promise((r) => setTimeout(r, 100));
+    try {
+      writeServerState({ pid: child.pid!, port: 59998, startedAt: new Date().toISOString() });
+      // --force skips the in-flight check entirely (no loops server needed).
+      const code = await handleServerStop(makeCtx({ force: true }));
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(isProcessAlive(child.pid!)).toBe(false);
+      expect(readServerState()).toBeNull();
+    } finally {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already dead */
+      }
+      removeServerState();
+    }
   });
 });
 
@@ -526,6 +619,53 @@ describe("handleServerRestart", () => {
     const code = await handleServerRestart(ctx);
     // Any result is acceptable as long as it doesn't throw
     expect(typeof code).toBe("number");
+  });
+
+  it("refuses (CONFLICT) and lists projects when loops are in-flight", async () => {
+    const { port, close } = await startLoopsServer([{ projectPath: "/work/proj-r" }]);
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      configureOutput({ noColor: true, quiet: false, json: false });
+      const { code, output } = await captureStdout(() => handleServerRestart(makeCtx()));
+      configureOutput({ noColor: true, quiet: true, json: false });
+
+      expect(code).toBe(ExitCode.CONFLICT);
+      expect(output).toContain("/work/proj-r");
+      // The restart must refuse during its stop phase — process stays alive.
+      expect(isProcessAlive(process.pid)).toBe(true);
+      expect(readServerState()).not.toBeNull();
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+});
+
+// ─── fetchActiveLoops ─────────────────────────────────────────────
+
+describe("fetchActiveLoops", () => {
+  it("returns the active loops reported by the server", async () => {
+    const { port, close } = await startLoopsServer([{ projectPath: "/a" }, { projectPath: "/b" }]);
+    try {
+      const loops = await fetchActiveLoops(port);
+      expect(loops).toEqual([{ projectPath: "/a" }, { projectPath: "/b" }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it("returns an empty array when no loops are in-flight", async () => {
+    const { port, close } = await startLoopsServer([]);
+    try {
+      expect(await fetchActiveLoops(port)).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
+  it("returns null when the server is unreachable", async () => {
+    // Port 1 is reserved/closed — fetch is refused → null (couldn't determine).
+    expect(await fetchActiveLoops(1)).toBeNull();
   });
 });
 

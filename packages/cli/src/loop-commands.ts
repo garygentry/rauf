@@ -28,17 +28,29 @@ import {
   forceClearLock,
   detectMigrationState,
   readBacklog,
-  computeMaxIterations,
+  readMarkerFile,
   formatBudgetMath,
+  resolveMaxIterations,
+  formatMaxIterationsSource,
+  ok,
+  err,
+  ErrorCodes,
   type BacklogPaths,
+  type Result,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
-import { LoopRunner, checkLoopPreconditions } from "@rauf/loop";
+import {
+  LoopRunner,
+  checkLoopPreconditions,
+  execGit,
+  gitCommit,
+  RUNTIME_EXCLUDE_PATHSPECS,
+} from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
-import { c, info, print, error, warn, success, outputJson } from "./formatter.js";
+import { c, info, print, error, warn, success, outputJson, configureOutput } from "./formatter.js";
 import { StatusLine } from "./status-line.js";
 import {
   readServerState,
@@ -56,18 +68,159 @@ const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
- * Derive a backlog-sized iteration cap and log the budget math. Falls back to
- * the flat default when the backlog can't be read or has no pending work.
+ * Resolve maxIterations by precedence (flag > `.rauf.json` options.maxIterations
+ * > computed-from-backlog) and log the resolved value plus its source. The
+ * budget-math line (item 010) is only printed when the source is `computed`.
  */
-function deriveMaxIterations(paths: BacklogPaths): number {
+function resolveLoopMaxIterations(
+  projectPath: string,
+  paths: BacklogPaths,
+  flag: number | null,
+): number {
+  const markerResult = readMarkerFile(projectPath);
+  const markerMaxIterations = markerResult.ok ? markerResult.value.options.maxIterations : null;
   const backlogResult = readBacklog(paths);
-  if (!backlogResult.ok) return DEFAULT_MAX_ITERATIONS;
+  const backlog = backlogResult.ok ? backlogResult.value : null;
 
-  const estimate = computeMaxIterations(backlogResult.value);
-  if (estimate.pending === 0) return DEFAULT_MAX_ITERATIONS;
+  const resolved = resolveMaxIterations({
+    flag,
+    markerMaxIterations,
+    backlog,
+    fallback: DEFAULT_MAX_ITERATIONS,
+  });
 
-  info(c.dim(formatBudgetMath(estimate)));
-  return estimate.cap;
+  if (resolved.source === "computed" && resolved.estimate) {
+    info(c.dim(formatBudgetMath(resolved.estimate)));
+  }
+  info(c.dim(formatMaxIterationsSource(resolved)));
+  return resolved.value;
+}
+
+/**
+ * Switch to a fresh feature branch before the loop runs, in response to
+ * `--create-branch <name>`. No-ops (switched:false) when already on that
+ * branch. Fails cleanly if the branch already exists or git errors — e.g. so
+ * `--create-branch` never silently runs the loop on the wrong branch.
+ */
+export async function createLoopBranch(
+  projectPath: string,
+  branchName: string,
+): Promise<Result<{ switched: boolean }>> {
+  let current = "";
+  try {
+    current = (await execGit(projectPath, ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+  } catch {
+    // Not a git repo (or no commits) — let `git switch -c` surface the error.
+  }
+
+  if (current === branchName) {
+    return ok({ switched: false });
+  }
+
+  try {
+    await execGit(projectPath, ["switch", "-c", branchName]);
+    return ok({ switched: true });
+  } catch (e) {
+    return err({
+      code: ErrorCodes.CONFLICT,
+      message:
+        `Could not create branch "${branchName}": ${e instanceof Error ? e.message : String(e)}. ` +
+        "Pick a name that does not already exist, or `git switch` to it manually.",
+    });
+  }
+}
+
+/**
+ * Commit a freshly-authored backlog before the loop runs, in response to
+ * `--seed-backlog`. backlog.json is git-tracked (its status changes are
+ * meaningful), so an uncommitted backlog would otherwise be swept into item
+ * 001's loop commit when the loop marks the first item in_progress. Only
+ * auto-commits when the ONLY dirty paths are this loop's backlog file(s) (+ the
+ * loop runtime files gitCommit never stages) — if ANY other file is dirty,
+ * including `.rauf/` bookkeeping like RAUF.md / progress.md / REVIEW.md, it
+ * refuses and lists them, so unrelated work is never committed under the loop's
+ * name. The dirty-check and gitCommit's staging share RUNTIME_EXCLUDE_PATHSPECS
+ * so the seed commit can only ever contain the backlog. (item 028)
+ */
+export async function seedBacklog(
+  projectPath: string,
+  paths: BacklogPaths,
+): Promise<Result<{ committed: boolean; commitHash: string }>> {
+  // Decide whether any NON-backlog file is dirty: `git status --porcelain` over
+  // everything EXCEPT the seed commit's intended content (this loop's backlog +
+  // .bak) and the runtime files gitCommit itself never stages. The exclusion set
+  // MUST mirror gitCommit's staging exclusions exactly — otherwise a dirty path
+  // that the check skips but gitCommit WOULD stage (e.g. `.rauf/RAUF.md`,
+  // `.rauf/progress.md`, `.rauf/REVIEW.md`) gets silently swept into the seed
+  // commit. Excluding the whole `.rauf/` dir here would do exactly that, so we
+  // reuse RUNTIME_EXCLUDE_PATHSPECS instead and let any other `.rauf/`
+  // bookkeeping edit surface as "other dirty" → refuse. Non-empty output means
+  // there is other work we must not sweep into the seed commit.
+  const backlogRel = path.relative(projectPath, paths.backlog);
+  const excludePathspecs = [
+    ".",
+    `:(exclude)${backlogRel}`,
+    `:(exclude)${backlogRel}.bak`,
+    ...RUNTIME_EXCLUDE_PATHSPECS,
+  ];
+
+  let otherDirty: string;
+  try {
+    otherDirty = (
+      await execGit(projectPath, ["status", "--porcelain", "--", ...excludePathspecs])
+    ).trim();
+  } catch (e) {
+    return err({
+      code: ErrorCodes.CONFLICT,
+      message: `Could not read git status: ${e instanceof Error ? e.message : String(e)}`,
+    });
+  }
+
+  if (otherDirty !== "") {
+    // Porcelain lines are `XY <path>` (slice past the 2-char status + space).
+    const files = otherDirty
+      .split("\n")
+      .map((line) => line.slice(3).trim())
+      .filter((f) => f.length > 0);
+    return err({
+      code: ErrorCodes.CONFLICT,
+      message:
+        "--seed-backlog only commits the backlog when nothing else is dirty, but these files have uncommitted changes:\n" +
+        files.map((f) => `  ${f}`).join("\n") +
+        "\nCommit or stash them first, then re-run.",
+    });
+  }
+
+  // Only the backlog (+ pure runtime files) is dirty. gitCommit stages with the
+  // same runtime excludes and uses the `[rauf] <id>: <title>` format — id "backlog"
+  // + title "seed <project>" yields `[rauf] backlog: seed <project>`.
+  const commitResult = await gitCommit(
+    projectPath,
+    "backlog",
+    `seed ${path.basename(projectPath)}`,
+  );
+  if (!commitResult.ok) return commitResult;
+  return ok({
+    committed: commitResult.value.commitHash !== "",
+    commitHash: commitResult.value.commitHash,
+  });
+}
+
+/**
+ * Copy-pasteable remediation printed when `checkLoopPreconditions` refuses,
+ * replacing the old generic "commit or stash" hint. Surfaces the three ways to
+ * reach a runnable state: create/switch a feature branch, seed the backlog
+ * commit, or force past the checks.
+ */
+export function buildPreconditionRemediation(projectArg: string): string[] {
+  const p = projectArg;
+  return [
+    "To reach a runnable state, run one of:",
+    `  git switch -c <branch>                       ${c.dim("# move your work onto a feature branch")}`,
+    `  rauf loop run ${p} --create-branch <branch>  ${c.dim("# or have rauf create & switch for you")}`,
+    `  rauf loop run ${p} --seed-backlog            ${c.dim("# commit an otherwise-clean backlog first")}`,
+    `  rauf loop run ${p} --force                   ${c.dim("# bypass these checks (last resort)")}`,
+  ];
 }
 
 /** Resolve the project path from the first positional arg (default: cwd) */
@@ -100,8 +253,14 @@ function isServerRunning(): boolean {
   return state !== null && isProcessAlive(state.pid);
 }
 
-/** Auto-start server daemon if not running. Returns true if server is ready. */
-async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
+/**
+ * Auto-start server daemon if not running. Returns true if server is ready.
+ *
+ * No-ops when a healthy server is already running: it never restarts a live
+ * server (restarting would cancel every project's in-flight loop). Exported
+ * for testing this contract.
+ */
+export async function ensureServerRunning(ctx: CommandContext): Promise<boolean> {
   if (isServerRunning()) {
     // Verify health endpoint actually responds
     const port = getPort();
@@ -140,6 +299,21 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
+  // Create & switch to a feature branch before starting (mirrors `loop run`).
+  // The switch is a local git operation, so it happens CLI-side before the
+  // server request — the server only sees the resulting branch.
+  const createBranch = extractStringFlag(ctx.flags, "create-branch");
+  if (createBranch !== null) {
+    const branchResult = await createLoopBranch(projectPath, createBranch);
+    if (!branchResult.ok) {
+      error(branchResult.error.message);
+      return ExitCode.CONFLICT;
+    }
+    if (branchResult.value.switched) {
+      info(`Switched to new branch ${c.cyan(createBranch)}`);
+    }
+  }
+
   if (retryBlocked) {
     // Resolve paths for unblock operation
     const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
@@ -169,26 +343,17 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
   const model = extractStringFlag(ctx.flags, "model");
   const timeout = extractNumberFlag(ctx.flags, "timeout");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
-  if (iterations !== null) {
+  // Resolve maxIterations CLI-side (flag > .rauf.json > computed) and log the
+  // source/budget math here — the server runs detached and can't write to this
+  // terminal. The web route applies the same precedence for any value we don't
+  // send. Skip resolution silently when paths can't be resolved (server default
+  // applies).
+  const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  const prResult = brResult.ok ? resolveBacklogPaths(projectPath, brResult.value) : null;
+  if (prResult && prResult.ok) {
+    body.maxIterations = resolveLoopMaxIterations(projectPath, prResult.value, iterations);
+  } else if (iterations !== null) {
     body.maxIterations = iterations;
-  } else {
-    // No explicit --iterations: derive the cap from the backlog and log the
-    // math here (the server runs detached and can't write to this terminal).
-    // The web route applies the same default for any value we don't send.
-    const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-    if (brResult.ok) {
-      const prResult = resolveBacklogPaths(projectPath, brResult.value);
-      if (prResult.ok) {
-        const backlogResult = readBacklog(prResult.value);
-        if (backlogResult.ok) {
-          const estimate = computeMaxIterations(backlogResult.value);
-          if (estimate.pending > 0) {
-            info(c.dim(formatBudgetMath(estimate)));
-            body.maxIterations = estimate.cap;
-          }
-        }
-      }
-    }
   }
   if (retries !== null) body.maxRetries = retries;
   if (model !== null) body.model = model;
@@ -213,6 +378,12 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
         outputJson(data);
       } else {
         success(`Loop started for ${c.cyan(id)}`);
+        info(
+          c.dim(
+            `Note: a ${c.cyan("rauf server stop")}/${c.cyan("restart")} interrupts this loop. ` +
+              `Use ${c.cyan("rauf loop run")} for the unattended-safe (in-process) mode.`,
+          ),
+        );
       }
 
       if (follow) {
@@ -604,6 +775,15 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // by construction, but branch protection must stay on (unlike --force).
   const allowDirty = extractBoolFlag(ctx.flags, "allow-dirty");
 
+  // --ndjson: emit one JSON object per LoopEvent to stdout (plus a trailing
+  // JSON result line) and suppress the human renderer + StatusLine so stdout is
+  // a clean machine-readable stream. Forces no-color; diagnostic info/success
+  // lines are suppressed (json mode) and errors/warnings still go to stderr.
+  const ndjson = extractBoolFlag(ctx.flags, "ndjson");
+  if (ndjson) {
+    configureOutput({ noColor: true, json: true });
+  }
+
   // Refuse to run a loop on an unmigrated legacy ralph project — its
   // RALPH.md would instruct Claude to emit RALPH_* signals the new parser
   // rejects. Migration is required first (decision #3).
@@ -631,6 +811,42 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   }
   const paths = pathsResult.value;
 
+  // Create & switch to a feature branch first (before the precondition check)
+  // so `--create-branch feat/x` takes a project off a protected/dirty branch
+  // and into a runnable state in one step.
+  const createBranch = extractStringFlag(ctx.flags, "create-branch");
+  if (createBranch !== null) {
+    const branchResult = await createLoopBranch(projectPath, createBranch);
+    if (!branchResult.ok) {
+      error(branchResult.error.message);
+      return ExitCode.CONFLICT;
+    }
+    if (branchResult.value.switched) {
+      info(`Switched to new branch ${c.cyan(createBranch)}`);
+    } else {
+      info(`Already on branch ${c.cyan(createBranch)}`);
+    }
+  }
+
+  // --seed-backlog: commit an otherwise-clean tree's backlog before the
+  // precondition check, so a freshly-authored backlog isn't swept into item
+  // 001's loop commit. Runs after any --create-branch switch so the seed commit
+  // lands on the feature branch, not a protected one. Refuses (without
+  // committing) if any non-backlog file is dirty.
+  const seedBacklogFlag = extractBoolFlag(ctx.flags, "seed-backlog");
+  if (seedBacklogFlag) {
+    const seedResult = await seedBacklog(projectPath, paths);
+    if (!seedResult.ok) {
+      error(seedResult.error.message);
+      return ExitCode.CONFLICT;
+    }
+    if (seedResult.value.committed) {
+      info(`Seeded backlog: committed ${c.cyan(seedResult.value.commitHash || "(staged)")}`);
+    } else {
+      info("Backlog already committed — nothing to seed.");
+    }
+  }
+
   // Safety guard: refuse to run on the default branch, a detached HEAD, or a
   // dirty tree — the loop auto-commits with `git add -A`, so otherwise it could
   // sweep unrelated work into a loop commit. --force bypasses (and, below, also
@@ -639,7 +855,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     const preconditions = await checkLoopPreconditions(projectPath, { allowDirty });
     if (!preconditions.ok) {
       error(preconditions.error.message);
-      info("Commit or stash and switch to a feature branch, or pass `--force`.");
+      for (const line of buildPreconditionRemediation(ctx.args[0] ?? ".")) {
+        info(line);
+      }
       return ExitCode.CONFLICT;
     }
   }
@@ -656,7 +874,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   }
 
   const iterationsFlag = extractNumberFlag(ctx.flags, "iterations");
-  const iterations = iterationsFlag ?? deriveMaxIterations(paths);
+  const iterations = resolveLoopMaxIterations(projectPath, paths, iterationsFlag);
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
   const model = extractStringFlag(ctx.flags, "model") ?? undefined;
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
@@ -707,9 +925,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const runner = runnerResult.value;
 
   const statusLine = new StatusLine({
-    isTTY: process.stdout.isTTY ?? false,
+    isTTY: ndjson ? false : (process.stdout.isTTY ?? false),
     quiet: ctx.globalFlags.quiet,
-    json: ctx.globalFlags.json,
+    json: ctx.globalFlags.json || ndjson,
     noColor: ctx.globalFlags.noColor,
   });
 
@@ -747,6 +965,13 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   ];
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
+      // Machine-readable mode: one JSON object per event, no human renderer
+      // and no StatusLine — keeps stdout a clean NDJSON stream.
+      if (ndjson) {
+        process.stdout.write(JSON.stringify(event) + "\n");
+        return;
+      }
+
       // For streaming events, update the detail line without pausing
       switch (event.type) {
         case "llm_tool_activity": {
@@ -829,12 +1054,12 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     statusLine.stop();
     if (sigintCount === 1) {
       runner.requestGracefulStop();
-      print("");
+      if (!ndjson) print("");
       info(
         c.yellow("Finishing current iteration... ") + c.dim("Press Ctrl+C again to force quit."),
       );
     } else {
-      print("");
+      if (!ndjson) print("");
       info(c.red("Force quitting..."));
       runner.cancel();
     }
@@ -851,7 +1076,10 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   try {
     const result = await runner.start();
 
-    if (ctx.globalFlags.json) {
+    if (ndjson) {
+      // Trailing line: the final loop result as a single JSON object.
+      process.stdout.write(JSON.stringify(result) + "\n");
+    } else if (ctx.globalFlags.json) {
       outputJson(result);
     } else {
       print("");

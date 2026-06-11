@@ -109,12 +109,13 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ## Global Flags
 
-| Flag             | Description                                                     |
-| ---------------- | --------------------------------------------------------------- |
-| `--json`         | Machine-readable JSON output (on read commands)                 |
-| `--no-color`     | Suppress ANSI codes (auto-detected via NO_COLOR env or non-TTY) |
-| `--quiet` / `-q` | Suppress informational output (errors only)                     |
-| `--root <path>`  | Override ROOT_DIRECTORY for this invocation                     |
+| Flag             | Description                                                                                                                                                                                                                                                       |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--json`         | Machine-readable JSON output (on read commands)                                                                                                                                                                                                                   |
+| `--no-color`     | Suppress ANSI codes (auto-detected via NO_COLOR env or non-TTY)                                                                                                                                                                                                   |
+| `--quiet` / `-q` | Suppress informational output (errors only)                                                                                                                                                                                                                       |
+| `--root <path>`  | Override ROOT_DIRECTORY for this invocation                                                                                                                                                                                                                       |
+| `--help` / `-h`  | Print help for the current command/subcommand and exit. **Intercepted before any side-effecting action** — `rauf loop start --help` prints the flag list and exits without starting the daemon. Per-subcommand help renders the usage line and flag descriptions. |
 
 ## Exit Codes
 
@@ -141,12 +142,14 @@ Subcommands that run and manage the autonomous coding loop. The loop processes b
 
 Start a loop for the project at `[path]` (defaults to `.`) via the server API. Auto-starts the server daemon if not already running.
 
-- `--iterations N`: max iterations (default: derived from backlog via `computeMaxIterations` — `ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20; the math is logged at startup)
+- `--iterations N`: max iterations — resolution order: `--iterations` flag > `.rauf.json` `options.maxIterations` > `computeMaxIterations` from backlog (`ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20). The resolved value and its source (`flag` / `.rauf.json` / `computed`) are logged at startup.
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override (e.g., `claude-opus-4-6`)
 - `--timeout N`: session timeout in minutes (default: 60)
 - `--follow`: stream SSE events inline after starting
+- `--create-branch <name>`: create and switch to `<name>` before running (so `--create-branch feat/x` takes the project off a protected branch in one step)
 - Prints a follow hint on success (unless `--follow` is used)
+- On success, prints a notice that a `rauf server stop`/`restart` will interrupt this loop; use `rauf loop run` for an unattended-safe session
 - API: `POST /api/projects/:id/loop/start`
 - Returns exit code 5 if a loop is already running for this project
 
@@ -169,15 +172,22 @@ Attach to a running loop and stream its events to the terminal.
 
 ### rauf loop run [path]
 
-Run the loop directly in-process without the server. Equivalent to `loop start + loop follow` but self-contained.
+Run the loop directly in-process without the server. The **unattended-safe mode** — because the loop runs inside the CLI process rather than the server daemon, a `rauf server stop`/`restart` cannot interrupt it.
 
-- `--iterations N`: max iterations (default: derived from backlog via `computeMaxIterations` — `ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20; the math is logged at startup)
+> **Per-run iteration budget:** `maxIterations` bounds a single `loop run` invocation, not the total work across restarts. The iteration counter resets to zero each time the process starts. Run `rauf resume` (or `rauf loop run` again) to continue across restarts; each run gets its own fresh budget.
+
+- `--iterations N`: max iterations — resolution order: `--iterations` flag > `.rauf.json` `options.maxIterations` > `computeMaxIterations` from backlog (`ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20). The resolved value and its source (`flag` / `.rauf.json` / `computed`) are logged at startup.
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override
 - `--timeout N`: session timeout in minutes (default: 60)
 - `--review`: enable a post-loop review pass after all items complete
 - `--review-only`: run review only — create fix items but do not process them (implies `--review`)
 - `--suppress-iteration-review`: run child agent sessions with per-iteration review/security hooks suppressed (single-gate review model — see below). Opt-in; default behavior is unchanged.
+- `--create-branch <name>`: create and switch to `<name>` before running precondition checks (so `--create-branch feat/x` takes the project off a protected branch in one step)
+- `--seed-backlog`: if the working tree's only uncommitted change is `backlog.json` (plus `.rauf/` bookkeeping), stage and commit it as `[rauf] backlog: seed <project>` before running. Refuses with exit code 5 if other files are also dirty (lists them). Runs after any `--create-branch` switch so the seed lands on the new branch.
+- `--ndjson`: emit one JSON object per line to stdout for every `LoopEvent` (NDJSON stream), then a trailing JSON line for the final `LoopResult`. Suppresses the human-readable renderer and the status line — stdout is a clean NDJSON stream. Implies `--no-color`.
+- `--force`: skip precondition checks (protected-branch and dirty-tree guards). Use with caution.
+- `--help` / `-h`: print the flag list and exit **without** starting the loop or touching any state. `--help`/`-h` is intercepted before any side-effecting action — a help probe never starts a loop.
 - Events are printed directly to the terminal with colors and Unicode icons
 - Responds to SIGINT/SIGTERM for graceful cancellation
 - With `--json`: outputs `LoopResult { completedCount, blockedCount, cancelled, reviewItemsCreated?, reviewSummary? }`
@@ -224,10 +234,14 @@ Stop the running server.
 - Reads PID from `~/.rauf/server.json`, sends SIGTERM
 - Waits 5s for graceful shutdown, then sends SIGKILL
 - Reports success or "no server running"
+- **Loop-aware**: before stopping, fetches `GET /api/loops` to check for in-flight loops. If any loop is running, refuses with exit code 5 and lists the affected projects. Use `--force` to stop anyway (kills all in-flight loops).
+- `--force`: skip the in-flight loop check and stop immediately
 
 ### rauf server restart
 
 Stop the server if running, then start it again.
+
+- Inherits the same loop-awareness check as `rauf server stop` — refuses if loops are in-flight unless `--force` is passed
 
 ### rauf server status
 
@@ -489,6 +503,7 @@ Detect an interrupted loop and continue it from where it stopped.
 
 - `[path]`: project path (default: `.`)
 - Refuses with exit code 5 if a live loop holds the lock
+- `--recover`: when a dirty working tree with an uncommitted `in_progress` item is detected (i.e. the loop was killed after verify but before the git commit), re-run the project's verify command and — on success — commit the work as `[rauf] <id>: <title>` before relaunching. Without `--recover`, interrupted items are surfaced and `resume` exits, pointing to `rauf resume --recover` to auto-repair.
 
 **Resumable states detected:**
 
@@ -502,8 +517,9 @@ Detect an interrupted loop and continue it from where it stopped.
 
 1. Check lock — refuse if alive
 2. Detect resumable state (reads `state.json` + derives status)
-3. Apply the same reconciliation + false-block requeue as `rauf reset`
-4. Relaunch the loop via the normal `rauf loop run` entrypoint with a recomputed budget (`computeMaxIterations`) and `--allow-dirty` (since recovery may leave `.rauf/backlog.json` uncommitted)
+3. If dirty tree with an in_progress item and no baseline commit: report as interrupted iteration; with `--recover`, re-verify and commit before proceeding
+4. Apply the same reconciliation + false-block requeue as `rauf reset`
+5. Relaunch the loop via the normal `rauf loop run` entrypoint with a recomputed budget (`computeMaxIterations`) and `--allow-dirty` (since recovery may leave `.rauf/backlog.json` uncommitted)
 
 **Early exits:**
 

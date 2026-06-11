@@ -90,6 +90,7 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
       recovered: summary.recovered,
       requeued: summary.requeued,
       keptBlocked: summary.keptBlocked,
+      interrupted: summary.interrupted,
       stalledReset: summary.stalledReset,
       lockCleared,
       stateCleared: summary.stateCleared,
@@ -111,7 +112,12 @@ function printSummary(
   if (extra.lockCleared) {
     info("Cleared a stale loop lock.");
   }
-  if (!summary.treeClean) {
+  if (summary.interrupted.length > 0) {
+    for (const it of summary.interrupted) {
+      warn(`item ${it.id} left uncommitted changes (interrupted before commit)`);
+    }
+    info(`Re-verify and commit this work with ${c.cyan("rauf resume --recover")}.`);
+  } else if (!summary.treeClean) {
     warn(
       "Working tree is dirty — skipped commit reconciliation (uncommitted work was not marked done).",
     );

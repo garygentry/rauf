@@ -236,6 +236,49 @@ describe("LoopManager", () => {
     });
   });
 
+  describe("listActive", () => {
+    it("returns an empty list when no loops are running", () => {
+      const manager = new LoopManager();
+      expect(manager.listActive()).toEqual([]);
+    });
+
+    it("lists the project path of each in-flight loop", async () => {
+      const manager = new LoopManager();
+      writeMarker(projectPath);
+      writeBacklog(projectPath, [
+        {
+          id: "001",
+          type: "feature",
+          priority: 1,
+          title: "Test item",
+          description: "Test",
+          acceptanceCriteria: ["test"],
+          status: "pending",
+          completedAt: null,
+        },
+      ]);
+      writeRaufMd(projectPath);
+      // Long-running mock so the loop stays in-flight
+      const mockBinDir = path.join(tmpDir, "mock-bin");
+      fs.mkdirSync(mockBinDir, { recursive: true });
+      fs.writeFileSync(path.join(mockBinDir, "claude"), `#!/bin/bash\nexec sleep 999\n`);
+      fs.chmodSync(path.join(mockBinDir, "claude"), 0o755);
+      process.env["PATH"] = `${mockBinDir}:${originalPath}`;
+
+      manager.startLoop(projectPath, {
+        maxIterations: 5,
+        maxRetries: 1,
+        sessionTimeoutMinutes: 1,
+      });
+
+      const active = manager.listActive();
+      expect(active).toEqual([{ projectPath }]);
+
+      await manager.shutdownAll();
+      expect(manager.listActive()).toEqual([]);
+    });
+  });
+
   describe("recoverStaleLoops", () => {
     it("resets in_progress items in discovered projects", async () => {
       // Create a project with an in_progress item

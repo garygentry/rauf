@@ -87,3 +87,66 @@ export function formatBudgetMath(
   const avg = estimate.avgIters.toFixed(1).replace(/\.0$/, "");
   return `${estimate.pending} pending × ~${avg} iter = ~${estimate.needed} needed; cap ${estimate.cap} (${safety}× headroom)`;
 }
+
+// ─── resolveMaxIterations ────────────────────────────────────────
+
+/** Where a resolved maxIterations value came from (for startup logging). */
+export type MaxIterationsSource = "flag" | ".rauf.json" | "computed";
+
+export interface ResolveMaxIterationsInputs {
+  /** Explicit `--iterations` flag (or request body) value; null/undefined when omitted. */
+  flag?: number | null;
+  /** `options.maxIterations` from `.rauf.json`; null/undefined when no marker. */
+  markerMaxIterations?: number | null;
+  /** Backlog used to compute a budget-sized cap when neither above is set. */
+  backlog?: Backlog | null;
+  /** Flat fallback when nothing else resolves (default {@link MIN_MAX_ITERATIONS}). */
+  fallback?: number;
+}
+
+export interface ResolvedMaxIterations {
+  /** The resolved iteration cap. */
+  value: number;
+  /** Which source the value came from. */
+  source: MaxIterationsSource;
+  /**
+   * The backlog estimate, populated ONLY when `source === "computed"` and there
+   * was pending work — callers log the budget math (item 010) just in that case.
+   */
+  estimate?: MaxIterationsEstimate;
+}
+
+/**
+ * Resolve maxIterations by a single, logged precedence:
+ *
+ *   explicit flag  >  `.rauf.json` options.maxIterations  >  computeMaxIterations(backlog)
+ *
+ * When the computed path yields no pending work, the flat `fallback` is used
+ * (still reported as `computed`). Pure — callers read the files and do the
+ * logging so this stays trivially unit-testable.
+ */
+export function resolveMaxIterations(inputs: ResolveMaxIterationsInputs): ResolvedMaxIterations {
+  const { flag, markerMaxIterations, backlog, fallback = MIN_MAX_ITERATIONS } = inputs;
+
+  if (flag !== null && flag !== undefined) {
+    return { value: flag, source: "flag" };
+  }
+
+  if (markerMaxIterations !== null && markerMaxIterations !== undefined) {
+    return { value: markerMaxIterations, source: ".rauf.json" };
+  }
+
+  if (backlog) {
+    const estimate = computeMaxIterations(backlog);
+    if (estimate.pending > 0) {
+      return { value: estimate.cap, source: "computed", estimate };
+    }
+  }
+
+  return { value: fallback, source: "computed" };
+}
+
+/** Format the resolved value + source for a startup log line. */
+export function formatMaxIterationsSource(resolved: ResolvedMaxIterations): string {
+  return `maxIterations=${resolved.value} (${resolved.source})`;
+}

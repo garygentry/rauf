@@ -37,13 +37,14 @@ During `install()` and `update()`, the installer appends rauf runtime entries to
 
 These cover the root `.rauf/` directory as well as nested backlog dirs (`specs/<feature>/.rauf/`). The intentionally-tracked files (`backlog.json`, `progress.md`, `RAUF.md`, `REVIEW.md`, `archive/`) are **not** listed.
 
-> **Already tracking a runtime file?** If `.rauf/.loop.lock` (or another runtime file) was committed before the `.gitignore` was in place, untrack it once with:
+> **Already tracking a runtime file?** If a runtime file was committed before the `.gitignore` was in place (common for projects installed before rauf's `.gitignore` deployment), untrack it once. The most commonly tracked files are `state.json` (written on every loop run) and `.loop.lock` (written while a loop is active):
 >
 > ```
+> git rm --cached .rauf/state.json
 > git rm --cached .rauf/.loop.lock
 > ```
 >
-> Repeat for any other runtime files that appear in `git status`. The install/update warning lists all of them.
+> Run `git status` to see which other runtime files are tracked and repeat as needed. The `rauf install`/`rauf update` warning lists all of them. After untracking, git will ignore these files on future loop runs.
 
 ## Loop Runner
 

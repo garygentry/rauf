@@ -1,14 +1,24 @@
 import fs from "node:fs";
 import path from "node:path";
+import * as os from "node:os";
+import * as http from "node:http";
+import { execSync } from "node:child_process";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
+import { LoopEventSchema } from "@rauf/core";
 
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
-import { formatAndPrintEvent } from "./loop-commands.js";
-import { SERVER_STATE_FILE } from "./server-commands.js";
+import {
+  formatAndPrintEvent,
+  ensureServerRunning,
+  createLoopBranch,
+  buildPreconditionRemediation,
+  handleLoopRun,
+} from "./loop-commands.js";
+import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -427,5 +437,357 @@ describe("path resolution", () => {
       output.stderr.includes("No active loop") ||
       output.stderr.includes("Failed to connect");
     expect(stderrHasExpectedError).toBe(true);
+  });
+});
+
+describe("ensureServerRunning", () => {
+  let savedState: string | null = null;
+
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    removeServerState();
+  });
+
+  afterEach(() => {
+    removeServerState();
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
+  });
+
+  /** Start a throwaway server answering GET /api/health like a live rauf server. */
+  async function startHealthyServer(): Promise<{ port: number; close: () => Promise<void> }> {
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    return {
+      port,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  it("no-ops (does not restart) when a healthy server is already running", async () => {
+    const { port, close } = await startHealthyServer();
+    try {
+      // Alive PID (our own) + a live health endpoint → already running.
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+
+      const output = await captureOutput(async () => {
+        const ready = await ensureServerRunning(makeCtx());
+        expect(ready).toBe(true);
+      });
+
+      // It must NOT have attempted to (re)start the daemon.
+      expect(output.stdout).not.toContain("Starting daemon");
+      // State file is untouched (no new PID written).
+      expect(readState().pid).toBe(process.pid);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  function readState(): { pid: number } {
+    return JSON.parse(fs.readFileSync(SERVER_STATE_FILE, "utf-8")) as { pid: number };
+  }
+});
+
+// ─── --create-branch + actionable precondition refusal (item 026) ───
+
+describe("createLoopBranch & loop preconditions", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-createbranch-"));
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function git(cwd: string, args: string): void {
+    execSync(`git ${args}`, { cwd, stdio: "ignore" });
+  }
+
+  function currentBranch(cwd: string): string {
+    return execSync("git rev-parse --abbrev-ref HEAD", { cwd, encoding: "utf-8" }).trim();
+  }
+
+  /** Project dir that is its own git repo on `main`, with runtime files ignored. */
+  function makeProject(items: object[]): string {
+    const projectDir = path.join(tmpDir, "proj");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(raufDir, "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "p", description: "d", items }, null, 2) + "\n",
+    );
+    fs.writeFileSync(
+      path.join(projectDir, ".gitignore"),
+      [
+        ".rauf/state.json",
+        ".rauf/DONE",
+        ".rauf/CANCEL",
+        ".rauf/.loop.lock",
+        ".rauf/rauf.log",
+        ".rauf/iteration-status.json",
+        ".rauf/backlog.json.bak",
+        "",
+      ].join("\n"),
+    );
+    git(projectDir, "-c init.defaultBranch=main init");
+    git(projectDir, 'config user.email "test@test.com"');
+    git(projectDir, 'config user.name "Test"');
+    git(projectDir, "add -A");
+    git(projectDir, 'commit -m "baseline"');
+    return projectDir;
+  }
+
+  function pendingItem(id: string): object {
+    return {
+      id,
+      type: "feature",
+      priority: 1,
+      title: `Item ${id}`,
+      description: "d",
+      acceptanceCriteria: [],
+      status: "pending",
+      completedAt: null,
+      dependsOn: [],
+    };
+  }
+
+  it("switches to a new feature branch (switched:true)", async () => {
+    const proj = makeProject([]);
+    expect(currentBranch(proj)).toBe("main");
+
+    const result = await createLoopBranch(proj, "feat/x");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.switched).toBe(true);
+    expect(currentBranch(proj)).toBe("feat/x");
+  });
+
+  it("no-ops when already on the requested branch (switched:false)", async () => {
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/x");
+
+    const result = await createLoopBranch(proj, "feat/x");
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.switched).toBe(false);
+    expect(currentBranch(proj)).toBe("feat/x");
+  });
+
+  it("fails cleanly when the branch already exists (no switch)", async () => {
+    const proj = makeProject([]);
+    git(proj, "branch feat/x"); // create but stay on main
+
+    const result = await createLoopBranch(proj, "feat/x");
+    expect(result.ok).toBe(false);
+    // The working branch is left untouched on failure.
+    expect(currentBranch(proj)).toBe("main");
+  });
+
+  it("buildPreconditionRemediation lists branch + seed + force commands", () => {
+    const lines = buildPreconditionRemediation(".").join("\n");
+    expect(lines).toContain("git switch -c");
+    expect(lines).toContain("--create-branch");
+    expect(lines).toContain("--seed-backlog");
+    expect(lines).toContain("--force");
+  });
+
+  it("loop run prints actionable remediation when refusing on a protected branch", async () => {
+    const proj = makeProject([pendingItem("001")]); // stays on `main`
+    const ctx = makeCtx({ args: [proj] });
+
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.CONFLICT);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain('default branch "main"'); // the refusal itself
+    expect(all).toContain("git switch -c");
+    expect(all).toContain("--create-branch");
+    expect(all).toContain("--seed-backlog");
+    expect(all).toContain("--force");
+    // It refused — the branch is unchanged and no loop ran.
+    expect(currentBranch(proj)).toBe("main");
+  });
+
+  it("loop run --create-branch switches off the protected branch and starts cleanly", async () => {
+    // Empty backlog: the loop selects no item and completes without spawning Claude.
+    const proj = makeProject([]);
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["create-branch", "feat/work"]]),
+    });
+
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    // The branch switch happened before the precondition check, which then passed.
+    expect(currentBranch(proj)).toBe("feat/work");
+    expect(out.stdout).toContain("Switched to new branch");
+  });
+
+  // ─── --ndjson machine-readable event stream (item 027) ───
+
+  it("loop run --ndjson emits valid JSON events + a trailing result line", async () => {
+    // Empty backlog: completes without spawning Claude, emitting loop_started
+    // and loop_completed events.
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/ndjson"); // off the protected branch → preconditions pass
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["ndjson", true]]),
+    });
+
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    const lines = out.stdout.split("\n").filter((l) => l.trim().length > 0);
+    // At least: one event line + the trailing result line.
+    expect(lines.length).toBeGreaterThanOrEqual(2);
+
+    // Every line is valid JSON (NDJSON: one object per line).
+    const parsed = lines.map((l) => JSON.parse(l));
+
+    // All lines except the trailing result are valid LoopEvents with a known type.
+    const eventObjs = parsed.slice(0, -1);
+    expect(eventObjs.length).toBeGreaterThanOrEqual(1);
+    for (const obj of eventObjs) {
+      const result = LoopEventSchema.safeParse(obj);
+      expect(result.success).toBe(true);
+      expect(typeof obj.type).toBe("string");
+    }
+    // The first emitted event is loop_started.
+    expect(eventObjs[0].type).toBe("loop_started");
+
+    // The trailing line is the loop result (no event `type`, carries counts).
+    const resultLine = parsed[parsed.length - 1];
+    expect(resultLine.type).toBeUndefined();
+    expect(typeof resultLine.completedCount).toBe("number");
+    expect(typeof resultLine.blockedCount).toBe("number");
+
+    // The human renderer + diagnostic lines are suppressed → no leakage into stdout.
+    expect(out.stdout).not.toContain("Running loop directly");
+    expect(out.stdout).not.toContain("Loop finished");
+  });
+
+  // ─── --seed-backlog (item 028) ───
+
+  function writeBacklog(projectDir: string, items: object[], description = "d"): void {
+    fs.writeFileSync(
+      path.join(projectDir, ".rauf", "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "p", description, items }, null, 2) + "\n",
+    );
+  }
+
+  function gitStatus(cwd: string): string {
+    return execSync("git status --porcelain", { cwd, encoding: "utf-8" }).trim();
+  }
+
+  function gitSubjects(cwd: string): string {
+    return execSync("git log --format=%s", { cwd, encoding: "utf-8" });
+  }
+
+  it("loop run --seed-backlog commits an otherwise-clean backlog before the loop", async () => {
+    // Empty backlog: after seeding, the loop selects no item and completes
+    // without spawning Claude.
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/seed"); // off the protected branch
+    // Dirty the already-tracked backlog to simulate a freshly-edited backlog.
+    writeBacklog(proj, [], "seeded description");
+    // A runtime file that must NOT land in the seed commit (criterion 3).
+    fs.writeFileSync(path.join(proj, ".rauf", "state.json"), "{}\n");
+    expect(gitStatus(proj)).not.toBe("");
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["seed-backlog", true]]),
+    });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    // The backlog was committed as `[rauf] backlog: seed <project>`.
+    expect(gitSubjects(proj)).toContain("[rauf] backlog: seed proj");
+    expect(out.stdout).toContain("Seeded backlog");
+    // The seed commit excludes runtime files (state.json never gets tracked).
+    const tracked = execSync("git ls-files", { cwd: proj, encoding: "utf-8" });
+    expect(tracked).not.toContain(".rauf/state.json");
+    // Tree is clean after seeding (the loop ran on an empty backlog).
+    expect(gitStatus(proj)).toBe("");
+  });
+
+  it("loop run --seed-backlog refuses and lists other dirty files (no auto-commit)", async () => {
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/seed");
+    writeBacklog(proj, [], "seeded description"); // backlog dirty
+    fs.writeFileSync(path.join(proj, "app.ts"), "export const x = 1;\n"); // unrelated dirty file
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["seed-backlog", true]]),
+    });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.CONFLICT);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain("app.ts");
+    expect(all).toContain("--seed-backlog only commits");
+    // No seed commit was created, and the backlog is still uncommitted.
+    expect(gitSubjects(proj)).not.toContain("[rauf] backlog: seed");
+    expect(gitStatus(proj)).not.toBe("");
+  });
+
+  it("loop run --seed-backlog refuses on a dirty .rauf bookkeeping file (not swept into the seed)", async () => {
+    // Regression: the dirty-check must not exclude the whole .rauf/ dir. RAUF.md
+    // is git-tracked and gitCommit WOULD stage it, so an uncommitted edit must
+    // surface as "other dirty" and refuse — never land in the seed commit.
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/seed");
+    writeBacklog(proj, [], "seeded description"); // backlog dirty
+    const raufMd = path.join(proj, ".rauf", "RAUF.md");
+    fs.writeFileSync(raufMd, "# customized loop instructions\n"); // tracked bookkeeping, dirty
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["seed-backlog", true]]),
+    });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.CONFLICT);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain(".rauf/RAUF.md");
+    expect(all).toContain("--seed-backlog only commits");
+    // No seed commit, and RAUF.md is still uncommitted (not swept in).
+    expect(gitSubjects(proj)).not.toContain("[rauf] backlog: seed");
+    expect(gitStatus(proj)).not.toBe("");
   });
 });

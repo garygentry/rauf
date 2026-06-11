@@ -85,6 +85,40 @@ function setupDoneFile(content: string = ""): void {
   fs.writeFileSync(filePath, content);
 }
 
+/** Write a .loop.lock file. Defaults to a live (current-process) lock. */
+function writeLock(pid: number = process.pid): void {
+  createRaufDir();
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, LOCK_FILENAME);
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify({ pid, startedAt: new Date().toISOString(), processStartTime: null }, null, 2) +
+      "\n",
+  );
+}
+
+/** Write iteration-status.json with the given updatedAt (defaults to now). */
+function writeIterationStatusFile(updatedAt: string = new Date().toISOString()): void {
+  createRaufDir();
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, "iteration-status.json");
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify(
+      {
+        itemId: "003",
+        startedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+        updatedAt,
+        currentTool: "Edit",
+        recentTools: ["Read", "Edit"],
+        tokens: { input: 1000, output: 500 },
+        lastActivityAt: updatedAt,
+        stuckWarning: false,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
 /** Create a minimal valid LoopState */
 function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
   return {
@@ -243,6 +277,43 @@ describe("deriveStatus — Tier 1: state.json", () => {
       updatedAt: staleTime,
     });
     writeStateJson(state);
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("PAUSED");
+  });
+
+  it("keeps RUNNING when state.json is stale but the lock PID is alive (item 025)", () => {
+    // A long active iteration: state.json updatedAt is stale (written only
+    // between iterations) but a live lock PID proves the loop is working.
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 60_000).toISOString();
+    writeStateJson(makeLoopState({ status: "running", updatedAt: staleTime }));
+    writeLock(process.pid); // alive
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("RUNNING");
+  });
+
+  it("keeps RUNNING when state.json is stale but iteration-status.json is fresh (item 025)", () => {
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 60_000).toISOString();
+    writeStateJson(makeLoopState({ status: "running", updatedAt: staleTime }));
+    // No live lock; rely solely on a freshly-written iteration-status.json.
+    writeIterationStatusFile(new Date().toISOString());
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("RUNNING");
+  });
+
+  it("downgrades to PAUSED for a dead loop: dead lock PID and stale iteration-status (item 025)", () => {
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 60_000).toISOString();
+    writeStateJson(makeLoopState({ status: "running", updatedAt: staleTime }));
+    writeLock(2147483646); // guaranteed-dead PID → stale lock
+    writeIterationStatusFile(staleTime); // iteration-status also stale
 
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);

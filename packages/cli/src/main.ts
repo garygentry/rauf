@@ -14,7 +14,14 @@ import {
   print,
   outputJson,
 } from "./formatter.js";
-import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
+import {
+  COMMANDS,
+  findCommand,
+  getSubcommandNames,
+  findSubcommand,
+  showCommandHelp,
+  ExitCode,
+} from "./commands.js";
 import type { CommandContext } from "./commands.js";
 
 export async function runCli(): Promise<number> {
@@ -88,6 +95,12 @@ export async function runCli(): Promise<number> {
     globalFlags: parsed.globalFlags,
     rawArgv: argv,
   };
+
+  // Intercept --help / -h BEFORE any handler runs, so a help probe never
+  // triggers a side effect (e.g. `rauf loop start --help` must not start a loop).
+  if (parsed.flags.has("help") || parsed.flags.has("h")) {
+    return showCommandHelp(commandName, ctx, parsed.subcommand ?? undefined);
+  }
 
   // If command has subcommands, route to subcommand handler
   if (cmd.subcommands) {
