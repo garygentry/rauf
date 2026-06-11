@@ -73,7 +73,9 @@ export async function checkLoopPreconditions(
       code: ErrorCodes.CONFLICT,
       message:
         "Refusing to run the loop with uncommitted changes in the working tree. " +
-        "Commit or stash them first, or pass --force to override.",
+        "Commit or stash them first, or pass --force to override. " +
+        "If an interrupted iteration left this work, run `rauf resume --recover` " +
+        "to re-verify and commit it.",
     });
   }
 

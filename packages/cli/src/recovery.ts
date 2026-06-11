@@ -15,6 +15,7 @@
 // agent blocks (RAUF_BLOCKED / needsHuman) untouched so a human can see them.
 
 import * as fs from "node:fs";
+import { spawn } from "node:child_process";
 
 import {
   readBacklog,
@@ -30,16 +31,27 @@ import {
   err,
   ErrorCodes,
   LoopStateSchema,
+  type Backlog,
   type BacklogPaths,
   type Result,
 } from "@rauf/core";
-import { findItemCommit, isTreeClean } from "@rauf/loop";
+import { findItemCommit, isTreeClean, gitCommit } from "@rauf/loop";
 
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface KeptBlock {
   id: string;
   reason: string;
+}
+
+/**
+ * An item left `in_progress` with uncommitted changes and no `[rauf] <id>:`
+ * commit at/after the run baseline — an iteration killed in the verify→commit
+ * window (verified-but-uncommitted work). Recoverable via `rauf resume --recover`.
+ */
+export interface InterruptedItem {
+  id: string;
+  title: string;
 }
 
 export interface ReconcileSummary {
@@ -50,11 +62,73 @@ export interface ReconcileSummary {
   /** Genuine agent blocks (RAUF_BLOCKED / needsHuman) left blocked, reported. */
   keptBlocked: KeptBlock[];
   /**
+   * Interrupted iterations: `in_progress` items with uncommitted work and no
+   * matching commit at/after the run baseline. Surfaced distinctly (not as a
+   * generic dirty-tree refusal) so the user can re-verify + commit them via
+   * `rauf resume --recover`. Only ever populated on a dirty tree.
+   */
+  interrupted: InterruptedItem[];
+  /**
    * Whether commit reconciliation ran. False when the working tree was dirty,
    * in which case no items were promoted via commit (uncommitted work is not
    * silently marked done).
    */
   treeClean: boolean;
+}
+
+// ─── Interrupted-iteration detection ─────────────────────────────
+
+/**
+ * Identify interrupted iterations among the given items: `in_progress` items
+ * with NO `[rauf] <id>:` commit at/after the run baseline. Only meaningful on a
+ * dirty tree (a clean tree means the iteration either committed or did nothing),
+ * so it short-circuits to `[]` when the tree is clean. Read-only; never throws.
+ */
+async function findInterruptedItems(
+  items: Backlog["items"],
+  projectPath: string,
+  baseCommitHash: string | null,
+  treeClean: boolean,
+): Promise<Result<InterruptedItem[]>> {
+  const interrupted: InterruptedItem[] = [];
+  if (treeClean) return ok(interrupted);
+
+  for (const item of items) {
+    if (item.status !== "in_progress") continue;
+    const commitResult = await findItemCommit(projectPath, item.id, baseCommitHash ?? undefined);
+    if (!commitResult.ok) return commitResult;
+    if (!commitResult.value) {
+      interrupted.push({ id: item.id, title: item.title });
+    }
+  }
+  return ok(interrupted);
+}
+
+/**
+ * Read-only detection of interrupted iterations for the current backlog. Reads
+ * the run baseline from state.json and the working-tree cleanliness, then
+ * returns the `in_progress` items left uncommitted before their commit landed.
+ * Mutates nothing — used by `rauf resume` to surface (and, with `--recover`,
+ * re-verify) interrupted work before any reconciliation.
+ */
+export async function detectInterruptedItems(
+  paths: BacklogPaths,
+): Promise<Result<InterruptedItem[]>> {
+  const backlogResult = readBacklog(paths);
+  if (!backlogResult.ok) return backlogResult;
+
+  const stateResult = readJsonFile(paths.state, LoopStateSchema);
+  const baseCommitHash = stateResult.ok ? stateResult.value.baseCommitHash : null;
+
+  const cleanResult = await isTreeClean(paths.projectPath);
+  if (!cleanResult.ok) return cleanResult;
+
+  return findInterruptedItems(
+    backlogResult.value.items,
+    paths.projectPath,
+    baseCommitHash,
+    cleanResult.value,
+  );
 }
 
 // ─── reconcileAndRequeue ─────────────────────────────────────────
@@ -104,6 +178,18 @@ export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<R
   if (!cleanResult.ok) return cleanResult;
   const treeClean = cleanResult.value;
 
+  // Interrupted iterations: in_progress items with uncommitted work and no
+  // matching commit at/after the baseline. Computed before the loop mutates
+  // anything (on a dirty tree the loop never promotes in_progress items anyway).
+  const interruptedResult = await findInterruptedItems(
+    backlog.items,
+    projectPath,
+    baseCommitHash,
+    treeClean,
+  );
+  if (!interruptedResult.ok) return interruptedResult;
+  const interrupted = interruptedResult.value;
+
   const recovered: string[] = [];
   const requeued: string[] = [];
   const keptBlocked: KeptBlock[] = [];
@@ -152,7 +238,127 @@ export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<R
   const writeResult = writeBacklog(paths, backlog);
   if (!writeResult.ok) return writeResult;
 
-  return ok({ recovered, requeued, keptBlocked, treeClean });
+  return ok({ recovered, requeued, keptBlocked, interrupted, treeClean });
+}
+
+// ─── Re-verify + commit interrupted work (`rauf resume --recover`) ─
+
+/** Outcome of running a project's verify command. */
+export interface VerifyOutcome {
+  passed: boolean;
+  output: string;
+}
+
+/** Runs a project's verify command. Injectable for tests. */
+export type VerifyRunner = (projectPath: string, command: string) => Promise<VerifyOutcome>;
+
+/**
+ * Default verify runner: executes the (possibly composite, `&&`-joined) verify
+ * command through a shell in the project directory and reports whether it exited
+ * 0. Captures combined stdout+stderr for failure reporting. Never throws.
+ */
+export const defaultVerifyRunner: VerifyRunner = (projectPath, command) =>
+  new Promise((resolve) => {
+    const child = spawn(command, { cwd: projectPath, shell: true });
+    let output = "";
+    child.stdout?.on("data", (d: Buffer) => (output += d.toString()));
+    child.stderr?.on("data", (d: Buffer) => (output += d.toString()));
+    child.on("error", (e) => resolve({ passed: false, output: String(e) }));
+    child.on("close", (code) => resolve({ passed: code === 0, output }));
+  });
+
+/** Per-item result of a `--recover` re-verify attempt. */
+export interface ItemRecoveryResult {
+  id: string;
+  title: string;
+  /** Whether the verify command passed. */
+  verifyPassed: boolean;
+  /** Whether the work was committed and the item marked done (verify passed + a commit was produced). */
+  committed: boolean;
+  /** Commit hash when committed, else null. */
+  commitHash: string | null;
+  /** Combined verify output (kept for failure reporting). */
+  output: string;
+}
+
+/**
+ * Re-verify and commit interrupted iterations for `rauf resume --recover`.
+ *
+ * For each interrupted item, run the project's verify command. On green, commit
+ * the work as `[rauf] <id>: <title>` (the same format the loop runner uses) and
+ * mark the item done. On failure, leave the work untouched and report it so the
+ * caller can surface the failure. Marking done happens AFTER the commit — mirror
+ * the runner, which commits the in_progress backlog.json and persists the done
+ * status separately.
+ *
+ * Never throws; git/IO failures surface as `Result` errors.
+ */
+export async function reverifyAndCommitInterrupted(
+  paths: BacklogPaths,
+  items: InterruptedItem[],
+  verifyCommand: string,
+  runVerify: VerifyRunner = defaultVerifyRunner,
+): Promise<Result<ItemRecoveryResult[]>> {
+  const results: ItemRecoveryResult[] = [];
+
+  for (const item of items) {
+    const outcome = await runVerify(paths.projectPath, verifyCommand);
+    if (!outcome.passed) {
+      results.push({
+        id: item.id,
+        title: item.title,
+        verifyPassed: false,
+        committed: false,
+        commitHash: null,
+        output: outcome.output,
+      });
+      continue;
+    }
+
+    const commitResult = await gitCommit(paths.projectPath, item.id, item.title);
+    if (!commitResult.ok) return commitResult;
+    const commitHash = commitResult.value.commitHash;
+
+    if (commitHash === "") {
+      // Verify passed but there was nothing to commit (e.g. an earlier item in
+      // this batch already swept the dirty work). Don't mark done off an empty
+      // commit; report it untouched.
+      results.push({
+        id: item.id,
+        title: item.title,
+        verifyPassed: true,
+        committed: false,
+        commitHash: null,
+        output: outcome.output,
+      });
+      continue;
+    }
+
+    const backlogResult = readBacklog(paths);
+    if (!backlogResult.ok) return backlogResult;
+    const backlog = backlogResult.value;
+    const target = backlog.items.find((i) => i.id === item.id);
+    if (target) {
+      target.status = "done";
+      target.completedAt = new Date().toISOString();
+      delete target.deferred;
+      delete target.blockedReason;
+      delete target.needsHuman;
+    }
+    const writeResult = writeBacklog(paths, backlog);
+    if (!writeResult.ok) return writeResult;
+
+    results.push({
+      id: item.id,
+      title: item.title,
+      verifyPassed: true,
+      committed: true,
+      commitHash,
+      output: outcome.output,
+    });
+  }
+
+  return ok(results);
 }
 
 // ─── Recovery lock (acquire / release) ───────────────────────────

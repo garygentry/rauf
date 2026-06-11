@@ -22,6 +22,8 @@ import {
   resolveBacklogPaths,
   readBacklog,
   readJsonFile,
+  readMarkerFile,
+  detectProfile,
   deriveStatus,
   selectNextItem,
   LoopStateSchema,
@@ -33,10 +35,88 @@ import {
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
-import { extractStringFlag } from "./parser.js";
+import { extractStringFlag, extractBoolFlag } from "./parser.js";
 import { c, info, error, success, warn, outputJson } from "./formatter.js";
-import { acquireRecoveryLock, releaseRecoveryLock, recoverInterruptedLoop } from "./recovery.js";
+import {
+  acquireRecoveryLock,
+  releaseRecoveryLock,
+  recoverInterruptedLoop,
+  detectInterruptedItems,
+  reverifyAndCommitInterrupted,
+  type InterruptedItem,
+  type VerifyRunner,
+} from "./recovery.js";
 import { handleLoopRun } from "./loop-commands.js";
+
+// ─── Verify-command resolution ───────────────────────────────────
+
+/**
+ * Resolve the project's verify command for `--recover`, preferring the
+ * installed `.rauf.json` profile and falling back to a fresh `detectProfile`
+ * scan. Returns null when no verify command can be determined.
+ */
+function resolveVerifyCommand(projectPath: string): string | null {
+  const marker = readMarkerFile(projectPath);
+  if (marker.ok && marker.value.profile.verify.trim() !== "") {
+    return marker.value.profile.verify;
+  }
+  const detected = detectProfile(projectPath);
+  return detected.verify.trim() !== "" ? detected.verify : null;
+}
+
+/** Surface interrupted iterations without mutating (default `rauf resume`). */
+function reportInterruptedSurface(items: InterruptedItem[], ctx: CommandContext): void {
+  if (ctx.globalFlags.json) {
+    outputJson({ resumed: false, reason: "interrupted_uncommitted", interrupted: items });
+    return;
+  }
+  for (const it of items) {
+    warn(`item ${it.id} left uncommitted changes (interrupted before commit)`);
+  }
+  info(`Re-verify and commit this work with ${c.cyan("rauf resume --recover")}.`);
+}
+
+/**
+ * `--recover`: re-verify and commit interrupted work. Returns `true` when
+ * recovery HALTED (no verify command, a re-verify error, or a failed verify) —
+ * the caller must then stop without reconciling or relaunching, leaving the work
+ * untouched. Returns `false` when all interrupted items were recovered (or there
+ * was nothing to commit) and the normal recovery + relaunch should proceed.
+ */
+async function runRecoverInterrupted(
+  projectPath: string,
+  paths: BacklogPaths,
+  items: InterruptedItem[],
+  runVerify: VerifyRunner | undefined,
+): Promise<boolean> {
+  const verifyCommand = resolveVerifyCommand(projectPath);
+  if (verifyCommand === null) {
+    error(
+      "No verify command is configured for this project (.rauf.json / profile) — cannot auto-recover interrupted work.",
+    );
+    return true;
+  }
+
+  info(`Re-verifying interrupted work with ${c.dim(verifyCommand)} …`);
+  const recoverResult = await reverifyAndCommitInterrupted(paths, items, verifyCommand, runVerify);
+  if (!recoverResult.ok) {
+    error(recoverResult.error.message);
+    return true;
+  }
+
+  let verifyFailed = false;
+  for (const r of recoverResult.value) {
+    if (r.committed) {
+      success(`Recovered item ${r.id}: re-verified, committed ${c.dim(r.commitHash ?? "")}, done.`);
+    } else if (!r.verifyPassed) {
+      error(`Re-verify failed for item ${r.id} — work left untouched.`);
+      verifyFailed = true;
+    } else {
+      warn(`item ${r.id}: verify passed but there was nothing to commit — left untouched.`);
+    }
+  }
+  return verifyFailed;
+}
 
 // ─── Resumable-state detection ───────────────────────────────────
 
@@ -113,6 +193,8 @@ function detectResumeState(paths: BacklogPaths, deadLockCleared: boolean): Resum
 export interface ResumeDeps {
   /** Loop launcher — injectable for tests. Defaults to `handleLoopRun`. */
   runLoop?: (ctx: CommandContext) => Promise<number>;
+  /** Verify runner for `--recover` — injectable for tests. Defaults to the real shell runner. */
+  runVerify?: VerifyRunner;
 }
 
 export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): Promise<number> {
@@ -120,6 +202,7 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   const targetPath = ctx.args[0] ?? ".";
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const recoverFlag = extractBoolFlag(ctx.flags, "recover");
 
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
@@ -173,61 +256,94 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
         success("Nothing to resume — all backlog items are done.");
       }
     } else {
-      if (detection.resumable) {
-        info(`Detected interrupted loop (${c.cyan(detection.label)}) — recovering and resuming.`);
-      } else {
-        // No interruption marker, but non-done work remains (e.g. the loop
-        // exhausted its budget with pending items left). Resuming is still valid.
-        warn(
-          `No interrupted-loop marker found (state: ${detection.label}), but ${detection.nonDone} non-done item(s) remain — continuing.`,
-        );
-      }
-
-      // 3. Reconcile committed work, requeue false blocks, reset stalled items,
-      // and clear loop state + markers.
-      const recoveryResult = await recoverInterruptedLoop(paths);
-      if (!recoveryResult.ok) {
-        error(recoveryResult.error.message);
+      // 2b. Detect interrupted iterations (verified-but-uncommitted work killed
+      // before its commit) BEFORE any mutation. Without --recover we only
+      // surface them and stop; with --recover we re-verify and commit them.
+      const interruptedResult = await detectInterruptedItems(paths);
+      if (!interruptedResult.ok) {
+        error(interruptedResult.error.message);
         exitCode = ExitCode.ERROR;
+      } else if (interruptedResult.value.length > 0 && !recoverFlag) {
+        // Surface only — never mutate. Point to `rauf resume --recover`.
+        reportInterruptedSurface(interruptedResult.value, ctx);
       } else {
-        const summary = recoveryResult.value;
-
-        if (!summary.treeClean) {
+        if (detection.resumable) {
+          info(`Detected interrupted loop (${c.cyan(detection.label)}) — recovering and resuming.`);
+        } else {
+          // No interruption marker, but non-done work remains (e.g. the loop
+          // exhausted its budget with pending items left). Resuming is still valid.
           warn(
-            "Working tree is dirty — skipped commit reconciliation (uncommitted work was not marked done).",
+            `No interrupted-loop marker found (state: ${detection.label}), but ${detection.nonDone} non-done item(s) remain — continuing.`,
           );
         }
-        const recoveryParts: string[] = [];
-        if (summary.recovered.length > 0)
-          recoveryParts.push(`recovered ${summary.recovered.join(", ")}`);
-        if (summary.requeued.length > 0)
-          recoveryParts.push(`requeued ${summary.requeued.join(", ")}`);
-        if (summary.stalledReset > 0) recoveryParts.push(`reset ${summary.stalledReset} stalled`);
-        if (recoveryParts.length > 0) info(c.dim(`Recovery: ${recoveryParts.join("; ")}.`));
 
-        // 4. Bail before launching if no eligible item remains (only genuine
-        // blocks / needs-human left) — the loop would spawn and immediately
-        // complete otherwise.
-        const postBacklog = readBacklog(paths);
-        if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
-          if (ctx.globalFlags.json) {
-            outputJson({
-              resumed: false,
-              reason: "no_eligible_items",
-              recovered: summary.recovered,
-              requeued: summary.requeued,
-              keptBlocked: summary.keptBlocked,
-            });
+        // 2c. With --recover, re-verify + commit interrupted work first. A failed
+        // re-verify leaves the work untouched and stops (no reconciliation, no
+        // relaunch) so the user can inspect it.
+        let recoverHalted = false;
+        if (interruptedResult.value.length > 0) {
+          recoverHalted = await runRecoverInterrupted(
+            resolved,
+            paths,
+            interruptedResult.value,
+            deps.runVerify,
+          );
+          if (recoverHalted) exitCode = ExitCode.ERROR;
+        }
+
+        if (!recoverHalted) {
+          // 3. Reconcile committed work, requeue false blocks, reset stalled items,
+          // and clear loop state + markers.
+          const recoveryResult = await recoverInterruptedLoop(paths);
+          if (!recoveryResult.ok) {
+            error(recoveryResult.error.message);
+            exitCode = ExitCode.ERROR;
           } else {
-            success("Recovery complete, but no eligible pending items remain to run.");
-            if (summary.keptBlocked.length > 0) {
-              info(
-                `${summary.keptBlocked.length} genuine block(s) need attention — resolve them, then ${c.cyan("rauf backlog unblock")}.`,
+            const summary = recoveryResult.value;
+
+            if (summary.interrupted.length > 0) {
+              for (const it of summary.interrupted) {
+                warn(`item ${it.id} left uncommitted changes (interrupted before commit)`);
+              }
+            } else if (!summary.treeClean) {
+              warn(
+                "Working tree is dirty — skipped commit reconciliation (uncommitted work was not marked done).",
               );
             }
+            const recoveryParts: string[] = [];
+            if (summary.recovered.length > 0)
+              recoveryParts.push(`recovered ${summary.recovered.join(", ")}`);
+            if (summary.requeued.length > 0)
+              recoveryParts.push(`requeued ${summary.requeued.join(", ")}`);
+            if (summary.stalledReset > 0)
+              recoveryParts.push(`reset ${summary.stalledReset} stalled`);
+            if (recoveryParts.length > 0) info(c.dim(`Recovery: ${recoveryParts.join("; ")}.`));
+
+            // 4. Bail before launching if no eligible item remains (only genuine
+            // blocks / needs-human left) — the loop would spawn and immediately
+            // complete otherwise.
+            const postBacklog = readBacklog(paths);
+            if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
+              if (ctx.globalFlags.json) {
+                outputJson({
+                  resumed: false,
+                  reason: "no_eligible_items",
+                  recovered: summary.recovered,
+                  requeued: summary.requeued,
+                  keptBlocked: summary.keptBlocked,
+                });
+              } else {
+                success("Recovery complete, but no eligible pending items remain to run.");
+                if (summary.keptBlocked.length > 0) {
+                  info(
+                    `${summary.keptBlocked.length} genuine block(s) need attention — resolve them, then ${c.cyan("rauf backlog unblock")}.`,
+                  );
+                }
+              }
+            } else {
+              relaunch = true;
+            }
           }
-        } else {
-          relaunch = true;
         }
       }
     }

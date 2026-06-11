@@ -482,8 +482,8 @@
         "Tests cover interrupted-iteration detection and re-verify-then-commit (mocked passing verify)",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T20:32:02.925Z",
       "dependsOn": [],
       "notes": "From feedback #2 F2 (high). Complements item 009 (commit-exists recovery). Reuse baseCommitHash (018) + findItemCommit; the verify command comes from the profile. Files: recovery.ts, resume-commands.ts, reset-commands.ts, git-status.ts.",
       "estimatedIterations": 2

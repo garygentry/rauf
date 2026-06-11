@@ -4,7 +4,10 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 
+import { resolveBacklogPaths } from "@rauf/core";
+
 import { handleResume } from "./resume-commands.js";
+import { detectInterruptedItems } from "./recovery.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
@@ -64,6 +67,35 @@ function commitItemWork(projectDir: string, id: string): void {
   fs.writeFileSync(path.join(projectDir, `work-${id}.txt`), `work for ${id}\n`);
   git(projectDir, "add -A");
   git(projectDir, `commit -m "[rauf] ${id}: did the work"`);
+}
+
+/** Write a minimal valid .rauf.json marker carrying a verify command. */
+function writeMarker(projectDir: string, verify: string): void {
+  const marker = {
+    rauf: true,
+    version: "1.0.0",
+    variant: "backlog-json",
+    installedAt: "2026-01-01T00:00:00.000Z",
+    installedBy: "test",
+    profile: {
+      stack: "custom",
+      packageManager: null,
+      monorepo: false,
+      commands: { test: null, typecheck: null, lint: null, build: null, format: null },
+      verify,
+    },
+    artifactHashes: {},
+    options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
+  };
+  fs.writeFileSync(path.join(projectDir, ".rauf.json"), JSON.stringify(marker, null, 2) + "\n");
+}
+
+/** Subject lines of `[rauf] <id>:` commits in the project's git log. */
+function raufCommitSubjects(projectDir: string, id: string): string {
+  return execSync(`git log --grep="^\\[rauf\\] ${id}:" --format=%s`, {
+    cwd: projectDir,
+    encoding: "utf-8",
+  }).trim();
 }
 
 function writeState(projectDir: string, status: string): void {
@@ -261,6 +293,103 @@ describe("handleResume — nothing to resume", () => {
     expect(code).toBe(ExitCode.SUCCESS);
     // Genuine block stays blocked; no eligible pending item → no relaunch.
     expect(readBacklogItems(projectDir)["001"]?.status).toBe("blocked");
+    expect(calls).toHaveLength(0);
+  });
+});
+
+// ─── Interrupted-iteration detection + --recover ───────────────────
+
+describe("detectInterruptedItems", () => {
+  it("reports a dirty tree's in_progress item with no baseline commit as interrupted", async () => {
+    const projectDir = createProject([item("001", "in_progress"), item("002", "pending")]);
+    // Uncommitted work, no [rauf] 001: commit → interrupted iteration.
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "half-done\n");
+
+    const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const result = await detectInterruptedItems(resolved.value);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([{ id: "001", title: "Item 001" }]);
+    }
+  });
+
+  it("reports nothing on a clean tree", async () => {
+    const projectDir = createProject([item("001", "in_progress")]);
+    const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const result = await detectInterruptedItems(resolved.value);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual([]);
+  });
+});
+
+describe("handleResume — interrupted iterations", () => {
+  it("surfaces interrupted work and does NOT mutate or relaunch without --recover", async () => {
+    const projectDir = createProject([item("001", "in_progress"), item("002", "pending")]);
+    writeState(projectDir, "error");
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "half-done\n");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    // Default surfaces only: no relaunch, no mutation.
+    expect(calls).toHaveLength(0);
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("in_progress");
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "state.json"))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, "work.txt"))).toBe(true);
+  });
+
+  it("--recover re-runs verify and, on green, commits the work and marks it done", async () => {
+    const projectDir = createProject([item("001", "in_progress"), item("002", "pending")]);
+    writeState(projectDir, "error");
+    writeMarker(projectDir, "echo verify-ok");
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "verified work\n");
+
+    const verifyCalls: string[] = [];
+    const runVerify = async (_cwd: string, command: string) => {
+      verifyCalls.push(command);
+      return { passed: true, output: "ok" };
+    };
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["recover", true]]) }),
+      { runLoop, runVerify },
+    );
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    // Verify command came from the marker profile.
+    expect(verifyCalls).toEqual(["echo verify-ok"]);
+    // Item committed + marked done; a [rauf] 001: commit landed.
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("done");
+    expect(raufCommitSubjects(projectDir, "001")).toContain("[rauf] 001:");
+    // 002 still pending → loop relaunches.
+    expect(calls).toHaveLength(1);
+  });
+
+  it("--recover leaves the work untouched and reports when re-verify fails", async () => {
+    const projectDir = createProject([item("001", "in_progress")]);
+    writeState(projectDir, "error");
+    writeMarker(projectDir, "exit 1");
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "broken work\n");
+
+    const runVerify = async () => ({ passed: false, output: "FAIL" });
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["recover", true]]) }),
+      { runLoop, runVerify },
+    );
+
+    expect(code).toBe(ExitCode.ERROR);
+    // Work left untouched: item stays in_progress, no commit, nothing relaunched.
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("in_progress");
+    expect(fs.existsSync(path.join(projectDir, "work.txt"))).toBe(true);
+    expect(raufCommitSubjects(projectDir, "001")).toBe("");
     expect(calls).toHaveLength(0);
   });
 });

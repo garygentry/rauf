@@ -235,7 +235,7 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "resume",
     description: "Continue an interrupted loop: recover state, then relaunch from the next item",
-    usage: "rauf resume [path] [--backlog <dir>] [--iterations N] [--json]",
+    usage: "rauf resume [path] [--recover] [--backlog <dir>] [--iterations N] [--json]",
     handler: handleResume,
   },
   {
