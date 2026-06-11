@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0-rc.2
+
 ### Fixed
 
 - Release binaries for x64 (`rauf-linux-x64`, `rauf-darwin-x64`,
