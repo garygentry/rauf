@@ -58,8 +58,8 @@
         "hasUsageLimitInText and INFRA_FAST_MS are exported; tests cover all branches",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T07:41:25.475Z",
       "dependsOn": [],
       "notes": "Do NOT wire this into the runner here — that is item 006. Keep the module free of side effects and of imports beyond the ParsedSignal type (exported from ./signal-parser.js) so it stays trivially unit-testable.",
       "estimatedIterations": 1
