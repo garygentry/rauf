@@ -20,6 +20,7 @@ import {
   readBacklog,
   writeBacklog,
   readJsonFile,
+  acquireLock,
   checkLock,
   releaseLock,
   resetStalledItems,
@@ -154,46 +155,63 @@ export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<R
   return ok({ recovered, requeued, keptBlocked, treeClean });
 }
 
-// ─── guardLoopLock ───────────────────────────────────────────────
+// ─── Recovery lock (acquire / release) ───────────────────────────
 
-/** Outcome of inspecting (and possibly clearing) the loop lock. */
-export interface LockGuard {
-  /** A live loop holds the lock — the caller MUST refuse to recover/resume. */
-  alive: boolean;
-  /** PID recorded in the lock file, if a lock was present. */
-  pid?: number;
-  /** When the lock was acquired, if a lock was present. */
-  startedAt?: string;
-  /** A stale lock (dead/recycled PID) was found and removed. */
+/** Outcome of acquiring the recovery lock. */
+export interface AcquiredRecoveryLock {
+  /** A stale lock (dead/recycled PID) was found and cleared while acquiring. */
   cleared: boolean;
 }
 
 /**
- * Inspect the loop lock before a recovery/resume operation.
+ * Acquire the loop lock for a recovery/resume window, closing the
+ * check-then-mutate TOCTOU race: a concurrent `rauf loop run` cannot acquire the
+ * lock and start between a staleness check and the backlog mutation, because we
+ * hold the lock for the whole window.
  *
- * - A live lock (present, not stale) → `alive: true`; the caller refuses so we
- *   never mutate a backlog out from under a running loop.
- * - A stale lock (dead or recycled PID) → removed, `cleared: true`.
- * - No lock → `alive: false, cleared: false`.
+ * - A live lock held by another process → propagates `acquireLock`'s
+ *   `LOCK_CONFLICT` error. The caller MUST refuse and perform NO mutation, and
+ *   MUST NOT release — the lock belongs to the live loop.
+ * - A stale lock (dead/recycled PID) → cleared and re-acquired (`cleared: true`).
+ * - No lock → acquired (`cleared: false`).
  *
- * Shared by `rauf reset` and `rauf resume` so both gate on the lock identically.
+ * On success the caller owns the lock and MUST release it via
+ * `releaseRecoveryLock` (in a `finally`, and — for resume — before relaunching).
+ * Reuses core `checkLock`/`acquireLock`; does not reimplement PID checks.
  */
-export function guardLoopLock(paths: BacklogPaths): Result<LockGuard> {
-  const lockResult = checkLock(paths);
-  if (!lockResult.ok) return lockResult;
-  const lock = lockResult.value;
+export function acquireRecoveryLock(paths: BacklogPaths): Result<AcquiredRecoveryLock> {
+  // checkLock only to report whether a stale lock was cleared; acquireLock is
+  // the authoritative gate (it atomically refuses a live lock and clears a
+  // stale one), so even a lock that appears between this check and the acquire
+  // is handled correctly.
+  const status = checkLock(paths);
+  if (!status.ok) return status;
+  const cleared = status.value.locked === true && status.value.stale === true;
 
-  if (lock.locked && !lock.stale) {
-    return ok({ alive: true, pid: lock.pid, startedAt: lock.startedAt, cleared: false });
+  const acquired = acquireLock(paths);
+  if (!acquired.ok) return acquired;
+
+  return ok({ cleared });
+}
+
+/**
+ * Release a recovery lock acquired via `acquireRecoveryLock`. Owner-aware: it
+ * never deletes a lock owned by a live DIFFERENT pid (defends against the lock
+ * being replaced during the recovery window). A stale lock or a lock we own is
+ * removed. Safe to call in a `finally` block. Reuses core `checkLock`/
+ * `releaseLock`; does not reimplement PID checks.
+ */
+export function releaseRecoveryLock(paths: BacklogPaths): Result<void> {
+  const status = checkLock(paths);
+  if (!status.ok) return status;
+  const lock = status.value;
+
+  if (lock.locked && lock.stale !== true && lock.pid !== process.pid) {
+    // A live lock held by a different process — not ours to remove.
+    return ok(undefined);
   }
 
-  if (lock.locked && lock.stale) {
-    const cleared = releaseLock(paths);
-    if (!cleared.ok) return cleared;
-    return ok({ alive: false, pid: lock.pid, startedAt: lock.startedAt, cleared: true });
-  }
-
-  return ok({ alive: false, cleared: false });
+  return releaseLock(paths);
 }
 
 // ─── recoverInterruptedLoop ──────────────────────────────────────
@@ -215,7 +233,8 @@ export interface RecoverySummary extends ReconcileSummary {
  *      marker, and the CANCEL marker (so a relaunched loop isn't instantly
  *      killed by a leftover CANCEL).
  *
- * Does NOT touch the lock — call `guardLoopLock` first.
+ * Does NOT touch the lock — acquire it via `acquireRecoveryLock` first and hold
+ * it across this call.
  */
 export async function recoverInterruptedLoop(
   paths: BacklogPaths,

@@ -20,7 +20,12 @@ import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractStringFlag, extractBoolFlag } from "./parser.js";
 import { c, info, print, error, success, warn, outputJson, symbols } from "./formatter.js";
-import { guardLoopLock, recoverInterruptedLoop, type RecoverySummary } from "./recovery.js";
+import {
+  acquireRecoveryLock,
+  releaseRecoveryLock,
+  recoverInterruptedLoop,
+  type RecoverySummary,
+} from "./recovery.js";
 
 // ─── handleReset ─────────────────────────────────────────────────
 
@@ -45,27 +50,35 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
   }
   const paths = pathsResult.value;
 
-  // 1. Lock check — refuse if a live loop holds the lock; clear a stale one.
-  const lockGuard = guardLoopLock(paths);
-  if (!lockGuard.ok) {
-    error(lockGuard.error.message);
+  // 1. Acquire the loop lock for the recovery window — refuse with LOCK_CONFLICT
+  // if a live loop holds it (closes the check-then-mutate TOCTOU race), clear a
+  // stale one. We hold the lock across the mutation below and release in finally.
+  const acquired = acquireRecoveryLock(paths);
+  if (!acquired.ok) {
+    if (acquired.error.code === ErrorCodes.LOCK_CONFLICT) {
+      const msg = `${acquired.error.message}. Stop it before resetting.`;
+      if (ctx.globalFlags.json) {
+        outputJson({ error: { code: ErrorCodes.LOCK_CONFLICT, message: msg } });
+      } else {
+        error(msg);
+        info(`Check with: ${c.cyan(`rauf status ${targetPath}`)}`);
+      }
+      return ExitCode.CONFLICT;
+    }
+    error(acquired.error.message);
     return ExitCode.ERROR;
   }
-  if (lockGuard.value.alive) {
-    const msg = `A loop is already running (PID ${lockGuard.value.pid}, started ${lockGuard.value.startedAt}). Stop it before resetting.`;
-    if (ctx.globalFlags.json) {
-      outputJson({ error: { code: ErrorCodes.CONFLICT, message: msg } });
-    } else {
-      error(msg);
-      info(`Check with: ${c.cyan(`rauf status ${targetPath}`)}`);
-    }
-    return ExitCode.CONFLICT;
-  }
-  const lockCleared = lockGuard.value.cleared;
+  const lockCleared = acquired.value.cleared;
 
   // 2–4. Reconcile committed work, requeue false blocks, reset stalled items,
-  // and clear loop state + markers (shared with `rauf resume`).
-  const recoveryResult = await recoverInterruptedLoop(paths);
+  // and clear loop state + markers (shared with `rauf resume`). Hold the lock
+  // across the whole mutation; release it in finally.
+  let recoveryResult: Awaited<ReturnType<typeof recoverInterruptedLoop>>;
+  try {
+    recoveryResult = await recoverInterruptedLoop(paths);
+  } finally {
+    releaseRecoveryLock(paths);
+  }
   if (!recoveryResult.ok) {
     error(recoveryResult.error.message);
     return ExitCode.ERROR;

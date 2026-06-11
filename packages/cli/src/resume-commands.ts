@@ -35,7 +35,7 @@ import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractStringFlag } from "./parser.js";
 import { c, info, error, success, warn, outputJson } from "./formatter.js";
-import { guardLoopLock, recoverInterruptedLoop } from "./recovery.js";
+import { acquireRecoveryLock, releaseRecoveryLock, recoverInterruptedLoop } from "./recovery.js";
 import { handleLoopRun } from "./loop-commands.js";
 
 // ─── Resumable-state detection ───────────────────────────────────
@@ -133,90 +133,111 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   }
   const paths = pathsResult.value;
 
-  // 1. Lock check — refuse if a live loop holds the lock; clear a stale one.
-  const lockGuard = guardLoopLock(paths);
-  if (!lockGuard.ok) {
-    error(lockGuard.error.message);
+  // 1. Acquire the loop lock for the recovery window — refuse with LOCK_CONFLICT
+  // if a live loop holds it (closes the check-then-mutate TOCTOU race), clear a
+  // stale one. We hold the lock across detect + recover + decide, then release it
+  // BEFORE relaunching so the loop's own lock acquisition succeeds.
+  const acquired = acquireRecoveryLock(paths);
+  if (!acquired.ok) {
+    if (acquired.error.code === ErrorCodes.LOCK_CONFLICT) {
+      const msg = `${acquired.error.message}. Nothing to resume.`;
+      if (ctx.globalFlags.json) {
+        outputJson({ error: { code: ErrorCodes.LOCK_CONFLICT, message: msg } });
+      } else {
+        error(msg);
+        info(`Check with: ${c.cyan(`rauf status ${targetPath}`)}`);
+      }
+      return ExitCode.CONFLICT;
+    }
+    error(acquired.error.message);
     return ExitCode.ERROR;
   }
-  if (lockGuard.value.alive) {
-    const msg = `A loop is already running (PID ${lockGuard.value.pid}, started ${lockGuard.value.startedAt}). Nothing to resume.`;
-    if (ctx.globalFlags.json) {
-      outputJson({ error: { code: ErrorCodes.CONFLICT, message: msg } });
-    } else {
-      error(msg);
-      info(`Check with: ${c.cyan(`rauf status ${targetPath}`)}`);
-    }
-    return ExitCode.CONFLICT;
-  }
-  if (lockGuard.value.cleared) {
+  if (acquired.value.cleared) {
     info("Cleared a stale loop lock.");
   }
 
-  // 2. Detect a resumable state.
-  const detection = detectResumeState(paths, lockGuard.value.cleared);
+  // Hold the lock across state detection, recovery, and the eligibility decision.
+  // `relaunch` is set only when we should hand off to the loop after releasing;
+  // `exitCode` holds the result for every early-return path. Release happens in
+  // the finally so the lock is freed before any relaunch and on any throw.
+  let relaunch = false;
+  let exitCode: number = ExitCode.SUCCESS;
+  try {
+    // 2. Detect a resumable state.
+    const detection = detectResumeState(paths, acquired.value.cleared);
 
-  if (detection.nonDone === 0) {
-    if (ctx.globalFlags.json) {
-      outputJson({ resumed: false, reason: "all_items_done", detectedState: detection.label });
+    if (detection.nonDone === 0) {
+      if (ctx.globalFlags.json) {
+        outputJson({ resumed: false, reason: "all_items_done", detectedState: detection.label });
+      } else {
+        success("Nothing to resume — all backlog items are done.");
+      }
     } else {
-      success("Nothing to resume — all backlog items are done.");
-    }
-    return ExitCode.SUCCESS;
-  }
-
-  if (detection.resumable) {
-    info(`Detected interrupted loop (${c.cyan(detection.label)}) — recovering and resuming.`);
-  } else {
-    // No interruption marker, but non-done work remains (e.g. the loop exhausted
-    // its budget with pending items left). Resuming is still valid.
-    warn(
-      `No interrupted-loop marker found (state: ${detection.label}), but ${detection.nonDone} non-done item(s) remain — continuing.`,
-    );
-  }
-
-  // 3. Reconcile committed work, requeue false blocks, reset stalled items,
-  // and clear loop state + markers.
-  const recoveryResult = await recoverInterruptedLoop(paths);
-  if (!recoveryResult.ok) {
-    error(recoveryResult.error.message);
-    return ExitCode.ERROR;
-  }
-  const summary = recoveryResult.value;
-
-  if (!summary.treeClean) {
-    warn(
-      "Working tree is dirty — skipped commit reconciliation (uncommitted work was not marked done).",
-    );
-  }
-  const recoveryParts: string[] = [];
-  if (summary.recovered.length > 0) recoveryParts.push(`recovered ${summary.recovered.join(", ")}`);
-  if (summary.requeued.length > 0) recoveryParts.push(`requeued ${summary.requeued.join(", ")}`);
-  if (summary.stalledReset > 0) recoveryParts.push(`reset ${summary.stalledReset} stalled`);
-  if (recoveryParts.length > 0) info(c.dim(`Recovery: ${recoveryParts.join("; ")}.`));
-
-  // 4. Bail before launching if no eligible item remains (only genuine blocks /
-  // needs-human left) — the loop would spawn and immediately complete otherwise.
-  const postBacklog = readBacklog(paths);
-  if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
-    if (ctx.globalFlags.json) {
-      outputJson({
-        resumed: false,
-        reason: "no_eligible_items",
-        recovered: summary.recovered,
-        requeued: summary.requeued,
-        keptBlocked: summary.keptBlocked,
-      });
-    } else {
-      success("Recovery complete, but no eligible pending items remain to run.");
-      if (summary.keptBlocked.length > 0) {
-        info(
-          `${summary.keptBlocked.length} genuine block(s) need attention — resolve them, then ${c.cyan("rauf backlog unblock")}.`,
+      if (detection.resumable) {
+        info(`Detected interrupted loop (${c.cyan(detection.label)}) — recovering and resuming.`);
+      } else {
+        // No interruption marker, but non-done work remains (e.g. the loop
+        // exhausted its budget with pending items left). Resuming is still valid.
+        warn(
+          `No interrupted-loop marker found (state: ${detection.label}), but ${detection.nonDone} non-done item(s) remain — continuing.`,
         );
       }
+
+      // 3. Reconcile committed work, requeue false blocks, reset stalled items,
+      // and clear loop state + markers.
+      const recoveryResult = await recoverInterruptedLoop(paths);
+      if (!recoveryResult.ok) {
+        error(recoveryResult.error.message);
+        exitCode = ExitCode.ERROR;
+      } else {
+        const summary = recoveryResult.value;
+
+        if (!summary.treeClean) {
+          warn(
+            "Working tree is dirty — skipped commit reconciliation (uncommitted work was not marked done).",
+          );
+        }
+        const recoveryParts: string[] = [];
+        if (summary.recovered.length > 0)
+          recoveryParts.push(`recovered ${summary.recovered.join(", ")}`);
+        if (summary.requeued.length > 0)
+          recoveryParts.push(`requeued ${summary.requeued.join(", ")}`);
+        if (summary.stalledReset > 0) recoveryParts.push(`reset ${summary.stalledReset} stalled`);
+        if (recoveryParts.length > 0) info(c.dim(`Recovery: ${recoveryParts.join("; ")}.`));
+
+        // 4. Bail before launching if no eligible item remains (only genuine
+        // blocks / needs-human left) — the loop would spawn and immediately
+        // complete otherwise.
+        const postBacklog = readBacklog(paths);
+        if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
+          if (ctx.globalFlags.json) {
+            outputJson({
+              resumed: false,
+              reason: "no_eligible_items",
+              recovered: summary.recovered,
+              requeued: summary.requeued,
+              keptBlocked: summary.keptBlocked,
+            });
+          } else {
+            success("Recovery complete, but no eligible pending items remain to run.");
+            if (summary.keptBlocked.length > 0) {
+              info(
+                `${summary.keptBlocked.length} genuine block(s) need attention — resolve them, then ${c.cyan("rauf backlog unblock")}.`,
+              );
+            }
+          }
+        } else {
+          relaunch = true;
+        }
+      }
     }
-    return ExitCode.SUCCESS;
+  } finally {
+    // Release the recovery lock before relaunching: the loop's own entrypoint
+    // acquires its lock, which would conflict with one we still held.
+    releaseRecoveryLock(paths);
   }
+
+  if (!relaunch) return exitCode;
 
   // 5. Relaunch via the normal loop entrypoint. Forward the user's flags and add
   // --allow-dirty so the bookkeeping-dirty tree doesn't trip the precondition

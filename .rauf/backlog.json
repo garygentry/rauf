@@ -441,8 +441,8 @@
         "A test simulates a live lock and asserts reset/resume refuse without mutating",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T14:04:47.967Z",
       "dependsOn": [
         "018"
       ],
