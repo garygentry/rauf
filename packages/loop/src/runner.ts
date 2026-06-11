@@ -1048,13 +1048,18 @@ export class LoopRunner extends TypedEventEmitter {
    * Best-effort: a git failure is logged, never thrown. (item 009)
    */
   private async revertAbandonedWork(itemId: string): Promise<void> {
-    // Positive `.` plus exclude pathspecs so the loop's own state (.rauf/ and
-    // the backlog files anywhere) is never touched.
+    // Positive `.` plus exclude pathspecs so the loop's own state is never
+    // touched. Scope the exclusions to THIS loop's resolved runtime dir and
+    // backlog (+ .bak) — relative to projectPath — instead of a repo-wide
+    // `**/backlog.json` glob, so an unrelated application file that happens to
+    // be named backlog.json elsewhere in the tree is NOT preserved. (item 019)
+    const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
+    const backlogRel = path.relative(this.projectPath, this.paths.backlog);
     const pathspecs = [
       ".",
-      ":(exclude,glob)**/.rauf/**",
-      ":(exclude,glob)**/backlog.json",
-      ":(exclude,glob)**/backlog.json.bak",
+      `:(exclude)${stateDirRel}`,
+      `:(exclude)${backlogRel}`,
+      `:(exclude)${backlogRel}.bak`,
     ];
     try {
       const status = await execGit(this.projectPath, ["status", "--porcelain", "--", ...pathspecs]);

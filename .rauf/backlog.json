@@ -422,8 +422,8 @@
         "A regression test covers the narrowed pathspec",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T14:08:58.097Z",
       "dependsOn": [],
       "notes": "From Codex review (MEDIUM). Keep behavior identical for the real rauf backlog/runtime files.",
       "estimatedIterations": 1

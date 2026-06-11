@@ -1098,6 +1098,46 @@ echo "work finished but no signal printed"`,
     });
   });
 
+  describe("dirty-tree cleanup pathspec (item 019)", () => {
+    it("stashes an unrelated file named backlog.json instead of preserving it", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Leaves abandoned work")]);
+
+      // The agent leaves abandoned, uncommitted work in the tree — including an
+      // unrelated APPLICATION file that happens to be named backlog.json (NOT
+      // the rauf backlog) — then blocks. The dirty-tree cleanup must NOT treat
+      // that application file as loop bookkeeping: it should be stashed away so
+      // it can't be swept into the next item's commit. (A repo-wide
+      // `**/backlog.json` exclude would have wrongly preserved it.)
+      writeMockClaude(
+        binDir,
+        `mkdir -p "${tmpDir}/app/data"
+printf '{"app":"data"}\\n' > "${tmpDir}/app/data/backlog.json"
+printf 'half-finished\\n' > "${tmpDir}/app/feature.txt"
+echo "RAUF_BLOCKED:stopping here"`,
+      );
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      await runner.start();
+
+      // The item blocked, so the abandoned work was reverted.
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("blocked");
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Reverted dirty working tree");
+
+      // The unrelated application backlog.json was stashed — NOT preserved.
+      expect(fs.existsSync(path.join(tmpDir, "app", "data", "backlog.json"))).toBe(false);
+      // ...and so was the other abandoned work file.
+      expect(fs.existsSync(path.join(tmpDir, "app", "feature.txt"))).toBe(false);
+
+      // The REAL rauf backlog (loop bookkeeping) was preserved untouched.
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "backlog.json"))).toBe(true);
+    });
+  });
+
   describe("LoopResult", () => {
     it("returns correct counts on normal completion", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
