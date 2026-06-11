@@ -216,8 +216,8 @@
         "Unit tests cover empty/mixed/all-pending backlogs",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T08:44:45.194Z",
       "dependsOn": [],
       "notes": "Combined with item 007 (no-op iterations don't count), this keeps the budget meaningful for long backlogs that straddle a usage reset.",
       "estimatedIterations": 1,
