@@ -335,8 +335,8 @@
         "Status/enum names in docs match packages/core/src/schemas.ts",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T09:30:34.233Z",
       "dependsOn": [
         "004",
         "006",
