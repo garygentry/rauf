@@ -206,6 +206,10 @@ export class LoopRunner extends TypedEventEmitter {
         model: this.options.model ?? projectModel,
       });
       appendLog(this.paths, `Loop started (maxIterations=${this.options.maxIterations})`);
+      appendLog(
+        this.paths,
+        `Circuit breaker threshold: ${this.circuitBreakerThreshold} consecutive infra failures`,
+      );
       this.writeState("running", null);
 
       // (5) Main loop
@@ -727,6 +731,14 @@ export class LoopRunner extends TypedEventEmitter {
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.
             this.uncountIteration("infra_error");
+            // Circuit breaker: when every spawn dies the same way, halt instead
+            // of grinding through the whole budget. uncountIteration keeps the
+            // iteration counter from advancing on infra deaths, so without this
+            // the loop would spin indefinitely on a persistently broken spawn.
+            if (this.consecutiveInfraFailures >= this.circuitBreakerThreshold) {
+              this.currentItemId = null;
+              return this.haltForCircuitBreaker();
+            }
             break;
           }
 
@@ -992,6 +1004,28 @@ export class LoopRunner extends TypedEventEmitter {
   /** Whether to sleep through a 5h usage limit (default) or halt cleanly. */
   private get sleepOnLimit(): boolean {
     return this.options.sleepOnLimit ?? true;
+  }
+
+  /** Consecutive infra_error deaths that trip the circuit breaker (default 3). */
+  private get circuitBreakerThreshold(): number {
+    return this.options.circuitBreakerThreshold ?? 3;
+  }
+
+  /**
+   * Halt the loop when consecutive infra failures reach the circuit-breaker
+   * threshold (item 008). Writes an `error` state plus a DONE summary, emits a
+   * loop_error, and signals the caller to exit. Without this, uncountIteration
+   * (item 007) keeps the budget from advancing on infra deaths, so a
+   * persistently broken spawn would otherwise spin the loop forever.
+   */
+  private haltForCircuitBreaker(): "exit" {
+    const message = `Circuit breaker: ${this.consecutiveInfraFailures} consecutive infra failures — halting`;
+    appendLog(this.paths, message);
+    this.emitEvent("loop_error", { error: message });
+    this.writeState("error", null, "error", message);
+    // Include "error" so parseDoneFileState classifies the derived status ERROR.
+    writeDoneFile(this.paths, `error: ${message}\n${this.buildSummary()}`);
+    return "exit";
   }
 
   /**

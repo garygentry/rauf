@@ -359,6 +359,13 @@ export const LoopStartOptionsSchema = z.object({
    * so the run can be picked back up later with `rauf resume`.
    */
   sleepOnLimit: z.boolean().optional(),
+  /**
+   * Halt the loop after this many CONSECUTIVE infra_error spawn deaths (fast
+   * non-zero exits with no usage banner). Prevents the loop from grinding
+   * through the whole iteration budget when every spawn dies the same way.
+   * Reset to 0 on any real outcome. Defaults to 3 when unset.
+   */
+  circuitBreakerThreshold: z.number().int().positive().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────

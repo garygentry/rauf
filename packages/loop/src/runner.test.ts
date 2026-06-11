@@ -778,6 +778,45 @@ echo "RAUF_DONE"`,
       expect(log).toContain("Iteration not counted (infra_error)");
       expect(log).toContain("budget preserved at 0/5");
     });
+
+    it("halts via the circuit breaker after consecutive infra failures", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      // Every spawn fast-fails (infra_error, no banner). Without the breaker the
+      // loop would spin forever because uncountIteration keeps the budget from
+      // advancing — so a high maxIterations also proves the breaker, not the
+      // budget ceiling, is what terminates the run.
+      writeMockClaude(binDir, `echo "boom" >&2\nexit 1`);
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 100,
+        circuitBreakerThreshold: 3,
+      });
+      runner.on("loop_error", (e) => errors.push(e.error));
+
+      const result = await runner.start();
+
+      // Halted with no work done, the item left pending (never blocked on a
+      // flaky spawn), and an error state + DONE summary written.
+      expect(result.completedCount).toBe(0);
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0].status).toBe("pending");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("error");
+      expect(state.error).toContain("Circuit breaker");
+
+      expect(errors.some((e) => e.includes("Circuit breaker"))).toBe(true);
+
+      const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(done).toContain("Circuit breaker: 3 consecutive infra failures");
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Circuit breaker threshold: 3");
+    });
   });
 
   describe("state.json and rauf.log", () => {

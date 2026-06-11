@@ -296,6 +296,72 @@ else
   fail "log missing usage-limit detection"
 fi
 
+# ─── Circuit-breaker scenario ────────────────────────────────────────
+
+# 8. fast-infra-death: every spawn dies fast with code=1 and no usage banner
+#    (infra_error). uncountIteration keeps the budget from advancing, so without
+#    a circuit breaker the loop would spin forever on the broken spawn. The
+#    breaker (default 3 consecutive infra failures) must halt with an `error`
+#    state + DONE summary BEFORE maxIterations, leaving the item pending (never
+#    blocked on a flaky spawn).
+echo ""
+echo "=== Scenario: fast-infra-death ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+export MOCK_CLAUDE_SCENARIO="fast-infra-death"
+
+# Generous iteration budget so the breaker (not maxIterations) is what halts.
+# Run in the background and poll for the error halt so a regressed breaker
+# (which would loop indefinitely) can't hang the suite.
+rauf loop run "$SANDBOX_DIR" --iterations 25 --timeout 1 >/dev/null 2>&1 &
+LOOP_PID=$!
+
+breaker_halted=0
+for _ in $(seq 1 40); do
+  if [ -f "$SANDBOX_DIR/.rauf/state.json" ] &&
+    [ "$(jq -r '.status' "$SANDBOX_DIR/.rauf/state.json")" = "error" ]; then
+    breaker_halted=1
+    break
+  fi
+  if ! kill -0 "$LOOP_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+kill "$LOOP_PID" 2>/dev/null || true
+wait "$LOOP_PID" 2>/dev/null || true
+
+if [ "$breaker_halted" -eq 1 ]; then
+  pass "circuit breaker halted the loop (state = error)"
+else
+  fail "circuit breaker did not halt (state never reached error)"
+fi
+
+# Item must stay pending — a flaky spawn must never block a real work item.
+assert_item_status "001" "pending"
+
+# A DONE summary with the breaker message is written for the halt.
+assert_done_file_exists
+assert_done_file_contains "Circuit breaker"
+
+# The breaker must trip BEFORE maxIterations (25), not at the budget ceiling.
+iters=$(jq -r '.iteration' "$SANDBOX_DIR/.rauf/state.json")
+if [ "$iters" -lt 25 ]; then
+  pass "halted before maxIterations (iteration=$iters < 25)"
+else
+  fail "did not halt before maxIterations (iteration=$iters)"
+fi
+
+# The threshold is logged in the run header at startup.
+if grep -q "Circuit breaker threshold:" "$SANDBOX_DIR/.rauf/rauf.log"; then
+  pass "run header logs the circuit breaker threshold"
+else
+  fail "run header missing circuit breaker threshold log"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""
