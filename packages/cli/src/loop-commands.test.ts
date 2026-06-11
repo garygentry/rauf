@@ -763,4 +763,31 @@ describe("createLoopBranch & loop preconditions", () => {
     expect(gitSubjects(proj)).not.toContain("[rauf] backlog: seed");
     expect(gitStatus(proj)).not.toBe("");
   });
+
+  it("loop run --seed-backlog refuses on a dirty .rauf bookkeeping file (not swept into the seed)", async () => {
+    // Regression: the dirty-check must not exclude the whole .rauf/ dir. RAUF.md
+    // is git-tracked and gitCommit WOULD stage it, so an uncommitted edit must
+    // surface as "other dirty" and refuse — never land in the seed commit.
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/seed");
+    writeBacklog(proj, [], "seeded description"); // backlog dirty
+    const raufMd = path.join(proj, ".rauf", "RAUF.md");
+    fs.writeFileSync(raufMd, "# customized loop instructions\n"); // tracked bookkeeping, dirty
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["seed-backlog", true]]),
+    });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.CONFLICT);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain(".rauf/RAUF.md");
+    expect(all).toContain("--seed-backlog only commits");
+    // No seed commit, and RAUF.md is still uncommitted (not swept in).
+    expect(gitSubjects(proj)).not.toContain("[rauf] backlog: seed");
+    expect(gitStatus(proj)).not.toBe("");
+  });
 });

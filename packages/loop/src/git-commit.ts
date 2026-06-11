@@ -15,7 +15,7 @@ export interface GitCommitSuccess {
  * backlog.json / progress.md / RAUF.md / archive/ are intentionally NOT listed,
  * so they stage and commit normally.
  */
-const RUNTIME_EXCLUDE_PATHSPECS = [
+export const RUNTIME_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/.rauf/.loop.lock",
   ":(exclude,glob)**/.rauf/state.json",
   ":(exclude,glob)**/.rauf/DONE",

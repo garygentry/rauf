@@ -39,7 +39,13 @@ import {
   type Result,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
-import { LoopRunner, checkLoopPreconditions, execGit, gitCommit } from "@rauf/loop";
+import {
+  LoopRunner,
+  checkLoopPreconditions,
+  execGit,
+  gitCommit,
+  RUNTIME_EXCLUDE_PATHSPECS,
+} from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -129,28 +135,33 @@ export async function createLoopBranch(
  * `--seed-backlog`. backlog.json is git-tracked (its status changes are
  * meaningful), so an uncommitted backlog would otherwise be swept into item
  * 001's loop commit when the loop marks the first item in_progress. Only
- * auto-commits when the ONLY dirty paths are this loop's backlog file(s) and
- * `.rauf/` bookkeeping — if ANY other file is dirty it refuses and lists them,
- * so unrelated work is never committed under the loop's name. The seed commit
- * excludes loop runtime files (state.json, lock, etc.) via gitCommit's
- * RUNTIME_EXCLUDE_PATHSPECS. (item 028)
+ * auto-commits when the ONLY dirty paths are this loop's backlog file(s) (+ the
+ * loop runtime files gitCommit never stages) — if ANY other file is dirty,
+ * including `.rauf/` bookkeeping like RAUF.md / progress.md / REVIEW.md, it
+ * refuses and lists them, so unrelated work is never committed under the loop's
+ * name. The dirty-check and gitCommit's staging share RUNTIME_EXCLUDE_PATHSPECS
+ * so the seed commit can only ever contain the backlog. (item 028)
  */
 export async function seedBacklog(
   projectPath: string,
   paths: BacklogPaths,
 ): Promise<Result<{ committed: boolean; commitHash: string }>> {
-  // Reuse revertAbandonedWork's exclude-pathspec approach to decide whether any
-  // NON-backlog file is dirty: `git status --porcelain` over everything EXCEPT
-  // this loop's runtime dir and backlog (+ .bak), relative to projectPath.
-  // Non-empty output means there is other work we must not sweep into the seed
-  // commit.
-  const stateDirRel = path.relative(projectPath, paths.stateDir);
+  // Decide whether any NON-backlog file is dirty: `git status --porcelain` over
+  // everything EXCEPT the seed commit's intended content (this loop's backlog +
+  // .bak) and the runtime files gitCommit itself never stages. The exclusion set
+  // MUST mirror gitCommit's staging exclusions exactly — otherwise a dirty path
+  // that the check skips but gitCommit WOULD stage (e.g. `.rauf/RAUF.md`,
+  // `.rauf/progress.md`, `.rauf/REVIEW.md`) gets silently swept into the seed
+  // commit. Excluding the whole `.rauf/` dir here would do exactly that, so we
+  // reuse RUNTIME_EXCLUDE_PATHSPECS instead and let any other `.rauf/`
+  // bookkeeping edit surface as "other dirty" → refuse. Non-empty output means
+  // there is other work we must not sweep into the seed commit.
   const backlogRel = path.relative(projectPath, paths.backlog);
   const excludePathspecs = [
     ".",
-    `:(exclude)${stateDirRel}`,
     `:(exclude)${backlogRel}`,
     `:(exclude)${backlogRel}.bak`,
+    ...RUNTIME_EXCLUDE_PATHSPECS,
   ];
 
   let otherDirty: string;
@@ -180,8 +191,8 @@ export async function seedBacklog(
     });
   }
 
-  // Only the backlog (+ .rauf bookkeeping) is dirty. gitCommit stages with the
-  // runtime excludes and uses the `[rauf] <id>: <title>` format — id "backlog"
+  // Only the backlog (+ pure runtime files) is dirty. gitCommit stages with the
+  // same runtime excludes and uses the `[rauf] <id>: <title>` format — id "backlog"
   // + title "seed <project>" yields `[rauf] backlog: seed <project>`.
   const commitResult = await gitCommit(
     projectPath,
