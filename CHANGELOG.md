@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+First stable release under the **rauf** name. Promotes `0.3.0-rc.2`; the
+`0.3.0-rc.1` and `0.3.0-rc.2` sections below carry the full per-candidate detail.
+
+### Changed (BREAKING) — Ralph is now Rauf
+
+- The tool was renamed from `ralph` to `rauf`: binary, the `@rauf/*` package
+  scope, `.rauf/` state dir, `.rauf.json`, `RAUF.md`, `RAUF_ROOT`,
+  `X-Rauf-Request`, `~/.rauf/`, and the `RAUF_*` loop signals. See
+  [MIGRATION.md](./MIGRATION.md).
+
+### Added
+
+- `rauf migrate <path>` — in-place migration of a legacy `ralph` project to
+  `rauf`, with `--dry-run`, `--no-backup`, `--clean-backups`, and `--global`.
+
+### Fixed
+
+- Release binaries for x64 are built with Bun's `-baseline` runtime so they run
+  on every x64 CPU; the previous builds required AVX2 and crashed with `SIGILL`
+  on CPUs without it.
+
 ## 0.3.0-rc.2
 
 ### Fixed
