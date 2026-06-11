@@ -61,10 +61,19 @@ export interface CommandContext {
   rawArgv: string[];
 }
 
+/** A documented flag for a command/subcommand, rendered in `rauf help`. */
+export interface FlagDef {
+  /** Display name, including any value placeholder (e.g. "--iterations <N>"). */
+  name: string;
+  /** One-line description of what the flag does. */
+  description: string;
+}
+
 export interface SubcommandDef {
   name: string;
   description: string;
   usage?: string;
+  flags?: FlagDef[];
   handler?: (ctx: CommandContext) => Promise<number>;
 }
 
@@ -72,6 +81,7 @@ export interface CommandDef {
   name: string;
   description: string;
   usage?: string;
+  flags?: FlagDef[];
   subcommands?: SubcommandDef[];
   handler?: (ctx: CommandContext) => Promise<number>;
 }
@@ -135,12 +145,67 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "start",
         description: "Start a loop via server",
-        usage: "rauf loop start <path> [--iterations N] [--follow]",
+        usage: "rauf loop start [path] [options]",
+        flags: [
+          { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
+          {
+            name: "--retries <N>",
+            description: "Max retries per item before deferring (default: 3)",
+          },
+          {
+            name: "--timeout <N>",
+            description: "Per-iteration session timeout in minutes (default: 60)",
+          },
+          { name: "--model <name>", description: "Claude model to use" },
+          { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+          { name: "--follow", description: "Follow loop events in real-time after starting" },
+          {
+            name: "--retry-blocked",
+            description: "Unblock previously blocked items before starting",
+          },
+          {
+            name: "--suppress-iteration-review",
+            description: "Suppress per-iteration review hooks in child sessions",
+          },
+        ],
         handler: handleLoopStart,
       },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
       { name: "follow", description: "Follow loop events in real-time", handler: handleLoopFollow },
-      { name: "run", description: "Run loop directly in-process", handler: handleLoopRun },
+      {
+        name: "run",
+        description: "Run loop directly in-process",
+        usage: "rauf loop run [path] [options]",
+        flags: [
+          { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
+          {
+            name: "--retries <N>",
+            description: "Max retries per item before deferring (default: 3)",
+          },
+          {
+            name: "--timeout <N>",
+            description: "Per-iteration session timeout in minutes (default: 60)",
+          },
+          { name: "--model <name>", description: "Claude model to use" },
+          { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+          { name: "--force", description: "Skip git preconditions (protected branch, dirty tree)" },
+          {
+            name: "--allow-dirty",
+            description: "Allow a dirty working tree (skip only the dirty-tree check)",
+          },
+          { name: "--review", description: "Run a review pass after the loop completes" },
+          { name: "--review-only", description: "Run only the review pass, no iterations" },
+          {
+            name: "--retry-blocked",
+            description: "Unblock previously blocked items before running",
+          },
+          {
+            name: "--suppress-iteration-review",
+            description: "Suppress per-iteration review hooks in child sessions",
+          },
+        ],
+        handler: handleLoopRun,
+      },
       {
         name: "review",
         description: "Review completed items and create fix items",
@@ -326,13 +391,14 @@ async function handleHelp(ctx: CommandContext): Promise<number> {
   const target = ctx.args[0];
 
   if (target) {
-    return showCommandHelp(target, ctx);
+    // `rauf help <command> [subcommand]` — second positional targets a subcommand.
+    return showCommandHelp(target, ctx, ctx.args[1]);
   }
 
   return showGeneralHelp(ctx);
 }
 
-function showGeneralHelp(ctx: CommandContext): number {
+export function showGeneralHelp(ctx: CommandContext): number {
   if (ctx.globalFlags.json) {
     outputJson({
       version: VERSION,
@@ -383,7 +449,11 @@ function showGeneralHelp(ctx: CommandContext): number {
   return ExitCode.SUCCESS;
 }
 
-function showCommandHelp(commandName: string, ctx: CommandContext): number {
+export function showCommandHelp(
+  commandName: string,
+  ctx: CommandContext,
+  subcommandName?: string,
+): number {
   const cmd = findCommand(commandName);
   if (!cmd) {
     if (ctx.globalFlags.json) {
@@ -398,11 +468,19 @@ function showCommandHelp(commandName: string, ctx: CommandContext): number {
     return ExitCode.INVALID_ARGS;
   }
 
+  // Resolve a targeted subcommand, if one was named and exists.
+  const sub = subcommandName ? findSubcommand(cmd, subcommandName) : undefined;
+
+  if (sub) {
+    return showSubcommandHelp(cmd, sub, ctx);
+  }
+
   if (ctx.globalFlags.json) {
     outputJson({
       name: cmd.name,
       description: cmd.description,
       usage: cmd.usage ?? `rauf ${cmd.name}`,
+      flags: cmd.flags ?? [],
       subcommands:
         cmd.subcommands?.map((sc) => ({
           name: sc.name,
@@ -437,6 +515,48 @@ function showCommandHelp(commandName: string, ctx: CommandContext): number {
     );
   }
 
+  appendFlagLines(lines, cmd.flags);
+
   print(lines.join("\n"));
   return ExitCode.SUCCESS;
+}
+
+/** Render help for a specific `<command> <subcommand>`: usage + flag list. */
+function showSubcommandHelp(cmd: CommandDef, sub: SubcommandDef, ctx: CommandContext): number {
+  const usage = sub.usage ?? `rauf ${cmd.name} ${sub.name}`;
+
+  if (ctx.globalFlags.json) {
+    outputJson({
+      name: `${cmd.name} ${sub.name}`,
+      description: sub.description,
+      usage,
+      flags: sub.flags ?? [],
+    });
+    return ExitCode.SUCCESS;
+  }
+
+  const lines: string[] = [c.bold(sub.description), "", `${c.bold("Usage:")} ${usage}`];
+
+  appendFlagLines(lines, sub.flags);
+
+  print(lines.join("\n"));
+  return ExitCode.SUCCESS;
+}
+
+/** Append a "Flags:" table to the given help lines when flags are documented. */
+function appendFlagLines(lines: string[], flags: FlagDef[] | undefined): void {
+  if (!flags || flags.length === 0) return;
+  lines.push("");
+  lines.push(c.bold("Flags:"));
+  const columns: TableColumn[] = [
+    { header: "Flag", key: "name" },
+    { header: "Description", key: "desc" },
+  ];
+  const rows = flags.map((f) => ({ name: c.cyan(f.name), desc: f.description }));
+  lines.push(
+    renderTable(columns, rows)
+      .split("\n")
+      .map((l) => "  " + l)
+      .join("\n"),
+  );
 }

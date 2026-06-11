@@ -501,8 +501,8 @@
         "--help is intercepted before any handler side effect; a test asserts loop start --help exits without starting a loop",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T20:39:32.859Z",
       "dependsOn": [],
       "notes": "From feedback #2 F5 (a help probe mutated state). Files: main.ts, parser.ts, commands.ts.",
       "estimatedIterations": 1
