@@ -193,8 +193,8 @@
         "test-sandbox/scenarios/commit-no-signal.sh added and asserted; bash test-sandbox/verify.sh passes",
         "Verify passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-11T08:38:59.540Z",
       "dependsOn": [
         "002",
         "006"

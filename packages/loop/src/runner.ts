@@ -37,6 +37,8 @@ import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { hasUsageLimitInText, classifyExit } from "./exit-classifier.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
+import { findItemCommit, isTreeClean } from "./git-reconcile.js";
+import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -616,6 +618,24 @@ export class LoopRunner extends TypedEventEmitter {
       );
     }
 
+    // Before recording any non-done outcome, reconcile committed work. An
+    // iteration can pass verify and commit `[rauf] <id>:` (e.g. via the agent's
+    // own commit or a commit hook) but die before printing RAUF_DONE (the
+    // incident's item 003, committed yet marked blocked). If that commit landed
+    // AND the tree is clean, the work IS done — record it as such instead of
+    // blocking/deferring, and do NOT re-commit. The clean-tree requirement is
+    // what distinguishes a genuinely-committed item from one that merely left
+    // bookkeeping dirty, so a stale same-id commit in history cannot trigger a
+    // false recovery. This runs for ALL non-done exit classes (blocked,
+    // needs_human, timeout, infra_error, deferred, retry). (item 009)
+    if (parsed.signal !== "done") {
+      const recovered = await this.reconcileCommittedWork(item);
+      if (recovered) {
+        this.currentItemId = null;
+        return "continue";
+      }
+    }
+
     // Handle signal
     switch (parsed.signal) {
       case "done": {
@@ -775,6 +795,23 @@ export class LoopRunner extends TypedEventEmitter {
           }
         }
         break;
+      }
+    }
+
+    // A failed iteration that SET THE ITEM ASIDE (blocked / needs_human /
+    // timeout / deferred — all end status "blocked") may have left
+    // half-finished, uncommitted code in the tree. Since the loop now moves on
+    // to a DIFFERENT item, revert that abandoned work so the next item never
+    // starts on — and the next item's `git add -A` commit never sweeps up —
+    // dead code. Outcomes that leave the item PENDING (infra_error, usage
+    // retry, mid-retry) retry the SAME item next and must NOT have their tree
+    // wiped here. Loop bookkeeping (.rauf/ and the backlog files) is always
+    // preserved. (item 009)
+    if (parsed.signal !== "done") {
+      const after = readBacklog(this.paths);
+      const status = after.ok ? after.value.items.find((i) => i.id === item.id)?.status : undefined;
+      if (status === "blocked") {
+        await this.revertAbandonedWork(item.id);
       }
     }
 
@@ -939,6 +976,104 @@ export class LoopRunner extends TypedEventEmitter {
         },
       );
     });
+  }
+
+  /**
+   * Reconcile committed-but-unsignalled work before a non-done outcome is
+   * recorded. If a `[rauf] <id>:` commit for this item landed AND the working
+   * tree is clean, the work is genuinely done despite the missing signal:
+   * record it done (recovered_via_commit), without invoking gitCommit again.
+   *
+   * Returns true when the item was recovered to done, false otherwise (no
+   * matching commit, a dirty tree, or a git error — all of which fall through to
+   * the normal block/defer handling). (item 009)
+   */
+  private async reconcileCommittedWork(item: Backlog["items"][number]): Promise<boolean> {
+    const commitResult = await findItemCommit(this.projectPath, item.id);
+    if (!commitResult.ok) {
+      appendLog(
+        this.paths,
+        `Commit reconciliation skipped (git log failed): ${commitResult.error.message}`,
+      );
+      return false;
+    }
+    const commit = commitResult.value;
+    if (!commit) {
+      // No commit landed for this item — nothing to recover.
+      return false;
+    }
+
+    const cleanResult = await isTreeClean(this.projectPath);
+    if (!cleanResult.ok) {
+      appendLog(
+        this.paths,
+        `Commit reconciliation skipped (git status failed): ${cleanResult.error.message}`,
+      );
+      return false;
+    }
+    if (!cleanResult.value) {
+      // A matching commit exists but the tree is dirty — the work is NOT cleanly
+      // landed (e.g. a stale same-id commit from a prior run plus uncommitted
+      // bookkeeping). Don't recover; let the normal outcome stand.
+      return false;
+    }
+
+    // The work landed but the signal was lost — record done. Do NOT re-commit
+    // (the commit already exists).
+    this.consecutiveInfraFailures = 0;
+    updateItem(this.paths, item.id, { status: "done" });
+    this.completedCount++;
+    this.completedItemIds.push(item.id);
+    this.emitEvent("item_completed", { itemId: item.id, title: item.title });
+    appendLog(this.paths, `recovered_via_commit: ${commit.commitHash}`);
+    appendLog(this.paths, `Item ${item.id} recovered from commit (signal lost): ${item.title}`);
+    this.writeState("running", null, "clean");
+    return true;
+  }
+
+  /**
+   * Revert half-finished, uncommitted code left by a failed iteration, while
+   * preserving all loop bookkeeping (everything under any `.rauf/` dir, and the
+   * backlog files). Stashes the abandoned changes (a recoverable note) so the
+   * next iteration starts from a clean tree and a later `git add -A` commit
+   * can't sweep up the dead work. A no-op when only loop bookkeeping is dirty.
+   * Best-effort: a git failure is logged, never thrown. (item 009)
+   */
+  private async revertAbandonedWork(itemId: string): Promise<void> {
+    // Positive `.` plus exclude pathspecs so the loop's own state (.rauf/ and
+    // the backlog files anywhere) is never touched.
+    const pathspecs = [
+      ".",
+      ":(exclude,glob)**/.rauf/**",
+      ":(exclude,glob)**/backlog.json",
+      ":(exclude,glob)**/backlog.json.bak",
+    ];
+    try {
+      const status = await execGit(this.projectPath, ["status", "--porcelain", "--", ...pathspecs]);
+      if (status.trim() === "") {
+        // Only loop bookkeeping is dirty (normal between iterations) — nothing
+        // to revert.
+        return;
+      }
+      await execGit(this.projectPath, [
+        "stash",
+        "push",
+        "--include-untracked",
+        "-m",
+        `rauf: abandoned work from item ${itemId}`,
+        "--",
+        ...pathspecs,
+      ]);
+      appendLog(
+        this.paths,
+        `Reverted dirty working tree after item ${itemId} (stashed abandoned uncommitted work)`,
+      );
+    } catch (e) {
+      appendLog(
+        this.paths,
+        `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   // ─── Private helpers ──────────────────────────────────────────────

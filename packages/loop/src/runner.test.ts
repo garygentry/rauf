@@ -1009,6 +1009,95 @@ echo "RAUF_DONE"`,
     });
   });
 
+  describe("commit reconciliation (item 009)", () => {
+    // Runtime files must be gitignored for the tree to read clean after a
+    // commit — otherwise the recovery's isTreeClean check never passes. A real
+    // install ensures this in the target .gitignore (item 014); here we write it
+    // so the mock's commit leaves a genuinely clean tree.
+    const RUNTIME_GITIGNORE = [
+      ".rauf/.loop.lock",
+      ".rauf/state.json",
+      ".rauf/DONE",
+      ".rauf/CANCEL",
+      ".rauf/iteration-status.json",
+      ".rauf/rauf.log",
+      ".rauf/backlog.json.bak",
+      "",
+    ].join("\n");
+
+    it("recovers a committed-but-unsignalled item to done instead of blocking", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Recover me")]);
+      fs.writeFileSync(path.join(tmpDir, ".gitignore"), RUNTIME_GITIGNORE);
+
+      // The agent commits a proper `[rauf] 001:` change (staging everything, so
+      // the tree is clean) but exits WITHOUT printing RAUF_DONE — the signal is
+      // lost. `git add -A` also commits .gitignore, so the runtime files it
+      // names stop dirtying the tree for the reconciliation check.
+      writeMockClaude(
+        binDir,
+        `printf 'recovered\\n' > "${tmpDir}/recovered.txt"
+git -C "${tmpDir}" -c commit.gpgsign=false add -A
+git -C "${tmpDir}" -c commit.gpgsign=false commit -q -m "[rauf] 001: recovered via commit"
+echo "work finished but no signal printed"`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("item_completed", (e) => events.push(e));
+      const result = await runner.start();
+
+      // Recovered to done — NOT blocked or deferred.
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("done");
+      expect(backlog.items[0]?.deferred).toBeFalsy();
+      expect(result.completedCount).toBe(1);
+      expect(result.blockedCount).toBe(0);
+      expect(events.some((e) => e.type === "item_completed")).toBe(true);
+
+      // Logged as a commit recovery, and the runner did NOT commit a second time.
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("recovered_via_commit");
+      expect(log).not.toContain("deferred by runner");
+
+      // Exactly one `[rauf] 001:` commit exists — gitCommit was not re-invoked.
+      const commitCount = execSync('git log --grep="^\\[rauf\\] 001:" --oneline', {
+        cwd: tmpDir,
+        encoding: "utf-8",
+      })
+        .trim()
+        .split("\n")
+        .filter(Boolean).length;
+      expect(commitCount).toBe(1);
+    });
+
+    it("does not recover (stays deferred) when no commit landed", async () => {
+      setupProject(tmpDir, [pendingItem("001", "No commit")]);
+      fs.writeFileSync(path.join(tmpDir, ".gitignore"), RUNTIME_GITIGNORE);
+
+      // No signal, no commit — the runner must fall through to its normal
+      // deferral after exhausting retries (clean exit code = genuine_retry).
+      writeMockClaude(binDir, 'echo "no signal and no commit"');
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        maxRetries: 2,
+      });
+      await runner.start();
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("blocked");
+      expect(backlog.items[0]?.deferred).toBe(true);
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).not.toContain("recovered_via_commit");
+    });
+  });
+
   describe("LoopResult", () => {
     it("returns correct counts on normal completion", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);

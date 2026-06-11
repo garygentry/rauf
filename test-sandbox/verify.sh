@@ -362,6 +362,41 @@ else
   fail "run header missing circuit breaker threshold log"
 fi
 
+# ─── Commit-reconciliation scenario ──────────────────────────────────
+
+# 9. commit-no-signal: the agent commits a proper `[rauf] 001:` change (clean
+#    tree) but dies before printing RAUF_DONE. Commit reconciliation (item 009)
+#    must detect the landed commit + clean tree and record the item DONE
+#    (recovered_via_commit), NOT blocked — this is the incident's item 003.
+echo ""
+echo "=== Scenario: commit-no-signal ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+export MOCK_CLAUDE_SCENARIO="commit-no-signal"
+
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 || true
+
+# The lost signal must be recovered from the commit: item done, not blocked.
+assert_item_status "001" "done"
+assert_no_iteration_status
+assert_done_file_exists
+
+# Recovery must be via commit reconciliation, logged with the recovered hash.
+if grep -q "recovered_via_commit" "$SANDBOX_DIR/.rauf/rauf.log"; then
+  pass "log shows recovered_via_commit"
+else
+  fail "log missing recovered_via_commit (item not recovered from its commit?)"
+fi
+
+# The item must NOT have been deferred or blocked by the runner.
+if grep -qE "deferred by runner|Item 001 blocked" "$SANDBOX_DIR/.rauf/rauf.log"; then
+  fail "item was blocked/deferred despite a landed commit"
+else
+  pass "item not blocked/deferred (recovered instead)"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""
