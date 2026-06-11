@@ -3,12 +3,12 @@
 **Autonomous coding loops, managed.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.1.0-green)
+[![Version](https://img.shields.io/github/v/release/garygentry/rauf)](https://github.com/garygentry/rauf/releases)
 
 Rauf installs, manages, and monitors AI coding loops across your local projects. Define a backlog, start the loop, and let [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ship work items autonomously — with full visibility through a CLI and web dashboard.
 
 <p align="center">
-  <img src="screenshots/dashboard.png" alt="Rauf Manager — Projects Dashboard" width="720" />
+  <img src="docs/images/screenshots/dashboard.png" alt="Rauf Manager — Projects Dashboard" width="720" />
 </p>
 
 > **Self-hosted from day one.** Rauf built itself: 44 backlog items, each implemented, verified, and committed by its own loop. The screenshots below are rauf managing rauf.
@@ -105,13 +105,13 @@ rauf server start     # http://localhost:5173
 **Backlog management** — Add, edit, prioritize, and sweep items. Filter by status, type, or priority.
 
 <p align="center">
-  <img src="screenshots/backlog.png" alt="Backlog view" width="720" />
+  <img src="docs/images/screenshots/backlog.png" alt="Backlog view" width="720" />
 </p>
 
 **Status monitoring** — Live loop state, iteration counts, recent completions, and log streaming.
 
 <p align="center">
-  <img src="screenshots/status.png" alt="Status view" width="720" />
+  <img src="docs/images/screenshots/status.png" alt="Status view" width="720" />
 </p>
 
 ---
