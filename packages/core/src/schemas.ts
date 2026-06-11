@@ -352,6 +352,13 @@ export const LoopStartOptionsSchema = z.object({
    * use this to opt out of any hook that honors an env var.
    */
   childEnv: z.record(z.string(), z.string()).optional(),
+  /**
+   * When a 5-hour usage limit is hit, sleep until reset and continue (default,
+   * unattended behavior). When false, halt cleanly instead: write the
+   * `paused_usage_limit` state plus a DONE summary with a resume hint, and exit
+   * so the run can be picked back up later with `rauf resume`.
+   */
+  sleepOnLimit: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────

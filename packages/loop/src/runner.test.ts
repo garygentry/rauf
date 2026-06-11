@@ -686,6 +686,100 @@ echo "RAUF_DONE"`,
     });
   });
 
+  describe("usage limit budget / banner parse / sleepOnLimit (item 007)", () => {
+    it("parses the banner reset time and sleeps to it (no token)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      // Banner in stdout with a reset time; non-zero exit triggers the usage path.
+      writeMockClaude(binDir, 'echo "session limit reached - resets 5:30pm"\nexit 1');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("sleep_start", (e) => events.push(e));
+
+      // Unblock the (long) sleep-to-reset-time quickly.
+      setTimeout(() => runner.cancel(), 500);
+      await runner.start();
+
+      const sleep = events.find((e) => e.type === "sleep_start");
+      expect(sleep).toBeDefined();
+      // Reason reflects the parsed banner reset time, not the flat fallback.
+      expect(sleep && "reason" in sleep ? sleep.reason : "").toContain("banner reset 5:30pm");
+    }, 15_000);
+
+    it("falls back to 60s when the banner has no reset time", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, 'echo "session limit reached" >&2\nexit 1');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("sleep_start", (e) => events.push(e));
+
+      setTimeout(() => runner.cancel(), 500);
+      await runner.start();
+
+      const sleep = events.find((e) => e.type === "sleep_start");
+      expect(sleep).toBeDefined();
+      const reason = sleep && "reason" in sleep ? sleep.reason : "";
+      expect(reason).toContain("API unavailable");
+      expect(reason).not.toContain("banner reset");
+    }, 15_000);
+
+    it("sleepOnLimit=false halts with paused_usage_limit and a resume hint", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, 'echo "session limit reached - resets 5:30pm"\nexit 1');
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        sleepOnLimit: false,
+      });
+      // Exits cleanly without sleeping — no cancel needed.
+      await runner.start();
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("paused_usage_limit");
+
+      const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(doneContent).toContain("paused_usage_limit");
+      expect(doneContent).toContain("rauf resume");
+      expect(doneContent).toContain("5:30pm");
+
+      // Item is reset to pending so `rauf resume` can pick it up.
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0].status).toBe("pending");
+    });
+
+    it("does not charge the iteration budget for an infra_error no-op", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(tmpDir, "attempt-count");
+      // First spawn fast-fails (infra_error, no banner); second succeeds.
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then
+  echo "boom" >&2
+  exit 1
+fi
+echo "RAUF_DONE"`,
+      );
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+
+      // The infra no-op attempt is rolled back (incremented to 1, then back to 0)
+      // and the rollback is logged.
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Iteration not counted (infra_error)");
+      expect(log).toContain("budget preserved at 0/5");
+    });
+  });
+
   describe("state.json and rauf.log", () => {
     it("writes state.json throughout lifecycle", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);

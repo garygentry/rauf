@@ -581,9 +581,13 @@ export class LoopRunner extends TypedEventEmitter {
       // Reset item to pending
       updateItem(this.paths, item.id, { status: "pending" });
       this.currentItemId = null;
+      // No work was done — this is an API rejection, not an attempt. Don't drain
+      // the iteration budget on it (item 007).
+      this.uncountIteration("usage_limited");
 
-      // Check API for 5h vs 7d
-      const stderrLimitResult = await this.handleStderrUsageLimit();
+      // Check API for 5h vs 7d (pass the banner so the no-token path can parse
+      // the reset time)
+      const stderrLimitResult = await this.handleStderrUsageLimit(`${stderr}\n${signalText}`);
       if (stderrLimitResult === "exit") {
         return "exit";
       }
@@ -687,7 +691,9 @@ export class LoopRunner extends TypedEventEmitter {
             appendLog(this.paths, "Usage limit detected (post-signal classification)");
             updateItem(this.paths, item.id, { status: "pending" });
             this.currentItemId = null;
-            const usageResult = await this.handleStderrUsageLimit();
+            // No-op death — don't charge the iteration budget (item 007).
+            this.uncountIteration("usage_limited");
+            const usageResult = await this.handleStderrUsageLimit(`${stderr}\n${signalText}`);
             return usageResult === "exit" ? "exit" : "continue";
           }
 
@@ -718,6 +724,9 @@ export class LoopRunner extends TypedEventEmitter {
               this.paths,
               `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending`,
             );
+            // No work was done — don't drain the iteration budget on a flaky
+            // spawn (item 007). The circuit breaker (item 008) bounds repeats.
+            this.uncountIteration("infra_error");
             break;
           }
 
@@ -965,6 +974,75 @@ export class LoopRunner extends TypedEventEmitter {
     });
   }
 
+  /**
+   * Roll back the iteration counter for a no-op death (usage_limited /
+   * infra_error). Iterations should count work attempts, not API rejections or
+   * flaky spawns, so environmental failures must not drain the budget (item 007).
+   */
+  private uncountIteration(reason: string): void {
+    if (this.iterationCount > 0) {
+      this.iterationCount--;
+    }
+    appendLog(
+      this.paths,
+      `Iteration not counted (${reason}); budget preserved at ${this.iterationCount}/${this.options.maxIterations}`,
+    );
+  }
+
+  /** Whether to sleep through a 5h usage limit (default) or halt cleanly. */
+  private get sleepOnLimit(): boolean {
+    return this.options.sleepOnLimit ?? true;
+  }
+
+  /**
+   * Clean-halt the loop on a 5h usage limit when sleepOnLimit is false. Writes
+   * the resumable `paused_usage_limit` state plus a DONE summary with a one-line
+   * resume hint, then signals the caller to exit (item 007). The hint is
+   * consumed by `rauf resume` (item 012).
+   */
+  private haltForUsageLimit(resetsAt: string): "exit" {
+    const reset = resetsAt || "unknown";
+    appendLog(
+      this.paths,
+      `Usage limit reached; halting without sleep (sleepOnLimit=false). Run \`rauf resume\` after ${reset}.`,
+    );
+    this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
+    this.writeState("paused_usage_limit", null);
+    writeDoneFile(this.paths, `paused_usage_limit:${reset} — run \`rauf resume\``);
+    return "exit";
+  }
+
+  /**
+   * Compute milliseconds from now until the next occurrence of a banner reset
+   * time like "5:30pm" / "5pm" / "11am", in local time. Returns null if the
+   * string cannot be parsed. Used when the API is unavailable and the only
+   * reset hint is the human-readable banner (item 007).
+   */
+  private msUntilResetTime(timeStr: string): number | null {
+    const m = timeStr.match(/^(\d{1,2})(?::(\d{2}))?\s*([ap])m$/i);
+    const hourStr = m?.[1];
+    const meridiem = m?.[3];
+    if (!hourStr || !meridiem) return null;
+
+    let hour = parseInt(hourStr, 10);
+    const minute = m?.[2] ? parseInt(m[2], 10) : 0;
+    if (hour < 1 || hour > 12 || minute > 59) return null;
+
+    const isPm = meridiem.toLowerCase() === "p";
+    if (hour === 12) hour = 0;
+    if (isPm) hour += 12;
+
+    const now = new Date();
+    const target = new Date(now);
+    target.setHours(hour, minute, 0, 0);
+    // If the reset clock time is at/before now, it refers to the next day
+    // (e.g. now 11pm, reset 1am).
+    if (target.getTime() <= now.getTime()) {
+      target.setDate(target.getDate() + 1);
+    }
+    return target.getTime() - now.getTime();
+  }
+
   /** Run pre-loop usage limit preflight check */
   private async runUsagePreflight(): Promise<"continue" | "exit"> {
     const tokenResult = readClaudeOAuthToken();
@@ -994,8 +1072,11 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     if (usageResult.limitType === "5h") {
-      // 5-hour limit — sleep until reset
+      // 5-hour limit. Clean halt instead of sleeping when sleepOnLimit is false.
       const resetsAt = usageResult.resetsAt ?? "";
+      if (!this.sleepOnLimit) {
+        return this.haltForUsageLimit(resetsAt);
+      }
       const retryAfter = usageResult.retryAfter ?? 0;
       appendLog(
         this.paths,
@@ -1031,19 +1112,48 @@ export class LoopRunner extends TypedEventEmitter {
     return "continue";
   }
 
-  /** Handle usage limit detected via stderr mid-loop */
-  private async handleStderrUsageLimit(): Promise<"continue" | "exit"> {
+  /**
+   * Handle a usage limit detected mid-loop. `bannerText` is the claude output
+   * the limit was detected in — used to parse a reset time when the API token
+   * is unavailable (item 007).
+   */
+  private async handleStderrUsageLimit(bannerText?: string): Promise<"continue" | "exit"> {
     const tokenResult = readClaudeOAuthToken();
     if (!tokenResult.ok) {
-      // Can't check API — treat as 5h limit with short sleep
-      appendLog(this.paths, "OAuth token unavailable for usage check, sleeping 60s");
+      // Can't hit the API for an exact reset. Parse the reset time out of the
+      // banner if present and sleep until then (plus a small buffer); else 60s.
+      const RESET_BUFFER_MS = 60_000;
+      const FALLBACK_MS = 60_000;
+      const timeStr = bannerText?.match(/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i)?.[1];
+      let sleepMs = FALLBACK_MS;
+      let resetsAt = "";
+      if (timeStr) {
+        const untilMs = this.msUntilResetTime(timeStr);
+        if (untilMs !== null) {
+          sleepMs = untilMs + RESET_BUFFER_MS;
+          resetsAt = timeStr;
+        }
+      }
+
+      // Clean halt instead of sleeping when sleepOnLimit is false.
+      if (!this.sleepOnLimit) {
+        return this.haltForUsageLimit(resetsAt);
+      }
+
+      appendLog(
+        this.paths,
+        `OAuth token unavailable for usage check, sleeping ${Math.round(sleepMs / 1000)}s` +
+          (resetsAt ? ` (banner reset ${resetsAt})` : " (60s fallback)"),
+      );
       this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
       this.emitEvent("sleep_start", {
-        sleepUntil: new Date(Date.now() + 60_000).toISOString(),
-        reason: "Usage limit (API unavailable)",
+        sleepUntil: new Date(Date.now() + sleepMs).toISOString(),
+        reason: resetsAt
+          ? `Usage limit (API unavailable, banner reset ${resetsAt})`
+          : "Usage limit (API unavailable)",
       });
       this.writeState("sleeping_limit", null);
-      await interruptibleSleep(60_000, this.abortController.signal, () =>
+      await interruptibleSleep(sleepMs, this.abortController.signal, () =>
         this.writeState("sleeping_limit", null),
       );
       this.emitEvent("sleep_end", {});
@@ -1074,8 +1184,12 @@ export class LoopRunner extends TypedEventEmitter {
       return "exit";
     }
 
-    // 5-hour limit — sleep
+    // 5-hour limit. Clean halt instead of sleeping when sleepOnLimit is false.
     const resetsAt = usageResult.resetsAt ?? "";
+    if (!this.sleepOnLimit) {
+      return this.haltForUsageLimit(resetsAt);
+    }
+
     const retryAfter = usageResult.retryAfter ?? 0;
     appendLog(
       this.paths,
@@ -1141,8 +1255,11 @@ export class LoopRunner extends TypedEventEmitter {
       return "exit";
     }
 
-    // 5h limit — sleep
+    // 5h limit. Clean halt instead of sleeping when sleepOnLimit is false.
     const resetsAt = usageResult.resetsAt ?? "";
+    if (!this.sleepOnLimit) {
+      return this.haltForUsageLimit(resetsAt);
+    }
     const retryAfter = usageResult.retryAfter ?? 0;
     appendLog(this.paths, `5-hour usage limit between iterations, sleeping until ${resetsAt}`);
     this.emitEvent("usage_limit_hit", {
