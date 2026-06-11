@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Fixed
+
+- Release binaries for x64 (`rauf-linux-x64`, `rauf-darwin-x64`,
+  `rauf-windows-x64.exe`) are now built with Bun's `-baseline` runtime so they run
+  on every x64 CPU. The previous builds required AVX2 and crashed with `SIGILL`
+  ("Illegal instruction") on CPUs without it. Asset names and checksums are
+  unchanged. A release-time smoke test and a `RELEASE_TARGETS` unit guard prevent
+  this from regressing.
+
+### Changed
+
+- CI/release workflows bump `actions/checkout@v4`→`@v5` and
+  `pnpm/action-setup@v4`→`@v6` (off the deprecated Node 20 runner).
+
 ## 0.3.0-rc.1
 
 ### Changed (BREAKING) — Ralph is now Rauf

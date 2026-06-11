@@ -18,6 +18,9 @@ The script's download URL scheme and `detect_asset()` are **unchanged** — they
 ### 1.1 What stays the same
 
 - `detect_asset()` → `rauf-${os}-${arch}` (linux/darwin × x64/arm64). Unix-only; no `.exe`.
+  Asset names are unaffected by the x64 `-baseline` build switch (see
+  `00-core-definitions.md §2.2`): baseline changes only the Bun compile target, so
+  `detect_asset()` and the download URLs need no change.
 - `RAUF_REPO` default `garygentry/rauf`; `INSTALL_DIR` default `$HOME/.local/bin`.
 - `--local` and `--name` modes.
 

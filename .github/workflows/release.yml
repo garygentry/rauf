@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # 1. Full history + tags for the Full Changelog compare link (REQ-NOTES-03).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
@@ -36,7 +36,7 @@ jobs:
 
       # 3. Toolchain — setup-bun auto-reads .bun-version.
       - uses: oven-sh/setup-bun@v2
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       # 4. Dependencies.
       - run: pnpm install --frozen-lockfile
@@ -63,13 +63,33 @@ jobs:
       # 7. Cross-compile all five targets (REQ-BUILD-01/02/07). pnpm build already
       #    ran in step 6, so this is just the five compile invocations into dist/.
       - name: Cross-compile binaries
+        # x64 targets use Bun's -baseline runtime so the binaries run on every x64
+        # CPU (no AVX2 requirement); plain x64 builds SIGILL on non-AVX2 hosts. The
+        # --outfile asset names are independent of --target, so they're unchanged.
+        # arm64 has no AVX2 concept. Keep these triples in sync with RELEASE_TARGETS
+        # in scripts/release/lib.ts (lib.test.ts guards the baseline invariant).
         run: |
           mkdir -p dist
-          bun build --compile --target=bun-linux-x64    scripts/binary-entry.ts --outfile dist/rauf-linux-x64
-          bun build --compile --target=bun-linux-arm64  scripts/binary-entry.ts --outfile dist/rauf-linux-arm64
-          bun build --compile --target=bun-darwin-x64   scripts/binary-entry.ts --outfile dist/rauf-darwin-x64
-          bun build --compile --target=bun-darwin-arm64 scripts/binary-entry.ts --outfile dist/rauf-darwin-arm64
-          bun build --compile --target=bun-windows-x64  scripts/binary-entry.ts --outfile dist/rauf-windows-x64.exe
+          bun build --compile --target=bun-linux-x64-baseline   scripts/binary-entry.ts --outfile dist/rauf-linux-x64
+          bun build --compile --target=bun-linux-arm64          scripts/binary-entry.ts --outfile dist/rauf-linux-arm64
+          bun build --compile --target=bun-darwin-x64-baseline  scripts/binary-entry.ts --outfile dist/rauf-darwin-x64
+          bun build --compile --target=bun-darwin-arm64         scripts/binary-entry.ts --outfile dist/rauf-darwin-arm64
+          bun build --compile --target=bun-windows-x64-baseline scripts/binary-entry.ts --outfile dist/rauf-windows-x64.exe
+
+      # 7b. Smoke-test the linux-x64 binary on the runner BEFORE publishing, so a
+      #     broken or wrong-version binary blocks the release. The ubuntu runner has
+      #     AVX2, so the -baseline binary runs fine here (baseline runs everywhere).
+      #     This catches "binary broken / wrong version"; the no-AVX2 regression case
+      #     is locked by the RELEASE_TARGETS baseline unit test (can't be exercised on
+      #     an AVX2 runner). Only linux-x64 is runnable in CI (darwin/windows can't be).
+      - name: Smoke-test linux-x64 binary
+        env:
+          VERSION: ${{ steps.preflight.outputs.version }}
+        run: |
+          chmod +x dist/rauf-linux-x64
+          got="$(dist/rauf-linux-x64 version --json)"; echo "$got"
+          echo "$got" | grep -q "\"version\": \"$VERSION\"" \
+            || { echo "::error::linux-x64 binary failed to run or version mismatch (wanted $VERSION)"; exit 1; }
 
       # 8. Checksums (REQ-INTEGRITY-01) — plain filenames so `sha256sum -c` works post-download.
       - name: Checksums

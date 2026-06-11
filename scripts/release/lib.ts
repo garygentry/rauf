@@ -104,13 +104,22 @@ export const PACKAGE_JSON_PATHS = [
  * names match install-binary.sh detect_asset() (REQ-BUILD-02). Cross-compiled
  * from a single ubuntu-latest host — empirically validated on Bun 1.3.10
  * (tech-spec §3.3, RISK-1 retired).
+ *
+ * x64 targets use Bun's `-baseline` runtime so the binaries run on every x64
+ * CPU. The default x64 runtime requires AVX2 and SIGILLs ("Illegal instruction")
+ * on CPUs without it — the locally-built binary only worked because Bun
+ * auto-detects the build host, which the cross-compile can't. `-baseline` costs
+ * negligible SIMD perf for a CLI with no hot path. arm64 has no AVX2 concept, so
+ * those entries stay plain. The `-baseline` suffix changes only the compile
+ * target, never the `asset`/`--outfile` name — install scripts and SHA256SUMS
+ * are unaffected. lib.test.ts guards this invariant (x64 ⇒ `-baseline`).
  */
 export const RELEASE_TARGETS: ReleaseTarget[] = [
-  { bunTarget: "bun-linux-x64", asset: "rauf-linux-x64" },
+  { bunTarget: "bun-linux-x64-baseline", asset: "rauf-linux-x64" },
   { bunTarget: "bun-linux-arm64", asset: "rauf-linux-arm64" },
-  { bunTarget: "bun-darwin-x64", asset: "rauf-darwin-x64" },
+  { bunTarget: "bun-darwin-x64-baseline", asset: "rauf-darwin-x64" },
   { bunTarget: "bun-darwin-arm64", asset: "rauf-darwin-arm64" },
-  { bunTarget: "bun-windows-x64", asset: "rauf-windows-x64.exe" },
+  { bunTarget: "bun-windows-x64-baseline", asset: "rauf-windows-x64.exe" },
 ];
 
 /** The single entry point compiled for every target (unchanged — tech-spec §6.5). */

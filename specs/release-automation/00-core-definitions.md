@@ -124,19 +124,26 @@ export const PACKAGE_JSON_PATHS = [
 
 ### 2.2 Release targets (REQ-BUILD-01, REQ-BUILD-02, REQ-BUILD-07)
 
+x64 targets use Bun's `-baseline` runtime so the binaries run on every x64 CPU.
+The default x64 runtime requires AVX2 and SIGILLs ("Illegal instruction") on CPUs
+without it. The `-baseline` suffix changes only the compile target — never the
+`asset`/`--outfile` name — so install scripts and `SHA256SUMS` are unaffected.
+arm64 has no AVX2 concept, so those entries stay plain.
+
 ```typescript
 /**
  * The five platform binaries every release builds (REQ-BUILD-01). Asset
  * names match install-binary.sh detect_asset() (REQ-BUILD-02). Cross-compiled
  * from a single ubuntu-latest host — empirically validated on Bun 1.3.10
- * (tech-spec §3.3, RISK-1 retired).
+ * (tech-spec §3.3, RISK-1 retired). x64 targets use the `-baseline` runtime for
+ * AVX2-free portability (suffix affects only the compile target, not the asset).
  */
 export const RELEASE_TARGETS: ReleaseTarget[] = [
-  { bunTarget: "bun-linux-x64", asset: "rauf-linux-x64" },
+  { bunTarget: "bun-linux-x64-baseline", asset: "rauf-linux-x64" },
   { bunTarget: "bun-linux-arm64", asset: "rauf-linux-arm64" },
-  { bunTarget: "bun-darwin-x64", asset: "rauf-darwin-x64" },
+  { bunTarget: "bun-darwin-x64-baseline", asset: "rauf-darwin-x64" },
   { bunTarget: "bun-darwin-arm64", asset: "rauf-darwin-arm64" },
-  { bunTarget: "bun-windows-x64", asset: "rauf-windows-x64.exe" },
+  { bunTarget: "bun-windows-x64-baseline", asset: "rauf-windows-x64.exe" },
 ];
 
 /** The single entry point compiled for every target (unchanged — tech-spec §6.5). */

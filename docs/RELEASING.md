@@ -149,6 +149,9 @@ unaffected and need no workaround.
 
 - Every release publishes a `SHA256SUMS` file alongside the five binaries; both
   install scripts verify against it (hard-fail on mismatch).
+- x64 binaries are built with Bun's `-baseline` runtime so they run on every x64
+  CPU (no AVX2 requirement); the default runtime SIGILLs on non-AVX2 hosts. This
+  changes only the compile target, not the published asset names.
 - Publishing uses only the workflow's built-in `GITHUB_TOKEN` with
   `contents: write` — no personal access tokens or extra secrets.
 - Release notes are sourced verbatim from the human-curated changelog section;

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanupRepoFixtures, makeChangelog, makeRepoFixture } from "./__fixtures__";
 import {
   PACKAGE_JSON_PATHS,
+  RELEASE_TARGETS,
   VERSION_TS_PATH,
   compareVersions,
   extractSection,
@@ -305,5 +306,33 @@ describe("readVersionLocations", () => {
     const dir = makeRepoFixture("0.2.0");
     fs.writeFileSync(path.join(dir, VERSION_TS_PATH), "export const NOPE = 1;\n");
     expect(() => readVersionLocations(dir)).toThrow(/could not find 'export const VERSION/);
+  });
+});
+
+describe("RELEASE_TARGETS portability invariant", () => {
+  // Locks the AVX2 fix: x64 binaries MUST be built with Bun's -baseline runtime
+  // so they run on every x64 CPU (the default x64 runtime SIGILLs without AVX2).
+  // A revert to a plain x64 target can't be caught by running the binary on an
+  // AVX2-equipped CI runner, so this static guard is the reliable regression gate.
+  it("builds every x64 target with the -baseline runtime", () => {
+    const x64 = RELEASE_TARGETS.filter((t) => t.bunTarget.includes("x64"));
+    expect(x64.length).toBeGreaterThan(0);
+    for (const t of x64) {
+      expect(t.bunTarget.endsWith("-baseline")).toBe(true);
+    }
+  });
+
+  it("leaves arm64 targets non-baseline (no AVX2 concept on ARM)", () => {
+    const arm64 = RELEASE_TARGETS.filter((t) => t.bunTarget.includes("arm64"));
+    expect(arm64.length).toBeGreaterThan(0);
+    for (const t of arm64) {
+      expect(t.bunTarget.endsWith("-baseline")).toBe(false);
+    }
+  });
+
+  it("keeps asset names free of the -baseline suffix (only the compile target changes)", () => {
+    for (const t of RELEASE_TARGETS) {
+      expect(t.asset).not.toContain("baseline");
+    }
   });
 });
