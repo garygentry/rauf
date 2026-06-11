@@ -3,6 +3,7 @@ export { parseSignal } from "./signal-parser.js";
 export type { ParsedSignal, SignalType } from "./signal-parser.js";
 export { gitCommit } from "./git-commit.js";
 export type { GitCommitSuccess } from "./git-commit.js";
+export { findItemCommit, isTreeClean } from "./git-reconcile.js";
 export { checkLoopPreconditions } from "./git-status.js";
 export { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 export { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
