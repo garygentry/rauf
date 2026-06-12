@@ -26,6 +26,7 @@ rauf-bin
 test-sandbox/.sandbox-git/
 .worktrees/
 .playwright-mcp/
+.playwright-cli/
 
 # Plan-mode scratch — plan files are written to plans/<name>.md at the repo root
 # (a path we don't control), so the loop's `git add -A` must never sweep them
