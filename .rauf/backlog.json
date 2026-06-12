@@ -88,8 +88,8 @@
         "`grep -ri ralph packages/web/src` shows no user-facing UI text or command strings (internal identifiers, if any, excluded)",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T04:42:25.757Z",
       "notes": "Migration matters — existing users have their theme under ralph-theme in localStorage.",
       "estimatedIterations": 1
     },

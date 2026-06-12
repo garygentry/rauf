@@ -69,7 +69,7 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
   // ── GET /:id/profile ──────────────────────────────────────────
   //
   // Returns the ProjectProfile stored in .rauf.json.
-  // 404 when the project doesn't have ralph installed.
+  // 404 when the project doesn't have rauf installed.
 
   router.get("/:id/profile", (c) => {
     const id = c.req.param("id");

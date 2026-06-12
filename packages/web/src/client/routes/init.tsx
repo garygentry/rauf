@@ -757,7 +757,7 @@ function StepReview({
   const presetLabel = PRESETS.find((p) => p.value === state.preset)?.label ?? state.preset;
 
   const FILES_TO_CREATE = [
-    { file: "CLAUDE.md", description: "Project instructions with ralph loop section" },
+    { file: "CLAUDE.md", description: "Project instructions with rauf loop section" },
     { file: ".gitignore", description: "Stack-appropriate gitignore" },
     { file: ".rauf/RAUF.md", description: "Per-iteration instructions" },
     { file: ".rauf/backlog.json", description: "Task queue" },
@@ -1082,7 +1082,7 @@ function StepResult({ state }: { state: WizardState }) {
                 border: "1px solid var(--color-border)",
               }}
             >
-              ralph backlog add
+              rauf backlog add
             </code>
           </p>
         </div>
@@ -1113,7 +1113,7 @@ function StepResult({ state }: { state: WizardState }) {
                 border: "1px solid var(--color-border)",
               }}
             >
-              ralph loop run {report.projectPath}
+              rauf loop run {report.projectPath}
             </code>
           </p>
         </div>
@@ -1230,7 +1230,7 @@ export function InitWizard() {
           Initialize New Project
         </h1>
         <p className="mb-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Create a new project from scratch with git, CLAUDE.md, and ralph loop infrastructure.
+          Create a new project from scratch with git, CLAUDE.md, and rauf loop infrastructure.
         </p>
 
         <StepIndicator current={state.step} total={STEP_LABELS.length} />

@@ -10,18 +10,39 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = "ralph-theme";
+const STORAGE_KEY = "rauf-theme";
+const LEGACY_STORAGE_KEY = "ralph-theme";
+
+function isTheme(value: string | null): value is Theme {
+  return value === "light" || value === "dark" || value === "system";
+}
 
 function getSystemTheme(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/**
+ * Read the stored theme, migrating a pre-rename `ralph-theme` value to `rauf-theme`
+ * once. If the new key is absent but the legacy key holds a valid theme, adopt it,
+ * persist it under the new key, and remove the legacy key so existing users keep
+ * their theme across the rename.
+ */
+function readStoredTheme(): Theme {
+  const current = localStorage.getItem(STORAGE_KEY);
+  if (isTheme(current)) return current;
+
+  const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (isTheme(legacy)) {
+    localStorage.setItem(STORAGE_KEY, legacy);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return legacy;
+  }
+
+  return "system";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "light" || stored === "dark" || stored === "system") return stored;
-    return "system";
-  });
+  const [theme, setThemeState] = useState<Theme>(readStoredTheme);
 
   const resolvedTheme: "light" | "dark" = theme === "system" ? getSystemTheme() : theme;
 

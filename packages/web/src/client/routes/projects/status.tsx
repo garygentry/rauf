@@ -899,7 +899,7 @@ export function StatusView() {
             >
               <p className="text-base font-medium">Rauf is not installed in this project</p>
               <p className="mt-1 text-sm">
-                Use the <span className="font-mono text-xs">ralph install</span> command or the
+                Use the <span className="font-mono text-xs">rauf install</span> command or the
                 Install wizard to get started.
               </p>
             </div>
