@@ -29,7 +29,7 @@ the **clean-break removal of superseded monitor verbs/flags** (`loop watch`, `lo
 | --- | --- | --- |
 | D1 | Persist inside `LoopRunner.emitEvent()` — the single choke point all 24 events pass through. The **runner** owns the per-run `seq` counter and token coalescing; **core** owns the `fs.appendFileSync`. Best-effort (try/catch, never crashes the loop). Single writer per root. | REQ-EVT-01/06 |
 | D2 | **Flat** record: every line is the full `LoopEvent` plus `seq` and `schemaVersion`. Each line independently parseable and self-describing. | REQ-EVT-03/04 |
-| D3 | **Time-based last-write-wins** coalescing of `llm_token_update` at ≈1/sec (mirrors the existing `iteration-status.json` throttle). `llm_tool_activity` + all structural events persist immediately. | REQ-EVT-02 / OQ-2 |
+| D3 | **Time-based last-write-wins** coalescing of `llm_token_update` at ≈1/sec (`TOKEN_COALESCE_MS = 1000`), satisfying REQ-EVT-02's "≤ ~1/sec". This is **independent of, and finer-grained than**, the existing 5s `TOKEN_EVENT_THROTTLE_MS` (`runner.ts:70`) that gates `iteration-status.json` — the two surfaces coalesce at different, intentional rates. `llm_tool_activity` + all structural events persist immediately. | REQ-EVT-02 / OQ-2 |
 | D4 | **Rotate** `events.ndjson` → `archive/{ts}-events.ndjson` at `runner.start()`, mirroring the `reset.ts` `{ts}-<filename>` pattern; then begin a fresh file. | REQ-EVT-05 / OQ-4 |
 | D5 | Registry = **per-loop entry files** `~/.rauf/active/<hash>.json` keyed by a hash of the resolved state dir. Each loop owns exactly one file → concurrency-safety is structural (no shared-file writer contention). **Reconcile on read** against `.loop.lock` + process liveness; prune stale entries. | REQ-DISC-03/04/05 / OQ-1 |
 | D6 | Cross-root discovery scope = **machine-wide** (the registry lives in `~/.rauf`, naturally global). No scoping flag in Phase 1. | REQ-DISC-02 / OQ-3 |
@@ -52,9 +52,10 @@ Per architecture rule #1, **all new filesystem + registry logic lives in `packag
 | `events-log.ts` | **new** | `appendEvent`, `readEvents`, `rotateEventsLog`, `watchEvents` |
 | `loop-registry.ts` | **new** | `registerLoop`, `deregisterLoop`, `updateLoopStatus`, `listActiveLoops`, `registryEntryPath` |
 | `fs-utils.ts` | add | `appendLine(filePath, line): Result<void>`, `readNdjson<T>(filePath, schema): Result<T[]>` (torn-line tolerant) |
+| `errors.ts` | add | new `IO_ERROR` member on the `ErrorCodes` enum — the append/read failure code returned by `appendLine`/`readNdjson` (no existing code has the right semantics) |
 | `backlog-root.ts` | add | `eventsLog` field on `BacklogPaths` (= `stateDir/events.ndjson`) |
 | `schemas.ts` | add | `EVENTS_SCHEMA_VERSION`, `PersistedEventSchema` / `PersistedEvent`, `ActiveLoopEntrySchema` / `ActiveLoopEntry` |
-| `lock.ts` | refactor | extract `checkLockFile(lockPath): LockSummary` (existing `checkLock` delegates to it) for registry reconciliation |
+| `lock.ts` | refactor | extract `checkLockFile(lockPath): Result<LockStatus>` — parameterize the existing `checkLock` body (which uses the private `isProcessAlive`/`isProcessRecycled` helpers) on a raw lock path; existing `checkLock(paths)` delegates to it, for registry reconciliation |
 | `status.ts` | extend | `deriveStatus`/empty-path callers surface inspected dir + registry liveness (REQ-DISC-01/02) |
 
 ### `packages/loop/src/` — wire-up only
@@ -149,11 +150,20 @@ event object and is the *only* place all 24 types pass through, and the runner �
 — is where the per-run `seq`/coalescing state naturally lives. Overriding the base `emit()` would
 force that run-scoped state down into a generic event bus.
 
-**`seq` is the persisted-record sequence (dense), not the emit sequence.** A reader detecting a gap
-in `seq` therefore means *corruption/torn write*, not coalescing — coalesced token updates simply
-never get a `seq`. (REQ-EVT-03.)
+**`seq` is the persisted-record sequence (dense), not the emit sequence.** Coalesced token updates
+simply never get a `seq` (REQ-EVT-03), so a gap is never caused by coalescing. How a reader should
+interpret a gap depends on its vantage point: a reader over a **fully-quiesced** file (no live writer)
+that sees a `seq` gap is looking at genuine *corruption*. A reader **live-tailing** an actively-written
+file that observes an apparent gap should treat it as *possibly torn/incomplete — re-read from the last
+offset* (per §3.3's offset re-read), not declare corruption; the gap typically resolves on the next
+read as the trailing line completes. Reserve the hard "corruption" interpretation for the quiesced case.
 
-`TOKEN_COALESCE_MS = 1000` and `EVENTS_SCHEMA_VERSION = "1"` are constants in core.
+`TOKEN_COALESCE_MS = 1000` and `EVENTS_SCHEMA_VERSION = "1"` are constants in core. This 1s rate is
+**deliberately independent** of the runner's existing `TOKEN_EVENT_THROTTLE_MS = 5_000` (`runner.ts:70`)
+that gates `iteration-status.json`; the event log is its own surface and coalesces 5× more finely.
+Consequence (acceptable): `events.ndjson` will carry **more** `llm_token_update` records than
+`iteration-status.json` reflects, so a reader correlating the two surfaces sees extra token lines in
+the event stream. Each surface is independent, so this is fine.
 
 ### 3.2 Append + NDJSON read primitives (REQ-EVT-06, REQ-REL-01) — core `fs-utils.ts`
 
@@ -194,6 +204,10 @@ export function readNdjson<T>(filePath: string, schema: z.ZodType<T>): Result<T[
 }
 ```
 
+Both primitives return a new `ErrorCodes.IO_ERROR` code on fs failure — **`IO_ERROR` does not exist
+in `errors.ts` today and must be added** to the `ErrorCodes` enum as part of this work (§2). No
+existing code (`FILE_NOT_FOUND`, etc.) carries the right append/read-failure semantics.
+
 ### 3.3 Event-log lifecycle module (REQ-EVT-05, REQ-EVT-07, REQ-OBS-04) — core `events-log.ts`
 
 ```typescript
@@ -220,15 +234,34 @@ export function readEvents(paths: BacklogPaths): Result<PersistedEvent[]> {
  */
 export function rotateEventsLog(paths: BacklogPaths): Result<void> { /* mkdir archive, rename */ }
 
-/** fs.watch-based tail for `follow` and the web. Mirrors status.ts:watchLog. */
+/**
+ * fs.watch-based tail for `follow` and the web. Genuinely mirrors status.ts:watchLog —
+ * returns a bare cleanup function (NOT a { close } handle) so both tailers share one unsubscribe idiom.
+ */
 export function watchEvents(
   paths: BacklogPaths,
   onRecords: (records: PersistedEvent[]) => void,
-): { close: () => void } { /* ... */ }
+): () => void { /* ... */ }
 ```
 
 `ts` is computed with `new Date()` at call time inside the runner process (not a pure function) —
 acceptable here; this is production runtime code, not a workflow script.
+
+**Scalability / per-run growth (accepted Phase-1 deferral).** `events.ndjson` is rotated **only at
+`runner.start()`** (D4); there is no in-run size cap or mid-run rotation. Within a single long run it
+grows unbounded, and `readEvents`/`watchEvents`/the web replay all `readFileSync` the whole file, so
+replay/attach cost grows linearly with run length. This is acceptable for Phase 1: a run's event
+volume is bounded in practice by `maxIterations × per-iteration event count`, and with token updates
+coalesced to ~1/sec a multi-hour run is on the order of single-digit MBs. If replay cost ever matters,
+`readEvents`/`follow`-replay can read from a byte offset or tail-N rather than the whole file — noted
+but **deferred** (no in-run rotation in Phase 1).
+
+**`watchEvents` reliability.** `fs.watch` can miss events under rapid writes and varies by platform, so
+`watchEvents` must **re-read from the last byte offset to EOF on every fire** (TQ-3), making a single
+missed fire self-correcting on the next one. The `--interval` poll is therefore not only a fallback for
+when `fs.watch` is *unavailable* but also a periodic **reconciliation safety-net** against *missed*
+fires when it is available — on each interval tick the tailer re-reads from its last offset, guaranteeing
+eventual delivery even if a watch event was dropped.
 
 ### 3.4 events.ndjson record schema (REQ-EVT-03, REQ-EVT-04) — D2
 
@@ -251,9 +284,22 @@ export const PersistedEventSchema = z.intersection(
 export type PersistedEvent = z.infer<typeof PersistedEventSchema>;
 ```
 
-This ships the **version envelope now** (REQ-EVT-04) at zero cost; the *formal versioning discipline*
-(bump policy, published JSON Schema) remains Phase 3. No new committed `*.schema.json` is generated
-in Phase 1 — `scripts/generate-json-schemas.ts` keeps emitting only `backlog.schema.json`.
+This ships the **version envelope now** (REQ-EVT-04); the *formal versioning discipline* (bump policy,
+published JSON Schema) remains Phase 3. No new committed `*.schema.json` is generated in Phase 1 —
+`scripts/generate-json-schemas.ts` keeps emitting only `backlog.schema.json`.
+
+**Implementation note — first `z.intersection` in the codebase.** `schemas.ts` has no existing
+`z.intersection` use, and `LoopEventSchema` is a `z.discriminatedUnion` (24 members). Intersecting a
+discriminated union with an object in zod 3 parses correctly but **forfeits the discriminated-union
+fast path / focused error messages** (the intersection runs both schemas and deep-merges), and the
+inferred `z.infer<ZodIntersection<…>>` type is heavier than `.merge` on a single object would be.
+`readNdjson` `safeParse`s every line against this schema on each read — acceptable at Phase-1 volumes
+(see the growth note in §3.3), but worth measuring if read-path cost ever matters. Alternatives
+considered: `LoopEventSchema.and(EnvelopeSchema)` (same semantics, terser) and extending each of the 24
+member schemas with `.merge(EnvelopeSchema)` then re-forming the union (preserves the discriminated
+fast path but is 24× the boilerplate and must stay in sync as events are added). `z.intersection` was
+chosen for minimal boilerplate and a single envelope definition; revisit if profiling shows the
+per-line parse is hot.
 
 ### 3.5 Active-loop registry (REQ-DISC-03/04/05, REQ-SEC-01) — D5, core `loop-registry.ts`
 
@@ -312,9 +358,14 @@ export type ActiveLoopEntry = z.infer<typeof ActiveLoopEntrySchema>;
 
 **Reconciliation reuses the existing lock liveness** rather than re-implementing PID checks. `lock.ts`
 already does `process.kill(pid, 0)` plus a Linux `/proc/<pid>/stat` start-time guard against PID
-recycling (`lock.ts:57–116`). We extract `checkLockFile(lockPath: string): LockSummary` from the
-current `checkLock(paths)` so the registry can reconcile against any state dir's lock without a full
-`BacklogPaths`. The `.loop.lock` is the **ground truth** (C-3); the registry is a fast index over it.
+recycling, in the private helpers `isProcessAlive`/`isProcessRecycled` (`lock.ts:56–116`) consumed by
+`checkLock`. We extract `checkLockFile(lockPath: string): Result<LockStatus>` by parameterizing the
+body of the current `checkLock(paths)` — the part that reads the lock file and runs those liveness
+helpers — on a raw `lockPath` instead of a full `BacklogPaths`, so the registry can reconcile against
+any state dir's lock. `checkLock` then delegates to it. (Note: the return type is `LockStatus`, the
+existing `checkLock` return shape from `lock.ts:39` — **not** `LockSummary`, which is the unrelated
+status-display type at `schemas.ts:258` produced by `computeLockSummary`.) The `.loop.lock` is the
+**ground truth** (C-3); the registry is a fast index over it.
 
 ### 3.6 Unified, file-based monitoring surface (REQ-OBS-01, REQ-MON-01/03/04, REQ-PERF-02) — D9
 
@@ -393,7 +444,7 @@ never commits or stages; the loop runner owns the commit."** Loci, all reconcile
 
 1. `artifacts/variants/backlog-json/CLAUDE_ADDON.md:21` — replace "Commit your changes…".
 2. `artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl:47` — same replacement.
-3. `artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl:31` — replace "Commit with:…"; **and** add the
+3. `artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl:32` — replace "Commit with:…"; **and** add the
    explicit no-commit line to its "Important Rules" section (currently silent).
 4. **`packages/core/src/embedded-artifacts.ts` (lines 42, 364, 423)** — the *generated, installed*
    source of truth. **Regenerate** via `bun run scripts/generate-embedded-artifacts.ts` (runs
@@ -457,7 +508,7 @@ exists at `schemas.ts:618`); Phase 1 may add its doc opportunistically but it is
 appendEvent(paths: BacklogPaths, record: PersistedEvent): Result<void>;
 readEvents(paths: BacklogPaths): Result<PersistedEvent[]>;
 rotateEventsLog(paths: BacklogPaths): Result<void>;
-watchEvents(paths: BacklogPaths, onRecords: (r: PersistedEvent[]) => void): { close(): void };
+watchEvents(paths: BacklogPaths, onRecords: (r: PersistedEvent[]) => void): () => void; // bare cleanup fn, mirrors watchLog
 
 // loop-registry.ts
 registerLoop(entry: ActiveLoopEntry): Result<void>;
@@ -471,7 +522,7 @@ appendLine(filePath: string, line: string): Result<void>;
 readNdjson<T>(filePath: string, schema: z.ZodType<T>): Result<T[]>;
 
 // lock.ts
-checkLockFile(lockPath: string): LockSummary;        // extracted; checkLock delegates to it
+checkLockFile(lockPath: string): Result<LockStatus>; // extracted; checkLock delegates to it (LockStatus, not LockSummary)
 ```
 
 ### 5.2 CLI surface (post-Phase-1)
@@ -505,7 +556,7 @@ re-verify at implementation time.
 
 - `LoopRunner.emitEvent()` (`runner.ts:1135`) — the persistence injection site (§3.1). All 24 events
   route through it; no other `this.emit` for LoopEvents exists.
-- `LoopRunner.start()` (`runner.ts:~200`) — call `rotateEventsLog(paths)` then reset `eventSeq=0`, and
+- `LoopRunner.start()` (`runner.ts:139`) — call `rotateEventsLog(paths)` then reset `eventSeq=0`, and
   `registerLoop(entry)`; `deregisterLoop(paths.stateDir)` in the run's `finally`.
 - `this.writeState()` wrapper (`runner.ts:1150–1168`) — pair each transition with `updateLoopStatus`.
 - `resolveBacklogPaths(projectPath, backlogRoot)` (`backlog-root.ts:126`) and `resolveStateDir`
@@ -567,9 +618,23 @@ Follows the core convention: `Result<T, RaufError>` for expected errors, never t
 
 - **Persistence is best-effort** (REQ-PERF-01/REL-02): `appendEvent` failures are swallowed in the
   runner's `persistEvent` try/catch and must never propagate into the loop. The loop's correctness
-  never depends on the log being writable.
+  never depends on the log being writable. **Persistent failure is intentionally fully silent** — log
+  writability is never surfaced to the user. Rationale: `state.json` + `rauf.log` remain authoritative
+  for status (REQ-OBS-02), so a silently non-writing event log degrades observation gracefully without
+  needing its own error channel; adding one would couple loop health to a best-effort surface. (If a
+  future phase wants a signal, the natural place is a single `appendLog` line to `rauf.log` on the
+  first consecutive failure — explicitly out of scope for Phase 1.)
+- **Torn-write correctness argument (load-bearing invariant).** Because there is exactly **one writer
+  per root** (REQ-EVT-06) and every append is a single whole line via `fs.appendFileSync(line + "\n")`,
+  any malformed/partial line can only ever be the **trailing** line (a crash or fs error mid-append
+  leaves a partial final line; the next successful append would re-establish a clean newline boundary).
+  `readNdjson`'s skip-the-bad-line tolerance is therefore *sufficient* — it never needs to recover an
+  interior line, because an interior line can never be torn. This is the correctness basis for both the
+  reader tolerance and the concurrent web-tail read below.
 - **Readers tolerate torn trailing lines** (REQ-REL-01): `readNdjson` skips any line failing
-  `JSON.parse`/`safeParse` and returns all earlier valid records.
+  `JSON.parse`/`safeParse` and returns all earlier valid records. A web reader tailing `events.ndjson`
+  while the runner appends is safe for the same reason — the only line a concurrent read can observe
+  mid-write is the trailing one, which the tolerance already covers.
 - **Graceful degradation** (REQ-REL-03): missing `events.ndjson` → `readEvents` returns `ok([])`;
   observers fall back to `state.json` + `rauf.log`.
 - **Registry self-heal** (REQ-DISC-05): `listActiveLoops` reconciles each entry against lock/process
@@ -604,7 +669,7 @@ Vitest, co-located `*.test.ts` (CLAUDE.md convention). Verification command: `pn
   commit (SC-5).
 
 ### CLI tests (update + add)
-- `loop-commands.test.ts:99` subcommand assertion `["start","stop","follow","run","review","watch"]`
+- `loop-commands.test.ts:100` subcommand assertion `["start","stop","follow","run","review","watch"]`
   → `["start","stop","run","review"]`; remove the `handleLoopFollow`/`handleLoopWatch` tests
   (lines ~159–198 + watch). `commands.test.ts` registry assertions updated. Any `status` usage string
   asserting `[--watch] [--interval N]` updated to `[--follow] [--json]`. (SC-4.)
@@ -614,6 +679,13 @@ Vitest, co-located `*.test.ts` (CLAUDE.md convention). Verification command: `pn
 ### Web tests
 - `routes/loop.test.ts`: `/loop/events` serves a project's `events.ndjson` without a server-owned
   runner (in-process parity, SC-1); `/api/loops` returns registry-reconciled loops.
+- **Frontend `<EventTimeline>` verification.** The web client has **no automated test harness today**,
+  so the new `<EventTimeline>` component is not unit-tested. Its parity is verified two ways: (a) at the
+  **API boundary** via `routes/loop.test.ts` above (the data it consumes is proven correct), and (b) by
+  a **manual SC-1 check** — run a foreground `loop run` and confirm the web status page's timeline
+  renders the live event stream. This manual check is part of the Phase-1 acceptance pass (added to the
+  manual-verification checklist) so SC-1's web-parity claim is not asserted at the backend level alone.
+  Standing up a frontend test harness (e.g. a thin `EventSource`→render test) is out of scope for Phase 1.
 
 ### Doc/template checks
 - Grep guard: no "Commit your changes"/"Commit with:" remains in the 3 templates **or**
@@ -653,7 +725,9 @@ OQ-4→D4; OQ-5→D7; OQ-6→D9 current-run-only). Remaining minor calls, with p
 - **TQ-2 — registry hash length.** Proposed first 16 hex chars of `sha256(resolvedStateDir)`.
   Collision risk negligible at expected scale; full hash if ever a concern.
 - **TQ-3 — `watchEvents` debounce.** Proposed: on `fs.watch` change, re-read from the last byte offset
-  and emit newly-appended records, debounced to coalesce burst writes (≈ the REQ-PERF-02 ≈1s feel).
-  Fallback to `--interval` poll where `fs.watch` is unavailable.
+  and emit newly-appended records, debounced to coalesce burst writes (≈ the REQ-PERF-02 ≈1s feel). The
+  `--interval` poll is both the fallback where `fs.watch` is unavailable **and** a periodic reconciliation
+  safety-net against missed `fs.watch` fires when it is available — each tick re-reads from the last
+  offset, so dropped watch events are eventually delivered (see §3.3).
 - **TQ-4 — `iteration-status.json` documentation.** Pre-existing SCHEMAS.md omission; optional to fix
   in Phase 1 (its `IterationStatusSchema` already exists). Not required by any REQ.
