@@ -170,3 +170,30 @@
   never appears. Use `processStartTime: null` (skips the recycle check; our live pid passes).
 - Existing status-commands.test.ts is NOT config-isolated, so its empty-path tests now
   read the real ~/.rauf/active — harmless (they assert only exit codes, which are unchanged).
+
+## Item 011 (web backend observation parity)
+
+- `routes/loop.ts`: `/loop/events` rewritten to file-backed replay-then-tail.
+  Order: immediate heartbeat → resolveBacklogRoot (on err emit `loop_error` SSE +
+  run cleanups + return; NO default-root fallthrough) → resolveBacklogPaths (on err
+  → `paths=undefined` → heartbeat-only graceful absence) → readEvents replay (each
+  PersistedEvent as `loop_event`) → watchEvents tail pushed onto `cleanups`.
+- GOTCHA: `watchEvents` throws ENOENT synchronously if events.ndjson is absent
+  (same as follow-command). Wrapped the `watchEvents` call in try/catch so a
+  resolved-but-fileless root degrades to heartbeat-only instead of crashing.
+- `/api/loops` now `listActiveLoops()` (reconciled) instead of `manager.listActive()`.
+  Degrade to `[]` on registry err.
+- loop-manager buffer/subscribe DEMOTED: route no longer calls `manager.subscribe`;
+  added a header comment documenting it's an optional cache now (kept in place, dead
+  on read path — spec 05 §4.3 permits leaving it). `getLoopManager` still used by
+  start/stop. `listActive`/`subscribe` now unused by routes but remain (public methods,
+  not lint-flagged).
+- TEST ISOLATION: web test imports `@rauf/core` transitively via app.js, so redirect
+  HOME in `vi.hoisted` BEFORE imports (same pattern as CLI status-discovery.test.ts) so
+  listActiveLoops reads an isolated ~/.rauf/active. afterEach rmSyncs ACTIVE_DIR.
+- TEST SSE READER: the handler blocks until client disconnect, so tests MUST cancel the
+  stream. `readSSEUntil(res, predicate, timeoutMs)` reads `res.body.getReader()` racing
+  each read against a 100ms timer, accumulates text, stops on predicate/deadline, then
+  `reader.cancel()` (triggers handler onAbort → cleanup). Seed events.ndjson directly as
+  JSON lines; live registry entries via registerLoop + a `.loop.lock` with our pid +
+  `processStartTime:null`.

@@ -323,8 +323,8 @@
         "web route tests cover replay+tail, ?backlog resolution-failure (error not default-root), and /api/loops shape",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:47:52.023Z",
       "dependsOn": [
         "003",
         "005"

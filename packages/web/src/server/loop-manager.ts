@@ -3,11 +3,20 @@
 // Singleton that tracks active loops by project path.
 // - Max one loop per project
 // - Creates LoopRunner instances, subscribes to their events
-// - Fans events out to SSE clients via subscribe()
 // - Handles graceful shutdown and stale loop recovery
 //
 // This is the bridge between the @rauf/loop runner module and the
 // HTTP layer (Hono routes + SSE).
+//
+// BUFFER DEMOTED TO OPTIONAL CACHE (REQ-WEB-02). The in-memory ring
+// buffer (`eventBuffers`) and `subscribe()`/`fanOut()` machinery are NO
+// LONGER on the read path: `/loop/events` reads events.ndjson directly
+// (readEvents + watchEvents) and `/api/loops` reads the reconciled
+// registry (listActiveLoops). The file is authoritative; the buffer is at
+// most a same-process latency shortcut and is currently unwired from the
+// routes. No observer's correctness depends on it. Execution
+// responsibilities (startLoop/stopLoop/shutdownAll/recoverStaleLoops)
+// remain server-owned and unchanged.
 
 import * as path from "node:path";
 
