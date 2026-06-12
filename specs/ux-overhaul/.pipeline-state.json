@@ -2,9 +2,26 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-12T21:00:00Z",
-  "currentStage": "forge-verify-tech",
+  "updatedAt": "2026-06-12T22:30:00Z",
+  "currentStage": "forge-verify-specs",
   "stages": {
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul/00-core-definitions.md",
+        "specs/ux-overhaul/01-architecture-layout.md",
+        "specs/ux-overhaul/02-event-log.md",
+        "specs/ux-overhaul/03-active-loop-registry.md",
+        "specs/ux-overhaul/04-cli-monitoring-surface.md",
+        "specs/ux-overhaul/05-web-observation-parity.md",
+        "specs/ux-overhaul/06-agent-commit-rule.md",
+        "specs/ux-overhaul/07-testing-strategy.md",
+        "specs/ux-overhaul/TRACEABILITY.md"
+      ],
+      "completedAt": "2026-06-12T22:30:00Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 }
+    },
     "forge-1-prd": {
       "status": "complete",
       "version": 1,
