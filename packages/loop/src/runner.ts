@@ -53,6 +53,8 @@ export interface LoopResult {
   gracefulStop?: boolean;
   reviewItemsCreated?: number;
   reviewSummary?: string;
+  /** Set when the loop halted in paused_human via --pause-on-needs-human (item 008). */
+  pausedReason?: "needs_human";
 }
 
 /** Result of a review pass */
@@ -95,6 +97,8 @@ export class LoopRunner extends TypedEventEmitter {
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
+  /** Set when --pause-on-needs-human halts the loop (item 008); surfaced on LoopResult. */
+  private pausedReason: "needs_human" | null = null;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -239,6 +243,7 @@ export class LoopRunner extends TypedEventEmitter {
             blockedCount: this.blockedCount,
             ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
             cancelled: this.isCancelled(),
+            ...(this.pausedReason ? { pausedReason: this.pausedReason } : {}),
           };
         }
 
@@ -715,6 +720,16 @@ export class LoopRunner extends TypedEventEmitter {
           reason,
         });
         appendLog(this.paths, `Item ${item.id} needs human input (set aside): ${reason}`);
+
+        // Opt-in pause mode (item 008): after setting the item aside, HALT so a
+        // supervising session can detect the pause and inject an answer. Default
+        // (flag off) keeps today's behavior — set aside and keep working other
+        // runnable items.
+        if (this.pauseOnNeedsHuman) {
+          this.currentItemId = null;
+          return this.haltForNeedsHuman(item.id);
+        }
+
         this.writeState("running", null, "needs_human");
         break;
       }
@@ -1173,6 +1188,11 @@ export class LoopRunner extends TypedEventEmitter {
     return this.options.sleepOnLimit ?? true;
   }
 
+  /** Whether RAUF_NEEDS_HUMAN halts the loop (opt-in) or just sets the item aside. */
+  private get pauseOnNeedsHuman(): boolean {
+    return this.options.pauseOnNeedsHuman ?? false;
+  }
+
   /** Consecutive infra_error deaths that trip the circuit breaker (default 3). */
   private get circuitBreakerThreshold(): number {
     return this.options.circuitBreakerThreshold ?? 3;
@@ -1201,6 +1221,28 @@ export class LoopRunner extends TypedEventEmitter {
    * resume hint, then signals the caller to exit (item 007). The hint is
    * consumed by `rauf resume` (item 012).
    */
+  /**
+   * Clean-halt the loop when an item emits RAUF_NEEDS_HUMAN and the opt-in
+   * `pauseOnNeedsHuman` mode is on (item 008). The item has already been set
+   * aside (blocked + needsHuman) and the `needs_human` event emitted by the
+   * caller; here we additionally emit `loop_paused`, write the resumable
+   * `paused_human` state (clearing currentItem), and a DONE marker so
+   * `parseDoneFileState` derives PAUSED_HUMAN. Returns "exit" so the loop stops.
+   * Modeled on haltForUsageLimit. Consumed by a supervisor via `rauf resume
+   * --answer` (item 009).
+   */
+  private haltForNeedsHuman(itemId: string): "exit" {
+    this.pausedReason = "needs_human";
+    this.emitEvent("loop_paused", { reason: "needs_human", itemId });
+    appendLog(
+      this.paths,
+      `Loop paused for human input on item ${itemId} (--pause-on-needs-human). Run \`rauf resume --answer ${itemId} "<answer>"\`.`,
+    );
+    this.writeState("paused_human", null);
+    writeDoneFile(this.paths, `paused_human: needs human input on item ${itemId}`);
+    return "exit";
+  }
+
   private haltForUsageLimit(resetsAt: string): "exit" {
     const reset = resetsAt || "unknown";
     appendLog(

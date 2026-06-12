@@ -397,6 +397,14 @@ export const LoopStartOptionsSchema = z.object({
    * Reset to 0 on any real outcome. Defaults to 3 when unset.
    */
   circuitBreakerThreshold: z.number().int().positive().optional(),
+  /**
+   * Opt-in: halt the loop when an item emits RAUF_NEEDS_HUMAN, so a supervising
+   * session can detect the pause and inject an answer (e.g. `rauf resume
+   * --answer`). The item is still set aside as blocked + needsHuman first. When
+   * unset/false, behavior is unchanged — the loop keeps working other runnable
+   * items after setting the needs-human item aside.
+   */
+  pauseOnNeedsHuman: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
@@ -474,6 +482,12 @@ const NeedsHumanSchema = LoopEventBaseSchema.extend({
   type: z.literal("needs_human"),
   itemId: z.string(),
   reason: z.string(),
+});
+
+const LoopPausedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_paused"),
+  reason: z.literal("needs_human"),
+  itemId: z.string(),
 });
 
 const UsageLimitHitSchema = LoopEventBaseSchema.extend({
@@ -560,6 +574,7 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   ItemBlockedSchema,
   ItemRetriedSchema,
   NeedsHumanSchema,
+  LoopPausedSchema,
   UsageLimitHitSchema,
   UsageLimitClearedSchema,
   SleepStartSchema,

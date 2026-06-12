@@ -145,8 +145,8 @@
         "Unit tests cover the branch, the loop_paused event, and the exit code",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T04:10:57.672Z",
       "notes": "Template = haltForUsageLimit (runner.ts:1186-1196). paused_human already in the state enum (schemas.ts:165) and maps to status exit 2. Document loop_paused/flag/exit-code in item 010. Source: feature-forge handoff §3.",
       "estimatedIterations": 2,
       "specReferences": [

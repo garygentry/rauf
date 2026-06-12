@@ -791,3 +791,139 @@ describe("createLoopBranch & loop preconditions", () => {
     expect(gitStatus(proj)).not.toBe("");
   });
 });
+
+// ─── --pause-on-needs-human exit code (item 008) ───
+
+describe("loop run --pause-on-needs-human exit code", () => {
+  let tmpDir: string;
+  let binDir: string;
+  let origPath: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-pausehuman-"));
+    binDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-pausehuman-bin-"));
+    origPath = process.env.PATH ?? "";
+    process.env.PATH = `${binDir}:${origPath}`;
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  afterEach(() => {
+    process.env.PATH = origPath;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(binDir, { recursive: true, force: true });
+  });
+
+  function git(cwd: string, args: string): void {
+    execSync(`git ${args}`, { cwd, stdio: "ignore" });
+  }
+
+  /** A full rauf project (backlog + RAUF.md + marker) on a non-protected branch. */
+  function makeRunnableProject(items: object[]): string {
+    const projectDir = path.join(tmpDir, "proj");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(raufDir, "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "p", description: "d", items }, null, 2) + "\n",
+    );
+    fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test RAUF.md\nVerification: true\n");
+    fs.writeFileSync(
+      path.join(projectDir, ".rauf.json"),
+      JSON.stringify(
+        {
+          rauf: true,
+          version: "0.1.0",
+          variant: "backlog-json",
+          installedAt: new Date().toISOString(),
+          installedBy: "test",
+          profile: { stack: "node", packageManager: "pnpm", monorepo: false, verify: "true" },
+          artifactHashes: {},
+          options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
+        },
+        null,
+        2,
+      ),
+    );
+    fs.writeFileSync(
+      path.join(projectDir, ".gitignore"),
+      [
+        ".rauf/state.json",
+        ".rauf/DONE",
+        ".rauf/CANCEL",
+        ".rauf/.loop.lock",
+        ".rauf/rauf.log",
+        ".rauf/iteration-status.json",
+        ".rauf/backlog.json.bak",
+        "",
+      ].join("\n"),
+    );
+    git(projectDir, "-c init.defaultBranch=main init");
+    git(projectDir, 'config user.email "test@test.com"');
+    git(projectDir, 'config user.name "Test"');
+    git(projectDir, "add -A");
+    git(projectDir, 'commit -m "baseline"');
+    git(projectDir, "switch -c feat/pause"); // off the protected branch
+    return projectDir;
+  }
+
+  function writeMockClaude(script: string): void {
+    fs.writeFileSync(path.join(binDir, "claude"), `#!/bin/bash\n${script}\n`, { mode: 0o755 });
+  }
+
+  function pendingItem(id: string): object {
+    return {
+      id,
+      type: "feature",
+      priority: 1,
+      title: `Item ${id}`,
+      description: "d",
+      acceptanceCriteria: ["Tests pass"],
+      status: "pending",
+      completedAt: null,
+      dependsOn: [],
+    };
+  }
+
+  it("returns ExitCode.PAUSED_HUMAN and halts in paused_human", async () => {
+    const proj = makeRunnableProject([pendingItem("001"), pendingItem("002")]);
+    writeMockClaude('echo "RAUF_NEEDS_HUMAN:Need API key"');
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["pause-on-needs-human", true]]),
+    });
+
+    let code = -1;
+    await captureOutput(async () => {
+      code = await handleLoopRun(ctx);
+    });
+
+    // Distinct non-zero exit code (not SUCCESS).
+    expect(code).toBe(ExitCode.PAUSED_HUMAN);
+    expect(code).not.toBe(ExitCode.SUCCESS);
+
+    const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
+    expect(state.status).toBe("paused_human");
+    // The loop halted on the first needs-human item; 002 never ran.
+    const backlog = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "backlog.json"), "utf-8"));
+    const byId = Object.fromEntries(backlog.items.map((i: { id: string }) => [i.id, i]));
+    expect(byId["001"].needsHuman).toBe(true);
+    expect(byId["002"].status).toBe("pending");
+  });
+
+  it("without the flag, the same needs-human item does NOT change the exit code (SUCCESS)", async () => {
+    const proj = makeRunnableProject([pendingItem("001")]);
+    writeMockClaude('echo "RAUF_NEEDS_HUMAN:Need API key"');
+
+    const ctx = makeCtx({ args: [proj] });
+
+    let code = -1;
+    await captureOutput(async () => {
+      code = await handleLoopRun(ctx);
+    });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
+    expect(state.status).toBe("complete");
+  });
+});
