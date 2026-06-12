@@ -26,7 +26,7 @@
       "version": 1,
       "artifacts": ["specs/ux-overhaul/tech-spec.md"],
       "completedAt": "2026-06-12T20:34:50Z",
-      "commitHash": null,
+      "commitHash": "9288deb",
       "basedOnVersions": { "forge-1-prd": 1 }
     }
   },
