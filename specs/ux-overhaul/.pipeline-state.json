@@ -6,12 +6,15 @@
   "currentStage": "forge-verify-specs",
   "stages": {
     "forge-verify-specs": {
-      "status": "findings-applied",
+      "status": "passed",
       "findingsFile": "specs/ux-overhaul/.verification/VERIFY-specs-2026-06-12.md",
       "findingsCount": 14,
       "verifiedAt": "2026-06-12T23:00:00Z",
       "fixedAt": "2026-06-12T23:30:00Z",
-      "commitHash": "dd18ff7"
+      "commitHash": "dd18ff7",
+      "reverifiedAt": "2026-06-12T21:50:00Z",
+      "reverifyFindingsFile": "specs/ux-overhaul/.verification/VERIFY-specs-2026-06-12-reverify.md",
+      "reverifyResult": "passed (14/14 resolved; 1 regression RV-1 found and fixed inline)"
     },
     "forge-3-specs": {
       "status": "complete",

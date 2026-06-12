@@ -720,30 +720,38 @@ reader of the registry mutates other loops' entries. The hazard is a reader prun
 loop that is in fact **alive** — which would make that loop invisible to cross-root discovery
 (violating REQ-DISC-02 / SC-2 for a live loop).
 
-This cannot persist, by two layered guarantees:
+This cannot happen, because **a live loop holds its `.loop.lock` continuously for the entire run, and
+the prune decision is driven entirely by that lock:**
 
-1. **An entry exists only while the lock is held.** The runner calls `registerLoop` **after**
-   `acquireLock` succeeds (§5.1) and `deregisterLoop` in the run's `finally` (§5.2). Therefore, for a
-   genuinely live loop, `{stateDir}/.loop.lock` is present and owned by `entry.pid` for the entire
-   lifetime of the entry. A reconciling reader reads that same lock via `checkLockFile` and sees
-   `locked: true, stale: false, pid === entry.pid` → the entry is classified **live** and is **not**
-   pruned (§3.5). Pruning only fires when the lock is genuinely absent, stale, or pid-mismatched —
-   i.e. the loop is *not* live. The lock is ground truth (C-3); the prune decision is driven entirely
-   by it, never by the entry's own advisory fields.
+- **The lock is written once and removed once — never rewritten mid-run.** The runner calls
+  `acquireLock` exactly once at `start()` (`runner.ts:153`) and `releaseLock` exactly once in the
+  run's `finally` (`runner.ts:338`). There is **no lock heartbeat, renew, or touch** anywhere in
+  `lock.ts` or the runner — the lock file is created at acquire and unlinked at release and is
+  otherwise untouched. So for the whole lifetime of a live loop, `{stateDir}/.loop.lock` is present
+  and owned by `entry.pid`.
+- **The entry exists only while the lock is held.** `registerLoop` runs **after** `acquireLock`
+  succeeds (§5.1) and `deregisterLoop` runs in the `finally` alongside `releaseLock` (§5.2). Combined
+  with the point above, this means: whenever a live loop's entry is on disk, its lock is also on disk
+  and owned by `entry.pid`.
+- **Therefore a reconciling reader never prunes a live loop.** `listActiveLoops` reads that same lock
+  via `checkLockFile` and, for a live loop, always sees `locked: true, stale: false,
+  pid === entry.pid` → classifies the entry **live** and does **not** prune it (§3.5). Pruning only
+  fires when the lock is genuinely absent, stale, or pid-mismatched — i.e. the loop is *not* live. The
+  lock is ground truth (C-3); the prune decision never consults the entry's own advisory fields. Since
+  the lock is never momentarily absent mid-run, there is **no transient window** in which a reader
+  could mis-read a live loop as dead.
 
-2. **Self-re-registration bounds any spurious-prune window.** The only way a reader could prune a live
-   loop's entry is a transient mis-read of the lock *during* a legitimate lock rewrite (e.g. the narrow
-   reset→re-acquire window). Even then the loss is **self-healing and bounded**: `updateLoopStatus`
-   (paired with every `writeState` transition, §5.3) re-creates the entry on the loop's next status
-   change via the same `atomicWrite`, so a wrongly-pruned live loop reappears at its next transition.
-   The invisibility window is therefore "until the next status transition," not permanent. (A loop
-   sitting idle in `running` with no transitions is the worst case; this is acceptable for the P2
-   REQ-OBSV-01 discoverability bar and noted here so a future phase can add a periodic re-register
-   heartbeat if tighter bounds are ever required.)
+The only moment an entry can outlive its lock is during **teardown** — if `releaseLock` runs an
+instant before `deregisterLoop` in the `finally`, a reader could prune the now-lockless entry. That is
+**correct**, not a hazard: the loop is ending, and `deregisterLoop` would remove the entry anyway
+(it is idempotent, §3.3). A reader simply gets there first.
 
-The net invariant: **a confirmed-live loop is never permanently absent from `listActiveLoops`** — the
-lock-gated entry lifetime prevents spurious pruning in the common case, and transition-driven
-re-registration repairs the rare transient case.
+The net invariant: **a confirmed-live loop is never absent from `listActiveLoops`** — its
+continuously-held lock guarantees every reconciling reader classifies it live. (Note: this rests
+purely on the lock lifetime; it does **not** rely on `updateLoopStatus` re-registering a missing
+entry — per §3.4, `updateLoopStatus` is a no-op when the entry is absent, by design. If a future
+phase introduces a mid-run lock rewrite or heartbeat, this analysis must be revisited and a
+re-registration path added.)
 
 ---
 
