@@ -108,7 +108,10 @@ export function startServer(options?: StartServerOptions): void {
   console.log(`Rauf web server running at http://127.0.0.1:${port}`);
 
   // ── Recover stale loops on startup ────────────────────────────
-  const rootDirectory = configResult.ok ? configResult.value.rootDirectory : resolveRootDirectory();
+  // Honor the standard root precedence (RAUF_ROOT env → config → cwd) rather
+  // than reading the config root directly, so an explicit RAUF_ROOT override is
+  // respected (e.g. to point a server at an isolated root in tests).
+  const rootDirectory = resolveRootDirectory();
   const manager = getLoopManager();
   manager.recoverStaleLoops(rootDirectory).catch((err) => {
     console.error("Failed to recover stale loops:", err);
