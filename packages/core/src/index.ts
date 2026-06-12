@@ -23,5 +23,6 @@ export * from "./reset.js";
 export * from "./embedded-artifacts.js";
 export * from "./iteration-status.js";
 export * from "./events-log.js";
+export * from "./loop-registry.js";
 export * from "./migrate.js";
 export * from "./budget.js";

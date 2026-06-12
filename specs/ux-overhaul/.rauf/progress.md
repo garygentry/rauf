@@ -40,3 +40,18 @@
   line next fire); `fs.watch` is async/platform-dependent so tail tests poll with a wait loop.
 - Editor flags a false `rootDir` diagnostic on the new test importing events-log.ts; `pnpm --filter
   @rauf/core typecheck` is clean — ignore the editor LSP noise, trust the package tsc.
+
+## Item 005 (loop-registry.ts core module)
+
+- Added `packages/core/src/loop-registry.ts` (`registerLoop`/`deregisterLoop`/`updateLoopStatus`/
+  `listActiveLoops`/`registryEntryPath`), near-verbatim from spec 03 §3. Item 004's `checkLockFile`
+  was already extracted — imported, not redefined.
+- GOTCHA: `ACTIVE_DIR` derives from `TOOL_CONFIG_DIR` (`os.homedir()/.rauf`), bound at import. Tests
+  must NOT touch the real `~/.rauf`. Redirect it with `vi.hoisted` (mkdtemp a fake HOME) +
+  `vi.mock("./config.js", ...)` spreading the original and overriding only `TOOL_CONFIG_DIR`. This is
+  the first core test that mocks the config module for sandbox isolation.
+- Liveness in tests: `acquireLock`-style lock with `process.pid` = live; a high dead pid
+  (2147483646) or no lock file = not-live → self-heal prune. `process.kill(pid,0)` is the gate.
+- Added `export * from "./loop-registry.js"` to index.ts (events-log neighbor).
+- Editor LSP shows a false `rootDir` diagnostic on the test importing the new module; package
+  `tsc --noEmit` is clean — ignore the IDE noise (same as item 003).

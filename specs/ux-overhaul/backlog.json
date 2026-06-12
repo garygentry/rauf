@@ -128,8 +128,8 @@
         "loop-registry.test.ts covers register/list, stale self-heal, corrupt-entry skip, missing-dir ok([]), sandbox/key determinism",
         "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:08:17.300Z",
       "dependsOn": [
         "001",
         "004"
