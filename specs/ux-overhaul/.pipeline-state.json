@@ -2,9 +2,19 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-12T23:00:00Z",
-  "currentStage": "forge-verify-specs",
+  "updatedAt": "2026-06-12T21:55:00Z",
+  "currentStage": "forge-5-loop",
   "stages": {
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/ux-overhaul/backlog.json"],
+      "completedAt": "2026-06-12T21:55:00Z",
+      "commitHash": "3bb3442",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "itemCount": 14,
+      "validation": "passed (rauf-stable 0.4.0, exit 0, 0 findings)"
+    },
     "forge-verify-specs": {
       "status": "passed",
       "findingsFile": "specs/ux-overhaul/.verification/VERIFY-specs-2026-06-12.md",
