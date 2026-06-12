@@ -12,7 +12,7 @@
 import * as path from "node:path";
 
 import type { LoopEvent, LoopStartOptions } from "@rauf/core";
-import { discoverProjects, resetStalledItems, defaultBacklogPaths } from "@rauf/core";
+import { discoverProjects, resetStalledItems, defaultBacklogPaths, checkLock } from "@rauf/core";
 import { LoopRunner } from "@rauf/loop";
 import type { LoopResult } from "@rauf/loop";
 
@@ -187,7 +187,16 @@ export class LoopManager {
     if (!discoveryResult.ok) return;
 
     for (const project of discoveryResult.value.projects) {
-      resetStalledItems(defaultBacklogPaths(project.path));
+      const paths = defaultBacklogPaths(project.path);
+      // Only recover GENUINELY stale loops. A project may have a live loop
+      // running outside this server — e.g. a direct-mode `rauf loop run` — whose
+      // lock is held and not stale. Resetting that project's in_progress item
+      // would revert work the active loop is mid-iteration on (and, because
+      // `pending -> done` is an invalid transition, wedge it into re-running the
+      // item). Skip any project whose lock is present and not stale.
+      const lock = checkLock(paths);
+      if (lock.ok && lock.value.locked && lock.value.stale !== true) continue;
+      resetStalledItems(paths);
     }
   }
 
