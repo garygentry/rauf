@@ -1095,6 +1095,7 @@ echo "RAUF_DONE"`,
       ".rauf/CANCEL",
       ".rauf/iteration-status.json",
       ".rauf/rauf.log",
+      ".rauf/events.ndjson",
       ".rauf/backlog.json.bak",
       "",
     ].join("\n");

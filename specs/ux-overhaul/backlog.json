@@ -158,8 +158,8 @@
         "events.ndjson is added to RUNTIME_EXCLUDE_PATHSPECS in git-commit.ts (the loop does not commit events.ndjson)",
         "Runner-affected packages rebuilt (pnpm --filter @rauf/loop build); pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:14:44.642Z",
       "dependsOn": [
         "001",
         "003"

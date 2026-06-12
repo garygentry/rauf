@@ -55,3 +55,22 @@
 - Added `export * from "./loop-registry.js"` to index.ts (events-log neighbor).
 - Editor LSP shows a false `rootDir` diagnostic on the test importing the new module; package
   `tsc --noEmit` is clean — ignore the IDE noise (same as item 003).
+
+## Item 006 (wire event-log persistence into runner)
+
+- Added `persistEvent(event)` called from `emitEvent` (before `this.emit`): coalesces
+  `llm_token_update` to <=1/`TOKEN_COALESCE_MS` in the FILE only (still emitted in-memory), builds
+  `PersistedEvent = {...event, seq: eventSeq++, schemaVersion: EVENTS_SCHEMA_VERSION}`, then
+  `void appendEvent(this.paths, record)` (Result discarded, never throws). seq is dense/per-run —
+  assigned only when a record is written, so coalesced token updates consume no seq.
+- `start()` calls `rotateEventsLog(this.paths)` + `this.eventSeq = 0` immediately after `ensureStateDir`
+  and BEFORE any emit (placed before acquireLock, whose failure path emits loop_error). First emit is
+  `loop_started` -> seq 0 (verified in sandbox: 13 lines, seq 0..12, 1 token_update line).
+- Added `:(exclude,glob)**/.rauf/events.ndjson` to RUNTIME_EXCLUDE_PATHSPECS in git-commit.ts.
+- RIPPLE: events.ndjson is a NEW runtime file the loop writes mid-run, so it dirties the working tree.
+  Three tests that assert a clean tree / reconciliation after a real loop run had to add
+  `.rauf/events.ndjson` to their RUNTIME gitignore lists: runner.test.ts (commit-reconciliation),
+  loop-commands.test.ts (makeProject's two gitignore blocks). Real installs gitignore it via item 014.
+- Pre-existing lint debt from item 005 (loop-registry.test.ts require() in vi.hoisted, which only ran
+  test+typecheck) surfaced here since 006 runs the full pipeline. Fixed with a scoped eslint-disable
+  (require is the genuine pattern: vi.hoisted runs before ESM imports resolve).

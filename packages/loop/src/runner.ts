@@ -1,8 +1,19 @@
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 
-import type { LoopStartOptions, LoopEvent, LoopState, Backlog, IterationStatus } from "@rauf/core";
+import type {
+  LoopStartOptions,
+  LoopEvent,
+  LoopState,
+  Backlog,
+  IterationStatus,
+  PersistedEvent,
+} from "@rauf/core";
 import {
+  appendEvent,
+  rotateEventsLog,
+  EVENTS_SCHEMA_VERSION,
+  TOKEN_COALESCE_MS,
   readBacklog,
   selectNextItem,
   updateItem,
@@ -99,6 +110,10 @@ export class LoopRunner extends TypedEventEmitter {
   private reviewSummary: string | null = null;
   /** Set when --pause-on-needs-human halts the loop (item 008); surfaced on LoopResult. */
   private pausedReason: "needs_human" | null = null;
+  /** Per-run dense sequence counter for persisted events (assigned only when a record is written). */
+  private eventSeq = 0;
+  /** Last wall-clock ms an llm_token_update was persisted to FILE (coalescing window). */
+  private lastTokenPersistMs = 0;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -148,6 +163,12 @@ export class LoopRunner extends TypedEventEmitter {
       if (!ensureResult.ok) {
         throw new Error(`Failed to create state directory: ${ensureResult.error.message}`);
       }
+
+      // (1b) Rotate the prior run's event log to archive and reset the per-run
+      // seq counter BEFORE the first event is emitted, so each run's
+      // events.ndjson starts clean at seq 0 (best-effort; Result discarded).
+      rotateEventsLog(this.paths);
+      this.eventSeq = 0;
 
       // (2) Acquire lock
       const lockResult = acquireLock(this.paths);
@@ -1143,7 +1164,33 @@ export class LoopRunner extends TypedEventEmitter {
       ...payload,
     } as Extract<LoopEvent, { type: T }>;
 
+    this.persistEvent(event);
     this.emit(type, event);
+  }
+
+  /**
+   * Best-effort persistence of a LoopEvent to events.ndjson. Token updates are
+   * coalesced to at most ~1 per TOKEN_COALESCE_MS in the FILE (still emitted
+   * in-memory). seq is dense and per-run — assigned only when a record is
+   * actually written, so coalesced token updates consume no seq. appendEvent
+   * never throws and its Result is intentionally discarded (best-effort): a
+   * persistence failure must never perturb the loop.
+   */
+  private persistEvent(event: LoopEvent): void {
+    if (event.type === "llm_token_update") {
+      const now = Date.now();
+      if (now - this.lastTokenPersistMs < TOKEN_COALESCE_MS) {
+        return; // drop from FILE only; still emitted in-memory
+      }
+      this.lastTokenPersistMs = now;
+    }
+
+    const record: PersistedEvent = {
+      ...event,
+      seq: this.eventSeq++,
+      schemaVersion: EVENTS_SCHEMA_VERSION,
+    };
+    void appendEvent(this.paths, record);
   }
 
   /** Write state.json via core helper */

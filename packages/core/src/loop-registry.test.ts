@@ -6,9 +6,13 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 // Redirect TOOL_CONFIG_DIR (and thus ACTIVE_DIR = ~/.rauf/active) to an isolated
 // temp directory so registry writes never touch the real ~/.rauf.
 const { TMP_HOME } = vi.hoisted(() => {
+  // require() is necessary here: vi.hoisted runs before ESM imports resolve, so
+  // the top-of-file node imports are not yet available at hoist time.
+  /* eslint-disable @typescript-eslint/no-require-imports */
   const nodeOs = require("node:os") as typeof import("node:os");
   const nodePath = require("node:path") as typeof import("node:path");
   const nodeFs = require("node:fs") as typeof import("node:fs");
+  /* eslint-enable @typescript-eslint/no-require-imports */
   const dir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "rauf-registry-home-"));
   return { TMP_HOME: dir };
 });
