@@ -32,8 +32,8 @@
         "A test asserts redaction of a terminal token embedded in agent prose",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T03:59:26.562Z",
       "notes": "Confirmed. rauf.log is a human surface, but this also protects rauf's own log-derived parsing and any log-fallback consumer. Source: feature-forge handoff §5.",
       "estimatedIterations": 1
     },
