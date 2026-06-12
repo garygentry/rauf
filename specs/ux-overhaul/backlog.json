@@ -186,8 +186,8 @@
         "Runner rebuilt (pnpm --filter @rauf/loop build); a sandbox run registers a live entry that disappears on exit",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:16:37.775Z",
       "dependsOn": [
         "001",
         "005",

@@ -74,3 +74,20 @@
 - Pre-existing lint debt from item 005 (loop-registry.test.ts require() in vi.hoisted, which only ran
   test+typecheck) surfaced here since 006 runs the full pipeline. Fixed with a scoped eslint-disable
   (require is the genuine pattern: vi.hoisted runs before ESM imports resolve).
+
+## Item 007 (wire active-loop registry into runner)
+
+- Imported `registerLoop`/`deregisterLoop`/`updateLoopStatus` from @rauf/core. Three touch-points,
+  all best-effort (Result discarded):
+  - `registerLoop({...})` in `start()` AFTER acquireLock succeeds (so the .loop.lock ground truth
+    exists when the entry is written), built from `this.paths.stateDir/projectPath/this.paths.root`,
+    `process.pid`, `this.startedAt`, status `"starting"`.
+  - `deregisterLoop(this.paths.stateDir)` in the run's `finally`, beside `releaseLock` (idempotent).
+  - `updateLoopStatus(this.paths.stateDir, status)` appended inside the private `writeState` wrapper —
+    the single choke point for every state.json transition, so all transitions refresh advisory status
+    automatically. `LoopState["status"]` is assignable to `LoopStateStatus` (both from
+    LoopStateStatusSchema) — typechecks directly.
+- Verified in test-sandbox: ~/.rauf/active/ is created (registration ran) and empty after exit
+  (deregistration ran). Rebuilt dist via `pnpm --filter @rauf/loop build` before the sandbox run.
+- No test ripple this time — registry writes to ~/.rauf/active (outside the tree), so it doesn't
+  dirty the working tree like events.ndjson did in item 006.

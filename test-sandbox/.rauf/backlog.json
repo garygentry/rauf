@@ -14,8 +14,8 @@
         "Returns formatted farewell string",
         "Verification command passes (echo all-pass)"
       ],
-      "status": "pending",
-      "completedAt": null
+      "status": "done",
+      "completedAt": "2026-06-12T23:15:35.283Z"
     },
     {
       "id": "002",

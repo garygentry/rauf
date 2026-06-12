@@ -12,6 +12,9 @@ import type {
 import {
   appendEvent,
   rotateEventsLog,
+  registerLoop,
+  deregisterLoop,
+  updateLoopStatus,
   EVENTS_SCHEMA_VERSION,
   TOKEN_COALESCE_MS,
   readBacklog,
@@ -176,6 +179,20 @@ export class LoopRunner extends TypedEventEmitter {
         this.emitEvent("loop_error", { error: lockResult.error.message });
         return { completedCount: 0, blockedCount: 0, cancelled: false };
       }
+
+      // (2b) Register this loop in the machine-wide active-loop registry, AFTER
+      // acquireLock succeeds so the .loop.lock ground truth already exists when
+      // the entry is written (a reconciling reader never prunes a live loop).
+      // Best-effort: the Result is discarded — a registry failure must never
+      // abort or block the loop (state.json stays authoritative).
+      registerLoop({
+        stateDir: this.paths.stateDir,
+        projectPath: this.projectPath,
+        backlogRoot: this.paths.root,
+        pid: process.pid,
+        startedAt: this.startedAt,
+        status: "starting",
+      });
 
       // (3) Resolve instruction paths
       this.instructionPaths = resolveInstructionPaths(this.paths);
@@ -357,6 +374,11 @@ export class LoopRunner extends TypedEventEmitter {
       }
       // Release lock
       releaseLock(this.paths);
+      // Deregister from the active-loop registry on every exit path (success,
+      // error, cancel). Idempotent (unlink-if-exists) and best-effort — pairs
+      // with releaseLock. A hard SIGKILL that skips this finally leaves a stale
+      // entry that the next listActiveLoops() self-heals (dead pid).
+      deregisterLoop(this.paths.stateDir);
     }
   }
 
@@ -1213,6 +1235,10 @@ export class LoopRunner extends TypedEventEmitter {
       baseCommitHash: this.baseCommitHash,
       error: error ?? null,
     });
+    // Advisory registry refresh (REQ-OBS-02). state.json (just written) stays
+    // authoritative; this keeps the cross-root summary's status roughly current.
+    // Best-effort — Result discarded; a no-op when the entry does not yet exist.
+    updateLoopStatus(this.paths.stateDir, status);
   }
 
   /**
