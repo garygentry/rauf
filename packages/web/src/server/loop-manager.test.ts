@@ -307,6 +307,41 @@ describe("LoopManager", () => {
       expect(backlog.items[0]!.status).toBe("pending");
     });
 
+    it("skips a project whose lock is held by a live loop (does not reset active work)", async () => {
+      writeMarker(projectPath);
+      writeBacklog(projectPath, [
+        {
+          id: "001",
+          type: "feature",
+          priority: 1,
+          title: "Actively in-progress item",
+          description: "Test",
+          acceptanceCriteria: ["test"],
+          status: "in_progress",
+          completedAt: null,
+        },
+      ]);
+      // A live lock (current process PID) — simulates a direct-mode `rauf loop run`
+      // owning the project. Recovery must NOT reset its in_progress item.
+      fs.writeFileSync(
+        path.join(projectPath, ".rauf", ".loop.lock"),
+        JSON.stringify({
+          pid: process.pid,
+          startedAt: new Date().toISOString(),
+          processStartTime: null,
+        }),
+      );
+
+      const manager = new LoopManager();
+      await manager.recoverStaleLoops(tmpDir);
+
+      const backlogPath = path.join(projectPath, ".rauf", "backlog.json");
+      const backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8")) as {
+        items: Array<{ status: string }>;
+      };
+      expect(backlog.items[0]!.status).toBe("in_progress");
+    });
+
     it("handles missing root directory gracefully", async () => {
       const manager = new LoopManager();
       // Should not throw
