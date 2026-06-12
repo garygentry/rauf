@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 
 import { resolveBacklogPaths } from "@rauf/core";
 
-import { handleResume, parseAnswerFlags } from "./resume-commands.js";
+import { handleResume, parseAnswerFlags, resolveResumeTargetPath } from "./resume-commands.js";
 import { detectInterruptedItems } from "./recovery.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -418,6 +418,43 @@ describe("parseAnswerFlags", () => {
 
   it("returns an empty array when no --answer is present", () => {
     expect(parseAnswerFlags(["resume", ".", "--force"])).toEqual([]);
+  });
+});
+
+describe("resolveResumeTargetPath", () => {
+  it("defaults to '.' for the no-path --answer form (answer text not read as path)", () => {
+    // Generic parser consumes "003" as the --answer value and leaks the text into args.
+    const ctx = makeCtx({
+      args: ["use schema v5"],
+      rawArgv: ["resume", "--answer", "003", "use schema v5"],
+    });
+    expect(resolveResumeTargetPath(ctx)).toBe(".");
+  });
+
+  it("uses an explicit path even when --answer is present", () => {
+    const ctx = makeCtx({
+      args: ["/proj", "use schema v5"],
+      rawArgv: ["resume", "/proj", "--answer", "003", "use schema v5"],
+    });
+    expect(resolveResumeTargetPath(ctx)).toBe("/proj");
+  });
+
+  it("excludes operands from multiple --answer pairs", () => {
+    const ctx = makeCtx({
+      args: ["/proj", "answer A", "answer B"],
+      rawArgv: ["resume", "/proj", "--answer", "003", "answer A", "--answer", "004", "answer B"],
+    });
+    expect(resolveResumeTargetPath(ctx)).toBe("/proj");
+  });
+
+  it("returns the explicit path with no --answer", () => {
+    expect(
+      resolveResumeTargetPath(makeCtx({ args: ["/proj"], rawArgv: ["resume", "/proj"] })),
+    ).toBe("/proj");
+  });
+
+  it("defaults to '.' with no args", () => {
+    expect(resolveResumeTargetPath(makeCtx())).toBe(".");
   });
 });
 

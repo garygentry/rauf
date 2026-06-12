@@ -78,6 +78,20 @@ export function parseAnswerFlags(argv: string[]): AnswerInjection[] {
   return answers;
 }
 
+/**
+ * Resolve the project path for `resume`, excluding `--answer` operands.
+ *
+ * `--answer <id> "<text>"` consumes two raw-argv tokens, but the generic flag
+ * parser only treats the first as the flag value and leaks the answer text into
+ * `ctx.args` — where it would otherwise be misread as the project path for the
+ * documented no-path form `rauf resume --answer 001 "..."`. Return the first
+ * positional that is NOT an `--answer` operand (id or text), defaulting to `.`.
+ */
+export function resolveResumeTargetPath(ctx: CommandContext): string {
+  const answerOperands = new Set(parseAnswerFlags(ctx.rawArgv).flatMap((a) => [a.itemId, a.text]));
+  return ctx.args.find((arg) => !answerOperands.has(arg)) ?? ".";
+}
+
 // ─── Verify-command resolution ───────────────────────────────────
 
 /**
@@ -230,7 +244,7 @@ export interface ResumeDeps {
 
 export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): Promise<number> {
   const runLoop = deps.runLoop ?? handleLoopRun;
-  const targetPath = ctx.args[0] ?? ".";
+  const targetPath = resolveResumeTargetPath(ctx);
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const recoverFlag = extractBoolFlag(ctx.flags, "recover");
