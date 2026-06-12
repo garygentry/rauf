@@ -72,8 +72,8 @@
         "events-log.test.ts covers append->read, seq order, rotate, rotate no-op, rotate-failure-truncates, missing-file ok([]), torn-line tolerance, sandbox reject",
         "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:04:52.983Z",
       "dependsOn": [
         "001",
         "002"
