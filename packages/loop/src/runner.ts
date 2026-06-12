@@ -40,6 +40,7 @@ import { gitCommit } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
+import { redactSignalTokens } from "./signal-redactor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -611,7 +612,9 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal === "none") {
       const textSource =
         reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
-      const preview = signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText;
+      const preview = redactSignalTokens(
+        signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText,
+      );
       appendLog(
         this.paths,
         `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`,
