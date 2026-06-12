@@ -42,18 +42,12 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   }
 
   const follow = extractBoolFlag(ctx.flags, "follow"); // -f resolved in parser
-  const watch = extractBoolFlag(ctx.flags, "watch");
   const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
   if (follow) {
     return handleStatusFollow(resolved, interval, backlogFlag ?? undefined, ctx.globalFlags.json);
-  }
-
-  if (watch) {
-    // Pass backlogFlag to watch mode
-    return handleStatusWatch(resolved, interval, backlogFlag ?? undefined);
   }
 
   if (backlogFlag) {
@@ -385,63 +379,6 @@ async function handleStatusFollow(
       }
 
       if (running) setTimeout(tick, intervalSeconds * 1000);
-    };
-
-    tick();
-  });
-}
-
-// ─── Status watch mode ──────────────────────────────────────────
-
-async function handleStatusWatch(
-  projectPath: string,
-  intervalSeconds: number,
-  backlogFlag?: string,
-): Promise<number> {
-  return new Promise<number>((resolve) => {
-    let running = true;
-
-    const stop = () => {
-      running = false;
-      resolve(ExitCode.SUCCESS);
-    };
-    process.on("SIGINT", stop);
-    process.on("SIGTERM", stop);
-
-    const tick = () => {
-      if (!running) return;
-
-      // Clear screen and move cursor to top-left
-      process.stdout.write("\x1b[2J\x1b[H");
-
-      const now = new Date().toLocaleTimeString();
-      print(c.dim(`rauf status  (${now})  Ctrl+C to stop`));
-      print("");
-
-      // Resolve paths for the target backlog root
-      const rootResult = resolveBacklogRoot(projectPath, backlogFlag);
-      if (!rootResult.ok) {
-        error(rootResult.error.message);
-        if (running) setTimeout(tick, intervalSeconds * 1000);
-        return;
-      }
-      const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
-      if (!pathsResult.ok) {
-        error(pathsResult.error.message);
-        if (running) setTimeout(tick, intervalSeconds * 1000);
-        return;
-      }
-
-      const result = deriveStatus(pathsResult.value);
-      if (!result.ok) {
-        error(result.error.message);
-      } else {
-        printStatusSummary(result.value);
-      }
-
-      if (running) {
-        setTimeout(tick, intervalSeconds * 1000);
-      }
     };
 
     tick();

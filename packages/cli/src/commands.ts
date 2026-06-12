@@ -44,10 +44,8 @@ import {
 import {
   handleLoopStart,
   handleLoopStop,
-  handleLoopFollow,
   handleLoopRun,
   handleLoopReview,
-  handleLoopWatch,
 } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
 import { handleReset } from "./reset-commands.js";
@@ -180,7 +178,6 @@ export const COMMANDS: CommandDef[] = [
         handler: handleLoopStart,
       },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
-      { name: "follow", description: "Follow loop events in real-time", handler: handleLoopFollow },
       {
         name: "run",
         description: "Run loop directly in-process",
@@ -239,12 +236,6 @@ export const COMMANDS: CommandDef[] = [
         description: "Review completed items and create fix items",
         usage: "rauf loop review [path] [--model MODEL] [--timeout N]",
         handler: handleLoopReview,
-      },
-      {
-        name: "watch",
-        description: "Watch live iteration status (tool activity, tokens)",
-        usage: "rauf loop watch [path] [--json]",
-        handler: handleLoopWatch,
       },
     ],
   },

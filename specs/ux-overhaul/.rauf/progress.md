@@ -129,3 +129,21 @@
 - `follow`'s `emitEvent`: `--json` → one PersistedEvent NDJSON line; non-json → `#<seq> <type>`.
   `log --follow --json` wraps raw log lines as `{source:"log",line}` and emits raw PersistedEvent
   for events, so a machine consumer reads one object per line unambiguously (spec §6.2).
+
+## Item 009b (CLI clean break — remove old monitor verbs)
+
+- Removed `status --watch` (+ `handleStatusWatch` + the watch branch in handleStatus),
+  the `loop watch` verb (+ `handleLoopWatch`/`renderWatchOutput`/`formatElapsedWatch`/
+  `formatAgo`), and the `loop follow` verb (+ `handleLoopFollow`/`followDirectMode`).
+  No aliases/shims — removed names fall through to unknown-subcommand / unknown-flag.
+- DEAD-IMPORT cleanup in loop-commands.ts after the deletions: `node:fs`,
+  `readIterationStatus`/`IterationStatus`, `deriveStatus`, `readLogTail`, `watchLog`,
+  `defaultBacklogPaths` were only used by the removed handlers — lint would have failed
+  without dropping them. The SSE helpers (`streamEventsUntilDone`/`connectSSE`/`StatusLine`)
+  STAY: `loop start --follow` (execution grammar, untouched) still uses them. `formatTime`
+  stays (used by formatAndPrintEvent). `TERMINAL_LOOP_STATES` now lives only in follow-command.ts.
+- Test updates (loop-commands.test.ts): subcommand list `[start,stop,follow,run,review,watch]`
+  → `[start,stop,run,review]`; deleted the `handleLoopFollow` describe block; added a
+  removed-verbs-absent assertion + a top-level-`follow`-exists assertion.
+- GOTCHA: editor diagnostics lagged after sed-deleting blocks (showed stale line refs);
+  trust `pnpm typecheck`, not the IDE noise.

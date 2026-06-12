@@ -268,8 +268,8 @@
         "clean-break test assertions updated: removed verbs/flags error, new follow surface passes",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:35:38.801Z",
       "dependsOn": [
         "009a"
       ],
