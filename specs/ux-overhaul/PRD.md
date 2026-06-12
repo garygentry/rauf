@@ -11,7 +11,7 @@
 
 ## 1. Problem Statement
 
-Rauf's loop runner emits a rich live event stream (26 `LoopEvent` types: iteration starts, item
+Rauf's loop runner emits a rich live event stream (24 `LoopEvent` types: iteration starts, item
 selection, LLM spawn/exit, parsed signals, completions, blocks, pauses, usage limits, reviews, tool
 and token activity). **That event stream is the only piece of loop state that is never persisted.**
 Status, logs, and progress all derive from files on disk (per architecture rule #6), but the events
@@ -29,8 +29,10 @@ This single gap produces a cluster of user-facing failures:
   is running on `--backlog specs/x`, because it inspected the *default* root. Missing/early files
   return `[]` indistinguishably from "nothing happening." A different working directory inspects a
   different `.rauf`. The user cannot tell *absence* from *idleness* from *looking in the wrong place*.
-- **A self-contradicting agent contract.** The agent templates tell the agent to "Commit your
-  changes," while `RAUF.md` forbids it and the runner owns the commit — causing double-commits.
+- **A self-contradicting agent contract.** The agent templates *and* the installed `RAUF.md`
+  template tell the agent to "Commit your changes," contradicting the runner-owns-commit behavior the
+  runner actually enforces — causing double-commits. (The installed `RAUF.md` is itself one of the
+  loci instructing the agent to commit; it is not a correct reference.)
 
 **Who has this problem:** the operator running rauf loops (human), the **agent that is the loop's
 primary machine consumer** (e.g. feature-forge and any tool reading status/events), and anyone
@@ -115,6 +117,9 @@ in-process/server asymmetry by construction.
 - **REQ-EVT-06:** Event records MUST be appended as **whole lines** (one write per event). There is a
   **single writer** (the loop runner) per backlog root.
   - Priority: P0
+  - Notes: Single-writer applies **per-root to `events.ndjson`**. The active-loop registry
+    (REQ-DISC-03/04) is a distinct, intentionally **multi-writer** surface; its concurrency-safety
+    mechanism is a tech-spec decision (OQ-1) and is **not** governed by this single-writer invariant.
 - **REQ-EVT-07:** The event log MUST be written **only inside the backlog root's state directory**,
   within the established path sandbox (never outside `ROOT_DIRECTORY` or `~/.rauf/`).
   - Priority: P0
@@ -216,10 +221,16 @@ in-process/server asymmetry by construction.
 - **REQ-COMMIT-01:** The agent contract MUST state **one** commit rule, identically everywhere it
   appears: **the iteration agent never commits or stages; the loop runner owns the commit.**
   - Priority: P0
-- **REQ-COMMIT-02:** The contradicting "Commit your changes" instruction MUST be corrected in **all**
-  loci where it currently appears — at minimum the two artifact templates
-  (`artifacts/variants/backlog-json/CLAUDE_ADDON.md`, `…/CLAUDE_GREENFIELD.md.tmpl`) and the runner's
-  prompt-builder reminder — so they match `RAUF.md`.
+- **REQ-COMMIT-02:** The agent-side commit instructions MUST be reconciled to the canonical rule
+  (REQ-COMMIT-01) in **all** loci. Two distinct actions are required:
+  - (a) **Remove/replace** the "Commit your changes" instruction in the **three templates** that
+    currently carry it: `artifacts/variants/backlog-json/CLAUDE_ADDON.md`,
+    `…/CLAUDE_GREENFIELD.md.tmpl`, and `artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl` (the
+    installed `RAUF.md`, which currently instructs the agent to commit — it is **not** already
+    correct).
+  - (b) **Add** an explicit no-commit reminder to the runner's prompt-builder
+    (`packages/loop/src/prompt-builder.ts`), which currently states **no** commit rule at all — there
+    is nothing to "correct" there; the reminder must be added.
   - Priority: P0
 - **REQ-COMMIT-03:** The provider-agnostic rename (`CLAUDE_ADDON.md → AGENT_ADDON.md`) and
   provider-neutral wording are **explicitly NOT in scope** for this phase (they couple to the Part-B
@@ -239,8 +250,8 @@ in-process/server asymmetry by construction.
   within roughly **1 second** under normal localhost conditions ("feels live"). This is a qualitative
   target, **not** a hard millisecond SLA.
   - Priority: P1
-  - Notes: Implementation *guidance* (not mandate): prefer push/tail (`fs.watch`, already used for
-    `rauf.log`) over fixed polling; fall back to a bounded `--interval` poll when watching is
+  - Notes: **Non-binding tech-spec hint** (not a mandate): prefer push/tail (`fs.watch`, already used
+    for `rauf.log`) over fixed polling; fall back to a bounded `--interval` poll when watching is
     unavailable.
 
 ### 4.2 Reliability & Durability
@@ -319,9 +330,15 @@ Deferred to later forge features, per [`CANON.md`](./CANON.md) §5:
 - **Execution grammar / clean break of execution verbs** — `loop run --detached` replacing
   `loop start`, `loop stop` semantics. (Phase 2.)
 - **Unified exit-code table** and any change feature-forge reads as a contract. (Phase 3.)
-- **Formal `events.ndjson` versioning discipline** and the `signal_parsed` `review`→`done` fix +
-  signal-placement doc reconciliation. (Phase 3. Note: the *version envelope* ships now per
-  REQ-EVT-04; the *discipline/policy* is Phase 3.)
+- **Formal `events.ndjson` versioning discipline** and the `signal_parsed` `review`→`done` fix.
+  (Phase 3. Note: the *version envelope* ships now per REQ-EVT-04; the *discipline/policy* is
+  Phase 3.)
+- **Signal-placement / "final line" doc reconciliation** — aligning the agent-contract wording
+  ("output your exit signal" / "output `RAUF_DONE` as your final line") with the parser's actual
+  backward-scan behavior. Grouped with the agent contract in [`CANON.md`](./CANON.md) §4.5/§4.6;
+  **deferred to Phase 3.** Note: Phase 1's commit-rule fix (REQ-COMMIT-02) edits the same templates,
+  but corrects **only** the commit wording — the signal-placement wording is intentionally left for
+  Phase 3.
 - **Web recovery actions** (reset/resume/review/unblock/validate in the web). (Phase 4.)
 - **Status-vocabulary shared label map + missing badges** (`REVIEWING`, `PAUSED_USAGE_LIMIT`,
   "Needs Human" rendering). (Phase 4.)
@@ -369,9 +386,10 @@ Phase 1 is done when:
 - **SC-4:** Exactly **one** canonical live-view command (`follow`) and **one** follow flag
   (`--follow`) exist; `loop watch`, `loop follow`, and `--watch` are gone; `--json` works on every
   read command including `status --follow`. *(Verifies REQ-MON-01/02/03.)*
-- **SC-5:** The commit rule reads identically across `RAUF.md`, both artifact templates, and the
-  prompt-builder reminder ("agent never commits; runner owns the commit"), and a dogfood loop run
-  produces **exactly one** commit per item with no agent-side commit. *(Verifies REQ-COMMIT-01/02.)*
+- **SC-5:** The canonical rule — **"the iteration agent never commits or stages; the loop runner owns
+  the commit"** — reads identically across all four loci being fixed (the installed `RAUF.md`
+  template, both artifact templates, and the prompt-builder reminder), and a dogfood loop run produces
+  **exactly one** commit per item with no agent-side commit. *(Verifies REQ-COMMIT-01/02.)*
 - **SC-6:** An agent can, from any working directory, read `state.json` for current status and tail
   `events.ndjson` (ordered by `seq`, schema-versioned) for history/liveness, with the two never
   contradicting each other. *(Verifies REQ-OBS-02, REQ-EVT-03/04.)*
