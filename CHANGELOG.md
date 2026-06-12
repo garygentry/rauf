@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.0
+
 ### Added
 
 - **`rauf loop run --pause-on-needs-human`** — opt-in run mode that halts the loop
