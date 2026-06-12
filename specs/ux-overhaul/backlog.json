@@ -43,8 +43,8 @@
         "fs-utils.test.ts covers: append create/append, append error, readNdjson valid, readNdjson torn trailing line skipped, readNdjson missing file -> ok([])",
         "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:00:28.247Z",
       "dependsOn": [
         "001"
       ],

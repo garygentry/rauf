@@ -13,3 +13,13 @@
 - `index.ts` uses `export *` for all touched modules, so new symbols re-export automatically.
 - The loop package resolves `@rauf/core` types from `dist`, so rebuild core
   (`pnpm --filter @rauf/core build`) before loop typecheck sees new fields.
+
+## Item 002 (appendLine + readNdjson primitives)
+
+- Added `appendLine` and `readNdjson<T>` to `fs-utils.ts`, copied verbatim from spec 02 §4.1/§4.2.
+  Both return `Result` and never throw; `appendLine` → `IO_ERROR` on fs failure, `readNdjson` is
+  torn-line tolerant (skip bad line) and missing-file → `ok([])`.
+- `readNdjson` uses `z.ZodType<T>` (the existing `import type { z }` already covers it) and calls the
+  later-declared `fileExists` (function-declaration hoisting makes order irrelevant).
+- Test idiom for the `appendLine` error path: write a regular file, then target a path *under* it
+  (`<file>/child`) — appending there fails with ENOTDIR without needing permission tricks.

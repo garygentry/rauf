@@ -132,6 +132,57 @@ export function computeHash(filePath: string): Result<string> {
   }
 }
 
+// ─── appendLine ───────────────────────────────────────────────────
+//
+// Append one already-serialized line (caller includes NO trailing newline).
+// Single-writer only (REQ-EVT-06): one whole-line write per call. No fsync —
+// best-effort durability is sufficient because state.json remains authoritative
+// for status (REQ-PERF-01 / REQ-REL-02).
+
+export function appendLine(filePath: string, line: string): Result<void> {
+  try {
+    fs.appendFileSync(filePath, line + "\n");
+    return ok(undefined);
+  } catch (e) {
+    return err({
+      code: ErrorCodes.IO_ERROR,
+      message: `appendLine failed: ${String(e)}`,
+      details: { path: filePath },
+    });
+  }
+}
+
+// ─── readNdjson ───────────────────────────────────────────────────
+//
+// Read an NDJSON file, validating each line with `schema`. Torn-line tolerant
+// (REQ-REL-01): a line that fails JSON.parse or schema validation is SKIPPED,
+// never thrown — earlier valid records are always returned. Missing file →
+// ok([]) (REQ-REL-03). Single-writer guarantees only the TRAILING line can be
+// torn (§7.2), so skipping bad lines is sufficient, never lossy for interior data.
+
+export function readNdjson<T>(filePath: string, schema: z.ZodType<T>): Result<T[]> {
+  if (!fileExists(filePath)) return ok([]); // REQ-REL-03: absence is graceful
+  let raw: string;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (e) {
+    return err({ code: ErrorCodes.IO_ERROR, message: String(e), details: { path: filePath } });
+  }
+  const out: T[] = [];
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue; // blank / final-newline tail
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue; // torn / partial trailing line (REQ-REL-01)
+    }
+    const r = schema.safeParse(parsed);
+    if (r.success) out.push(r.data); // unknown future fields tolerated (additive-only)
+  }
+  return ok(out);
+}
+
 // ─── validatePath ─────────────────────────────────────────────────
 //
 // Verify that a target path resolves to a location within at least

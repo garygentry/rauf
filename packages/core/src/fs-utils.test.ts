@@ -12,6 +12,8 @@ import {
   validatePath,
   fileExists,
   ensureDir,
+  appendLine,
+  readNdjson,
 } from "./fs-utils.js";
 import { ErrorCodes } from "./errors.js";
 
@@ -406,5 +408,106 @@ describe("ensureDir", () => {
 
     const result = ensureDir(dirPath);
     expect(result.ok).toBe(true);
+  });
+});
+
+// ─── appendLine ───────────────────────────────────────────────────
+
+describe("appendLine", () => {
+  it("creates the file and appends a line with a trailing newline", () => {
+    const filePath = tmpFile("log.ndjson");
+    const result = appendLine(filePath, '{"a":1}');
+    expect(result.ok).toBe(true);
+    expect(fs.readFileSync(filePath, "utf-8")).toBe('{"a":1}\n');
+  });
+
+  it("appends successive whole lines to an existing file", () => {
+    const filePath = tmpFile("log.ndjson");
+    appendLine(filePath, '{"a":1}');
+    appendLine(filePath, '{"b":2}');
+    expect(fs.readFileSync(filePath, "utf-8")).toBe('{"a":1}\n{"b":2}\n');
+  });
+
+  it("returns err(IO_ERROR) and never throws on an fs failure", () => {
+    // A path whose parent is a file, not a directory, cannot be written.
+    const parent = tmpFile("not-a-dir");
+    fs.writeFileSync(parent, "x");
+    const filePath = path.join(parent, "child.ndjson");
+
+    let result: ReturnType<typeof appendLine>;
+    expect(() => {
+      result = appendLine(filePath, "line");
+    }).not.toThrow();
+    expect(result!.ok).toBe(false);
+    if (!result!.ok) {
+      expect(result!.error.code).toBe(ErrorCodes.IO_ERROR);
+    }
+  });
+});
+
+// ─── readNdjson ───────────────────────────────────────────────────
+
+const NdjsonSchema = z.object({ id: z.number(), name: z.string() });
+
+describe("readNdjson", () => {
+  it("reads and validates every line of a valid NDJSON file", () => {
+    const filePath = tmpFile("valid.ndjson");
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ id: 1, name: "a" }) + "\n" + JSON.stringify({ id: 2, name: "b" }) + "\n",
+    );
+
+    const result = readNdjson(filePath, NdjsonSchema);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([
+        { id: 1, name: "a" },
+        { id: 2, name: "b" },
+      ]);
+    }
+  });
+
+  it("skips a torn/garbage trailing line and returns the earlier records", () => {
+    const filePath = tmpFile("torn.ndjson");
+    // Two complete records then a partial line with no trailing newline.
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ id: 1, name: "a" }) +
+        "\n" +
+        JSON.stringify({ id: 2, name: "b" }) +
+        "\n" +
+        '{"id":3,"na',
+    );
+
+    const result = readNdjson(filePath, NdjsonSchema);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([
+        { id: 1, name: "a" },
+        { id: 2, name: "b" },
+      ]);
+    }
+  });
+
+  it("skips a line that fails schema validation", () => {
+    const filePath = tmpFile("badshape.ndjson");
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ id: 1, name: "a" }) + "\n" + JSON.stringify({ id: "nope" }) + "\n",
+    );
+
+    const result = readNdjson(filePath, NdjsonSchema);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([{ id: 1, name: "a" }]);
+    }
+  });
+
+  it("returns ok([]) for a missing file (graceful absence)", () => {
+    const result = readNdjson(tmpFile("missing.ndjson"), NdjsonSchema);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([]);
+    }
   });
 });
