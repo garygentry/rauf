@@ -121,6 +121,14 @@ export function parseArgs(argv: string[], subcommandNames?: Set<string>): Parsed
     }
   }
 
+  // Normalize the -f short alias to the canonical --follow flag (REQ-MON-03: one
+  // flag name). The flags map is complete once the arg-parsing loop exits, so this
+  // runs once here and handlers only ever read "follow".
+  if (flags.has("f") && !flags.has("follow")) {
+    flags.set("follow", flags.get("f")!);
+    flags.delete("f");
+  }
+
   return {
     command,
     subcommand,

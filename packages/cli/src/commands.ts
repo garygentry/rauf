@@ -23,6 +23,7 @@ import {
   handleBacklogValidate,
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
+import { handleFollow } from "./follow-command.js";
 import {
   handleProfileShow,
   handleProfileDetect,
@@ -335,14 +336,31 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "status",
     description: "Show loop status for a project",
-    usage: "rauf status <path> [--watch] [--interval N]",
+    usage: "rauf status [path] [--follow] [--json] [--interval N] [--backlog <dir>]",
     handler: handleStatus,
   },
   {
     name: "log",
     description: "View loop log for a project",
-    usage: "rauf log <path> [--tail N] [--follow]",
+    usage: "rauf log [path] [--tail N] [--follow] [--json] [--backlog <dir>]",
     handler: handleLog,
+  },
+  {
+    name: "follow",
+    description: "Follow a loop's live event stream (replay current run, then tail)",
+    usage: "rauf follow [path] [--json] [--interval N] [--backlog <dir>]",
+    flags: [
+      {
+        name: "--json",
+        description: "Emit one PersistedEvent (NDJSON) per line instead of formatted output",
+      },
+      {
+        name: "--interval <N>",
+        description: "Poll fallback interval in seconds when fs.watch is unavailable (default: 2)",
+      },
+      { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+    ],
+    handler: handleFollow,
   },
   {
     name: "progress",

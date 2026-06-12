@@ -242,8 +242,8 @@
         "tests cover the new follow surface (status/log --follow, -f normalization, follow replay+tail)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:30:09.662Z",
       "dependsOn": [
         "003",
         "008"

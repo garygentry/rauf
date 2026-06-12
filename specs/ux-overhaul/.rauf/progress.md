@@ -109,3 +109,23 @@
   the real registry there.
 - GOTCHA: a full LoopState literal needs completedItems/blockedItems/error too —
   copy the field set from status.test.ts's makeLoopState or typecheck rejects it.
+
+## Item 009a (CLI follow surface — additive)
+
+- ADDITIVE only (no removals; 009b deletes old verbs). Added: top-level `follow`
+  command (`follow-command.ts`), `status --follow` (`handleStatusFollow`), and
+  events.ndjson tail + `--json` NDJSON on `log --follow`. `status --watch`/`loop watch`/
+  `loop follow` all still work.
+- parser.ts: normalize `-f`→`--follow` once before the final `return` (spec §6.4). Edge
+  case: with explicit `--follow -f` the `f` key is NOT deleted (only deleted when copied) —
+  tested only the plain `-f` and plain `--follow` paths to avoid asserting that quirk.
+- GOTCHA (tests): the streaming follow handlers resolve only on terminal state or SIGINT.
+  Drive them with `setTimeout(() => process.emit("SIGINT"), 30)` after invoking; `status
+  --follow`'s first tick writes synchronously so the snapshot lands before the signal.
+- GOTCHA (tests): `info()` (e.g. "Loop ended") is suppressed under `quiet:true` — assert on
+  `print()`-routed output (events, log lines), not info messages, when configureOutput quiet.
+- GOTCHA (tests): follow/log handlers run the full `resolveBacklogPaths` preamble, which needs
+  a `backlog.json` present — fixtures must create it or the handler returns ExitCode.ERROR(1).
+- `follow`'s `emitEvent`: `--json` → one PersistedEvent NDJSON line; non-json → `#<seq> <type>`.
+  `log --follow --json` wraps raw log lines as `{source:"log",line}` and emits raw PersistedEvent
+  for events, so a machine consumer reads one object per line unambiguously (spec §6.2).

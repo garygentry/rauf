@@ -10,6 +10,8 @@ import {
   deriveStatus,
   readLogTail,
   watchLog,
+  readEvents,
+  watchEvents,
   fileExists,
   resolveBacklogRoot,
   resolveBacklogPaths,
@@ -18,6 +20,7 @@ import {
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
+  type PersistedEvent,
 } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
@@ -34,14 +37,19 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: rauf status <path> [--watch] [--interval N]");
+    info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--backlog <dir>]");
     return ExitCode.INVALID_ARGS;
   }
 
+  const follow = extractBoolFlag(ctx.flags, "follow"); // -f resolved in parser
   const watch = extractBoolFlag(ctx.flags, "watch");
   const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  if (follow) {
+    return handleStatusFollow(resolved, interval, backlogFlag ?? undefined, ctx.globalFlags.json);
+  }
 
   if (watch) {
     // Pass backlogFlag to watch mode
@@ -149,7 +157,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: rauf log <path> [--tail N] [--follow]");
+    info("Usage: rauf log <path> [--tail N] [--follow] [--json] [--backlog <dir>]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -171,7 +179,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const paths = pathsResult.value;
 
   if (follow) {
-    return handleLogFollow(paths, tailN);
+    return handleLogFollow(paths, tailN, ctx.globalFlags.json);
   }
 
   const result = readLogTail(paths, tailN);
@@ -183,6 +191,11 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
       info(`No log yet. Start the loop with: ${c.cyan("rauf loop run")}`);
     }
     return ExitCode.ERROR;
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value); // string[] of rauf.log lines
+    return ExitCode.SUCCESS;
   }
 
   if (result.value.length === 0) {
@@ -250,24 +263,49 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
 
 // ─── Internal: log follow mode ───────────────────────────────────
 
-async function handleLogFollow(paths: BacklogPaths, initialLines: number): Promise<number> {
-  // Show existing tail first
+async function handleLogFollow(
+  paths: BacklogPaths,
+  initialLines: number,
+  json: boolean,
+): Promise<number> {
+  // Each emitted unit honors `json`:
+  //   json=true  → one NDJSON object per line ({source:"log",line} | PersistedEvent)
+  //   json=false → the formatted human line / event
+  const emitLog = (line: string): void => {
+    if (json) process.stdout.write(JSON.stringify({ source: "log", line }) + "\n");
+    else print(line);
+  };
+  const emitEvent = (ev: PersistedEvent): void => {
+    if (json) process.stdout.write(JSON.stringify(ev) + "\n");
+    else print(`${c.dim(`#${ev.seq}`)} ${c.cyan(ev.type)}`);
+  };
+
+  // Replay: tail rauf.log + readEvents(paths) for events.ndjson (current run only).
   const tailResult = readLogTail(paths, initialLines);
   if (tailResult.ok && tailResult.value.length > 0) {
-    for (const line of tailResult.value) {
-      print(line);
-    }
+    for (const line of tailResult.value) emitLog(line);
+  }
+  const replayEvents = readEvents(paths);
+  if (replayEvents.ok) {
+    for (const ev of replayEvents.value) emitEvent(ev);
   }
 
-  // Stream new lines as they appear
+  // Tail: watchLog for rauf.log + watchEvents for events.ndjson, interleaved.
   return new Promise<number>((resolve) => {
-    let cleanup: (() => void) | null = null;
+    let stopLog: (() => void) | null = null;
+    let stopEvents: (() => void) | null = null;
 
     const stop = () => {
-      if (cleanup) {
-        cleanup();
-        cleanup = null;
+      if (stopLog) {
+        stopLog();
+        stopLog = null;
       }
+      if (stopEvents) {
+        stopEvents();
+        stopEvents = null;
+      }
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
       resolve(ExitCode.SUCCESS);
     };
 
@@ -275,18 +313,81 @@ async function handleLogFollow(paths: BacklogPaths, initialLines: number): Promi
     process.on("SIGTERM", stop);
 
     try {
-      cleanup = watchLog(paths, (newLines) => {
-        for (const line of newLines) {
-          print(line);
-        }
+      stopLog = watchLog(paths, (newLines) => {
+        for (const line of newLines) emitLog(line);
       });
     } catch {
-      // watchLog may throw if the log file doesn't exist yet — that's ok
-      // Just wait until interrupted
+      // watchLog may throw if the log file doesn't exist yet — that's ok.
     }
 
-    // If the process is not interactive (e.g. no TTY and no watch possible),
-    // we still resolve on signal only
+    try {
+      stopEvents = watchEvents(paths, (records) => {
+        for (const ev of records) emitEvent(ev);
+      });
+    } catch {
+      // events.ndjson may not exist yet — that's ok.
+    }
+  });
+}
+
+// ─── Status follow mode ─────────────────────────────────────────
+//
+// Poll deriveStatus on --interval; emit on CHANGE only. In --json mode this
+// streams one DerivedStatus snapshot per change (NDJSON). Non-JSON follow is the
+// screen-clearing re-render (the human display the old --watch printed; the verb
+// changed, not the human presentation).
+
+async function handleStatusFollow(
+  projectPath: string,
+  intervalSeconds: number,
+  backlogFlag: string | undefined,
+  json: boolean,
+): Promise<number> {
+  return new Promise<number>((resolve) => {
+    let running = true;
+    let lastSerialized: string | null = null;
+
+    const stop = () => {
+      running = false;
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
+      resolve(ExitCode.SUCCESS);
+    };
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
+
+    const tick = () => {
+      if (!running) return;
+
+      const rootResult = resolveBacklogRoot(projectPath, backlogFlag);
+      if (!rootResult.ok) {
+        if (!json) error(rootResult.error.message);
+      } else {
+        const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+        if (pathsResult.ok) {
+          const result = deriveStatus(pathsResult.value);
+          if (result.ok) {
+            if (json) {
+              // One DerivedStatus snapshot per CHANGE (NDJSON).
+              const serialized = JSON.stringify(result.value);
+              if (serialized !== lastSerialized) {
+                lastSerialized = serialized;
+                process.stdout.write(serialized + "\n");
+              }
+            } else {
+              process.stdout.write("\x1b[2J\x1b[H");
+              print(c.dim(`rauf status  (${new Date().toLocaleTimeString()})  Ctrl+C to stop`));
+              print("");
+              printStatusSummary(result.value);
+            }
+          }
+        }
+      }
+
+      if (running) setTimeout(tick, intervalSeconds * 1000);
+    };
+
+    tick();
   });
 }
 
