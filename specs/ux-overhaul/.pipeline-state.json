@@ -20,6 +20,7 @@
         "specs/ux-overhaul/TRACEABILITY.md"
       ],
       "completedAt": "2026-06-12T22:30:00Z",
+      "commitHash": "d7e2502",
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 }
     },
     "forge-1-prd": {
