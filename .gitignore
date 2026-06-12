@@ -13,6 +13,7 @@ build/
 **/.rauf/CANCEL
 **/.rauf/iteration-status.json
 **/.rauf/.loop.lock
+**/.rauf/events.ndjson
 # backlog.json.bak is a sibling of backlog.json (root .rauf/ OR specs/<feature>/),
 # so it is matched anywhere, not just under .rauf/.
 **/backlog.json.bak

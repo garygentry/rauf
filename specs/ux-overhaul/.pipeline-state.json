@@ -2,16 +2,20 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-12T23:55:00Z",
+  "updatedAt": "2026-06-12T22:50:49Z",
   "currentStage": "forge-5-loop",
   "stages": {
+    "forge-5-loop": {
+      "status": "in-progress",
+      "startedAt": "2026-06-12T22:50:49Z"
+    },
     "forge-verify-backlog": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul/.verification/VERIFY-backlog-2026-06-12.md",
       "findingsCount": 6,
       "verifiedAt": "2026-06-12T23:55:00Z",
       "fixedAt": "2026-06-12T23:59:00Z",
-      "commitHash": "331f9b9",
+      "commitHash": "ce2a092",
       "validation": "passed (rauf-stable backlog validate, exit 0, 0 findings); 25/25 checks executed via 4 parallel verifiers; all 6 findings applied (V-003 split 009→009a/009b, V-006 explicit deps), backlog now 15 items, re-validated clean"
     },
     "forge-4-backlog": {
