@@ -469,6 +469,7 @@ describe("LoopManager", () => {
       const baseEvent: LoopEvent = {
         type: "iteration_start",
         timestamp: new Date().toISOString(),
+        projectPath: "/test-project",
         iteration: 1,
         maxIterations: 1,
       };

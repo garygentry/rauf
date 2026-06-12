@@ -129,6 +129,7 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
     blockedItems: [],
     deferredItems: [],
     error: null,
+    baseCommitHash: null,
     ...overrides,
   };
 }

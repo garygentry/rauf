@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function makeBacklog(items: BacklogItem[]): Backlog {
-  return { project: "test-project", description: "A test project", items };
+  return { schemaVersion: "1", project: "test-project", description: "A test project", items };
 }
 
 function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
@@ -321,6 +321,7 @@ describe("non-default root", () => {
 
     // Write backlog to custom location
     const seedResult = writeBacklog(customPaths, {
+      schemaVersion: "1",
       project: "test",
       description: "",
       items: [makeItem({ id: "001", status: "done", completedAt: "2026-03-10T00:00:00.000Z" })],

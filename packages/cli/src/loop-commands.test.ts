@@ -23,7 +23,11 @@ import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /** Capture stdout/stderr during a function call */
-function captureOutput(fn: () => void | Promise<void>) {
+function captureOutput(fn: () => Promise<void>): Promise<{ stdout: string; stderr: string }>;
+function captureOutput(fn: () => void): { stdout: string; stderr: string };
+function captureOutput(
+  fn: () => void | Promise<void>,
+): { stdout: string; stderr: string } | Promise<{ stdout: string; stderr: string }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const origStdout = process.stdout.write;

@@ -29,6 +29,7 @@ function setupProject(
 
   // backlog.json
   const backlog: Backlog = {
+    schemaVersion: "1",
     project: "test-project",
     description: "Test project",
     items,
@@ -107,10 +108,7 @@ const DEFAULT_OPTIONS: LoopStartOptions = {
 };
 
 /** Create a LoopRunner via the static factory, throwing on failure */
-function createRunner(
-  projectPath: string,
-  options: LoopStartOptions,
-): InstanceType<typeof LoopRunner> {
+function createRunner(projectPath: string, options: LoopStartOptions): LoopRunner {
   const result = LoopRunner.create(projectPath, options);
   if (!result.ok) {
     throw new Error(`Failed to create LoopRunner: ${result.error.message}`);
@@ -879,7 +877,7 @@ echo "RAUF_DONE"`,
       const backlog = JSON.parse(
         fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       ) as Backlog;
-      expect(backlog.items[0].status).toBe("pending");
+      expect(backlog.items[0]?.status).toBe("pending");
 
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.status).toBe("error");

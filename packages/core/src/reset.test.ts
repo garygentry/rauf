@@ -39,7 +39,7 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 }
 
 function makeBacklog(items: BacklogItem[]): Backlog {
-  return { project: "test-project", description: "A test project", items };
+  return { schemaVersion: "1", project: "test-project", description: "A test project", items };
 }
 
 function writeSeedBacklog(items: BacklogItem[]): void {
@@ -342,6 +342,7 @@ describe("resetProject", () => {
 
     // Write backlog to custom location
     const seedResult = writeBacklog(customPaths, {
+      schemaVersion: "1",
       project: "test",
       description: "",
       items: [

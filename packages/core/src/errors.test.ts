@@ -62,10 +62,11 @@ describe("err()", () => {
   });
 
   it("works without details field", () => {
-    const result = err({
+    const error: RaufError = {
       code: ErrorCodes.INVALID_JSON,
       message: "parse error",
-    });
+    };
+    const result = err(error);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.details).toBeUndefined();

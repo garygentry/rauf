@@ -85,6 +85,7 @@ function makeItem(overrides: Partial<BacklogItem> = {}): BacklogItem {
 
 function makeBacklog(items: BacklogItem[] = []): Backlog {
   return {
+    schemaVersion: "1",
     project: "test-project",
     description: "A test project",
     items:
@@ -709,7 +710,12 @@ describe("buildPrompt", () => {
   describe("edge cases", () => {
     it("handles empty backlog items array", () => {
       setupProject(tmpDir, { raufMd: "instructions" });
-      const backlog: Backlog = { project: "empty", description: "empty project", items: [] };
+      const backlog: Backlog = {
+        schemaVersion: "1",
+        project: "empty",
+        description: "empty project",
+        items: [],
+      };
 
       const result = buildPrompt(
         testPaths(tmpDir),
