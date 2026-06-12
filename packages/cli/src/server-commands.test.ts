@@ -34,13 +34,20 @@ let tmpDir: string;
 let originalStateFileContents: string | null = null;
 let originalLogFileContents: string | null = null;
 let originalErrorFileContents: string | null = null;
+let originalRaufRoot: string | undefined;
 
 // Legacy PID file path (same dir as server.json)
 const LEGACY_PID_FILE = path.join(path.dirname(SERVER_STATE_FILE), "server.pid");
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-server-test-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-server-test-"));
   configureOutput({ noColor: true, quiet: true, json: false });
+
+  // Isolate any daemon spawned by a test from the operator's real projects:
+  // point RAUF_ROOT at the empty tmpDir so the server's startup recovery
+  // discovers nothing real (it inherits this env via spawn).
+  originalRaufRoot = process.env.RAUF_ROOT;
+  process.env.RAUF_ROOT = tmpDir;
 
   // Backup any real state/log/error files so tests don't clobber them
   try {
@@ -84,6 +91,9 @@ afterEach(() => {
   } catch {
     /* no state file */
   }
+
+  if (originalRaufRoot === undefined) delete process.env.RAUF_ROOT;
+  else process.env.RAUF_ROOT = originalRaufRoot;
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
   configureOutput({ noColor: true, quiet: false, json: false });

@@ -220,6 +220,16 @@ export const COMMANDS: CommandDef[] = [
             description:
               "Commit an otherwise-clean backlog before running (no other file may be dirty)",
           },
+          {
+            name: "--create-branch <name>",
+            description:
+              "Create and switch to <name> before running (use to leave a protected/dirty branch)",
+          },
+          {
+            name: "--pause-on-needs-human",
+            description:
+              "Halt the loop (state paused_human, distinct exit code) on the first RAUF_NEEDS_HUMAN, so a supervisor can inject an answer via `rauf resume --answer`",
+          },
         ],
         handler: handleLoopRun,
       },
@@ -316,8 +326,10 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "resume",
-    description: "Continue an interrupted loop: recover state, then relaunch from the next item",
-    usage: "rauf resume [path] [--recover] [--backlog <dir>] [--iterations N] [--json]",
+    description:
+      'Continue an interrupted loop: recover state, then relaunch from the next item. Use --answer <id> "<text>" (repeatable) to inject a human answer into a paused needs-human item and re-queue it.',
+    usage:
+      'rauf resume [path] [--recover] [--answer <id> "<text>"] [--backlog <dir>] [--iterations N] [--json]',
     handler: handleResume,
   },
   {
