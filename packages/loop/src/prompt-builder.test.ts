@@ -31,6 +31,7 @@ function nonDefaultPaths(tmpDir: string, rootRel: string): BacklogPaths {
     iterationStatus: path.join(stateDir, "iteration-status.json"),
     archive: path.join(stateDir, "archive"),
     lock: path.join(stateDir, ".loop.lock"),
+    eventsLog: path.join(stateDir, "events.ndjson"),
   };
 }
 

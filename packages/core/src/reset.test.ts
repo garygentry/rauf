@@ -338,6 +338,7 @@ describe("resetProject", () => {
       iterationStatus: path.join(customStateDir, "iteration-status.json"),
       archive: path.join(customStateDir, "archive"),
       lock: path.join(customStateDir, ".loop.lock"),
+      eventsLog: path.join(customStateDir, "events.ndjson"),
     };
 
     // Write backlog to custom location

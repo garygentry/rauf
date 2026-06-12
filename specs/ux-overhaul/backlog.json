@@ -19,8 +19,8 @@
         "docs/SCHEMAS.md documents the new types, constants, IO_ERROR, and eventsLog field",
         "pnpm --filter @rauf/core typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T22:58:51.242Z",
       "dependsOn": [],
       "notes": "This is the vocabulary every other item builds on. LoopStateStatusSchema, LoopEventSchema, BacklogPaths, Result/ok/err, RaufError all already exist in core — reference, do not redefine. PersistedEventSchema is the first z.intersection in the codebase; LoopEventSchema.and(envelope) is an equivalent terser spelling.",
       "estimatedIterations": 1,
@@ -45,7 +45,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "These are the lowest-level write/read primitives; events-log.ts (item 003) is built entirely on them. Mirror the torn-line tolerance pattern that watchLog/readLogTail already model.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -72,7 +74,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "002"],
+      "dependsOn": [
+        "001",
+        "002"
+      ],
       "notes": "rotateEventsLog uses fs.renameSync directly (matches reset.ts archiving rauf.log). reset.ts's archiveTimestamp is module-private, so define an identical private helper here. The runner (item 006) owns the per-run seq counter and best-effort posture — this module only does the fs work.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -125,7 +130,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "004"],
+      "dependsOn": [
+        "001",
+        "004"
+      ],
       "notes": "Concurrency-safe structurally: distinct stateDirs -> distinct files. The .loop.lock is ground truth; the registry is a fast index reconciled on every read. A live loop holds its lock continuously (acquire once at start, release once in finally — no mid-run rewrite), so a reconciling reader never prunes a live loop. updateLoopStatus is intentionally a no-op on missing entry.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -152,7 +160,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "003"],
+      "dependsOn": [
+        "001",
+        "003"
+      ],
       "notes": "appendEvent/rotateEventsLog/EVENTS_SCHEMA_VERSION/TOKEN_COALESCE_MS/PersistedEvent come from @rauf/core (item 003/001). TOKEN_COALESCE_MS (1000ms) is deliberately independent of the runner's existing TOKEN_EVENT_THROTTLE_MS (5000ms, runner.ts:70). The first emit after start() is loop_started -> seq 0. Verify with test-sandbox after building.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -177,7 +188,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "005", "006"],
+      "dependsOn": [
+        "001",
+        "005",
+        "006"
+      ],
       "notes": "Depends on 006 because both edit runner.start() — sequencing avoids edit conflicts. registerLoop only after acquireLock guarantees the lock is present whenever the entry exists (so listActiveLoops never prunes a live loop). Verify register/deregister with test-sandbox.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -202,7 +217,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005"],
+      "dependsOn": [
+        "005"
+      ],
       "notes": "This is the data layer for REQ-DISC-01/02 (empty-is-never-silent) and the cross-root surfacing the CLI/web render. Don't put presentation here — just make the truthful data available. Per 04 §1 the deriveStatus signature must NOT change; surface (don't re-derive) via the existing stateSource:\"none\" discriminator (04 §8).",
       "estimatedIterations": 1,
       "model": "opus",
@@ -227,7 +244,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "008"],
+      "dependsOn": [
+        "003",
+        "008"
+      ],
       "notes": "Split from former item 009 (V-003): the additive half. The clean-break removal of status --watch / loop watch / loop follow is item 009b, which depends on this — add-then-remove ordering means the new surface exists before the old one is deleted.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -250,7 +270,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["009a"],
+      "dependsOn": [
+        "009a"
+      ],
       "notes": "Split from former item 009 (V-003): the clean-break half. Depends on 009a so the new follow surface exists before the old verbs are deleted. This is a deliberate breaking change to the CLI monitor surface.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -273,7 +295,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005", "008", "009b"],
+      "dependsOn": [
+        "005",
+        "008",
+        "009b"
+      ],
       "notes": "Depends on 009b (the terminal of the 009a/009b split) because it extends the same status command surface (avoid edit conflicts). The reconciliation (self-heal of stale entries) lives in listActiveLoops; the CLI just renders the already-truthful list.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -299,7 +325,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "005"],
+      "dependsOn": [
+        "003",
+        "005"
+      ],
       "notes": "resolveBacklogRoot/resolveBacklogPaths and readEvents/watchEvents are @rauf/core exports. The wire shape is unchanged except bodies are now PersistedEvent (LoopEvent + seq + schemaVersion) — additive, ignored by type-only consumers. Status vocabulary/badges proper are Phase 4; this is read-path parity only.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -323,7 +352,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["011"],
+      "dependsOn": [
+        "011"
+      ],
       "notes": "Frontend has no unit-test harness in Phase 1 — backend tests (011) carry the parity guarantee. This is the only P2 item. Hold the Phase-4 boundary strictly (event rendering != status vocabulary).",
       "estimatedIterations": 1,
       "model": "opus",
@@ -379,7 +410,14 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["006", "007", "009b", "010", "011", "013"],
+      "dependsOn": [
+        "006",
+        "007",
+        "009b",
+        "010",
+        "011",
+        "013"
+      ],
       "notes": "This is the final integration item — it depends on all the wiring (runner event+registry, CLI surface, web backend) and the commit-rule fix. Use the test-sandbox mock-Claude scenarios for the dogfood/never-contradict checks. Rebuild dist before sandbox runs.",
       "estimatedIterations": 2,
       "model": "opus",

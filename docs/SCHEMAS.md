@@ -314,6 +314,25 @@ interface RaufError {
 }
 ```
 
+### ErrorCodes
+
+`code` values come from the `ErrorCodes` const in `packages/core/src/errors.ts`:
+`FILE_NOT_FOUND`, `INVALID_JSON`, `VALIDATION_ERROR`, `PATH_VIOLATION`, `ALREADY_INSTALLED`,
+`NOT_INSTALLED`, `CONFLICT`, `TRANSITION_INVALID`, `LOCK_CONFLICT`, and `IO_ERROR`.
+
+`IO_ERROR` is returned by the filesystem append/read primitives (`appendLine`, `readNdjson`) and the
+event-log / registry modules on an fs failure — distinct from `FILE_NOT_FOUND` (graceful absence is
+handled by returning `ok([])`, not an error) and from `INVALID_JSON`/`VALIDATION_ERROR` (content
+shape, not fs failure).
+
+## BacklogPaths
+
+Resolved absolute paths for a backlog root (`packages/core/src/backlog-root.ts`), produced by
+`resolveBacklogPaths()`. Fields: `projectPath`, `root`, `stateDir`, `backlog`, `state`, `log`,
+`done`, `cancel`, `progress`, `iterationStatus`, `archive`, `lock`, and `eventsLog`.
+
+- `eventsLog` — path to `events.ndjson`, the persisted per-run event stream (= `stateDir/events.ndjson`).
+
 ## Template Variables
 
 Variables available in .tmpl files ({{variableName}} syntax):
@@ -535,6 +554,48 @@ type LoopEvent =
       itemId: string;
       silentMs: number;
     };
+```
+
+## PersistedEvent (events.ndjson)
+
+One line of `events.ndjson` — a full `LoopEvent` intersected with a two-field envelope. **Flat
+by design**: the entire `LoopEvent` is preserved, so a reader needs no join against another
+surface to interpret a record. Defined as `PersistedEventSchema = z.intersection(LoopEventSchema, …)`
+(the first `z.intersection` in the codebase; `LoopEventSchema.and(envelope)` is an equivalent terser
+spelling).
+
+```typescript
+type PersistedEvent = LoopEvent & {
+  seq: number; // Monotonic, dense, per-run sequence number (non-negative int). Assigned ONLY when
+  //              a record is actually written to disk, so coalesced/dropped token updates never
+  //              consume a seq. Reset to 0 at the start of each run.
+  schemaVersion: string; // Event-log schema version. "1" for Phase 1. Forward-stable machine contract.
+};
+```
+
+### Event-log constants
+
+| Constant                | Value             | Meaning                                                                                                                                                    |
+| ----------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EVENTS_SCHEMA_VERSION` | `"1"`             | `events.ndjson` record schema version. Forward-stable machine contract; bumped only under the Phase-3 versioning discipline.                               |
+| `TOKEN_COALESCE_MS`     | `1000`            | Coalescing window for `llm_token_update` persistence: at most one token-update record per interval. Independent of the runner's `TOKEN_EVENT_THROTTLE_MS`. |
+| `EVENTS_LOG_FILENAME`   | `"events.ndjson"` | Per-run event log file name within a backlog root's state directory.                                                                                       |
+
+## ActiveLoopEntry (~/.rauf/active/&lt;hash&gt;.json)
+
+One entry in the machine-wide active-loop registry: a single file `~/.rauf/active/<hash>.json` per
+running loop, keyed by `sha256(resolvedStateDir)[:16]`. Written at loop start, refreshed on each
+status transition, removed at loop exit.
+
+```typescript
+interface ActiveLoopEntry {
+  stateDir: string; // Resolved (absolute) state directory — registry key source AND reconciliation anchor.
+  projectPath: string; // Project root the loop runs against (contains .rauf.json marker).
+  backlogRoot: string; // The --backlog root (equals projectPath/.rauf for the default root).
+  pid: number; // OS process id of the runner, used for liveness reconciliation.
+  startedAt: string; // ISO-8601 timestamp the loop registered.
+  status: LoopStateStatus; // Advisory last-known status. state.json remains authoritative; do NOT trust over state.json.
+}
 ```
 
 ## ReviewPayload / ReviewItem

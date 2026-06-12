@@ -317,6 +317,7 @@ describe("non-default root", () => {
       iterationStatus: path.join(customStateDir, "iteration-status.json"),
       archive: customArchiveDir,
       lock: path.join(customStateDir, ".loop.lock"),
+      eventsLog: path.join(customStateDir, "events.ndjson"),
     };
 
     // Write backlog to custom location
