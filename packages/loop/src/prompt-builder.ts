@@ -205,6 +205,15 @@ ${formatNotes(item)}
 ### Spec References
 ${formatSpecReferences(item)}`);
 
+  // Section 2.5: Human's answer to a previous question (only when injected via
+  // `rauf resume --answer`). Positioned immediately after the task and before
+  // the backlog summary so the agent reads it in the context of the work.
+  if (item.humanAnswer) {
+    sections.push(`## Human's Answer to Your Previous Question
+
+${item.humanAnswer}`);
+  }
+
   // Agent delegation (if present)
   if (agentDelegation) {
     sections.push(agentDelegation);

@@ -46,7 +46,7 @@ The authoring craft and full machine contract live in the `author-backlog` skill
       "dependsOn": ["000"],
       "notes": "Context, links, hints for the agent",
       "estimatedIterations": 1,
-      "model": "claude-opus-4-6",
+      "model": "opus",
       "agentDelegation": {
         "recommendedConcurrency": 3,
         "strategy": "How to parallelize",

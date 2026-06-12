@@ -42,10 +42,11 @@ interface BacklogItem {
   blockedReason?: string; // Present when status is "blocked"
   needsHuman?: boolean; // When true, item is blocked awaiting a human decision (RAUF_NEEDS_HUMAN) — `rauf reset`/`resume` leave these blocked
   deferred?: boolean; // When true, item is blocked because the runner gave up (no signal after maxRetries) — a "false block" requeued by `rauf reset`/`resume`
+  humanAnswer?: string; // A human's answer injected via `rauf resume --answer <id> "<text>"`; threaded into the next prompt and auto-cleared when the item completes
   dependsOn?: string[]; // Item IDs this depends on
   notes?: string; // Free-text context, links, hints
   estimatedIterations?: number; // Expected iterations to complete
-  model?: string; // Per-item model override (e.g., "claude-opus-4-6"). Overrides CLI arg and project default.
+  model?: string; // Per-item model override. Prefer tier aliases ("opus", "sonnet"); append "[1m]" for the 1M window ("opus[1m]"). Overrides CLI arg and project default.
   agentDelegation?: AgentDelegation;
   specReferences?: string[]; // Paths to spec docs
   provider?: string; // Per-item LLM provider override
@@ -127,7 +128,7 @@ interface MarkerOptions {
   ignoreInTool: boolean; // Default: false
   gitignoreScripts: boolean; // Default: false
   maxIterations: number; // Default: 20
-  model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI --model flag and per-item BacklogItem.model.
+  model?: string; // Project-level default model (e.g., "sonnet"). Prefer tier aliases; append "[1m]" for the 1M window. Overridden by CLI --model flag and per-item BacklogItem.model.
   autoSweep?: boolean; // If true, loop runner automatically sweeps done items on startup. Default: false.
   sweepMinAgeDays?: number; // Only sweep done items older than N days. 0 = sweep all done items. Default: 0.
   sessionTimeout?: number; // Max minutes per Claude session before kill+retry. Default: 60.
@@ -213,6 +214,8 @@ interface LockSummary {
 ```
 
 ## DerivedStatus (output of status module)
+
+> `DerivedStatus` is the canonical `rauf status --json` **machine-observation surface**. These shapes are the source of truth for the data; the stability _promise_ (versioning, the blocked-vs-needsHuman-vs-deferred distinction, the exit-code table) lives in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned).
 
 ```typescript
 interface DerivedStatus {
@@ -336,7 +339,7 @@ Options passed to LoopRunner when starting a loop.
 interface LoopStartOptions {
   maxIterations: number; // Positive integer. Max loop iterations. See computeMaxIterations for the default derivation.
   maxRetries: number; // Positive integer. Max retries on genuine_retry before deferring the item.
-  model?: string; // Optional model override (e.g., "claude-opus-4-6"). Overridden by per-item BacklogItem.model.
+  model?: string; // Optional model override. Prefer tier aliases ("opus", "sonnet"); append "[1m]" for the 1M window ("opus[1m]"). Overridden by per-item BacklogItem.model.
   sessionTimeoutMinutes: number; // Positive integer. Max minutes per Claude session before kill+retry.
   provider?: string; // Optional LLM provider override.
   review?: boolean; // Enable post-loop review pass after all items complete.
@@ -346,12 +349,15 @@ interface LoopStartOptions {
   childEnv?: Record<string, string>; // Generic env var overrides applied to every child session. Takes precedence over the suppressIterationReview suppression set.
   sleepOnLimit?: boolean; // When false, halt with paused_usage_limit instead of sleeping at a usage limit. Default: true (sleep and continue).
   circuitBreakerThreshold?: number; // Halt after N consecutive infra_error spawn deaths (fast non-zero exits, no usage banner). Default: 3.
+  pauseOnNeedsHuman?: boolean; // When true, halt the loop in paused_human (emitting loop_paused) on the first needs-human item instead of setting it aside and continuing. Default: false. See `rauf loop run --pause-on-needs-human`.
 }
 ```
 
 ## LoopEvent (discriminated union)
 
 All events emitted by LoopRunner during the loop lifecycle. Discriminated on the `type` field. All events share a common base shape.
+
+> These shapes back the `rauf loop run --ndjson` **machine-observation surface**. This section is the source of truth for the data; the stability _promise_ and the `signal_parsed` `review`→`done` / circuit-breaker→`loop_error` gotchas live in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned).
 
 ```typescript
 // Base fields shared by all events
@@ -362,33 +368,34 @@ interface LoopEventBase {
 }
 ```
 
-### All 23 Event Types
+### All 24 Event Types
 
-| Type                  | Additional Fields                                             | Emitted When                                      |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
-| `loop_started`        | `maxIterations`, `model?`                                     | Loop begins                                       |
-| `iteration_start`     | `iteration`, `maxIterations`                                  | Each iteration starts                             |
-| `item_selected`       | `itemId`, `title`, `priority`                                 | Next item picked from backlog                     |
-| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`              | LLM process launched                              |
-| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`    | LLM process exits                                 |
-| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/none), `reason?` | Exit signal extracted from stdout                 |
-| `item_completed`      | `itemId`, `title`                                             | Item marked done                                  |
-| `item_blocked`        | `itemId`, `reason`                                            | Item marked blocked                               |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`                             | Item re-queued for retry                          |
-| `needs_human`         | `itemId`, `reason`                                            | Loop paused for human input                       |
-| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                     | Claude API usage limit detected                   |
-| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                    | Usage limit window reset                          |
-| `sleep_start`         | `sleepUntil`, `reason`                                        | Loop enters sleep (usage limit)                   |
-| `sleep_end`           | _(base only)_                                                 | Loop wakes from sleep                             |
-| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`          | Loop finishes normally                            |
-| `loop_error`          | `error`                                                       | Unexpected error terminates loop                  |
-| `loop_cancelled`      | _(base only)_                                                 | Loop cancelled via AbortController or CANCEL file |
-| `review_started`      | `completedItemIds`                                            | Post-loop review pass begins                      |
-| `review_completed`    | `itemsCreated`, `summary`                                     | Review pass finished                              |
-| `review_failed`       | `reason`                                                      | Review pass failed (non-fatal)                    |
-| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")              | Tool call starts or finishes in child session     |
-| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                       | Token count update from child session             |
-| `llm_stuck_warning`   | `itemId`, `silentMs`                                          | Child session silent for too long                 |
+| Type                  | Additional Fields                                             | Emitted When                                             |
+| --------------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                     | Loop begins                                              |
+| `iteration_start`     | `iteration`, `maxIterations`                                  | Each iteration starts                                    |
+| `item_selected`       | `itemId`, `title`, `priority`                                 | Next item picked from backlog                            |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`              | LLM process launched                                     |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`    | LLM process exits                                        |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/none), `reason?` | Exit signal extracted from stdout                        |
+| `item_completed`      | `itemId`, `title`                                             | Item marked done                                         |
+| `item_blocked`        | `itemId`, `reason`                                            | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`                             | Item re-queued for retry                                 |
+| `needs_human`         | `itemId`, `reason`                                            | Loop paused for human input                              |
+| `loop_paused`         | `reason` ("needs_human"), `itemId`                            | Loop halted in `paused_human` (`--pause-on-needs-human`) |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                     | Claude API usage limit detected                          |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                    | Usage limit window reset                                 |
+| `sleep_start`         | `sleepUntil`, `reason`                                        | Loop enters sleep (usage limit)                          |
+| `sleep_end`           | _(base only)_                                                 | Loop wakes from sleep                                    |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`          | Loop finishes normally                                   |
+| `loop_error`          | `error`                                                       | Unexpected error terminates loop                         |
+| `loop_cancelled`      | _(base only)_                                                 | Loop cancelled via AbortController or CANCEL file        |
+| `review_started`      | `completedItemIds`                                            | Post-loop review pass begins                             |
+| `review_completed`    | `itemsCreated`, `summary`                                     | Review pass finished                                     |
+| `review_failed`       | `reason`                                                      | Review pass failed (non-fatal)                           |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")              | Tool call starts or finishes in child session            |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                       | Token count update from child session                    |
+| `llm_stuck_warning`   | `itemId`, `silentMs`                                          | Child session silent for too long                        |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -459,6 +466,13 @@ type LoopEvent =
       maxRetries: number;
     }
   | { type: "needs_human"; timestamp: string; projectPath: string; itemId: string; reason: string }
+  | {
+      type: "loop_paused";
+      timestamp: string;
+      projectPath: string;
+      reason: "needs_human";
+      itemId: string;
+    }
   | {
       type: "usage_limit_hit";
       timestamp: string;

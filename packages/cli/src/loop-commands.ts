@@ -882,6 +882,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const review = extractBoolFlag(ctx.flags, "review") || reviewOnly;
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
+  // Opt-in: halt (state paused_human) on the first RAUF_NEEDS_HUMAN so a
+  // supervising session can detect the pause and inject an answer (item 008).
+  const pauseOnNeedsHuman = extractBoolFlag(ctx.flags, "pause-on-needs-human");
 
   if (retryBlocked) {
     const ubResult = unblockItems(paths);
@@ -900,6 +903,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     review,
     reviewOnly,
     suppressIterationReview,
+    pauseOnNeedsHuman,
     backlogRoot: backlogRootResult.value,
   });
 
@@ -949,6 +953,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     "item_blocked",
     "item_retried",
     "needs_human",
+    "loop_paused",
     "usage_limit_hit",
     "usage_limit_cleared",
     "sleep_start",
@@ -1081,6 +1086,14 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       process.stdout.write(JSON.stringify(result) + "\n");
     } else if (ctx.globalFlags.json) {
       outputJson(result);
+    } else if (result.pausedReason === "needs_human") {
+      print("");
+      info(
+        c.magenta(
+          "Loop paused for human input. Resolve the question, then resume with " +
+            c.cyan('rauf resume --answer <id> "<answer>"'),
+        ),
+      );
     } else {
       print("");
       if (result.cancelled && !result.gracefulStop) {
@@ -1114,7 +1127,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       }
     }
 
-    return ExitCode.SUCCESS;
+    // Distinct non-zero code when --pause-on-needs-human halted the loop, so a
+    // supervising session can detect the pause (item 008).
+    return result.pausedReason === "needs_human" ? ExitCode.PAUSED_HUMAN : ExitCode.SUCCESS;
   } catch (e) {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
@@ -1294,6 +1309,12 @@ export function formatAndPrintEvent(event: LoopEvent): void {
     case "needs_human":
       print(
         `${prefix} ${c.magenta("\u26A0")} ${c.magenta(`Needs human #${event.itemId}`)} ${event.reason}`,
+      );
+      break;
+
+    case "loop_paused":
+      print(
+        `${prefix} ${c.magenta("\u25A0")} ${c.magenta("Loop paused")} \u2014 needs human input on #${event.itemId}`,
       );
       break;
 

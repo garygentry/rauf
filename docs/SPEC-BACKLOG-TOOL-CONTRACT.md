@@ -150,6 +150,155 @@ any per-project artifact install:
   "install/upgrade the runner" hint must point at the binary install above, not
   at `rauf install`.
 
+## A.7 Machine-observation surfaces (versioned)
+
+rauf exposes two **machine-readable** observation surfaces that a supervising
+pipeline may parse and rely on: the `--ndjson` event stream from `rauf loop run`
+and the `--json` output of `rauf status`. They are part of the stable Part-A
+contract and carry the **additive-only / versioned** compatibility promise of
+§A.5. The canonical _shapes_ (TypeScript/Zod) live in `docs/SCHEMAS.md`; this
+section is the _promise_ — the field/event/enum names below match
+`packages/core/src/schemas.ts` exactly.
+
+### A.7.1 NDJSON event stream — `rauf loop run … --ndjson`
+
+With `--ndjson`, `rauf loop run` emits one JSON object per line to stdout for
+every `LoopEvent`, then a trailing JSON line for the final `LoopResult` (the
+result object has `completedCount`/`blockedCount` and **no** `type` field — that
+absence distinguishes it from event lines). The human renderer and status line
+are suppressed; stdout is a clean NDJSON stream (implies `--no-color`).
+
+**Base fields** — every event object carries:
+
+| Field         | Type     | Meaning                                |
+| ------------- | -------- | -------------------------------------- |
+| `type`        | `string` | Discriminator (the event-type values). |
+| `timestamp`   | `string` | ISO-8601 emission time.                |
+| `projectPath` | `string` | Absolute path to the project.          |
+
+**Event `type` vocabulary** (the full discriminated union — consumers MUST
+ignore any `type` they do not recognize, per the promise below):
+
+`loop_started`, `iteration_start`, `item_selected`, `llm_spawned`,
+`llm_exited`, `signal_parsed`, `item_completed`, `item_blocked`,
+`item_retried`, `needs_human`, `loop_paused`, `usage_limit_hit`,
+`usage_limit_cleared`, `sleep_start`, `sleep_end`, `loop_completed`,
+`loop_error`, `loop_cancelled`, `review_started`, `review_completed`,
+`review_failed`, `llm_tool_activity`, `llm_token_update`,
+`llm_stuck_warning`.
+
+**Consumer-critical event payloads** (fields beyond the base three):
+
+| Event               | Payload fields                                                                 |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `item_completed`    | `itemId`, `title`                                                              |
+| `item_blocked`      | `itemId`, `reason`                                                             |
+| `needs_human`       | `itemId`, `reason`                                                             |
+| `loop_paused`       | `reason` (`needs_human`), `itemId`                                             |
+| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `none`), `reason?` |
+| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                           |
+| `loop_error`        | `error`                                                                        |
+| `loop_cancelled`    | _(base fields only)_                                                           |
+| `llm_stuck_warning` | `itemId`, `silentMs`                                                           |
+
+**Two gotchas a supervisor MUST account for:**
+
+1. **`signal_parsed.signal` collapses `review` → `done`.** The on-the-wire
+   `signal` enum is only `done | blocked | needs_human | none`. When an item's
+   output is a `RAUF_REVIEW` review-pass signal, it is reported as
+   `signal === "done"` on this stream (there is no `review` value in the event
+   enum). Do not expect a distinct review signal here.
+2. **A circuit-breaker halt is emitted as `loop_error`.** There is **no**
+   distinct `circuit_breaker` event type. When the loop halts because
+   consecutive infra-failure spawns trip the circuit breaker, it emits
+   `loop_error` whose `error` string begins `Circuit breaker: …`. Match on the
+   message, not on a dedicated type.
+
+**Pause-on-needs-human (live supervision).** With `rauf loop run
+--pause-on-needs-human`, when an item emits `RAUF_NEEDS_HUMAN` the runner sets
+it aside (as always: status `blocked` + `needsHuman`) **and then halts** in the
+resumable `paused_human` state instead of continuing to other items. On this
+stream the order is: the `needs_human` event (`itemId`, `reason`), then a
+`loop_paused` event (`reason: "needs_human"`, `itemId`). `loop run` then exits
+with the distinct code **`6`** (`PAUSED_HUMAN`). Without the flag, the default
+is unchanged — the item is set aside and the loop keeps running, so no
+`loop_paused` is emitted. A supervisor resolves the pause with `rauf resume
+--answer <id> "<text>"`, which re-queues the item with the answer and relaunches
+the loop.
+
+> **Note — two distinct exit-code spaces.** This `loop run` exit code (`6` for a
+> `--pause-on-needs-human` halt) is **not** the same as the `rauf status`
+> exit-code table in §A.7.2 (which maps `loopState`, e.g. `2` for
+> `PAUSED_HUMAN`). They are independent surfaces with independent codes; branch
+> on the right one for the command you ran.
+
+**Supervisor pattern:** run `rauf loop run . --ndjson --pause-on-needs-human`;
+on a `loop_paused` (or `needs_human`) event — or on the exit code `6` — gather
+the human's answer and call `rauf resume . --answer <id> "<answer>"` to inject
+it and continue.
+
+### A.7.2 Canonical status surface — `rauf status … --json`
+
+`rauf status --json` emits a `DerivedStatus` object — the canonical,
+file-derived snapshot of a backlog root's loop state (no subprocesses are
+invoked to derive it). Its fields:
+
+- **`loopState`** — one of `IDLE`, `RUNNING`, `PAUSED`, `COMPLETE`,
+  `PAUSED_HUMAN`, `LIMIT_REACHED`, `ERROR`, `NOT_INSTALLED`, `SLEEPING_LIMIT`,
+  `WEEKLY_LIMIT`.
+- **`stateSource`** — `state.json` | `log-parsing` | `none`.
+- **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
+  **`startedAt`**, **`elapsed`** — progress fields (nullable).
+- **`backlogSummary`** — `{ pending, inProgress, blocked, needsHuman?,
+deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
+  `blocked`; **`needsHuman`** (blocked on a human decision) and **`deferred`**
+  (a runner "false block") are **distinct, disjoint subsets** of it. Treat the
+  three as separate: a genuine agent block, a needs-human block, and a deferred
+  block are not interchangeable.
+- **`lock?`** — `LockSummary` (`present`, `pid`, `startedAt`, `alive`, `stale`):
+  lock-file liveness for this backlog root.
+- **`sleepUntil?`** — ISO timestamp, present when `loopState` is
+  `SLEEPING_LIMIT` or `WEEKLY_LIMIT`.
+
+**Exit-code table** (`rauf status` maps `loopState` to a process exit code so a
+supervisor can branch without parsing JSON):
+
+| Exit code | `loopState`                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------- |
+| `1`       | `RUNNING`                                                                                                  |
+| `2`       | `PAUSED_HUMAN`                                                                                             |
+| `3`       | `LIMIT_REACHED`                                                                                            |
+| `0`       | everything else (`IDLE`, `COMPLETE`, `PAUSED`, `ERROR`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `NOT_INSTALLED`) |
+
+### A.7.3 Compatibility promise (anchored to §A.5)
+
+These two surfaces are **additive-only** within a major version, gated by the
+runner version of §A.5:
+
+- New event `type` values, new optional event fields, and new optional
+  `DerivedStatus` / `backlogSummary` fields MAY be added in a minor release.
+- Existing event-type discriminator values and their documented fields, the
+  `signal` enum, the `loopState` enum values, and the exit-code mapping are
+  **stable within a major** — they are not renamed or removed.
+- Consumers MUST therefore **ignore unknown event types and unknown fields**
+  rather than failing on them, and MUST gate on `rauf version` (§A.5) when they
+  depend on a field or event added in a specific release.
+
+### A.7.4 Machine vs human surfaces (do not cross them)
+
+| Surface                          | Audience | Parse programmatically?                               |
+| -------------------------------- | -------- | ----------------------------------------------------- |
+| `rauf loop run … --ndjson`       | machine  | **Yes** — stable contract                             |
+| `rauf status … --json`           | machine  | **Yes** — stable contract                             |
+| `rauf loop follow`               | human    | **No** — formatted for display                        |
+| `rauf log` / `rauf log --follow` | human    | **No** — formatted for display                        |
+| `rauf.log` (file)                | human    | **No** — append-only human log / status fallback only |
+
+`rauf loop follow`, `rauf log --follow`, and the `rauf.log` file are
+**human-formatted** (colors, icons, prose) and carry **no** stability promise —
+a supervisor MUST NOT parse them. Use `--ndjson` for events and `status --json`
+for state.
+
 ---
 
 # Part B — LLM-Agnostic Execution Architecture
@@ -594,7 +743,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
   "variant": "backlog-json",
   "options": {
     "maxIterations": 20,
-    "model": "claude-opus-4-6"
+    "model": "opus"
   }
 }
 ```
@@ -609,7 +758,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
   "options": {
     "maxIterations": 20,
     "provider": "claude-sdk",
-    "model": "claude-opus-4-6"
+    "model": "opus"
   }
 }
 ```

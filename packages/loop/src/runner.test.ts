@@ -408,6 +408,82 @@ fi`,
       expect(byId["002"].status).toBe("pending");
     });
 
+    it("with --pause-on-needs-human, halts in paused_human on the first needs-human item", async () => {
+      // Two pending items: 001 (selected first) → needs_human. With the pause
+      // flag the loop must HALT after setting 001 aside — 002 must NOT run.
+      setupProject(tmpDir, [pendingItem("001", "Human task"), pendingItem("002", "Normal task")]);
+      writeMockClaude(binDir, 'echo "RAUF_NEEDS_HUMAN:Need API key"');
+
+      const needsHumanEvents: LoopEvent[] = [];
+      const pausedEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, pauseOnNeedsHuman: true });
+      runner.on("needs_human", (e) => needsHumanEvents.push(e));
+      runner.on("loop_paused", (e) => pausedEvents.push(e));
+
+      const result = await runner.start();
+
+      // The loop halted with the pause reason surfaced on the result.
+      expect(result.pausedReason).toBe("needs_human");
+      expect(result.needsHumanCount).toBe(1);
+      expect(result.completedCount).toBe(0);
+      expect(result.cancelled).toBe(false);
+
+      // State is the resumable paused_human (NOT complete).
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("paused_human");
+      expect(state.currentItem).toBeNull();
+
+      // 001 is set aside; 002 was never selected because the loop halted.
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const byId = Object.fromEntries(backlog.items.map((i: { id: string }) => [i.id, i]));
+      expect(byId["001"].status).toBe("blocked");
+      expect(byId["001"].needsHuman).toBe(true);
+      expect(byId["002"].status).toBe("pending");
+
+      // Both the needs_human and loop_paused events fire (needs_human first).
+      expect(needsHumanEvents).toHaveLength(1);
+      expect(pausedEvents).toHaveLength(1);
+      const paused = pausedEvents[0] as Extract<LoopEvent, { type: "loop_paused" }>;
+      expect(paused.reason).toBe("needs_human");
+      expect(paused.itemId).toBe("001");
+
+      // The DONE marker derives PAUSED_HUMAN (contains "human").
+      const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(done.toLowerCase()).toContain("human");
+    });
+
+    it("without the flag, a needs_human item does NOT halt the loop (no pausedReason, no loop_paused)", async () => {
+      // Same setup as the pause test, but the default (flag off): the loop sets
+      // 001 aside and keeps going — 002 runs to done and there is no pause.
+      setupProject(tmpDir, [pendingItem("001", "Human task"), pendingItem("002", "Normal task")]);
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+if [ ! -f "$COUNT_FILE" ]; then
+  echo 1 > "$COUNT_FILE"
+  echo "RAUF_NEEDS_HUMAN:blocked decision"
+else
+  echo "RAUF_DONE"
+fi`,
+      );
+
+      const pausedEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("loop_paused", (e) => pausedEvents.push(e));
+
+      const result = await runner.start();
+
+      expect(result.pausedReason).toBeUndefined();
+      expect(result.completedCount).toBe(1);
+      expect(result.needsHumanCount).toBe(1);
+      expect(pausedEvents).toHaveLength(0);
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("complete");
+    });
+
     it("DONE file omits the needs_human token on a clean run", async () => {
       setupProject(tmpDir, [pendingItem("001", "Clean task")]);
       writeMockClaude(binDir, 'echo "RAUF_DONE"');

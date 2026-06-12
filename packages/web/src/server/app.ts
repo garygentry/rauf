@@ -3,7 +3,11 @@ import { VERSION, readToolConfig, resolveRootDirectory, discoverProjects } from 
 import { createProjectsRouter } from "./routes/projects.js";
 import { createStatusRouter } from "./routes/status.js";
 import { createLoopRouter, createLoopsRouter } from "./routes/loop.js";
-import { createProfileRouter, createConfigRouter } from "./routes/profile-config.js";
+import {
+  createProfileRouter,
+  createConfigRouter,
+  createSettingsRouter,
+} from "./routes/profile-config.js";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -111,6 +115,10 @@ export function createApp(startedAt: number = Date.now(), appOptions: AppOptions
   // ── Config routes ─────────────────────────────────────────────
 
   app.route("/api/config", createConfigRouter());
+
+  // ── Settings routes (read-only helpers) ──────────────────────
+
+  app.route("/api/settings", createSettingsRouter());
 
   // ── Global error handler ──────────────────────────────────────
 

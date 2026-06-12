@@ -23,13 +23,14 @@ bash test-sandbox/verify.sh
 
 ## Available Scenarios
 
-| Scenario             | Signal             | Tools Emitted          | Timing       | Tests                                                                   |
-| -------------------- | ------------------ | ---------------------- | ------------ | ----------------------------------------------------------------------- |
-| `stream-done`        | `RAUF_DONE`        | Read, Edit             | 300ms sleeps | Basic done flow with tool activity                                      |
-| `stream-blocked`     | `RAUF_BLOCKED`     | None                   | Instant      | Blocked signal parsing, reason extraction                               |
-| `stream-tools`       | `RAUF_DONE`        | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use                          |
-| `slow-stream`        | `RAUF_DONE`        | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience                               |
-| `stream-needs-human` | `RAUF_NEEDS_HUMAN` | None                   | Instant      | Needs-human signal: item set aside (blocked+needsHuman), loop continues |
+| Scenario                   | Signal                           | Tools Emitted          | Timing       | Tests                                                                                                                                                                     |
+| -------------------------- | -------------------------------- | ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stream-done`              | `RAUF_DONE`                      | Read, Edit             | 300ms sleeps | Basic done flow with tool activity                                                                                                                                        |
+| `stream-blocked`           | `RAUF_BLOCKED`                   | None                   | Instant      | Blocked signal parsing, reason extraction                                                                                                                                 |
+| `stream-tools`             | `RAUF_DONE`                      | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use                                                                                                                            |
+| `slow-stream`              | `RAUF_DONE`                      | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience                                                                                                                                 |
+| `stream-needs-human`       | `RAUF_NEEDS_HUMAN`               | None                   | Instant      | Needs-human signal: item set aside (blocked+needsHuman), loop continues                                                                                                   |
+| `pause-resume-needs-human` | `RAUF_NEEDS_HUMAN` → `RAUF_DONE` | None                   | Instant      | Two-phase: `--pause-on-needs-human` halt (paused_human + loop_paused + exit 6), then `resume --answer` injects the answer, the next prompt carries it, the item completes |
 
 ## What to Observe
 
@@ -105,6 +106,8 @@ Make the file executable: `chmod +x test-sandbox/scenarios/<name>.sh`
 **Testing token counting**: Set specific values in `message_start` and `message_delta` usage fields, then verify the runner's token events match.
 
 **Testing error handling**: Have the script exit with a non-zero code, or emit malformed JSON.
+
+**Branching on the prompt (multi-iteration flows)**: A scenario can read the prompt into a variable (`PROMPT="$(cat)"` instead of `cat > /dev/null`) and branch its emitted signal on the prompt's content. This lets ONE scenario serve multiple iterations across a pause/resume — e.g. `pause-resume-needs-human.sh` emits `RAUF_NEEDS_HUMAN` until `resume --answer` injects the "Human's Answer" section into the prompt, then emits `RAUF_DONE`. It can also record evidence to a file (kept out of git via `setup.sh`'s `info/exclude`) so `verify.sh` can assert what the prompt contained.
 
 ## Relationship to Unit Tests
 

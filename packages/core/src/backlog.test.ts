@@ -985,6 +985,54 @@ describe("updateItem", () => {
     expect(result.value.deferred).toBeUndefined();
   });
 
+  it("injects humanAnswer and re-queues a paused item to pending (resume --answer mutation)", () => {
+    // Models the `rauf resume --answer 003 "..."` mutation: a needs-human item
+    // set aside as blocked → pending with the answer attached and block cleared.
+    writeBacklogRaw(
+      makeBacklog([
+        makeItem({
+          id: "001",
+          status: "blocked",
+          needsHuman: true,
+          blockedReason: "schema version unclear",
+        }),
+      ]),
+    );
+
+    const result = updateItem(paths, "001", {
+      humanAnswer: "use schema v5",
+      status: "pending",
+      needsHuman: false,
+      blockedReason: null,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("pending");
+    expect(result.value.humanAnswer).toBe("use schema v5");
+    expect(result.value.needsHuman).toBe(false);
+    expect(result.value.blockedReason).toBeUndefined();
+
+    const reread = readBacklog(paths);
+    if (!reread.ok) return;
+    expect(reread.value.items[0]!.humanAnswer).toBe("use schema v5");
+  });
+
+  it("clears humanAnswer when the item completes", () => {
+    writeBacklogRaw(
+      makeBacklog([makeItem({ id: "001", status: "in_progress", humanAnswer: "use schema v5" })]),
+    );
+
+    const result = updateItem(paths, "001", { status: "done" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("done");
+    expect(result.value.humanAnswer).toBeUndefined();
+
+    const reread = readBacklog(paths);
+    if (!reread.ok) return;
+    expect(reread.value.items[0]!.humanAnswer).toBeUndefined();
+  });
+
   it("allows valid status transition: in_progress → done", () => {
     writeBacklogRaw(makeBacklog([makeItem({ id: "001", status: "in_progress" })]));
 

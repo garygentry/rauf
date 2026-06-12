@@ -237,7 +237,7 @@ export function ProjectSettings() {
           }}
         >
           <p className="text-sm font-medium">
-            Failed to load project settings. Is ralph installed in this project?
+            Failed to load project settings. Is rauf installed in this project?
           </p>
         </div>
       </div>
@@ -399,7 +399,7 @@ export function ProjectSettings() {
             />
             <ToggleRow
               label="Gitignore scripts"
-              description="Add ralph scripts to .gitignore"
+              description="Add rauf scripts to .gitignore"
               checked={options.gitignoreScripts}
               onChange={(v) => handleOptionToggle("gitignoreScripts", v)}
             />

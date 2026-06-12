@@ -55,6 +55,14 @@ export const BacklogItemSchema = z.object({
    * — which `rauf reset`/`resume` requeue to pending — from a genuine block.
    */
   deferred: z.boolean().optional(),
+  /**
+   * A human's answer to a question this item raised (RAUF_NEEDS_HUMAN),
+   * injected by `rauf resume --answer <id> "<text>"`. When set, the loop
+   * threads it into the next iteration's prompt as a "Human's Answer"
+   * section. Cleared automatically when the item completes so a later
+   * unrelated retry never re-injects a stale answer.
+   */
+  humanAnswer: z.string().optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),
@@ -330,7 +338,7 @@ export const LOG_PATTERNS = {
   iteration: /--- Iteration (\d+) \/ (\d+) ---/,
   done: /Item \S+ completed: .+/,
   blocked: /Item \S+ blocked: (.+)/,
-  needsHuman: /Item \S+ needs human input: (.+)/,
+  needsHuman: /Item \S+ needs human input(?: \(set aside\))?: (.+)/,
   complete: /Loop completed/,
   limitReached: /Max iterations reached \((\d+)\)/,
   timestamp: /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/,
@@ -397,6 +405,14 @@ export const LoopStartOptionsSchema = z.object({
    * Reset to 0 on any real outcome. Defaults to 3 when unset.
    */
   circuitBreakerThreshold: z.number().int().positive().optional(),
+  /**
+   * Opt-in: halt the loop when an item emits RAUF_NEEDS_HUMAN, so a supervising
+   * session can detect the pause and inject an answer (e.g. `rauf resume
+   * --answer`). The item is still set aside as blocked + needsHuman first. When
+   * unset/false, behavior is unchanged — the loop keeps working other runnable
+   * items after setting the needs-human item aside.
+   */
+  pauseOnNeedsHuman: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
@@ -474,6 +490,12 @@ const NeedsHumanSchema = LoopEventBaseSchema.extend({
   type: z.literal("needs_human"),
   itemId: z.string(),
   reason: z.string(),
+});
+
+const LoopPausedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_paused"),
+  reason: z.literal("needs_human"),
+  itemId: z.string(),
 });
 
 const UsageLimitHitSchema = LoopEventBaseSchema.extend({
@@ -560,6 +582,7 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   ItemBlockedSchema,
   ItemRetriedSchema,
   NeedsHumanSchema,
+  LoopPausedSchema,
   UsageLimitHitSchema,
   UsageLimitClearedSchema,
   SleepStartSchema,

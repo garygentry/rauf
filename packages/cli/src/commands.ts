@@ -95,6 +95,10 @@ export const ExitCode = {
   NOT_FOUND: 3,
   VALIDATION: 4,
   CONFLICT: 5,
+  // `rauf loop run --pause-on-needs-human` halted because an item needs human
+  // input. Distinct non-zero code so a supervising session can detect the pause
+  // (item 008). Mirrors `status` exiting 2 for PAUSED_HUMAN.
+  PAUSED_HUMAN: 6,
 } as const;
 
 // ─── Command Definitions ─────────────────────────────────────────

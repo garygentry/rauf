@@ -641,7 +641,7 @@ function StepConfigure({
               Update .gitignore
             </p>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-              Add ralph runtime files (state.json, rauf.log, DONE) to .gitignore.
+              Add rauf runtime files (state.json, rauf.log, DONE) to .gitignore.
             </p>
           </div>
           <button
@@ -707,7 +707,7 @@ function StepReview({
       location: ".rauf/",
       description: "Accumulated learnings log",
     },
-    { file: "CLAUDE.md", location: "project root", description: "Smart-merged ralph section" },
+    { file: "CLAUDE.md", location: "project root", description: "Smart-merged rauf section" },
     {
       file: ".rauf.json",
       location: "project root",

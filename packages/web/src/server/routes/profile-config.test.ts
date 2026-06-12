@@ -537,3 +537,72 @@ describe("PUT /api/config", () => {
     expect(res.status).toBe(403);
   });
 });
+
+// ─── GET /api/settings/validate-root ─────────────────────────────
+
+describe("GET /api/settings/validate-root", () => {
+  it("returns exists:true for an existing directory", async () => {
+    const app = makeApp(tmpDir);
+
+    const res = await app.request(
+      `/api/settings/validate-root?path=${encodeURIComponent(projectDir)}`,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as {
+      data: { exists: boolean; isDirectory: boolean; resolvedPath: string };
+    };
+    expect(body.data.exists).toBe(true);
+    expect(body.data.isDirectory).toBe(true);
+    expect(body.data.resolvedPath).toBe(projectDir);
+  });
+
+  it("returns exists:false for a nonexistent path", async () => {
+    const app = makeApp(tmpDir);
+    const missing = path.join(tmpDir, "does-not-exist");
+
+    const res = await app.request(
+      `/api/settings/validate-root?path=${encodeURIComponent(missing)}`,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { exists: boolean; isDirectory: boolean } };
+    expect(body.data.exists).toBe(false);
+    expect(body.data.isDirectory).toBe(false);
+  });
+
+  it("returns exists:true, isDirectory:false for a file path", async () => {
+    const app = makeApp(tmpDir);
+    const filePath = path.join(tmpDir, "a-file.txt");
+    fs.writeFileSync(filePath, "hello");
+
+    const res = await app.request(
+      `/api/settings/validate-root?path=${encodeURIComponent(filePath)}`,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { exists: boolean; isDirectory: boolean } };
+    expect(body.data.exists).toBe(true);
+    expect(body.data.isDirectory).toBe(false);
+  });
+
+  it("returns 400 when path query parameter is missing", async () => {
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/settings/validate-root");
+
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_INPUT");
+  });
+
+  it("returns 400 for a relative (non-absolute) path", async () => {
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/settings/validate-root?path=relative/dir");
+
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_INPUT");
+  });
+});
