@@ -17,10 +17,12 @@ import {
   resolveBacklogPaths,
   scanActiveRoots,
   detectMigrationState,
+  listActiveLoops,
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
   type PersistedEvent,
+  type ActiveLoopEntry,
 } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
@@ -37,14 +39,20 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--backlog <dir>]");
+    info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--all] [--backlog <dir>]");
     return ExitCode.INVALID_ARGS;
   }
 
+  const all = extractBoolFlag(ctx.flags, "all");
   const follow = extractBoolFlag(ctx.flags, "follow"); // -f resolved in parser
   const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+
+  if (all) {
+    // Machine-wide listing of every live loop via the reconciled registry (§9).
+    return handleStatusAll(ctx.globalFlags.json);
+  }
 
   if (follow) {
     return handleStatusFollow(resolved, interval, backlogFlag ?? undefined, ctx.globalFlags.json);
@@ -79,6 +87,9 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     }
 
     printStatusSummary(result.value);
+    if (result.value.stateSource === "none") {
+      surfaceEmptyNotSilent(pathsResult.value.stateDir, ctx.globalFlags.json);
+    }
     return statusExitCode(result.value.loopState);
   } else {
     // Default root + list active non-default roots
@@ -97,6 +108,11 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
         }
         return ExitCode.ERROR;
       }
+      // No installed/usable state at the default root and not a legacy project:
+      // never go silent — name the inspected directory and surface any loop live
+      // elsewhere on the machine (REQ-DISC-01/02).
+      surfaceEmptyNotSilent(defaultRoot, ctx.globalFlags.json);
+      return ExitCode.SUCCESS;
     }
 
     if (defaultPathsResult.ok) {
@@ -118,6 +134,9 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
       }
 
       printStatusSummary(status);
+      if (status.stateSource === "none") {
+        surfaceEmptyNotSilent(defaultPathsResult.value.stateDir, ctx.globalFlags.json);
+      }
     }
 
     // Scan for active non-default roots
@@ -141,6 +160,83 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     }
     return ExitCode.SUCCESS;
   }
+}
+
+// ─── Empty-is-never-silent surfacing ─────────────────────────────
+//
+// Render the empty-is-never-silent footer (REQ-DISC-01/02). Names the inspected
+// directory, then consults the reconciled active-loop registry and, if a loop is
+// live in a DIFFERENT root, names that root and its (advisory) state. The
+// registry read is reconciled + self-healed (a crashed loop never appears); a
+// registry-read failure still names the inspected directory and simply omits the
+// cross-root section (REQ-DISC-01 holds even when REQ-DISC-02 cannot).
+
+function surfaceEmptyNotSilent(inspectedDir: string, json: boolean): void {
+  const inspectedResolved = path.resolve(inspectedDir);
+  const live = listActiveLoops();
+  const elsewhere: ActiveLoopEntry[] = live.ok
+    ? live.value.filter((e) => path.resolve(e.stateDir) !== inspectedResolved)
+    : [];
+
+  if (json) {
+    outputJson({
+      inspected: inspectedDir,
+      empty: true,
+      liveElsewhere: elsewhere.map((e) => ({
+        backlogRoot: e.backlogRoot,
+        stateDir: e.stateDir,
+        status: e.status,
+        pid: e.pid,
+      })),
+    });
+    return;
+  }
+
+  info(`No loop activity in ${c.cyan(inspectedDir)}.`); // (a) name the inspected directory
+  if (elsewhere.length > 0) {
+    // (b) surface live loops in other roots
+    print("");
+    print(c.bold("A loop is live in another backlog root:"));
+    for (const e of elsewhere) {
+      print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid})`)}`);
+    }
+    info(
+      `Re-run with ${c.cyan("--backlog <dir>")} to inspect it, or ${c.cyan("rauf status --all")} to list all.`,
+    );
+  }
+}
+
+// ─── status --all (machine-wide live loops) ──────────────────────
+//
+// List every backlog root with a live loop across the machine, reading the same
+// reconciled registry (`listActiveLoops`), honoring --json. The registry status
+// shown is advisory (REQ-OBS-02); the authoritative status for one root comes
+// from `rauf status --backlog <root>`.
+
+async function handleStatusAll(json: boolean): Promise<number> {
+  const live = listActiveLoops();
+  if (!live.ok) {
+    if (json) outputJson({ error: live.error });
+    else error(live.error.message);
+    return ExitCode.ERROR;
+  }
+
+  if (json) {
+    outputJson({ loops: live.value });
+    return ExitCode.SUCCESS;
+  }
+
+  if (live.value.length === 0) {
+    info("No live loops on this machine.");
+    return ExitCode.SUCCESS;
+  }
+
+  print(c.bold("Live loops (machine-wide):"));
+  for (const e of live.value) {
+    const started = new Date(e.startedAt).toLocaleTimeString();
+    print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid}, since ${started})`)}`);
+  }
+  return ExitCode.SUCCESS;
 }
 
 // ─── handleLog ────────────────────────────────────────────────────

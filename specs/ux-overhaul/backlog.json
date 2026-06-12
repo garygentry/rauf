@@ -293,8 +293,8 @@
         "CLI tests cover empty-not-silent rendering and status --all (human + --json)",
         "pnpm test && pnpm typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:42:15.284Z",
       "dependsOn": [
         "005",
         "008",

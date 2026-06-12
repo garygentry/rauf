@@ -147,3 +147,26 @@
   removed-verbs-absent assertion + a top-level-`follow`-exists assertion.
 - GOTCHA: editor diagnostics lagged after sed-deleting blocks (showed stale line refs);
   trust `pnpm typecheck`, not the IDE noise.
+
+## Item 010 (CLI cross-root discovery — status --all + empty-not-silent)
+
+- Added to status-commands.ts: `handleStatusAll(json)` (renders `listActiveLoops()`
+  machine-wide, human + `{loops: ActiveLoopEntry[]}` json; empty → "No live loops on
+  this machine.") routed from `status --all` (extracted before --follow). And
+  `surfaceEmptyNotSilent(inspectedDir, json)` (CLI render of spec §8.1) wired into the
+  three one-shot empty branches: --backlog branch + default-root branch when
+  `stateSource === "none"`, AND the `!defaultPathsResult.ok` non-legacy fall-through
+  (the previously-silent no-.rauf case) now surfaces `defaultRoot` instead of returning
+  bare SUCCESS.
+- Updated `status` usage strings (commands.ts:330 + in-handler) to advertise `[--all]`.
+- TEST ISOLATION GOTCHA: the CLI imports `listActiveLoops` from built `@rauf/core`, so
+  `vi.mock("./config.js")` (the core-internal pattern from loop-registry/status-inspect
+  tests) does NOT work from a CLI test. Instead redirect HOME in `vi.hoisted` BEFORE the
+  `@rauf/core` import — `os.homedir()` reads $HOME on POSIX and TOOL_CONFIG_DIR (→
+  ACTIVE_DIR) is bound at core module load. New file: status-discovery.test.ts.
+- TEST GOTCHA: a seeded `.loop.lock` must satisfy `LockFileContentSchema` —
+  `{pid, startedAt, processStartTime}`. Omitting `processStartTime` makes safeParse fail
+  → checkLockFile returns stale → listActiveLoops self-heals (prunes) the entry, so it
+  never appears. Use `processStartTime: null` (skips the recycle check; our live pid passes).
+- Existing status-commands.test.ts is NOT config-isolated, so its empty-path tests now
+  read the real ~/.rauf/active — harmless (they assert only exit codes, which are unchanged).

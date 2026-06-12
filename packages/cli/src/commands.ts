@@ -327,7 +327,7 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "status",
     description: "Show loop status for a project",
-    usage: "rauf status [path] [--follow] [--json] [--interval N] [--backlog <dir>]",
+    usage: "rauf status [path] [--follow] [--json] [--interval N] [--all] [--backlog <dir>]",
     handler: handleStatus,
   },
   {
