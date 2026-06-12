@@ -68,6 +68,7 @@ rauf/
 | `src/lock.ts` | extract `checkLockFile(lockPath): Result<LockStatus>`; `checkLock(paths)` delegates to it | `03` |
 | `src/status.ts` | `deriveStatus`/empty-path callers surface inspected dir + registry liveness | `04` |
 | `src/index.ts` | add `export * from "./events-log.js";` and `export * from "./loop-registry.js";` | this doc §3 |
+| `docs/SCHEMAS.md` (repo doc, not core source) | document the new public types/constants: `PersistedEvent`/`PersistedEventSchema`, `ActiveLoopEntry`/`ActiveLoopEntrySchema`, `EVENTS_SCHEMA_VERSION`, `TOKEN_COALESCE_MS`, `EVENTS_LOG_FILENAME`, the `IO_ERROR` error code, and the `BacklogPaths.eventsLog` field — same JSDoc as `00`. CLAUDE.md designates this the canonical types contract; keep it in sync so it does not drift when Phase 1 lands. Make this an acceptance-criterion line on the events-log + registry backlog items. | `00` |
 
 ---
 

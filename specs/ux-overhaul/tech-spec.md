@@ -30,7 +30,7 @@ the **clean-break removal of superseded monitor verbs/flags** (`loop watch`, `lo
 | D1 | Persist inside `LoopRunner.emitEvent()` — the single choke point all 24 events pass through. The **runner** owns the per-run `seq` counter and token coalescing; **core** owns the `fs.appendFileSync`. Best-effort (try/catch, never crashes the loop). Single writer per root. | REQ-EVT-01/06 |
 | D2 | **Flat** record: every line is the full `LoopEvent` plus `seq` and `schemaVersion`. Each line independently parseable and self-describing. | REQ-EVT-03/04 |
 | D3 | **Time-based last-write-wins** coalescing of `llm_token_update` at ≈1/sec (`TOKEN_COALESCE_MS = 1000`), satisfying REQ-EVT-02's "≤ ~1/sec". This is **independent of, and finer-grained than**, the existing 5s `TOKEN_EVENT_THROTTLE_MS` (`runner.ts:70`) that gates `iteration-status.json` — the two surfaces coalesce at different, intentional rates. `llm_tool_activity` + all structural events persist immediately. | REQ-EVT-02 / OQ-2 |
-| D4 | **Rotate** `events.ndjson` → `archive/{ts}-events.ndjson` at `runner.start()`, mirroring the `reset.ts` `{ts}-<filename>` pattern; then begin a fresh file. | REQ-EVT-05 / OQ-4 |
+| D4 | **Rotate** `events.ndjson` → `archive/{ts}-events.ndjson` at `runner.start()`, mirroring the `reset.ts` `{ts}-<filename>` pattern; then begin a fresh file. **Truncate-on-fail:** if the archive rename fails, truncate `events.ndjson` to empty before returning `err`, so the new run always starts clean (preserves seq-monotonicity + never-contradict; loses only the prior archive, acceptable per REQ-EVT-05). | REQ-EVT-05 / OQ-4 |
 | D5 | Registry = **per-loop entry files** `~/.rauf/active/<hash>.json` keyed by a hash of the resolved state dir. Each loop owns exactly one file → concurrency-safety is structural (no shared-file writer contention). **Reconcile on read** against `.loop.lock` + process liveness; prune stale entries. | REQ-DISC-03/04/05 / OQ-1 |
 | D6 | Cross-root discovery scope = **machine-wide** (the registry lives in `~/.rauf`, naturally global). No scoping flag in Phase 1. | REQ-DISC-02 / OQ-3 |
 | D7 | Cross-root listing surface = **`status --all`** (reads the same registry, honors `--json`). The existing `projects status` verb stays project-scoped. | REQ-DISC-06 / OQ-5 |
@@ -54,7 +54,7 @@ Per architecture rule #1, **all new filesystem + registry logic lives in `packag
 | `fs-utils.ts` | add | `appendLine(filePath, line): Result<void>`, `readNdjson<T>(filePath, schema): Result<T[]>` (torn-line tolerant) |
 | `errors.ts` | add | new `IO_ERROR` member on the `ErrorCodes` enum — the append/read failure code returned by `appendLine`/`readNdjson` (no existing code has the right semantics) |
 | `backlog-root.ts` | add | `eventsLog` field on `BacklogPaths` (= `stateDir/events.ndjson`) |
-| `schemas.ts` | add | `EVENTS_SCHEMA_VERSION`, `PersistedEventSchema` / `PersistedEvent`, `ActiveLoopEntrySchema` / `ActiveLoopEntry` |
+| `schemas.ts` | add | `EVENTS_SCHEMA_VERSION`, `TOKEN_COALESCE_MS`, `EVENTS_LOG_FILENAME`, `PersistedEventSchema` / `PersistedEvent`, `ActiveLoopEntrySchema` / `ActiveLoopEntry` |
 | `lock.ts` | refactor | extract `checkLockFile(lockPath): Result<LockStatus>` — parameterize the existing `checkLock` body (which uses the private `isProcessAlive`/`isProcessRecycled` helpers) on a raw lock path; existing `checkLock(paths)` delegates to it, for registry reconciliation |
 | `status.ts` | extend | `deriveStatus`/empty-path callers surface inspected dir + registry liveness (REQ-DISC-01/02) |
 
@@ -137,11 +137,10 @@ private persistEvent(event: LoopEvent): void {
     seq: this.eventSeq++,        // dense: seq is assigned only when a record is written
     schemaVersion: EVENTS_SCHEMA_VERSION,
   };
-  try {
-    appendEvent(this.paths, record); // core owns the fs write (rule #1)
-  } catch {
-    /* best-effort: REQ-PERF-01, REQ-REL-02 — status never depends on the event log */
-  }
+  // best-effort: REQ-PERF-01, REQ-REL-02 — status never depends on the event log.
+  // appendEvent returns Result<void> and never throws (core convention; appendLine
+  // catches fs errors, validatePath returns err), so the err is intentionally discarded.
+  void appendEvent(this.paths, record); // core owns the fs write (rule #1)
 }
 ```
 

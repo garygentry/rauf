@@ -107,7 +107,7 @@ cross-references resolve to existing files.
 
 | SC | Claim | Verified in |
 | --- | --- | --- |
-| SC-1 | In-process `loop run` ≡ detached across CLI + web | `07-testing-strategy.md` §5 (API boundary) + §6 (manual web check); `05` §8 |
+| SC-1 | In-process `loop run` ≡ detached across CLI + web | `07-testing-strategy.md` §3.2/§4/§5 (API boundary) + §6 (manual CLI+web check); `04` §Verification (REQ-OBS-03); `05` §8 |
 | SC-2 | Reads never silently "idle"; name dir + cross-root liveness; `status --all` | `07` §3.2; `03` §8; `04` §8–9 |
 | SC-3 | Crash → registry not-live + `state.json` correct; torn line no crash | `07` §2.1/§2.2/§4 |
 | SC-4 | One `follow` verb + one `--follow` flag; old names gone; `--json` everywhere | `07` §3.1–3.2; `04` §4, §6 |

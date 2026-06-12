@@ -122,6 +122,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { TOOL_CONFIG_DIR } from "./config.js"; // = ~/.rauf  (config.ts:13, exported config.ts:177)
+import { LOCK_FILENAME } from "./backlog-root.js"; // exported at backlog-root.ts:10 — reused, not redefined
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import {
   atomicWrite,
@@ -132,7 +133,7 @@ import {
 } from "./fs-utils.js";
 import { checkLockFile } from "./lock.js"; // extracted in §4
 import {
-  ActiveLoopEntry,
+  type ActiveLoopEntry,
   ActiveLoopEntrySchema,
   type LoopStateStatus,
 } from "./schemas.js";
@@ -143,8 +144,8 @@ import {
  */
 const ACTIVE_DIR = path.join(TOOL_CONFIG_DIR, "active");
 
-/** The .loop.lock filename within a state dir (matches LOCK_FILENAME / backlog-root.ts paths.lock). */
-const LOCK_FILENAME = ".loop.lock";
+// LOCK_FILENAME (".loop.lock") is the shared constant imported from backlog-root.js above
+// (backlog-root.ts:10) — used to construct each loop's lockPath for reconciliation (§3.5).
 ```
 
 > The exact `LoopStateStatus` import path (`./schemas.js`) and `ActiveLoopEntry`/`ActiveLoopEntrySchema`
@@ -709,6 +710,40 @@ querying simultaneously without corruption. This is guaranteed **structurally** 
 - **The per-root `.loop.lock` already serializes loops per root.** Two runners cannot both hold the
   lock for the same state dir (`acquireLock`, `lock.ts:131`), so two live entries for the *same* hash
   cannot legitimately coexist — the registry inherits this serialization for free.
+
+### 8.1 Reader-vs-live-loop prune race (why a reader cannot permanently hide a live loop)
+
+The bullets above cover writer-vs-writer (disjoint files) and writer-vs-reader-torn-read (atomic
+writes). One more interaction needs an explicit guarantee: `listActiveLoops` is itself a **writer** —
+its self-heal step (§3.5 step 4) `unlink`s *other* loops' entry files during reconciliation. So a
+reader of the registry mutates other loops' entries. The hazard is a reader pruning the entry of a
+loop that is in fact **alive** — which would make that loop invisible to cross-root discovery
+(violating REQ-DISC-02 / SC-2 for a live loop).
+
+This cannot persist, by two layered guarantees:
+
+1. **An entry exists only while the lock is held.** The runner calls `registerLoop` **after**
+   `acquireLock` succeeds (§5.1) and `deregisterLoop` in the run's `finally` (§5.2). Therefore, for a
+   genuinely live loop, `{stateDir}/.loop.lock` is present and owned by `entry.pid` for the entire
+   lifetime of the entry. A reconciling reader reads that same lock via `checkLockFile` and sees
+   `locked: true, stale: false, pid === entry.pid` → the entry is classified **live** and is **not**
+   pruned (§3.5). Pruning only fires when the lock is genuinely absent, stale, or pid-mismatched —
+   i.e. the loop is *not* live. The lock is ground truth (C-3); the prune decision is driven entirely
+   by it, never by the entry's own advisory fields.
+
+2. **Self-re-registration bounds any spurious-prune window.** The only way a reader could prune a live
+   loop's entry is a transient mis-read of the lock *during* a legitimate lock rewrite (e.g. the narrow
+   reset→re-acquire window). Even then the loss is **self-healing and bounded**: `updateLoopStatus`
+   (paired with every `writeState` transition, §5.3) re-creates the entry on the loop's next status
+   change via the same `atomicWrite`, so a wrongly-pruned live loop reappears at its next transition.
+   The invisibility window is therefore "until the next status transition," not permanent. (A loop
+   sitting idle in `running` with no transitions is the worst case; this is acceptable for the P2
+   REQ-OBSV-01 discoverability bar and noted here so a future phase can add a periodic re-register
+   heartbeat if tighter bounds are ever required.)
+
+The net invariant: **a confirmed-live loop is never permanently absent from `listActiveLoops`** — the
+lock-gated entry lifetime prevents spurious pruning in the common case, and transition-driven
+re-registration repairs the rare transient case.
 
 ---
 

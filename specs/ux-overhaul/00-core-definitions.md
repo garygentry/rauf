@@ -93,7 +93,7 @@ One entry in the machine-wide active-loop registry: a single file
 
 ```typescript
 // packages/core/src/schemas.ts
-import { LoopStateStatusSchema } from "./schemas.js"; // already defined at schemas.ts:167
+// LoopStateStatusSchema is defined above in this file (schemas.ts:167) — no import needed.
 
 /**
  * A registry entry describing one currently-running loop. Written at loop start
@@ -146,8 +146,9 @@ export interface BacklogPaths {
 }
 ```
 
-It is populated in `resolveBacklogPaths()` (`backlog-root.ts:178`) alongside the other state-dir
-paths:
+It is populated in `resolveBacklogPaths()` (`backlog-root.ts:126`) — inserted into the returned
+`BacklogPaths` object literal (lines ~175–188, alongside `archive`/`lock` at 186–187) — next to the
+other state-dir paths:
 
 ```typescript
 // inside resolveBacklogPaths(), in the returned BacklogPaths object:
@@ -173,7 +174,7 @@ export const EVENTS_SCHEMA_VERSION = "1";
 ### 2.2 `TOKEN_COALESCE_MS` (REQ-EVT-02) — D3
 
 ```typescript
-// packages/core/src/schemas.ts (or events-log.ts; lives in core so loop + tests share it)
+// packages/core/src/schemas.ts (lives in core so loop + tests share it)
 /**
  * Coalescing window for llm_token_update persistence: at most one token-update
  * record is written to events.ndjson per this interval (time-based,
@@ -257,15 +258,15 @@ These existing types are consumed by the new modules but are **not** modified by
 
 | Type / symbol                | Where it lives            | Used by                                          |
 | ---------------------------- | ------------------------- | ------------------------------------------------ |
-| `LoopEvent` / `LoopEventSchema` | `schemas.ts:574`/`:661` | `PersistedEvent` (intersection base)             |
-| `LoopStateStatus` / `LoopStateStatusSchema` | `schemas.ts:167`/`:643` | `ActiveLoopEntry.status`, `updateLoopStatus`     |
+| `LoopEvent` / `LoopEventSchema` | `schemas.ts:661`/`:574` | `PersistedEvent` (intersection base)             |
+| `LoopStateStatus` / `LoopStateStatusSchema` | `schemas.ts:643`/`:167` | `ActiveLoopEntry.status`, `updateLoopStatus`     |
 | `LoopState` / `LoopStateSchema` | `schemas.ts:185`        | `state.json` (authoritative status — unchanged)  |
 | `LockStatus`                 | `lock.ts:39`              | `checkLockFile` return (registry reconciliation) |
 | `LockFileContent`            | `lock.ts:15`              | lock ground-truth read during reconciliation     |
 | `BacklogPaths`               | `backlog-root.ts:34`      | every event-log/registry call site               |
 | `Result<T, E>` / `ok` / `err`| `errors.ts:9`/`:11`/`:15` | return type of all new public functions          |
 | `RaufError` / `RaufErrorSchema` | `schemas.ts:328`/`:656` | error payloads                                    |
-| `IterationStatus`            | `schemas.ts:618`/`:664`   | unchanged; still read by `status`/`follow`       |
+| `IterationStatus`            | `schemas.ts:664`/`:618`   | unchanged; still read by `status`/`follow`       |
 | `TOOL_CONFIG_DIR`            | `config.ts:13`/`:177`     | `ACTIVE_DIR` base                                |
 
 **Type locations for the NEW symbols:**

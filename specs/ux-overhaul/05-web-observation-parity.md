@@ -133,34 +133,62 @@ sandbox, then `manager.subscribe(projectPath, listener, resolvedBacklogRoot)`
 
 **Change**: replace the `manager.subscribe(...)` source with the **file-backed** replay-then-tail,
 exactly mirroring the already-file-based `/log/stream` handler (`routes/status.ts:134`, which sends
-`readLogTail` results on connect then `watchLog`-tails). The handler resolves `BacklogPaths` for the
-project (+ optional `?backlog=` query, already parsed at `routes/loop.ts:257–262`) and then:
+`readLogTail` results on connect then `watchLog`-tails).
+
+**First resolve a full `BacklogPaths`** — note the current handler does NOT already do this: it
+resolves only a `resolvedBacklogRoot` **string** via `resolveBacklogRoot(projectPath, backlogParam)`
+(`routes/loop.ts:257–262`) and, on failure, silently leaves it undefined and proceeds against the
+default root. The file-backed primitives need a full `BacklogPaths`, so add an explicit resolution
+step and — critically — do **not** silently fall back to the default root on a `?backlog=` resolution
+failure (that would tail the *wrong* root's `events.ndjson`, re-introducing the cross-root "looking in
+the wrong place" footgun this overhaul kills, REQ-DISC-01/02):
 
 ```typescript
 // routes/loop.ts — inside streamSSE(c, async (stream) => { … }), replacing the manager.subscribe block.
-// paths: BacklogPaths resolved from projectPath (+ optional ?backlog), as the existing handler already does.
 
-import { readEvents, watchEvents } from "@rauf/core"; // 02 — file-backed primitives
+import { readEvents, watchEvents, resolveBacklogRoot, resolveBacklogPaths } from "@rauf/core"; // 02/00 — file-backed primitives + path resolution
 
-// 1. History replay (REQ-OBS-04): the CURRENT run's events.ndjson, in seq order.
-//    Missing file → ok([]) (REQ-REL-03) → empty timeline, never an error.
-const replay = readEvents(paths);
-if (replay.ok) {
-  for (const record of replay.value) {
-    if (stream.aborted || stream.closed) return;
-    await stream.writeSSE({ data: JSON.stringify(record), event: "loop_event" });
-  }
+// 0. Resolve BacklogPaths. resolveBacklogRoot handles the optional ?backlog= query.
+//    A *resolution* failure is distinct from graceful *absence*: do NOT default-root-fall-through.
+const rootResult = resolveBacklogRoot(projectPath, backlogParam);
+if (!rootResult.ok) {
+  // Surface the failure to the client rather than silently tailing the wrong root (REQ-DISC-01/02).
+  await stream.writeSSE({ data: JSON.stringify({ error: rootResult.error }), event: "loop_error" });
+  return; // teardown via the existing abort/cleanup path
 }
+const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+if (!pathsResult.ok) {
+  // Resolved a root but it has no backlog.json / is unreadable → empty, heartbeat-only stream
+  // (no crash). This is the graceful-absence case: a valid root with nothing to tail yet.
+  // Fall through with no replay and no tail; the 15s heartbeat keeps the connection alive.
+}
+const paths = pathsResult.ok ? pathsResult.value : undefined;
+// The readEvents/watchEvents calls below run only when `paths` is defined; otherwise the handler
+// emits heartbeats only. (readEvents of a resolved-but-fileless root still returns ok([]) per
+// REQ-REL-03, so once a backlog.json exists the same path streams normally.)
 
-// 2. Live tail (REQ-WEB-01): watchEvents fires with newly-appended PersistedEvents.
-//    Mirrors watchLog; returns a bare cleanup fn (02 §3.3), pushed onto `cleanups`.
-const stopTail = watchEvents(paths, (records) => {
-  if (stream.aborted || stream.closed) return;
-  for (const record of records) {
-    stream.writeSSE({ data: JSON.stringify(record), event: "loop_event" }).catch(() => {});
+// Replay + tail run only when a BacklogPaths resolved; otherwise heartbeat-only (see step 0).
+if (paths) {
+  // 1. History replay (REQ-OBS-04): the CURRENT run's events.ndjson, in seq order.
+  //    Missing file → ok([]) (REQ-REL-03) → empty timeline, never an error.
+  const replay = readEvents(paths);
+  if (replay.ok) {
+    for (const record of replay.value) {
+      if (stream.aborted || stream.closed) return;
+      await stream.writeSSE({ data: JSON.stringify(record), event: "loop_event" });
+    }
   }
-});
-cleanups.push(stopTail);
+
+  // 2. Live tail (REQ-WEB-01): watchEvents fires with newly-appended PersistedEvents.
+  //    Mirrors watchLog; returns a bare cleanup fn (02 §3.3), pushed onto `cleanups`.
+  const stopTail = watchEvents(paths, (records) => {
+    if (stream.aborted || stream.closed) return;
+    for (const record of records) {
+      stream.writeSSE({ data: JSON.stringify(record), event: "loop_event" }).catch(() => {});
+    }
+  });
+  cleanups.push(stopTail);
+}
 ```
 
 Notes:
@@ -170,8 +198,10 @@ Notes:
   `PersistedEvent` (a `LoopEvent` plus `seq` + `schemaVersion`; `00` §1.1) rather than a bare
   `LoopEvent`. The extra fields are additive and ignored by any consumer that only reads `type`.
 - **Any project, no ownership.** Because the source is the file, the handler serves a loop the server
-  never started (REQ-WEB-01 / SC-1). The `projectPath`/`?backlog` resolution and the existing
-  `validateProjectPath` sandbox guard (`routes/loop.ts:239–242`) are retained verbatim.
+  never started (REQ-WEB-01 / SC-1). The existing `validateProjectPath` sandbox guard
+  (`routes/loop.ts:239–242`) is retained verbatim; the `?backlog=` parsing is reused but the
+  resolution is now made explicit (step 0) and hardened against the silent default-root fall-through
+  the current handler does (REQ-DISC-01/02).
 - **Heartbeat + abort/cleanup retained.** The immediate heartbeat (`routes/loop.ts:254`), the 15s
   `setInterval` heartbeat (`routes/loop.ts:275–279`), the `cleanups` array, and the `abortPromise`
   teardown (`routes/loop.ts:282–285`) are unchanged; `stopTail` is just another entry in `cleanups`.

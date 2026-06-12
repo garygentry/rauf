@@ -14,7 +14,7 @@ This document covers three loci:
   (torn-line tolerant).
 - **`packages/loop/src/runner.ts` (EDIT, wire-up)** — the `persistEvent` hook inside `emitEvent()`:
   the per-run `seq` counter, `llm_token_update` coalescing, `rotateEventsLog` + `seq` reset at
-  `start()`, and the best-effort `try/catch`.
+  `start()`, and the best-effort (silent, `Result`-discarding) persistence.
 
 All shared types (`PersistedEvent` / `PersistedEventSchema`, `EVENTS_SCHEMA_VERSION`,
 `TOKEN_COALESCE_MS`, `EVENTS_LOG_FILENAME`, `IO_ERROR`, `BacklogPaths.eventsLog`) are defined in
@@ -97,7 +97,7 @@ The single most important boundary in this subsystem (tech-spec D1, architecture
 | Path sandbox validation on append         | **core**         | `appendEvent` calls `validatePath` (REQ-SEC-01). (§3.1)                   |
 | `fs.appendFileSync` of one whole line     | **core**         | All filesystem logic lives in core (rule #1). (§4.1)                      |
 | Rotation at start                         | **core**         | `rotateEventsLog`; runner only *calls* it. (§3.3)                         |
-| Best-effort `try/catch` around the write  | **runner**       | The loop must never crash on a log write (REQ-PERF-01). (§5.1)            |
+| Best-effort (silent) persistence          | **runner**       | The loop must never crash/block on a log write; `appendEvent`'s `Result` is discarded (REQ-PERF-01). (§5.1) |
 
 The runner is the **single writer per root** (REQ-EVT-06); CLI, web, and external agents are read-only
 against `events.ndjson`. This single-writer invariant is the load-bearing premise for torn-write
@@ -126,8 +126,8 @@ so a misconfigured `paths` can never escape the sandbox (REQ-SEC-01 / architectu
  * PATH_VIOLATION and writes nothing. The record is serialized to a single line
  * via appendLine (one whole-line write per event — REQ-EVT-06).
  *
- * The RUNNER is the single writer; the runner's persistEvent (§5.1) wraps this
- * call in best-effort try/catch, so a returned err is silently swallowed there.
+ * The RUNNER is the single writer; the runner's persistEvent (§5.1) discards
+ * this call's Result (best-effort), so a returned err is silently swallowed there.
  *
  * @param paths  Backlog root paths (uses paths.eventsLog, validated to paths.stateDir).
  * @param record A LoopEvent already enriched with seq + schemaVersion (PersistedEvent).
@@ -203,9 +203,17 @@ discarded").
  *
  * Path-validated to the state dir before the rename (REQ-SEC-01).
  *
+ * Rotation-failure policy (D4 — truncate-on-fail): if the archive rename fails, the
+ * function TRUNCATES events.ndjson to empty before returning err, so the new run
+ * still begins from a clean file. This preserves the per-run invariants — dense,
+ * monotonic seq from 0 and the never-contradict guarantee (§8, REQ-OBS-02) — at the
+ * cost of losing the prior run's archive (acceptable: archiving is itself best-effort,
+ * REQ-EVT-05; a lost archive is the lesser harm versus a self-contradicting log).
+ *
  * @param paths Backlog root paths (uses paths.eventsLog, paths.archive, paths.stateDir).
- * @returns ok(undefined) on success or no-op; err(IO_ERROR) on mkdir/rename failure;
- *          err(PATH_VIOLATION) if the source path escapes the sandbox.
+ * @returns ok(undefined) on success or no-op; err(IO_ERROR) on mkdir/rename failure
+ *          (file is truncated to empty in this case); err(PATH_VIOLATION) if the source
+ *          path escapes the sandbox.
  */
 export function rotateEventsLog(paths: BacklogPaths): Result<void> {
   // No-op if there is nothing to rotate (first-ever run / REQ-COMPAT-01).
@@ -223,9 +231,19 @@ export function rotateEventsLog(paths: BacklogPaths): Result<void> {
     fs.renameSync(paths.eventsLog, archivePath);
     return ok(undefined);
   } catch (e) {
+    // Archive rename failed. TRUNCATE to empty (truncate-on-fail, D4) so the new run
+    // starts from a clean file instead of appending seq:0,1,… after the prior run's
+    // seq:0,1,… — which a reader would interpret as corruption / a stale terminal
+    // event (violating the seq-monotonicity + never-contradict invariants, §8). The
+    // prior run's archive is lost; acceptable per REQ-EVT-05 (archiving is best-effort).
+    try {
+      fs.writeFileSync(paths.eventsLog, "");
+    } catch {
+      /* truncate also failed — best-effort; runner ignores the Result either way */
+    }
     return err({
       code: ErrorCodes.IO_ERROR,
-      message: `Failed to rotate events.ndjson: ${String(e)}`,
+      message: `Failed to rotate events.ndjson (archive); truncated for a fresh run: ${String(e)}`,
       details: { path: paths.eventsLog },
     });
   }
@@ -420,7 +438,8 @@ Notes:
 ## 5. Runner wire-up (`runner.ts`) — D1
 
 The runner owns the run-scoped state that core cannot hold (the `seq` counter and the coalescing
-clock) and the best-effort `try/catch`; it delegates the write to `appendEvent`.
+clock) and the best-effort, `Result`-discarding persistence posture; it delegates the write to
+`appendEvent`.
 
 ### 5.1 The `persistEvent` hook inside `emitEvent()`
 
@@ -475,11 +494,10 @@ private persistEvent(event: LoopEvent): void {
     schemaVersion: EVENTS_SCHEMA_VERSION,
   };
 
-  try {
-    appendEvent(this.paths, record); // core owns the fs write (rule #1)
-  } catch {
-    /* best-effort: REQ-PERF-01, REQ-REL-02 — status NEVER depends on the event log */
-  }
+  // best-effort: REQ-PERF-01, REQ-REL-02 — status NEVER depends on the event log.
+  // appendEvent returns Result<void> and never throws (core convention; appendLine
+  // catches fs errors, validatePath returns err), so the err is intentionally discarded.
+  void appendEvent(this.paths, record); // core owns the fs write (rule #1)
 }
 ```
 
@@ -493,9 +511,9 @@ base emitter — is where the per-run `seq`/coalescing state naturally lives. Ov
 `emit()` would force that run-scoped state down into a generic event bus.
 
 **Best-effort is fully silent (REQ-PERF-01, REQ-REL-02; tech-spec §7).** `appendEvent` returns a
-`Result` (it does not throw), so the `try/catch` is a belt-and-suspenders guard against an unexpected
-throw; the returned `err` is *also* ignored (the call's `Result` is not inspected). Either way, a
-failed log write is **never surfaced** — not to the loop, not to the user. Rationale: `state.json`
+`Result` (it does not throw — `appendLine` catches fs errors and `validatePath` returns `err`), so
+the call's `Result` is simply discarded with `void` and the returned `err` is ignored. A failed log
+write is **never surfaced** — not to the loop, not to the user. Rationale: `state.json`
 (atomic) + `rauf.log` remain authoritative for status (REQ-OBS-02), so a silently non-writing event
 log degrades observation gracefully without its own error channel; adding one would couple loop health
 to a best-effort surface. (If a future phase wants a signal, the natural place is a single `appendLog`
@@ -545,10 +563,14 @@ Ordering rationale: rotation must happen **after** `ensureStateDir` (the state d
 events.ndjson starts empty and `seq` 0 is genuinely the run's first record). The first `emitEvent`
 after this point is `loop_started` (`runner.ts:211`), which becomes `seq: 0`.
 
-`rotateEventsLog` returns a `Result`; like `persistEvent`, its result is ignored here (best-effort) —
-a rotation failure leaves the prior run's lines in `events.ndjson` and lets the new run append after
-them, which is degraded but non-fatal (a reader still gets valid records; only the per-run reset is
-imperfect). `this.eventSeq = 0` always runs regardless of the rotation outcome.
+`rotateEventsLog` returns a `Result`; like `persistEvent`, its result is ignored here (best-effort).
+On a rotation failure it follows the **truncate-on-fail** policy (§3.3, D4): it empties
+`events.ndjson` before returning `err`, so the new run still begins from a clean file. This is what
+keeps `this.eventSeq = 0` safe — the counter restart can never produce duplicate/non-monotonic `seq`
+in the file, because the prior run's lines are gone whether the archive succeeded *or* failed. The
+only loss on a failed rotation is the prior run's archive copy (acceptable per REQ-EVT-05); the
+live-readable log and the seq-monotonicity / never-contradict invariants (§8, REQ-OBS-02) are
+preserved unconditionally. `this.eventSeq = 0` always runs regardless of the rotation outcome.
 
 > **Wiring boundary.** This document owns the **event-log** half of the `start()` wiring
 > (`rotateEventsLog` + `eventSeq = 0`) and the `emitEvent`/`persistEvent` hook. The **registry** half
@@ -575,7 +597,7 @@ list in [`06-agent-commit-rule.md`](./06-agent-commit-rule.md) §3.11 (tech-spec
 | `appendLine`               | n/a (creates)         | n/a (no validation)     | `err(IO_ERROR)`         | No — swallowed by runner     |
 | `appendEvent`              | n/a (creates)         | `err(PATH_VIOLATION)`   | `err(IO_ERROR)` (via appendLine) | No — best-effort (§5.1) |
 | `readNdjson` / `readEvents`| `ok([])` (REQ-REL-03) | n/a (read of given path) | `err(IO_ERROR)`        | Reader's choice (degrade)    |
-| `rotateEventsLog`          | `ok` (no-op)          | `err(PATH_VIOLATION)`   | `err(IO_ERROR)`         | No — best-effort at start()  |
+| `rotateEventsLog`          | `ok` (no-op)          | `err(PATH_VIOLATION)`   | `err(IO_ERROR)` (file truncated to empty — truncate-on-fail, §3.3) | No — best-effort at start() |
 | `watchEvents`              | watches from 0 on appear | n/a                  | swallowed in watcher    | No (mirrors watchLog)        |
 
 - **Best-effort persistence is fully silent** (REQ-PERF-01 / tech-spec §7): the runner ignores every
@@ -703,6 +725,10 @@ These map to SC-3, SC-6, SC-7 (PRD §8) and the tech-spec §8 test plan.
       `events.ndjson` absent so the run starts fresh. (REQ-EVT-05)
 - [ ] **Rotate no-op on first run.** `rotateEventsLog` on a state dir with no `events.ndjson` returns
       `ok` and creates nothing. (REQ-EVT-05 / REQ-COMPAT-01)
+- [ ] **Rotate failure truncates (truncate-on-fail).** When the archive rename fails (e.g.
+      unwritable/absent `archive/`), `rotateEventsLog` returns `err(IO_ERROR)` **and** leaves
+      `events.ndjson` empty (0 bytes), so the next run's `seq` restarts at 0 in a clean file with no
+      stale prior-run lines. (REQ-EVT-05 / REQ-OBS-02 — preserves seq-monotonicity + never-contradict)
 - [ ] **Missing file → `ok([])`.** `readEvents` on a state dir with no `events.ndjson` returns
       `ok([])`, not an error. (REQ-REL-03 / SC-7)
 - [ ] **Sandbox enforced on append.** `appendEvent` with a `paths.eventsLog` outside `paths.stateDir`

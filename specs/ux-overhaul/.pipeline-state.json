@@ -2,9 +2,17 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-12T22:30:00Z",
+  "updatedAt": "2026-06-12T23:00:00Z",
   "currentStage": "forge-verify-specs",
   "stages": {
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-specs-2026-06-12.md",
+      "findingsCount": 14,
+      "verifiedAt": "2026-06-12T23:00:00Z",
+      "fixedAt": "2026-06-12T23:30:00Z",
+      "commitHash": "dd18ff7"
+    },
     "forge-3-specs": {
       "status": "complete",
       "version": 1,

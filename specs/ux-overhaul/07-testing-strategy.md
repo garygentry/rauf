@@ -23,6 +23,7 @@ is "all three pass."
 | REQ-REL-02/03  | `events-log.test.ts` + sandbox (status from `state.json` alone)  | SC-3, SC-7 |
 | REQ-DISC-03/04 | `loop-registry.test.ts` (register/list, concurrency)             | SC-2  |
 | REQ-DISC-05    | `loop-registry.test.ts` (stale self-heal)                        | SC-3  |
+| REQ-OBSV-01    | `loop-registry.test.ts` §2.2 (corrupt entry skipped; reconciliation outcome discoverable) | SC-2  |
 | REQ-DISC-01/02/06 | CLI tests (empty-not-silent, `status --all`)                  | SC-2  |
 | REQ-SEC-01     | `loop-registry.test.ts` / `events-log.test.ts` (sandbox reject)  | SC-3  |
 | REQ-OBS-02     | sandbox integration (events⇄state never-contradict)              | SC-6  |
