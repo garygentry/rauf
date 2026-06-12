@@ -643,7 +643,22 @@ export class LoopRunner extends TypedEventEmitter {
     switch (parsed.signal) {
       case "done": {
         this.consecutiveInfraFailures = 0;
-        updateItem(this.paths, item.id, { status: "done" });
+        // The runner's completion is authoritative once the agent signals
+        // RAUF_DONE. The item's on-disk status can be perturbed during the
+        // iteration (observed: reverted to `pending`), and `pending -> done` is
+        // not a valid direct transition — so a plain updateItem(done) would
+        // silently fail (its Result was previously ignored), leaving the item
+        // re-selectable and wedging the loop into re-running it forever. Re-assert
+        // in_progress first (valid from pending, idempotent from in_progress),
+        // then complete, and surface any residual failure instead of swallowing it.
+        updateItem(this.paths, item.id, { status: "in_progress" });
+        const doneResult = updateItem(this.paths, item.id, { status: "done" });
+        if (!doneResult.ok) {
+          appendLog(
+            this.paths,
+            `WARNING: could not mark item ${item.id} done: ${doneResult.error.message}`,
+          );
+        }
         this.completedCount++;
         this.completedItemIds.push(item.id);
         this.emitEvent("item_completed", {
