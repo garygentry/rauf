@@ -91,3 +91,21 @@
   (deregistration ran). Rebuilt dist via `pnpm --filter @rauf/loop build` before the sandbox run.
 - No test ripple this time — registry writes to ~/.rauf/active (outside the tree), so it doesn't
   dirty the working tree like events.ndjson did in item 006.
+
+## Item 008 (surface inspected dir + cross-root liveness in status.ts)
+
+- `deriveStatus` signature UNCHANGED (04 §1). Added a sibling helper
+  `surfaceInspectedStatus(paths, status): InspectedStatusContext` in status.ts —
+  callers invoke it to make a status read truthful. Returns `{ inspectedDir,
+  empty, liveElsewhere }`: `empty = status.stateSource === "none"` (reuses the
+  04 §8 discriminator, no re-derive); `liveElsewhere = listActiveLoops()` filtered
+  to OTHER stateDirs (path.resolve compare). Registry-read failure → liveElsewhere
+  = [] so the inspected dir is never suppressed (spec §10).
+- status.ts now imports `listActiveLoops` from loop-registry.js + `ActiveLoopEntry`
+  type. No cycle (loop-registry doesn't import status). Core still zero cli/web imports.
+- New test file `status-inspect.test.ts` mocks `./config.js` (vi.hoisted + temp HOME)
+  exactly like loop-registry.test.ts so listActiveLoops reads an isolated ~/.rauf/active.
+  Kept it SEPARATE from status.test.ts (which has no config mock) to avoid touching
+  the real registry there.
+- GOTCHA: a full LoopState literal needs completedItems/blockedItems/error too —
+  copy the field set from status.test.ts's makeLoopState or typecheck rejects it.

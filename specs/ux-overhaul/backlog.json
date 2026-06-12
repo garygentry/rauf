@@ -215,8 +215,8 @@
         "status tests cover empty-root-surfaces-dir, empty-with-live-elsewhere, populated-root-unchanged",
         "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:22:57.646Z",
       "dependsOn": [
         "005"
       ],
