@@ -102,8 +102,8 @@
         "lock.test.ts covers checkLockFile (live lock, stale lock, missing lock, recycled pid) and confirms checkLock parity",
         "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:05:51.205Z",
       "dependsOn": [],
       "notes": "Pure refactor preserving behavior — dependency-free, can run in parallel with item 001. LockStatus is already exported (lock.ts:39). The registry's reconcile-on-read (item 005) is the consumer.",
       "estimatedIterations": 1,

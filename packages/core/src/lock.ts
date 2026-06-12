@@ -187,22 +187,22 @@ export function releaseLock(paths: BacklogPaths): Result<void> {
 }
 
 /**
- * Check the current lock state for a backlog root.
+ * Check the current lock state given a raw lock-file path.
  *
  * Reads the lock file, checks PID liveness, and detects PID recycling.
  * Does not acquire or release the lock — purely informational.
  *
- * @param paths - BacklogPaths (uses paths.lock)
+ * @param lockPath - Absolute path to the .loop.lock file
  * @returns Lock status including stale detection
  */
-export function checkLock(paths: BacklogPaths): Result<LockStatus> {
-  if (!fileExists(paths.lock)) {
+export function checkLockFile(lockPath: string): Result<LockStatus> {
+  if (!fileExists(lockPath)) {
     return ok({ locked: false });
   }
 
   let raw: string;
   try {
-    raw = fs.readFileSync(paths.lock, "utf-8");
+    raw = fs.readFileSync(lockPath, "utf-8");
   } catch {
     return ok({ locked: true, stale: true });
   }
@@ -230,6 +230,18 @@ export function checkLock(paths: BacklogPaths): Result<LockStatus> {
   }
 
   return ok({ locked: true, pid: content.pid, startedAt: content.startedAt, stale: false });
+}
+
+/**
+ * Check the current lock state for a backlog root.
+ *
+ * Delegates to checkLockFile using paths.lock.
+ *
+ * @param paths - BacklogPaths (uses paths.lock)
+ * @returns Lock status including stale detection
+ */
+export function checkLock(paths: BacklogPaths): Result<LockStatus> {
+  return checkLockFile(paths.lock);
 }
 
 /**
