@@ -594,7 +594,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
   "variant": "backlog-json",
   "options": {
     "maxIterations": 20,
-    "model": "claude-opus-4-6"
+    "model": "opus"
   }
 }
 ```
@@ -609,7 +609,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
   "options": {
     "maxIterations": 20,
     "provider": "claude-sdk",
-    "model": "claude-opus-4-6"
+    "model": "opus"
   }
 }
 ```

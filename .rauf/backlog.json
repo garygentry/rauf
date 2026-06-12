@@ -49,8 +49,8 @@
         "The backlog `model` field accepts `opus`, `sonnet`, and `opus[1m]` (a `rauf backlog validate` run with such a value passes)",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T04:26:27.034Z",
       "notes": "1M is strictly opt-in via the `[1m]` suffix on aliases or full ids; Opus 1M has no cost premium. Authoritative source: claude --help + code.claude.com/docs/en/model-config. Source: feature-forge handoff §6.",
       "estimatedIterations": 2,
       "specReferences": [

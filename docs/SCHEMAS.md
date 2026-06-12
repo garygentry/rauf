@@ -45,7 +45,7 @@ interface BacklogItem {
   dependsOn?: string[]; // Item IDs this depends on
   notes?: string; // Free-text context, links, hints
   estimatedIterations?: number; // Expected iterations to complete
-  model?: string; // Per-item model override (e.g., "claude-opus-4-6"). Overrides CLI arg and project default.
+  model?: string; // Per-item model override. Prefer tier aliases ("opus", "sonnet"); append "[1m]" for the 1M window ("opus[1m]"). Overrides CLI arg and project default.
   agentDelegation?: AgentDelegation;
   specReferences?: string[]; // Paths to spec docs
   provider?: string; // Per-item LLM provider override
@@ -127,7 +127,7 @@ interface MarkerOptions {
   ignoreInTool: boolean; // Default: false
   gitignoreScripts: boolean; // Default: false
   maxIterations: number; // Default: 20
-  model?: string; // Project-level default model (e.g., "claude-sonnet-4-6"). Overridden by CLI --model flag and per-item BacklogItem.model.
+  model?: string; // Project-level default model (e.g., "sonnet"). Prefer tier aliases; append "[1m]" for the 1M window. Overridden by CLI --model flag and per-item BacklogItem.model.
   autoSweep?: boolean; // If true, loop runner automatically sweeps done items on startup. Default: false.
   sweepMinAgeDays?: number; // Only sweep done items older than N days. 0 = sweep all done items. Default: 0.
   sessionTimeout?: number; // Max minutes per Claude session before kill+retry. Default: 60.
@@ -336,7 +336,7 @@ Options passed to LoopRunner when starting a loop.
 interface LoopStartOptions {
   maxIterations: number; // Positive integer. Max loop iterations. See computeMaxIterations for the default derivation.
   maxRetries: number; // Positive integer. Max retries on genuine_retry before deferring the item.
-  model?: string; // Optional model override (e.g., "claude-opus-4-6"). Overridden by per-item BacklogItem.model.
+  model?: string; // Optional model override. Prefer tier aliases ("opus", "sonnet"); append "[1m]" for the 1M window ("opus[1m]"). Overridden by per-item BacklogItem.model.
   sessionTimeoutMinutes: number; // Positive integer. Max minutes per Claude session before kill+retry.
   provider?: string; // Optional LLM provider override.
   review?: boolean; // Enable post-loop review pass after all items complete.

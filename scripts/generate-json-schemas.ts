@@ -115,7 +115,8 @@ export function buildBacklogSchemaJson(schemaId: string): string {
     itemProps["estimatedIterations"].description = "Expected number of loop iterations to complete";
   }
   if (itemProps["model"]) {
-    itemProps["model"].description = "Per-item Claude model override (e.g. 'claude-opus-4-6')";
+    itemProps["model"].description =
+      "Per-item Claude model override. Prefer tier aliases ('opus', 'sonnet'); append '[1m]' for the 1M context window ('opus[1m]').";
   }
   if (itemProps["package"]) {
     itemProps["package"].description =

@@ -144,7 +144,7 @@ Start a loop for the project at `[path]` (defaults to `.`) via the server API. A
 
 - `--iterations N`: max iterations — resolution order: `--iterations` flag > `.rauf.json` `options.maxIterations` > `computeMaxIterations` from backlog (`ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20). The resolved value and its source (`flag` / `.rauf.json` / `computed`) are logged at startup.
 - `--retries N`: max retries per item (default: 3)
-- `--model <model>`: model override (e.g., `claude-opus-4-6`)
+- `--model <model>`: model override. Prefer tier aliases (`opus`, `sonnet`); append `[1m]` for the 1M context window (e.g., `opus`, `opus[1m]`). Passed verbatim to `claude --model`.
 - `--timeout N`: session timeout in minutes (default: 60)
 - `--follow`: stream SSE events inline after starting
 - `--create-branch <name>`: create and switch to `<name>` before running (so `--create-branch feat/x` takes the project off a protected branch in one step)

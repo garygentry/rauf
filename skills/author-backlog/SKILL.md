@@ -72,7 +72,7 @@ Never hard-fail just because the installed copy is missing — fall back to the 
       "dependsOn": ["000"],
       "notes": "Context, links, hints for the agent",
       "estimatedIterations": 1,
-      "model": "claude-opus-4-6",
+      "model": "opus",
       "agentDelegation": {
         "recommendedConcurrency": 3,
         "strategy": "How to parallelize",
@@ -108,7 +108,7 @@ Never hard-fail just because the installed copy is missing — fall back to the 
 - `dependsOn` — Array of item IDs that must be `done` first. **Use `dependsOn`, never `dependencies`.**
 - `notes` — Free-text hints, context, gotchas for the agent.
 - `estimatedIterations` — Expected loop cycles (default: 1).
-- `model` — Per-item model override (e.g., `"claude-opus-4-6"` for complex work, `"claude-sonnet-4-6"` for simpler, mechanical work).
+- `model` — Per-item model override. Prefer tier aliases: `"opus"` for complex work, `"sonnet"` for simpler/mechanical work, `"opus[1m]"` for items that need the 1M context window. See [`model` — Right-sizing the intelligence](#model--right-sizing-the-intelligence).
 - `agentDelegation` — Parallelization hints (`recommendedConcurrency`, `strategy`, `subtasks`).
 - `specReferences` — File paths (relative to project root) of specs the agent should read before starting.
 - `provider` — Per-item LLM provider override.
@@ -286,9 +286,11 @@ List file paths **relative to the project root** (e.g., `specs/auth/00-core-defi
 
 ### `model` — Right-sizing the intelligence
 
-- Complex architectural work, novel implementations → `"claude-opus-4-6"` (or omit for default).
-- Straightforward mechanical, well-specified tasks → `"claude-sonnet-4-6"`.
-- Simple chores, docs updates → `"claude-haiku-4-5-20251001"`.
+Prefer **tier aliases** over pinned model ids — an alias tracks the latest model in its tier, so a backlog written today doesn't pin to a model that ages out. `claude --model` accepts these aliases (and the `[1m]` suffix) verbatim, and rauf passes the `model` string straight through to it.
+
+- **Default → `"opus"`** — the latest Opus (200K context). Best for complex architectural work and novel implementations. You may also omit `model` to fall back to the loop's default.
+- **Simple / mechanical → `"sonnet"`** — well-specified, low-ambiguity tasks (small edits, mechanical refactors, docs touch-ups). Cheaper and faster than Opus.
+- **Needs the 1M window → `"opus[1m]"`** — use **only** for items that genuinely require the 1M-token context window: large-codebase reads, long multi-file refactors, or tasks that must hold many large files in context at once. The 1M window is **opt-in** — it is enabled solely by the `[1m]` suffix on the alias (or on a full model id). Standard Opus is 200K; `opus[1m]` raises it to 1M with **no cost premium** over standard Opus (note: Sonnet's 1M window, by contrast, requires extra credits — Opus 1M does not). Do **not** add `[1m]` by default — only when the work needs it.
 
 ## Common Patterns
 
