@@ -1042,6 +1042,20 @@ describe("LOG_PATTERNS", () => {
     expect(match![1]).toBe("Design review needed");
   });
 
+  it("needsHuman matches the '(set aside)' form and captures only the reason", () => {
+    const match = "Item 007 needs human input (set aside): db migration unclear".match(
+      LOG_PATTERNS.needsHuman,
+    );
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("db migration unclear");
+  });
+
+  it("needsHuman still matches the legacy form without '(set aside)'", () => {
+    const match = "Item 007 needs human input: db migration unclear".match(LOG_PATTERNS.needsHuman);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe("db migration unclear");
+  });
+
   it("complete matches loop completed format", () => {
     const match = "Loop completed".match(LOG_PATTERNS.complete);
     expect(match).not.toBeNull();

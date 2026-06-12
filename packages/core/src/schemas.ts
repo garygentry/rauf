@@ -330,7 +330,7 @@ export const LOG_PATTERNS = {
   iteration: /--- Iteration (\d+) \/ (\d+) ---/,
   done: /Item \S+ completed: .+/,
   blocked: /Item \S+ blocked: (.+)/,
-  needsHuman: /Item \S+ needs human input: (.+)/,
+  needsHuman: /Item \S+ needs human input(?: \(set aside\))?: (.+)/,
   complete: /Loop completed/,
   limitReached: /Max iterations reached \((\d+)\)/,
   timestamp: /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/,

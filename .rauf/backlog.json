@@ -52,8 +52,12 @@
       "status": "pending",
       "completedAt": null,
       "notes": "1M is strictly opt-in via the `[1m]` suffix on aliases or full ids; Opus 1M has no cost premium. Authoritative source: claude --help + code.claude.com/docs/en/model-config. Source: feature-forge handoff §6.",
-      "specReferences": ["docs/SPEC-CLI.md", "docs/SPEC-BACKLOG-TOOL-CONTRACT.md", "schemas/backlog.schema.json"],
-      "estimatedIterations": 2
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md",
+        "docs/SPEC-BACKLOG-TOOL-CONTRACT.md",
+        "schemas/backlog.schema.json"
+      ]
     },
     {
       "id": "004",
@@ -121,8 +125,12 @@
       "status": "pending",
       "completedAt": null,
       "notes": "Pure docs. These surfaces already exist; this makes them a contract feature-forge can rely on. Source: feature-forge handoff §1, §2, §5-docs.",
-      "specReferences": ["docs/SPEC-BACKLOG-TOOL-CONTRACT.md", "docs/SCHEMAS.md", "docs/SPEC-CLI.md"],
-      "estimatedIterations": 1
+      "estimatedIterations": 1,
+      "specReferences": [
+        "docs/SPEC-BACKLOG-TOOL-CONTRACT.md",
+        "docs/SCHEMAS.md",
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "008",
@@ -140,8 +148,10 @@
       "status": "pending",
       "completedAt": null,
       "notes": "Template = haltForUsageLimit (runner.ts:1186-1196). paused_human already in the state enum (schemas.ts:165) and maps to status exit 2. Document loop_paused/flag/exit-code in item 010. Source: feature-forge handoff §3.",
-      "specReferences": ["docs/SPEC-CLI.md"],
-      "estimatedIterations": 2
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "009",
@@ -158,10 +168,14 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["008"],
+      "dependsOn": [
+        "008"
+      ],
       "notes": "Answer-persistence semantics: clear-on-done (not a history field). resume is generic over RESUMABLE_RAW_STATUSES; --answer mutation happens before reconcile/recover. Source: feature-forge handoff §3.",
-      "specReferences": ["docs/SPEC-CLI.md"],
-      "estimatedIterations": 2
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
     },
     {
       "id": "010",
@@ -177,10 +191,17 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["007", "008", "009"],
+      "dependsOn": [
+        "007",
+        "008",
+        "009"
+      ],
       "notes": "Closes the loop: e2e proof + the contract/CLI docs for the feature. Source: feature-forge handoff §3.",
-      "specReferences": ["test-sandbox/README.md", "docs/SPEC-CLI.md"],
-      "estimatedIterations": 2
+      "estimatedIterations": 2,
+      "specReferences": [
+        "test-sandbox/README.md",
+        "docs/SPEC-CLI.md"
+      ]
     }
   ]
 }
