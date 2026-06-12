@@ -121,12 +121,26 @@ Error generating stack: \`+o.message+\`
 `,
   ],
   [
+    "favicon.svg",
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#6366f1" />
+  <g fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round">
+    <path d="M9 11a9 9 0 0 1 14.5-1.5" />
+    <path d="M23 21a9 9 0 0 1-14.5 1.5" />
+  </g>
+  <path d="M22 6.5l2.5 3.5-4.2.4z" fill="#fff" />
+  <path d="M10 25.5l-2.5-3.5 4.2-.4z" fill="#fff" />
+</svg>
+`,
+  ],
+  [
     "index.html",
     `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Rauf Manager</title>
     <script type="module" crossorigin src="/assets/index-DZTfmi6d.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-D7oJlLLG.css">

@@ -6,6 +6,7 @@ import ports from "../../config/ports.json";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   root: ".",
+  publicDir: "public",
   build: {
     outDir: "build",
     emptyOutDir: true,
