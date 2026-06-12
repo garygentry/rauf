@@ -39,7 +39,7 @@ If any command is not configured (empty), skip it.
 4. Read \`progress.md\` for context from previous iterations
 5. Implement the task
 6. Run verification: \`{{verifyCommand}}\`
-7. Commit with: \`[rauf] <id>: <title>\`
+7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as \`[rauf] <id>: <title>\` after you signal \`RAUF_DONE\`).
 8. Output your exit signal:
    - \`RAUF_DONE\` — all criteria met, verification passes
    - \`RAUF_BLOCKED:<reason>\` — cannot proceed, explain why
@@ -61,6 +61,7 @@ Items may also include a \`specReferences\` field listing paths to specification
 ## Important Rules
 
 - Work on ONE item only — the current \`in_progress\` item
+- Do NOT run \`git commit\` or \`git add\` — the iteration agent never commits or stages; the loop runner owns the commit. Committing yourself causes a duplicate commit and triggers per-iteration commit hooks.
 - Do NOT modify \`backlog.json\` — the loop runner manages status
 - Do NOT modify \`state.json\` — the loop runner manages state
 - DO read \`progress.md\` for accumulated learnings
@@ -361,7 +362,7 @@ When running as a rauf loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
 8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
 9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
-10. Commit your changes with message: \`[rauf] <item-id>: <title>\`
+10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
@@ -420,7 +421,7 @@ When running as a rauf loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
 8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
 9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
-10. Commit your changes with message: \`[rauf] <item-id>: <title>\`
+10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items

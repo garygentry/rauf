@@ -375,8 +375,8 @@
         "a doc/template grep guard asserts the canonical phrasing present and the wrong phrasing absent across loci",
         "pnpm test && pnpm typecheck && pnpm build passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T23:50:28.696Z",
       "dependsOn": [],
       "notes": "Dependency-free — can run in parallel with the core stream. CRITICAL: embedded-artifacts.ts carries the bug and is the INSTALLED source; it MUST be regenerated via the build, never hand-edited. The AGENT_ADDON rename stays with the Phase-3 provider refactor — do NOT rename here.",
       "estimatedIterations": 1,

@@ -197,3 +197,22 @@
   `reader.cancel()` (triggers handler onAbort → cleanup). Seed events.ndjson directly as
   JSON lines; live registry entries via registerLoop + a `.loop.lock` with our pid +
   `processStartTime:null`.
+
+## Item 013 (fix agent commit rule + regenerate embedded copy)
+
+- Edited 5 hand-authored source loci to the canonical clause
+  "the iteration agent never commits or stages; the loop runner owns the commit":
+  (1) artifacts/variants/backlog-json/CLAUDE_ADDON.md — step 10 replaced;
+  (2) artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl — step 10 replaced;
+  (3) artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl — step 7 replaced (3a) AND
+      a no-commit bullet added to Important Rules (3b);
+  (4) docs/SPEC-ARTIFACTS.md — both documentation copies updated (lines ~236 and ~330);
+  (5) packages/loop/src/prompt-builder.ts — canonical clause appended to Section 6
+      IMPORTANT block.
+- Ran `pnpm --filter @rauf/core build` to REGENERATE embedded-artifacts.ts (never hand-edited).
+  Generator re-reads the templates; the 3 stale occurrences in embedded-artifacts.ts are gone.
+- Added scripts/check-agent-commit-rule.sh: a CI-able grep guard (V1–V4) asserting stale
+  phrasing absent and canonical clause present in all 6 loci.
+- GOTCHA: SPEC-ARTIFACTS.md's CLAUDE_GREENFIELD.md.tmpl copy reads "...same content as
+  CLAUDE_ADDON.md..." (abbreviated) at line ~289 — no separate edit needed for that locus.
+- All greps pass; pnpm test && pnpm typecheck && pnpm build all green.

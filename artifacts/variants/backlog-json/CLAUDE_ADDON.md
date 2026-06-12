@@ -18,7 +18,7 @@ When running as a rauf loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
 8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
-10. Commit your changes with message: `[rauf] <item-id>: <title>`
+10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
