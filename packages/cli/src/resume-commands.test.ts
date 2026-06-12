@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 
 import { resolveBacklogPaths } from "@rauf/core";
 
-import { handleResume } from "./resume-commands.js";
+import { handleResume, parseAnswerFlags } from "./resume-commands.js";
 import { detectInterruptedItems } from "./recovery.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -391,5 +391,74 @@ describe("handleResume — interrupted iterations", () => {
     expect(fs.existsSync(path.join(projectDir, "work.txt"))).toBe(true);
     expect(raufCommitSubjects(projectDir, "001")).toBe("");
     expect(calls).toHaveLength(0);
+  });
+});
+
+// ─── --answer parsing ──────────────────────────────────────────────
+
+describe("parseAnswerFlags", () => {
+  it("parses a single --answer <id> <text> pair", () => {
+    const argv = ["resume", ".", "--answer", "003", "use schema v5"];
+    expect(parseAnswerFlags(argv)).toEqual([{ itemId: "003", text: "use schema v5" }]);
+  });
+
+  it("parses multiple repeated --answer pairs in order", () => {
+    const argv = ["resume", "--answer", "003", "answer A", "--answer", "004", "answer B"];
+    expect(parseAnswerFlags(argv)).toEqual([
+      { itemId: "003", text: "answer A" },
+      { itemId: "004", text: "answer B" },
+    ]);
+  });
+
+  it("skips a malformed --answer with a missing item ID or text", () => {
+    expect(parseAnswerFlags(["resume", "--answer"])).toEqual([]);
+    expect(parseAnswerFlags(["resume", "--answer", "003"])).toEqual([]);
+    expect(parseAnswerFlags(["resume", "--answer", "--force", "x"])).toEqual([]);
+  });
+
+  it("returns an empty array when no --answer is present", () => {
+    expect(parseAnswerFlags(["resume", ".", "--force"])).toEqual([]);
+  });
+});
+
+// ─── resume --answer mutation ──────────────────────────────────────
+
+/** Read full item records (incl. humanAnswer / needsHuman) from a project. */
+function readFullItems(
+  projectDir: string,
+): Record<string, { status: string; humanAnswer?: string; needsHuman?: boolean }> {
+  const raw = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+  const parsed = JSON.parse(raw) as {
+    items: { id: string; status: string; humanAnswer?: string; needsHuman?: boolean }[];
+  };
+  const map: Record<string, { status: string; humanAnswer?: string; needsHuman?: boolean }> = {};
+  for (const i of parsed.items)
+    map[i.id] = { status: i.status, humanAnswer: i.humanAnswer, needsHuman: i.needsHuman };
+  return map;
+}
+
+describe("handleResume — --answer injection", () => {
+  it("re-queues a paused-human item to pending with humanAnswer set and needsHuman cleared", async () => {
+    const projectDir = createProject([
+      item("003", "blocked", { needsHuman: true, blockedReason: "schema version unclear" }),
+    ]);
+    writeState(projectDir, "paused_human");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(
+      makeCtx({
+        args: [projectDir],
+        rawArgv: ["resume", projectDir, "--answer", "003", "use schema v5"],
+      }),
+      { runLoop },
+    );
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const items = readFullItems(projectDir);
+    expect(items["003"]?.status).toBe("pending");
+    expect(items["003"]?.humanAnswer).toBe("use schema v5");
+    expect(items["003"]?.needsHuman).toBe(false);
+    // A pending item remains → the loop relaunches.
+    expect(calls).toHaveLength(1);
   });
 });

@@ -166,8 +166,8 @@
         "Unit tests cover --answer parsing, the item mutation, the prompt section, and auto-clear",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T04:21:11.777Z",
       "dependsOn": [
         "008"
       ],

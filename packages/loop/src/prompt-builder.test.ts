@@ -647,6 +647,65 @@ describe("buildPrompt", () => {
     });
   });
 
+  describe("Human's Answer section", () => {
+    it("includes the section with the answer text when item.humanAnswer is set", () => {
+      setupProject(tmpDir, { raufMd: "instructions" });
+      const item = makeItem({ humanAnswer: "use schema v5" });
+
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog([item]),
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toContain("## Human's Answer to Your Previous Question");
+        expect(result.value).toContain("use schema v5");
+      }
+    });
+
+    it("omits the section when item.humanAnswer is not set", () => {
+      setupProject(tmpDir, { raufMd: "instructions" });
+      const item = makeItem();
+
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog([item]),
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).not.toContain("## Human's Answer to Your Previous Question");
+      }
+    });
+
+    it("positions the answer section after the task and before the backlog summary", () => {
+      setupProject(tmpDir, { raufMd: "instructions" });
+      const item = makeItem({ humanAnswer: "answer-token-xyz" });
+
+      const result = buildPrompt(
+        testPaths(tmpDir),
+        testInstructionPaths(tmpDir),
+        item,
+        makeBacklog([item]),
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const taskIdx = result.value.indexOf("## Your Current Task");
+        const answerIdx = result.value.indexOf("## Human's Answer to Your Previous Question");
+        const summaryIdx = result.value.indexOf("### Backlog Summary");
+        expect(taskIdx).toBeGreaterThanOrEqual(0);
+        expect(answerIdx).toBeGreaterThan(taskIdx);
+        expect(summaryIdx).toBeGreaterThan(answerIdx);
+      }
+    });
+  });
+
   describe("edge cases", () => {
     it("handles empty backlog items array", () => {
       setupProject(tmpDir, { raufMd: "instructions" });

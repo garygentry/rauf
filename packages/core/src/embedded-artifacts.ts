@@ -239,6 +239,9 @@ RAUF_DONE
           "deferred": {
             "type": "boolean"
           },
+          "humanAnswer": {
+            "type": "string"
+          },
           "dependsOn": {
             "type": "array",
             "items": {

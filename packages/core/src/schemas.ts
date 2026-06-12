@@ -55,6 +55,14 @@ export const BacklogItemSchema = z.object({
    * — which `rauf reset`/`resume` requeue to pending — from a genuine block.
    */
   deferred: z.boolean().optional(),
+  /**
+   * A human's answer to a question this item raised (RAUF_NEEDS_HUMAN),
+   * injected by `rauf resume --answer <id> "<text>"`. When set, the loop
+   * threads it into the next iteration's prompt as a "Human's Answer"
+   * section. Cleared automatically when the item completes so a later
+   * unrelated retry never re-injects a stale answer.
+   */
+  humanAnswer: z.string().optional(),
   dependsOn: z.array(z.string()).optional(),
   notes: z.string().optional(),
   estimatedIterations: z.number().int().positive().optional(),

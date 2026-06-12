@@ -21,6 +21,7 @@ import {
   resolveBacklogRoot,
   resolveBacklogPaths,
   readBacklog,
+  updateItem,
   readJsonFile,
   readMarkerFile,
   detectProfile,
@@ -47,6 +48,35 @@ import {
   type VerifyRunner,
 } from "./recovery.js";
 import { handleLoopRun } from "./loop-commands.js";
+
+// ─── --answer parsing ────────────────────────────────────────────
+
+/** A human's answer to inject into a paused item, from `--answer <id> "<text>"`. */
+export interface AnswerInjection {
+  itemId: string;
+  text: string;
+}
+
+/**
+ * Parse repeatable `--answer <itemId> "<text>"` pairs from the raw argv. Each
+ * occurrence consumes the next two tokens (the item ID, then the free-text
+ * answer). The standard Map-based flag parser only stores a single value per
+ * flag and can't represent a two-value repeatable flag, so we read the raw argv
+ * directly. Malformed occurrences (missing ID/text, or an ID that looks like a
+ * flag) are skipped.
+ */
+export function parseAnswerFlags(argv: string[]): AnswerInjection[] {
+  const answers: AnswerInjection[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== "--answer") continue;
+    const itemId = argv[i + 1];
+    const text = argv[i + 2];
+    if (itemId === undefined || itemId.startsWith("-") || text === undefined) continue;
+    answers.push({ itemId, text });
+    i += 2;
+  }
+  return answers;
+}
 
 // ─── Verify-command resolution ───────────────────────────────────
 
@@ -128,6 +158,7 @@ async function runRecoverInterrupted(
  */
 const RESUMABLE_RAW_STATUSES = new Set<LoopState["status"]>([
   "paused_usage_limit",
+  "paused_human",
   "limit_reached",
   "error",
   "paused",
@@ -246,6 +277,31 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   let relaunch = false;
   let exitCode: number = ExitCode.SUCCESS;
   try {
+    // 1c. Inject any `--answer <id> "<text>"` answers BEFORE detection/recovery.
+    // Each pair re-queues its paused item to pending with the answer attached
+    // and the needs-human/block state cleared, so it is counted as non-done and
+    // picked up by the relaunched loop, which threads the answer into the prompt.
+    const answers = parseAnswerFlags(ctx.rawArgv);
+    let answerFailed = false;
+    for (const { itemId, text } of answers) {
+      const result = updateItem(paths, itemId, {
+        humanAnswer: text,
+        status: "pending",
+        needsHuman: false,
+        blockedReason: null,
+      });
+      if (!result.ok) {
+        error(`Could not inject answer into item ${itemId}: ${result.error.message}`);
+        answerFailed = true;
+      } else {
+        info(`Injected answer into item ${c.cyan(itemId)} — re-queued to pending.`);
+      }
+    }
+    if (answerFailed) {
+      exitCode = ExitCode.ERROR;
+      return exitCode;
+    }
+
     // 2. Detect a resumable state.
     const detection = detectResumeState(paths, acquired.value.cleared);
 

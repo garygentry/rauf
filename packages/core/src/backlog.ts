@@ -42,9 +42,12 @@ export interface UpdateItemInput {
   description?: string;
   acceptanceCriteria?: string[];
   status?: BacklogItemStatus;
-  blockedReason?: string;
+  /** Set a block reason, or pass `null` to clear it. */
+  blockedReason?: string | null;
   needsHuman?: boolean;
   deferred?: boolean;
+  /** A human's answer to inject into the item (see BacklogItem.humanAnswer). */
+  humanAnswer?: string;
   dependsOn?: string[];
   notes?: string;
   estimatedIterations?: number;
@@ -227,9 +230,14 @@ export function updateItem(
   if (updates.acceptanceCriteria !== undefined)
     updatedItem.acceptanceCriteria = updates.acceptanceCriteria;
   if (updates.status !== undefined) updatedItem.status = updates.status;
-  if (updates.blockedReason !== undefined) updatedItem.blockedReason = updates.blockedReason;
+  if (updates.blockedReason === null) {
+    delete updatedItem.blockedReason;
+  } else if (updates.blockedReason !== undefined) {
+    updatedItem.blockedReason = updates.blockedReason;
+  }
   if (updates.needsHuman !== undefined) updatedItem.needsHuman = updates.needsHuman;
   if (updates.deferred !== undefined) updatedItem.deferred = updates.deferred;
+  if (updates.humanAnswer !== undefined) updatedItem.humanAnswer = updates.humanAnswer;
   if (updates.dependsOn !== undefined) updatedItem.dependsOn = updates.dependsOn;
   if (updates.notes !== undefined) updatedItem.notes = updates.notes;
   if (updates.estimatedIterations !== undefined)
@@ -237,10 +245,13 @@ export function updateItem(
   if (updates.agentDelegation !== undefined) updatedItem.agentDelegation = updates.agentDelegation;
   if (updates.specReferences !== undefined) updatedItem.specReferences = updates.specReferences;
 
-  // 5. Auto-set completedAt on done; clear the needs-human flag once resolved
+  // 5. Auto-set completedAt on done; clear the needs-human flag once resolved.
+  // Also clear any injected humanAnswer so a later unrelated retry of a reused
+  // item ID never re-injects a stale answer into the prompt.
   if (updates.status === "done") {
     updatedItem.completedAt = new Date().toISOString();
     delete updatedItem.needsHuman;
+    delete updatedItem.humanAnswer;
   }
   // Clear the runner-deferred flag once the item leaves the deferred-blocked
   // limbo (promoted to done, or requeued to pending by reset/resume/unblock).
