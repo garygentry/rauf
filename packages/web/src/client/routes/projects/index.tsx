@@ -24,6 +24,20 @@ function getStackLabel(stack: string): string {
   return STACK_LABELS[stack] ?? stack.slice(0, 3).toUpperCase();
 }
 
+// ─── Root-directory error detection ───────────────────────────────
+//
+// discoverProjects (packages/core/src/discovery.ts) returns a clear
+// message when the configured rootDirectory is missing or not a
+// directory. raufFetchJson preserves the server error message on the
+// thrown Error, so we detect that case here and extract the path to
+// render a targeted Settings prompt instead of the generic box.
+
+function parseRootDirError(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const match = error.message.match(/^Root directory (?:does not exist|is not a directory): (.+)$/);
+  return match ? match[1]! : null;
+}
+
 interface StateBadgeConfig {
   label: string;
   bgColor: string;
@@ -340,24 +354,58 @@ export function ProjectsDashboard() {
       {isLoading && <LoadingSkeleton />}
 
       {/* ── Error ──────────────────────────────────────────── */}
-      {isError && (
-        <div
-          className="rounded-lg border p-4"
-          style={{
-            borderColor: "rgba(220, 38, 38, 0.3)",
-            backgroundColor: "rgba(220, 38, 38, 0.05)",
-            color: "#dc2626",
-          }}
-        >
-          <p className="text-sm font-medium">Failed to load projects</p>
-          <p className="mt-1 text-xs" style={{ opacity: 0.8 }}>
-            {error instanceof Error ? error.message : "Unknown error"}
-          </p>
-          <button onClick={handleRefresh} className="mt-2 text-xs font-medium underline">
-            Try again
-          </button>
-        </div>
-      )}
+      {isError &&
+        (() => {
+          const badRoot = parseRootDirError(error);
+          if (badRoot !== null) {
+            return (
+              <div
+                className="rounded-lg border p-4"
+                style={{
+                  borderColor: "rgba(202, 138, 4, 0.4)",
+                  backgroundColor: "rgba(202, 138, 4, 0.06)",
+                  color: "#ca8a04",
+                }}
+              >
+                <p className="text-sm font-medium">Root directory not found</p>
+                <p className="mt-1 text-xs" style={{ opacity: 0.85 }}>
+                  The configured root directory <code className="font-mono">{badRoot}</code> does
+                  not exist — set it in{" "}
+                  <Link to="/settings" className="font-medium underline">
+                    Settings
+                  </Link>
+                  .
+                </p>
+                <div className="mt-2 flex items-center gap-3">
+                  <Link to="/settings" className="text-xs font-medium underline">
+                    Go to Settings
+                  </Link>
+                  <button onClick={handleRefresh} className="text-xs font-medium underline">
+                    Try again
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div
+              className="rounded-lg border p-4"
+              style={{
+                borderColor: "rgba(220, 38, 38, 0.3)",
+                backgroundColor: "rgba(220, 38, 38, 0.05)",
+                color: "#dc2626",
+              }}
+            >
+              <p className="text-sm font-medium">Failed to load projects</p>
+              <p className="mt-1 text-xs" style={{ opacity: 0.8 }}>
+                {error instanceof Error ? error.message : "Unknown error"}
+              </p>
+              <button onClick={handleRefresh} className="mt-2 text-xs font-medium underline">
+                Try again
+              </button>
+            </div>
+          );
+        })()}
 
       {/* ── Empty state ────────────────────────────────────── */}
       {!isLoading && !isError && projects.length === 0 && ignored.length === 0 && <EmptyState />}

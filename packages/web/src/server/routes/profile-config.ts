@@ -13,6 +13,9 @@
 // Profile mutations (PUT, POST) require X-Rauf-Request: true
 // (enforced by app-level CSRF middleware).
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+
 import { Hono } from "hono";
 
 import {
@@ -251,6 +254,48 @@ export function createConfigRouter(): Hono {
     }
 
     return c.json({ data: parseResult.data });
+  });
+
+  return router;
+}
+
+// ─── createSettingsRouter ────────────────────────────────────────
+//
+// Returns a Hono router for /api/settings routes. Currently exposes
+// a single read-only path-validation endpoint used by the Settings
+// page to warn before saving a nonexistent rootDirectory.
+
+export function createSettingsRouter(): Hono {
+  const router = new Hono();
+
+  // ── GET /validate-root?path=... ───────────────────────────────
+  //
+  // Read-only existence check for a candidate rootDirectory. Stats
+  // the path (never writes) and reports whether it exists and is a
+  // directory. The input must be a non-empty absolute path.
+
+  router.get("/validate-root", (c) => {
+    const rawPath = c.req.query("path");
+    if (!rawPath || rawPath.trim() === "") {
+      return c.json(errorResponse("INVALID_INPUT", "path query parameter is required"), 400);
+    }
+    if (!path.isAbsolute(rawPath)) {
+      return c.json(errorResponse("INVALID_INPUT", "path must be an absolute path"), 400);
+    }
+
+    const resolved = path.resolve(rawPath);
+
+    let exists = false;
+    let isDirectory = false;
+    try {
+      const stat = fs.statSync(resolved);
+      exists = true;
+      isDirectory = stat.isDirectory();
+    } catch {
+      exists = false;
+    }
+
+    return c.json({ data: { exists, isDirectory, resolvedPath: resolved } });
   });
 
   return router;

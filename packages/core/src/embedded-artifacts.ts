@@ -260,7 +260,7 @@ RAUF_DONE
           },
           "model": {
             "type": "string",
-            "description": "Per-item Claude model override (e.g. 'claude-opus-4-6')"
+            "description": "Per-item Claude model override. Prefer tier aliases ('opus', 'sonnet'); append '[1m]' for the 1M context window ('opus[1m]')."
           },
           "agentDelegation": {
             "type": "object",

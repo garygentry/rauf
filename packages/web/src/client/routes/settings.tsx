@@ -40,6 +40,27 @@ export function GlobalSettings() {
     }
   }, [config]);
 
+  // ── Root-directory existence validation ──────────────────────
+  //
+  // Debounce the entered path, then ask the read-only
+  // /api/settings/validate-root endpoint whether it exists. Used to
+  // warn (and block save) before persisting a nonexistent root.
+
+  const [debouncedRootDir, setDebouncedRootDir] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedRootDir(rootDir), 400);
+    return () => clearTimeout(timer);
+  }, [rootDir]);
+
+  const rootValidation = useQuery({
+    queryKey: ["validate-root", debouncedRootDir],
+    queryFn: () =>
+      raufFetchJson<{ exists: boolean; isDirectory: boolean; resolvedPath: string }>(
+        `/api/settings/validate-root?path=${encodeURIComponent(debouncedRootDir)}`,
+      ),
+    enabled: debouncedRootDir.trim().length > 0,
+  });
+
   const configMutation = useMutation({
     mutationFn: (updated: ToolConfig) =>
       raufFetchJson<ToolConfig>("/api/config", {
@@ -57,6 +78,10 @@ export function GlobalSettings() {
 
   function handleSaveRootDir() {
     if (!config || rootDir === config.rootDirectory) return;
+    // Block saving a path the validation endpoint reports as missing
+    // or non-directory (covers the Enter-key path past the disabled button).
+    const check = debouncedRootDir === rootDir ? rootValidation.data : undefined;
+    if (check !== undefined && (!check.exists || !check.isDirectory)) return;
     configMutation.mutate({ ...config, rootDirectory: rootDir, theme });
   }
 
@@ -117,6 +142,14 @@ export function GlobalSettings() {
   const rootDirChanged = rootDir !== config.rootDirectory;
   const portChanged = port !== config.port;
 
+  // Only trust the validation result once the debounced value has
+  // caught up with the current input (avoids flashing stale results).
+  const rootInSync = debouncedRootDir === rootDir;
+  const rootCheck = rootInSync ? rootValidation.data : undefined;
+  const rootMissing = rootCheck !== undefined && !rootCheck.exists;
+  const rootNotDir = rootCheck !== undefined && rootCheck.exists && !rootCheck.isDirectory;
+  const rootInvalid = rootMissing || rootNotDir;
+
   return (
     <div className="mx-auto max-w-2xl p-6">
       <h1 className="mb-1 text-2xl font-semibold" style={{ color: "var(--color-text)" }}>
@@ -170,7 +203,11 @@ export function GlobalSettings() {
               }}
               className="flex-1 rounded-md border px-3 py-2 font-mono text-sm"
               style={{
-                borderColor: rootDirChanged ? "var(--color-accent)" : "var(--color-border)",
+                borderColor: rootInvalid
+                  ? "#dc2626"
+                  : rootDirChanged
+                    ? "var(--color-accent)"
+                    : "var(--color-border)",
                 backgroundColor: "var(--color-surface)",
                 color: "var(--color-text)",
                 outline: "none",
@@ -179,17 +216,25 @@ export function GlobalSettings() {
             />
             <button
               onClick={handleSaveRootDir}
-              disabled={!rootDirChanged || configMutation.isPending}
+              disabled={!rootDirChanged || configMutation.isPending || rootInvalid}
               className="rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               style={{
-                backgroundColor: rootDirChanged ? "var(--color-accent)" : "transparent",
-                color: rootDirChanged ? "#fff" : "var(--color-text-muted)",
-                border: rootDirChanged ? "none" : "1px solid var(--color-border)",
+                backgroundColor:
+                  rootDirChanged && !rootInvalid ? "var(--color-accent)" : "transparent",
+                color: rootDirChanged && !rootInvalid ? "#fff" : "var(--color-text-muted)",
+                border: rootDirChanged && !rootInvalid ? "none" : "1px solid var(--color-border)",
               }}
             >
               {configMutation.isPending ? "Saving…" : "Save"}
             </button>
           </div>
+          {rootInvalid && (
+            <p className="mt-2 text-xs font-medium" style={{ color: "#dc2626" }}>
+              {rootMissing
+                ? `Directory does not exist: ${rootDir} — saving is disabled until it exists.`
+                : `Path is not a directory: ${rootDir} — saving is disabled.`}
+            </p>
+          )}
         </SettingsSection>
 
         {/* ── Theme ──────────────────────────────────────────── */}

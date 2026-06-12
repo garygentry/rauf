@@ -71,8 +71,8 @@
         "Any new endpoint is read-only and validates/sandboxes its input",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T04:35:52.071Z",
       "notes": "The local ~/.rauf/config.json value itself is fixed manually outside this item; this is the in-product guard so future bad-root cases are clear.",
       "estimatedIterations": 2
     },
