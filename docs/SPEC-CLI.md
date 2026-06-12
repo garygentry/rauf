@@ -119,14 +119,15 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ## Exit Codes
 
-| Code | Meaning                                           |
-| ---- | ------------------------------------------------- |
-| 0    | Success                                           |
-| 1    | General error                                     |
-| 2    | Invalid arguments                                 |
-| 3    | Project not found or not rauf-enabled             |
-| 4    | Validation error (malformed files)                |
-| 5    | Conflict (loop running, cannot perform operation) |
+| Code | Meaning                                                                             |
+| ---- | ----------------------------------------------------------------------------------- |
+| 0    | Success                                                                             |
+| 1    | General error                                                                       |
+| 2    | Invalid arguments                                                                   |
+| 3    | Project not found or not rauf-enabled                                               |
+| 4    | Validation error (malformed files)                                                  |
+| 5    | Conflict (loop running, cannot perform operation)                                   |
+| 6    | Paused for human input (`loop run --pause-on-needs-human` halted in `paused_human`) |
 
 ---
 
@@ -186,6 +187,7 @@ Run the loop directly in-process without the server. The **unattended-safe mode*
 - `--create-branch <name>`: create and switch to `<name>` before running precondition checks (so `--create-branch feat/x` takes the project off a protected branch in one step)
 - `--seed-backlog`: if the working tree's only uncommitted change is `backlog.json` (plus `.rauf/` bookkeeping), stage and commit it as `[rauf] backlog: seed <project>` before running. Refuses with exit code 5 if other files are also dirty (lists them). Runs after any `--create-branch` switch so the seed lands on the new branch.
 - `--ndjson`: emit one JSON object per line to stdout for every `LoopEvent` (NDJSON stream), then a trailing JSON line for the final `LoopResult`. Suppresses the human-readable renderer and the status line — stdout is a clean NDJSON stream. Implies `--no-color`. This is a **machine-observation surface** with a versioned compatibility promise — see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the event vocabulary, payloads, and the `review`→`done` / circuit-breaker→`loop_error` gotchas.
+- `--pause-on-needs-human`: opt-in halt mode for **live supervision**. When an item emits `RAUF_NEEDS_HUMAN`, the runner sets it aside (as today: status `blocked` + `needsHuman`) **and then halts** the loop in the resumable `paused_human` state instead of continuing to other items. At the halt it emits the `needs_human` event followed by a `loop_paused` event (`{ reason: "needs_human", itemId }`), writes a `paused_human` DONE marker, and `loop run` exits with the distinct code **6** (`PAUSED_HUMAN`). Default (flag absent) is unchanged — the item is set aside and the loop keeps running other runnable items. Resolve the question with `rauf resume --answer <id> "<text>"` (below). Intended companion to `--ndjson` for a supervising session — see the supervisor pattern in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7.1](./SPEC-BACKLOG-TOOL-CONTRACT.md#a71-ndjson-event-stream--rauf-loop-run--ndjson).
 - `--force`: skip precondition checks (protected-branch and dirty-tree guards). Use with caution.
 - `--help` / `-h`: print the flag list and exit **without** starting the loop or touching any state. `--help`/`-h` is intercepted before any side-effecting action — a help probe never starts a loop.
 - Events are printed directly to the terminal with colors and Unicode icons
@@ -505,10 +507,12 @@ Detect an interrupted loop and continue it from where it stopped.
 
 - `[path]`: project path (default: `.`)
 - Refuses with exit code 5 if a live loop holds the lock
+- `--answer <id> "<text>"`: inject a human's answer into a paused item and resume it. Repeatable (pass `--answer` multiple times). Each pair re-queues item `<id>` to `pending` with `humanAnswer` set and the `needsHuman`/`blockedReason` state cleared, so the relaunched loop picks it up and threads the answer into its next prompt as a `## Human's Answer to Your Previous Question` section (positioned after the task, before the backlog summary). The answer is **auto-cleared when the item completes**, so a later unrelated retry never re-injects a stale answer. This is the resolve step for an item paused by `loop run --pause-on-needs-human`.
 - `--recover`: when a dirty working tree with an uncommitted `in_progress` item is detected (i.e. the loop was killed after verify but before the git commit), re-run the project's verify command and — on success — commit the work as `[rauf] <id>: <title>` before relaunching. Without `--recover`, interrupted items are surfaced and `resume` exits, pointing to `rauf resume --recover` to auto-repair.
 
 **Resumable states detected:**
 
+- `paused_human` — loop halted on a needs-human item via `loop run --pause-on-needs-human` (resolve with `--answer`)
 - `paused_usage_limit` — loop halted cleanly at a usage limit with `sleepOnLimit=false`
 - `limit_reached` — iteration budget exhausted but non-done items remain
 - `error` — circuit breaker or unexpected termination
@@ -527,6 +531,8 @@ Detect an interrupted loop and continue it from where it stopped.
 
 - All items done → report "all done", no relaunch
 - No eligible items after recovery (only genuine blocks/needsHuman remain) → report and exit without spawning
+
+**Supervisor pattern (live human-in-the-loop):** run the loop with `rauf loop run . --ndjson --pause-on-needs-human` and watch the NDJSON stream. On a `loop_paused` (or `needs_human`) event — or by detecting the exit code `6` / a `paused_human` `status --json` — gather the human's answer, then call `rauf resume . --answer <id> "<answer>"` to inject it and continue. The answered item is re-queued, runs with the answer in its prompt, completes, and the answer is cleared. See [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the machine surfaces this pattern relies on.
 
 ---
 

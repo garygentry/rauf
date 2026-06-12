@@ -397,6 +397,87 @@ else
   pass "item not blocked/deferred (recovered instead)"
 fi
 
+# ─── Pause-on-needs-human + resume --answer scenario ─────────────────
+
+# 10. pause-resume-needs-human: a two-phase end-to-end proof of the live
+#     supervision feature (items 008/009).
+#       Phase 1 — `loop run --pause-on-needs-human --ndjson`: the mock emits
+#         RAUF_NEEDS_HUMAN; the loop sets the item aside then HALTS in
+#         paused_human, emitting needs_human + loop_paused on the NDJSON stream
+#         and exiting the distinct needs-human exit code (ExitCode.PAUSED_HUMAN
+#         = 6).
+#       Phase 2 — `resume --answer 001 "<text>"`: the item is re-queued with the
+#         answer attached, so the relaunched iteration's prompt carries the
+#         "Human's Answer" section (the mock records it as proof it round-tripped
+#         into the prompt). The item then completes and humanAnswer is
+#         auto-cleared on completion.
+echo ""
+echo "=== Scenario: pause-resume-needs-human ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+export MOCK_CLAUDE_SCENARIO="pause-resume-needs-human"
+
+# ── Phase 1: pause on the needs-human item ──
+NDJSON_OUT="$(mktemp)"
+PAUSE_EXIT=0
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 \
+  --pause-on-needs-human --ndjson >"$NDJSON_OUT" 2>/dev/null || PAUSE_EXIT=$?
+
+# Distinct needs-human exit code (ExitCode.PAUSED_HUMAN = 6).
+if [ "$PAUSE_EXIT" -eq 6 ]; then
+  pass "loop run --pause-on-needs-human exited PAUSED_HUMAN (6)"
+else
+  fail "expected exit 6 (PAUSED_HUMAN), got $PAUSE_EXIT"
+fi
+
+# The NDJSON stream must carry needs_human THEN loop_paused (reason needs_human).
+if grep -q '"type":"needs_human"' "$NDJSON_OUT"; then
+  pass "NDJSON stream emitted needs_human"
+else
+  fail "NDJSON stream missing needs_human event"
+fi
+if grep -q '"type":"loop_paused"' "$NDJSON_OUT" &&
+  grep -q '"reason":"needs_human"' "$NDJSON_OUT"; then
+  pass "NDJSON stream emitted loop_paused (reason needs_human)"
+else
+  fail "NDJSON stream missing loop_paused event"
+fi
+
+# The loop halted in the resumable paused_human state with a matching DONE marker.
+assert_state_status "paused_human"
+assert_done_file_contains "paused_human"
+# The item was set aside (blocked) awaiting a human answer.
+assert_item_status "001" "blocked"
+
+rm -f "$NDJSON_OUT"
+
+# ── Phase 2: resume with an injected answer ──
+ANSWER_TEXT="Use REST for the public API"
+rauf resume "$SANDBOX_DIR" --answer 001 "$ANSWER_TEXT" >/dev/null 2>&1 || true
+
+# The answered item is re-queued, runs with the answer in its prompt, and completes.
+assert_item_status "001" "done"
+
+# The relaunched iteration's prompt carried the Human's Answer section — the mock
+# recorded the injected text as proof it round-tripped into the prompt.
+if [ -f "$SANDBOX_DIR/.rauf/answer-proof.txt" ] &&
+  grep -q "$ANSWER_TEXT" "$SANDBOX_DIR/.rauf/answer-proof.txt"; then
+  pass "resume answer reached the next iteration's prompt (Human's Answer section)"
+else
+  fail "answer did not reach the prompt (no proof of Human's Answer section)"
+fi
+
+# humanAnswer is auto-cleared once the item completes (no stale re-injection).
+human_answer=$(jq -r '.items[] | select(.id == "001") | .humanAnswer // "null"' \
+  "$SANDBOX_DIR/.rauf/backlog.json")
+if [ "$human_answer" = "null" ]; then
+  pass "humanAnswer cleared after completion"
+else
+  fail "humanAnswer not cleared (got '$human_answer')"
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────
 
 echo ""

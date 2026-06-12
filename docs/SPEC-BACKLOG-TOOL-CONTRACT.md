@@ -194,6 +194,7 @@ ignore any `type` they do not recognize, per the promise below):
 | `item_completed`    | `itemId`, `title`                                                              |
 | `item_blocked`      | `itemId`, `reason`                                                             |
 | `needs_human`       | `itemId`, `reason`                                                             |
+| `loop_paused`       | `reason` (`needs_human`), `itemId`                                             |
 | `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `none`), `reason?` |
 | `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                           |
 | `loop_error`        | `error`                                                                        |
@@ -212,6 +213,29 @@ ignore any `type` they do not recognize, per the promise below):
    consecutive infra-failure spawns trip the circuit breaker, it emits
    `loop_error` whose `error` string begins `Circuit breaker: …`. Match on the
    message, not on a dedicated type.
+
+**Pause-on-needs-human (live supervision).** With `rauf loop run
+--pause-on-needs-human`, when an item emits `RAUF_NEEDS_HUMAN` the runner sets
+it aside (as always: status `blocked` + `needsHuman`) **and then halts** in the
+resumable `paused_human` state instead of continuing to other items. On this
+stream the order is: the `needs_human` event (`itemId`, `reason`), then a
+`loop_paused` event (`reason: "needs_human"`, `itemId`). `loop run` then exits
+with the distinct code **`6`** (`PAUSED_HUMAN`). Without the flag, the default
+is unchanged — the item is set aside and the loop keeps running, so no
+`loop_paused` is emitted. A supervisor resolves the pause with `rauf resume
+--answer <id> "<text>"`, which re-queues the item with the answer and relaunches
+the loop.
+
+> **Note — two distinct exit-code spaces.** This `loop run` exit code (`6` for a
+> `--pause-on-needs-human` halt) is **not** the same as the `rauf status`
+> exit-code table in §A.7.2 (which maps `loopState`, e.g. `2` for
+> `PAUSED_HUMAN`). They are independent surfaces with independent codes; branch
+> on the right one for the command you ran.
+
+**Supervisor pattern:** run `rauf loop run . --ndjson --pause-on-needs-human`;
+on a `loop_paused` (or `needs_human`) event — or on the exit code `6` — gather
+the human's answer and call `rauf resume . --answer <id> "<answer>"` to inject
+it and continue.
 
 ### A.7.2 Canonical status surface — `rauf status … --json`
 

@@ -5,7 +5,7 @@ SANDBOX_DIR="$(pwd)"
 
 # Remove transient state files
 rm -f .rauf/state.json .rauf/rauf.log .rauf/DONE .rauf/CANCEL
-rm -f .rauf/iteration-status.json .rauf/backlog.json.bak
+rm -f .rauf/iteration-status.json .rauf/backlog.json.bak .rauf/answer-proof.txt
 
 # Restore backlog to original (all pending)
 cp backlog-template.json .rauf/backlog.json
@@ -56,6 +56,7 @@ cat >"$SBX_GIT_DIR/info/exclude" <<'EOF'
 **/.rauf/CANCEL
 **/.rauf/iteration-status.json
 **/.rauf/rauf.log
+**/.rauf/answer-proof.txt
 **/backlog.json.bak
 EOF
 # Commit the freshly-reset state as the clean baseline (no-op if unchanged).

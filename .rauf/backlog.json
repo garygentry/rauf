@@ -189,8 +189,8 @@
         "docs/SPEC-CLI.md documents --pause-on-needs-human and resume --answer; the Part-A contract section documents the loop_paused event and the new exit code",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check (and docs build clean)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T05:02:25.537Z",
       "dependsOn": [
         "007",
         "008",
