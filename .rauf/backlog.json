@@ -122,8 +122,8 @@
         "Docs build clean: `bash scripts/setup-docs.sh && pnpm --filter @rauf/docs build`, and `git status` is clean after the build",
         "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-12T04:48:56.029Z",
       "notes": "Pure docs. These surfaces already exist; this makes them a contract feature-forge can rely on. Source: feature-forge handoff §1, §2, §5-docs.",
       "estimatedIterations": 1,
       "specReferences": [

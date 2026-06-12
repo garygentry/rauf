@@ -185,7 +185,7 @@ Run the loop directly in-process without the server. The **unattended-safe mode*
 - `--suppress-iteration-review`: run child agent sessions with per-iteration review/security hooks suppressed (single-gate review model — see below). Opt-in; default behavior is unchanged.
 - `--create-branch <name>`: create and switch to `<name>` before running precondition checks (so `--create-branch feat/x` takes the project off a protected branch in one step)
 - `--seed-backlog`: if the working tree's only uncommitted change is `backlog.json` (plus `.rauf/` bookkeeping), stage and commit it as `[rauf] backlog: seed <project>` before running. Refuses with exit code 5 if other files are also dirty (lists them). Runs after any `--create-branch` switch so the seed lands on the new branch.
-- `--ndjson`: emit one JSON object per line to stdout for every `LoopEvent` (NDJSON stream), then a trailing JSON line for the final `LoopResult`. Suppresses the human-readable renderer and the status line — stdout is a clean NDJSON stream. Implies `--no-color`.
+- `--ndjson`: emit one JSON object per line to stdout for every `LoopEvent` (NDJSON stream), then a trailing JSON line for the final `LoopResult`. Suppresses the human-readable renderer and the status line — stdout is a clean NDJSON stream. Implies `--no-color`. This is a **machine-observation surface** with a versioned compatibility promise — see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the event vocabulary, payloads, and the `review`→`done` / circuit-breaker→`loop_error` gotchas.
 - `--force`: skip precondition checks (protected-branch and dirty-tree guards). Use with caution.
 - `--help` / `-h`: print the flag list and exit **without** starting the loop or touching any state. `--help`/`-h` is intercepted before any side-effecting action — a help probe never starts a loop.
 - Events are printed directly to the terminal with colors and Unicode icons
@@ -444,6 +444,8 @@ Show a status summary for the project at `[path]`.
 - Indicates state source: "via state.json" or "via log parsing (fallback)"
 - `--watch`: continuously refresh the status display (clears and redraws screen)
 - `--interval N`: refresh interval in seconds (default: 2, requires `--watch`)
+
+- `--json`: emit the `DerivedStatus` object. This is a **machine-observation surface** with a versioned compatibility promise — see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the canonical field/enum list and the blocked-vs-needsHuman-vs-deferred distinction.
 
 **Machine-friendly exit codes for `rauf status`:**
 

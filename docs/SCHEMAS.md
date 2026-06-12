@@ -214,6 +214,8 @@ interface LockSummary {
 
 ## DerivedStatus (output of status module)
 
+> `DerivedStatus` is the canonical `rauf status --json` **machine-observation surface**. These shapes are the source of truth for the data; the stability _promise_ (versioning, the blocked-vs-needsHuman-vs-deferred distinction, the exit-code table) lives in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned).
+
 ```typescript
 interface DerivedStatus {
   loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | LIMIT_REACHED | ERROR | NOT_INSTALLED | SLEEPING_LIMIT | WEEKLY_LIMIT
@@ -352,6 +354,8 @@ interface LoopStartOptions {
 ## LoopEvent (discriminated union)
 
 All events emitted by LoopRunner during the loop lifecycle. Discriminated on the `type` field. All events share a common base shape.
+
+> These shapes back the `rauf loop run --ndjson` **machine-observation surface**. This section is the source of truth for the data; the stability _promise_ and the `signal_parsed` `review`→`done` / circuit-breaker→`loop_error` gotchas live in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned).
 
 ```typescript
 // Base fields shared by all events
