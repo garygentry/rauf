@@ -335,8 +335,8 @@
         "A dev build's `rauf version --json` reports {\"version\":\"0.5.0\"}",
         "pnpm typecheck && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T06:00:24.350Z",
       "dependsOn": [
         "001",
         "002",
