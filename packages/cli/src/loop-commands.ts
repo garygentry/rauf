@@ -1,11 +1,11 @@
 // ─── Loop Command Handlers ──────────────────────────────────────────
 //
-// Implements: rauf loop start/stop/run/review
+// Implements: rauf loop stop/run/review
 //
 // Smart routing:
-//   start  → auto-starts server daemon if not running, POST to server API
-//   stop   → POST to server API, error if server not running
-//   run    → direct mode, creates LoopRunner in-process (no server)
+//   stop           → POST to server API; USAGE if no server / no active loop
+//   run            → direct mode, creates LoopRunner in-process (no server)
+//   run --detached → auto-starts server daemon if needed, POST to server API
 //
 // The live-view verb is the top-level `follow` command (follow-command.ts);
 // the old `loop follow` / `loop watch` monitor verbs were removed (clean break).
@@ -442,7 +442,7 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
     info(
       `Start the server with ${c.cyan("rauf server start")} or use ${c.cyan("rauf loop run --detached")} which auto-starts.`,
     );
-    return ExitCode.ERROR;
+    return ExitCode.USAGE; // 2 — no-server is a misuse of stop (00-core-definitions §1)
   }
 
   try {
@@ -475,9 +475,9 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
 
     if (resp.status === 404) {
       error(`No active loop for ${id}.`);
-    } else {
-      error(`Failed to stop loop: ${errMsg}`);
+      return ExitCode.USAGE; // 2 — no-loop-to-stop is a misuse (00-core-definitions §1)
     }
+    error(`Failed to stop loop: ${errMsg}`);
     return ExitCode.ERROR;
   } catch (e) {
     error(`Failed to connect to server: ${e instanceof Error ? e.message : String(e)}`);

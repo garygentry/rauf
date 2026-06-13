@@ -318,7 +318,7 @@ describe("LoopRunner", () => {
       expect(backlog.items[0].status).toBe("blocked");
     });
 
-    it("RAUF_REVIEW emits signal_parsed with signal:\"review\" (not \"done\")", async () => {
+    it('RAUF_REVIEW emits signal_parsed with signal:"review" (not "done")', async () => {
       const reviewPayload = JSON.stringify({
         items: [
           {

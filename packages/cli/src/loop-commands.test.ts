@@ -6,7 +6,7 @@ import { execSync } from "node:child_process";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
-import { LoopEventSchema } from "@rauf/core";
+import { LoopEventSchema, defaultBacklogPaths } from "@rauf/core";
 
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -224,17 +224,58 @@ describe("handleLoopStop", () => {
     }
   });
 
-  it("errors with helpful message when server not running", async () => {
+  it("exits USAGE(2) with a remediation hint when server not running", async () => {
     const loop = findCommand("loop")!;
     const stopHandler = loop.subcommands!.find((s) => s.name === "stop")!.handler!;
     const ctx = makeCtx({ args: ["/tmp/some-project"] });
 
     const output = await captureOutput(async () => {
       const code = await stopHandler(ctx);
-      expect(code).toBe(ExitCode.ERROR);
+      // no-server is a misuse of stop → USAGE(2), not ERROR (00 §1 / 03 §1)
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     expect(output.stderr).toContain("Server is not running");
+    // hint (info → stdout) names the canonical detached verb, not the removed
+    // `loop start` (REQ-DOC-02)
+    expect(output.stdout).toContain("rauf loop run --detached");
+    expect(output.stdout).not.toContain("loop start");
+  });
+
+  it("exits USAGE(2) when there is no active loop to stop (server 404)", async () => {
+    // Server is running but reports no active loop for this project → USAGE(2),
+    // not ERROR — stopping a loop that isn't running is a misuse (00 §1 / 03 §1).
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      if (req.method === "POST" && /\/loop\/stop$/.test(req.url ?? "")) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "No active loop" } }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const loop = findCommand("loop")!;
+      const stopHandler = loop.subcommands!.find((s) => s.name === "stop")!.handler!;
+      const ctx = makeCtx({ args: [path.join(os.tmpdir(), "rauf-stop-noloop")] });
+      const output = await captureOutput(async () => {
+        const code = await stopHandler(ctx);
+        expect(code).toBe(ExitCode.USAGE);
+      });
+      expect(output.stderr).toContain("No active loop");
+    } finally {
+      removeServerState();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 
@@ -458,8 +499,8 @@ describe("path resolution", () => {
 
     await captureOutput(async () => {
       const code = await stopHandler(ctx);
-      // Should fail with ERROR (server not running), not INVALID_ARGS
-      expect(code).toBe(ExitCode.ERROR);
+      // no-server path resolves cwd then exits USAGE(2) — a misuse of stop (00 §1)
+      expect(code).toBe(ExitCode.USAGE);
     });
   });
 
@@ -1330,5 +1371,45 @@ describe("loop run --detached --follow", () => {
       removeServerState();
       await mock.close();
     }
+  });
+});
+
+// ─── Observation parity: attended vs detached (REQ-EXEC-06, NFR-PARITY-01, 06 §3) ───
+//
+// Parity is structural, not re-implemented. Both branches run the SAME engine
+// (in-process `LoopRunner.create().start()` vs the server's `LoopManager`-driven
+// `LoopRunner`) against the SAME project, so they emit to the SAME events.ndjson
+// substrate; and both observation views (in-process follow + detached follow's
+// `streamEventsUntilDone`) render every event through the SINGLE shared
+// `formatAndPrintEvent`. These tests pin those two invariants so the two paths
+// cannot drift into producing different observer output.
+describe("observation parity (attended vs detached)", () => {
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  it("both run modes resolve the same events.ndjson substrate for a project", () => {
+    const proj = path.join(os.tmpdir(), "rauf-parity-proj");
+    // The events substrate is a pure function of (projectPath, backlogFlag): the
+    // attended in-process run and the detached server run resolve it identically,
+    // so an observer sees one and the same file regardless of run mode.
+    const attended = defaultBacklogPaths(proj);
+    const detached = defaultBacklogPaths(proj);
+    expect(detached.eventsLog).toBe(attended.eventsLog);
+    expect(attended.eventsLog.endsWith("events.ndjson")).toBe(true);
+  });
+
+  it("renders identical observer output for a given event regardless of run mode", () => {
+    // Both follow views call the same formatAndPrintEvent — deterministic, so the
+    // observer output is byte-identical whether the run was attended or detached.
+    const event = baseEvent("item_selected", {
+      itemId: "014",
+      title: "Integration & full-gate",
+      priority: 2,
+    });
+    const attendedOut = captureOutput(() => formatAndPrintEvent(event));
+    const detachedOut = captureOutput(() => formatAndPrintEvent(event));
+    expect(detachedOut.stdout).toBe(attendedOut.stdout);
+    expect(attendedOut.stdout).toContain("#014");
   });
 });

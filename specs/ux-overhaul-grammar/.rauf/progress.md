@@ -50,3 +50,21 @@
   regenerates it — don't hand-edit. NOTE: docs/ is NOT in .prettierignore (artifacts
   IS), so markdown table edits must be re-run through `prettier --write` — widening a
   table cell shifts column alignment and trips format:check.
+
+- **Item 014 (integration & full-gate):** Closed three spec-06 gaps left unpinned by
+  earlier items. (a) `handleLoopStop` no-server (was ERROR) AND no-loop/404 (was ERROR)
+  now return USAGE(2) per 00 §1 / 03 §1 — item 003's AC named this but the impl change
+  had been missed; updated the no-server hint-text test (info() → **stdout**, not stderr)
+  + the duplicate `path resolution` no-server test, and added a 404 no-loop test driving a
+  throwaway http server whose stop route 404s. (b) Added a call-site-audit regression in
+  commands.test.ts that reads every non-test .ts in src/ (via fileURLToPath(import.meta.url))
+  and asserts no `ExitCode.<removed-member>` reference survives. (4a) Added a help/usage
+  no-stale-token audit walking the COMMANDS registry (usage/description/flag strings) for
+  `loop start` / `--watch` — code COMMENTS are out of that surface, but I still fixed the
+  stale file-header in loop-commands.ts (line ~3 listed `loop start`); the "formerly
+  `loop start`" note at the detached branch is intentional history, kept. (c) Observation
+  parity is structural: both run modes resolve the same events.ndjson via defaultBacklogPaths
+  (NOT resolveBacklogPaths — that one requires an existing backlogRoot dir + returns a Result)
+  and both follow views render through the single shared formatAndPrintEvent. Cleared the
+  pre-existing format debt (7 files) with `pnpm format`. Full gate green: typecheck + lint +
+  format:check + test (459 cli) + build. No feature-forge edits / no v0.5.0 tag (out-of-loop).

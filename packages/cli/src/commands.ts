@@ -167,7 +167,8 @@ export const COMMANDS: CommandDef[] = [
           },
           {
             name: "--follow, -f",
-            description: "After starting detached, attach the follow view (Ctrl-C detaches view only)",
+            description:
+              "After starting detached, attach the follow view (Ctrl-C detaches view only)",
           },
           { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
           {

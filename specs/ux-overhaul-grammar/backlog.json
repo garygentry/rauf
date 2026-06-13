@@ -371,8 +371,8 @@
         "No stale `loop start` / `--watch` tokens in help/usage (except remediation messages)",
         "The feature-forge edits and v0.5.0 tag/release are NOT performed here (out-of-loop)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T06:08:41.836Z",
       "dependsOn": [
         "003",
         "004",

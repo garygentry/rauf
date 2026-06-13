@@ -17,11 +17,11 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ### [loop](#loop) — Run and manage the autonomous coding loop
 
-| Command                               | Description                                                    |
-| ------------------------------------- | -------------------------------------------------------------- |
-| [loop run](#rauf-loop-run-path)       | Run a loop (in-process or detached via `--detached`/`-d`)      |
-| [loop stop](#rauf-loop-stop-path)     | Stop a running loop gracefully                                 |
-| [loop review](#rauf-loop-review-path) | Run a standalone review pass over completed backlog items      |
+| Command                               | Description                                               |
+| ------------------------------------- | --------------------------------------------------------- |
+| [loop run](#rauf-loop-run-path)       | Run a loop (in-process or detached via `--detached`/`-d`) |
+| [loop stop](#rauf-loop-stop-path)     | Stop a running loop gracefully                            |
+| [loop review](#rauf-loop-review-path) | Run a standalone review pass over completed backlog items |
 
 ### [server](#server) — Manage the rauf web server
 
@@ -107,12 +107,12 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ## Global Flags
 
-| Flag             | Description                                                                                                                                                                                                                                                       |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--json`         | Machine-readable JSON output (on read commands)                                                                                                                                                                                                                   |
-| `--no-color`     | Suppress ANSI codes (auto-detected via NO_COLOR env or non-TTY)                                                                                                                                                                                                   |
-| `--quiet` / `-q` | Suppress informational output (errors only)                                                                                                                                                                                                                       |
-| `--root <path>`  | Override ROOT_DIRECTORY for this invocation                                                                                                                                                                                                                       |
+| Flag             | Description                                                                                                                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--json`         | Machine-readable JSON output (on read commands)                                                                                                                                                                                                               |
+| `--no-color`     | Suppress ANSI codes (auto-detected via NO_COLOR env or non-TTY)                                                                                                                                                                                               |
+| `--quiet` / `-q` | Suppress informational output (errors only)                                                                                                                                                                                                                   |
+| `--root <path>`  | Override ROOT_DIRECTORY for this invocation                                                                                                                                                                                                                   |
 | `--help` / `-h`  | Print help for the current command/subcommand and exit. **Intercepted before any side-effecting action** — `rauf loop run --help` prints the flag list and exits without starting the loop. Per-subcommand help renders the usage line and flag descriptions. |
 
 ## Exit Codes
@@ -428,14 +428,14 @@ Show a status summary for the project at `[path]`.
 
 **Machine-friendly exit codes for `rauf status`:**
 
-| Code | Meaning        | Loop State(s)                                               |
-| ---- | -------------- | ----------------------------------------------------------- |
-| 0    | SUCCESS        | IDLE, COMPLETE, PAUSED, NOT_INSTALLED (clean terminal)      |
-| 1    | ERROR          | ERROR                                                       |
-| 3    | NEEDS_HUMAN    | PAUSED_HUMAN                                                |
-| 4    | LIMIT          | LIMIT_REACHED, SLEEPING_LIMIT, WEEKLY_LIMIT                 |
-| 5    | BLOCKED        | Clean terminal state with genuinely blocked items (derived) |
-| 6    | RUNNING        | RUNNING (query-time only)                                   |
+| Code | Meaning     | Loop State(s)                                               |
+| ---- | ----------- | ----------------------------------------------------------- |
+| 0    | SUCCESS     | IDLE, COMPLETE, PAUSED, NOT_INSTALLED (clean terminal)      |
+| 1    | ERROR       | ERROR                                                       |
+| 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                |
+| 4    | LIMIT       | LIMIT_REACHED, SLEEPING_LIMIT, WEEKLY_LIMIT                 |
+| 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived) |
+| 6    | RUNNING     | RUNNING (query-time only)                                   |
 
 ### rauf log [path]
 

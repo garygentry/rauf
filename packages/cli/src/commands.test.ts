@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeEach } from "vitest";
 import { VERSION } from "@rauf/core";
 import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
@@ -304,7 +307,7 @@ describe("help command", () => {
     );
   });
 
-  it("returns INVALID_ARGS for unknown command in help", async () => {
+  it("returns USAGE for unknown command in help", async () => {
     const cmd = findCommand("help")!;
     const ctx = makeCtx({ args: ["nonexistent"] });
     const output = await captureOutput(async () => {
@@ -370,5 +373,58 @@ describe("ExitCode", () => {
     expect(ExitCode.LIMIT).toBe(4);
     expect(ExitCode.BLOCKED).toBe(5);
     expect(ExitCode.RUNNING).toBe(6);
+  });
+
+  // REQ-EXIT-02 call-site audit: the unified ExitCode table dropped these member
+  // names; no CLI source may reference them after the v0.5.0 redefinition (03 §1).
+  it("has no source references to the removed ExitCode member names", () => {
+    const srcDir = path.dirname(fileURLToPath(import.meta.url));
+    const removed = ["INVALID_ARGS", "NOT_FOUND", "VALIDATION", "CONFLICT", "PAUSED_HUMAN"];
+    const offenders: string[] = [];
+    for (const file of fs.readdirSync(srcDir)) {
+      if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
+      const text = fs.readFileSync(path.join(srcDir, file), "utf-8");
+      for (const member of removed) {
+        if (text.includes(`ExitCode.${member}`)) offenders.push(`${file}: ExitCode.${member}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+// REQ-DOC-02 (06 §4a): no stale `loop start` / `--watch` token may survive in the
+// rendered help/usage surface — except the REQ-RMV-01 remediation messages, which
+// are the only allowed mentions.
+describe("help/usage no-stale-token audit", () => {
+  function collectUsageStrings(): string[] {
+    const out: string[] = [];
+    const walk = (defs: typeof COMMANDS) => {
+      for (const def of defs) {
+        if (def.usage) out.push(def.usage);
+        if (def.description) out.push(def.description);
+        if (def.flags) for (const f of def.flags) out.push(f.description ?? "");
+        if (def.subcommands) walk(def.subcommands as typeof COMMANDS);
+      }
+    };
+    walk(COMMANDS);
+    return out;
+  }
+
+  it("contains no `loop start` token in any usage/help/flag string", () => {
+    const offenders = collectUsageStrings().filter((s) => /loop start/.test(s));
+    expect(offenders).toEqual([]);
+  });
+
+  it("contains no `--watch` token in any usage/help/flag string", () => {
+    const offenders = collectUsageStrings().filter((s) => /--watch/.test(s));
+    expect(offenders).toEqual([]);
+  });
+
+  it("still exposes the canonical `loop run [--detached|-d]` grammar", () => {
+    const loop = findCommand("loop")!;
+    const run = loop.subcommands!.find((s) => s.name === "run")!;
+    const flagNames = (run.flags ?? []).map((f) => f.name).join(" ");
+    expect(flagNames).toContain("--detached");
+    expect(loop.subcommands!.some((s) => s.name === "start")).toBe(false);
   });
 });
