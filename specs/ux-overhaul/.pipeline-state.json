@@ -2,12 +2,16 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-12T22:50:49Z",
-  "currentStage": "forge-5-loop",
+  "updatedAt": "2026-06-13T00:07:36Z",
+  "currentStage": "forge-6-docs",
   "stages": {
     "forge-5-loop": {
-      "status": "in-progress",
-      "startedAt": "2026-06-12T22:50:49Z"
+      "status": "complete",
+      "startedAt": "2026-06-12T22:50:49Z",
+      "completedAt": "2026-06-13T00:07:36Z",
+      "basedOnVersions": { "forge-4-backlog": 1 },
+      "artifacts": ["specs/ux-overhaul/.rauf/state.json"],
+      "result": "15/15 items done in 16 iterations (under 23 budget); 0 blocked/needs-human/deferred; --review pass found no issues (0 follow-up items). Commits 58e7844..72b8100 ([rauf] 001..014)."
     },
     "forge-verify-backlog": {
       "status": "findings-applied",
