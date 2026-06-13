@@ -14,9 +14,10 @@
 > --detached`/`-d`, `loop start` removed; (3) adopt the proposed unified exit-code table; (4) cutover
 > = one breaking flip at **v0.5.0**, bump feature-forge `minRunnerVersion`; (5) the
 > `CLAUDE_ADDON.md → AGENT_ADDON.md` rename stays deferred to the Part-B provider refactor. Plus:
-> removed verbs/flags emit a **targeted remediation error** (not an alias); and the actual
-> **feature-forge edits are a separate coordinated task** — this feature ships the rauf-side changes
-> and *documents the contract* feature-forge must be updated against.
+> removed verbs/flags emit a **targeted remediation error** (not an alias); and **the
+> feature-forge update is IN SCOPE** (revised 2026-06-13 from the initial declare-contract-only framing) — this feature both ships the rauf-side changes
+> *and* updates feature-forge to the new contract in lockstep, so the v0.5.0 flip leaves the whole
+> toolchain coherent.
 
 ---
 
@@ -158,9 +159,21 @@ same consumer, so bundling them into one release minimizes total breakage and co
   reflecting the flip, so a downstream version gate can require the whole new contract in one check.
 - **REQ-CONTRACT-03** — This feature must **document the new contract** (exit codes, signal vocabulary,
   `events.ndjson` version and shapes, removed/renamed commands) precisely enough that feature-forge can be
-  updated against it. The actual feature-forge edits (bumping `minRunnerVersion ≥ 0.5.0`, purging
-  `loop start` / `--watch` / old-exit-code references) are a **separate coordinated task performed at flip
-  time** and are NOT in this feature's code scope. *(ratified this session)*
+  updated against it.
+- **REQ-CONTRACT-04** — **feature-forge must be updated to the new contract as part of this feature's
+  definition of done** (in scope, ratified 2026-06-13). The concrete updates: bump
+  `loopRunner.minRunnerVersion` from `0.2.0` to **`0.5.0`** in `references/forge-config-schema.json`
+  (schema default) and `skills/forge-5-loop/SKILL.md`, and align the contract/compatibility docs
+  (`COMPATIBILITY.md`, `CHANGELOG.md`, `references/ralph-loop-contract.md`); and re-validate that
+  feature-forge's `status --json` / exit-code reads still hold under the new exit-code scheme
+  (REQ-EXIT-01). The feature-forge baseline to edit against is current `main` with **epic support merged**
+  (PR #2). *(Note: feature-forge invokes the configurable `loopRunner` `runCommand`, which already defaults
+  to `loop run … --ndjson` — NOT `loop start` — so no `loop start` / `--watch` references exist in
+  feature-forge to remove; the breaking surface for it is the version gate and the exit-code/status reads.)*
+- **REQ-CONTRACT-05** — Because feature-forge is a **separate git repository** outside the rauf loop's
+  write sandbox, the feature-forge edits (REQ-CONTRACT-04) are performed as an explicit **out-of-loop step
+  at cutover** (not by the rauf autonomous loop), but are **gated as part of this feature's completion** —
+  the flip is not "done" until both the rauf-side changes and the feature-forge update have landed together.
 
 ### Documentation (REQ-DOC)
 
@@ -200,7 +213,9 @@ same consumer, so bundling them into one release minimizes total breakage and co
   already in the contract applies.
 - **Eliminating an execution mode** — both in-process and server-owned runs stay (unattended-safe vs
   interruptible). We hide the split, not remove it.
-- **The actual feature-forge skill-file edits** — a separate coordinated task at flip time (REQ-CONTRACT-03).
+
+  *(Note: the feature-forge update is now **in scope** — see REQ-CONTRACT-04/05. It was moved out of
+  "out of scope" on 2026-06-13.)*
 
 ---
 
@@ -212,7 +227,9 @@ same consumer, so bundling them into one release minimizes total breakage and co
   detached-run mechanism reuses the existing Hono server daemon (bound to 127.0.0.1).
 - **Downstream consumer:** feature-forge gates on `rauf version --json` against `minRunnerVersion` and
   reads `status --json` / exit codes — the contract changes here are breaking *for it*, hence the
-  coordinated cutover.
+  coordinated cutover. feature-forge lives in a **separate git repo** (`/home/gary/workspace/feature-forge`,
+  current `main`, epic support merged via PR #2) — outside the rauf loop's write sandbox, so its updates
+  (REQ-CONTRACT-04) are made out-of-loop at cutover (REQ-CONTRACT-05).
 - **Self-hosting hazard:** this feature rewrites the very `loop run` / `loop start` commands the runner
   invokes; dogfooding must use `rauf-stable` (NFR-SAFETY-01).
 
@@ -230,8 +247,9 @@ same consumer, so bundling them into one release minimizes total breakage and co
 - `events.ndjson` is documented as a versioned, additive-only machine surface carrying the same shapes as
   the `--ndjson` stream.
 - A removed verb/flag yields a targeted "removed → use X" error (non-zero, executes nothing).
-- The runner reports version ≥ 0.5.0; the new contract is documented precisely enough for the (separate)
-  feature-forge update.
+- The runner reports version ≥ 0.5.0; the new contract is documented; **and feature-forge is updated in
+  lockstep** (`minRunnerVersion` 0.2.0 → 0.5.0 in the config schema + forge-5-loop skill + compat/contract
+  docs, exit-code/status reads re-validated) so the toolchain is coherent at the flip.
 - All affected `docs/SPEC-*.md` updated; full quality gate green; the whole change lands as one v0.5.0
   release.
 
