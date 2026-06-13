@@ -440,7 +440,7 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
   if (!isServerRunning()) {
     error("Server is not running.");
     info(
-      `Start the server with ${c.cyan("rauf server start")} or use ${c.cyan("rauf loop start")} which auto-starts.`,
+      `Start the server with ${c.cyan("rauf server start")} or use ${c.cyan("rauf loop run --detached")} which auto-starts.`,
     );
     return ExitCode.ERROR;
   }

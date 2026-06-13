@@ -253,8 +253,8 @@
         "pnpm typecheck && pnpm test passes",
         "The loop stop no-server hint references `rauf loop run --detached`, not `rauf loop start`"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:52:31.425Z",
       "dependsOn": [
         "006",
         "009"

@@ -157,9 +157,18 @@ export const COMMANDS: CommandDef[] = [
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
       {
         name: "run",
-        description: "Run loop directly in-process",
-        usage: "rauf loop run [path] [options]",
+        description: "Run a loop (in-process) or start a detached server-managed loop",
+        usage: "rauf loop run [path] [--detached|-d] [options]",
         flags: [
+          {
+            name: "--detached, -d",
+            description:
+              "Start a detached server-managed loop (auto-starts server if needed); returns immediately. Use `rauf follow` to observe.",
+          },
+          {
+            name: "--follow, -f",
+            description: "After starting detached, attach the follow view (Ctrl-C detaches view only)",
+          },
           { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
           {
             name: "--retries <N>",
@@ -171,6 +180,11 @@ export const COMMANDS: CommandDef[] = [
           },
           { name: "--model <name>", description: "Claude model to use" },
           { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+          {
+            name: "--interval <seconds>",
+            description: "Poll interval for --follow (default: 2)",
+          },
+          { name: "--json", description: "Emit JSON / NDJSON output (machine-readable)" },
           { name: "--force", description: "Skip git preconditions (protected branch, dirty tree)" },
           {
             name: "--allow-dirty",
@@ -185,10 +199,6 @@ export const COMMANDS: CommandDef[] = [
           {
             name: "--suppress-iteration-review",
             description: "Suppress per-iteration review hooks in child sessions",
-          },
-          {
-            name: "--ndjson",
-            description: "Emit one JSON object per loop event to stdout (machine-readable)",
           },
           {
             name: "--seed-backlog",
