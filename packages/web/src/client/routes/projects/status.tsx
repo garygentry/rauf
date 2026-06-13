@@ -3,7 +3,7 @@ import { useParams } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { BacklogItem, DerivedStatus } from "@rauf/core";
+import type { BacklogItem, DerivedStatus, PersistedEvent } from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
 // ─── Loop state badge config ──────────────────────────────────────
@@ -459,6 +459,242 @@ function LogPanel({ projectId }: { projectId: string }) {
   );
 }
 
+// ─── EventTimeline ────────────────────────────────────────────────
+//
+// Connects to the file-backed SSE /loop/events endpoint (replay then
+// tail) and renders the 24 structured LoopEvent types with minimal,
+// readable labels. Mirrors LogPanel's EventSource lifecycle
+// (connect / append / reconnect / cleanup). Phase-1 boundary: this maps
+// EVENT TYPES to display strings only — it introduces no status
+// vocabulary label-map, no status badges, and no recovery actions
+// (those are Phase 4). See spec 05 §7 / §9.
+
+// Maps each PersistedEvent to a short label + salient detail. The switch
+// is exhaustive over the discriminated union — the `never`-typed default
+// makes typecheck fail if a LoopEvent member is ever added without a
+// branch here. An unknown future `type` (forward-stable envelope) still
+// renders generically at runtime rather than crashing.
+function describeEvent(e: PersistedEvent): { label: string; detail: string } {
+  switch (e.type) {
+    case "loop_started":
+      return {
+        label: "Loop started",
+        detail: `max ${e.maxIterations} iterations${e.model ? ` · ${e.model}` : ""}`,
+      };
+    case "iteration_start":
+      return { label: "Iteration", detail: `${e.iteration} / ${e.maxIterations}` };
+    case "item_selected":
+      return { label: "Item selected", detail: `#${e.itemId} · P${e.priority} — ${e.title}` };
+    case "llm_spawned":
+      return {
+        label: "Agent spawned",
+        detail: `#${e.itemId} · ${e.provider}${e.model ? ` ${e.model}` : ""}`,
+      };
+    case "llm_exited":
+      return {
+        label: "Agent exited",
+        detail: `#${e.itemId} · exit ${e.exitCode}${e.timedOut ? " (timed out)" : ""} · ${Math.round(e.durationMs / 1000)}s`,
+      };
+    case "signal_parsed":
+      return {
+        label: "Signal",
+        detail: `#${e.itemId} · ${e.signal}${e.reason ? ` — ${e.reason}` : ""}`,
+      };
+    case "item_completed":
+      return { label: "Item completed", detail: `#${e.itemId} — ${e.title}` };
+    case "item_blocked":
+      return { label: "Item blocked", detail: `#${e.itemId} — ${e.reason}` };
+    case "item_retried":
+      return {
+        label: "Item retried",
+        detail: `#${e.itemId} · attempt ${e.attempt}/${e.maxRetries}`,
+      };
+    case "needs_human":
+      return { label: "Needs human", detail: `#${e.itemId} — ${e.reason}` };
+    case "loop_paused":
+      return { label: "Loop paused", detail: `#${e.itemId} · ${e.reason}` };
+    case "usage_limit_hit":
+      return {
+        label: "Usage limit hit",
+        detail: `${e.limitType} · ${Math.round(e.utilization * 100)}%`,
+      };
+    case "usage_limit_cleared":
+      return { label: "Usage limit cleared", detail: e.limitType };
+    case "sleep_start":
+      return { label: "Sleep", detail: `until ${e.sleepUntil} — ${e.reason}` };
+    case "sleep_end":
+      return { label: "Sleep ended", detail: "" };
+    case "loop_completed":
+      return {
+        label: "Loop completed",
+        detail: `${e.completedCount} done · ${e.blockedCount} blocked${
+          e.needsHumanCount != null ? ` · ${e.needsHumanCount} needs human` : ""
+        }`,
+      };
+    case "loop_error":
+      return { label: "Loop error", detail: e.error };
+    case "loop_cancelled":
+      return { label: "Loop cancelled", detail: "" };
+    case "review_started":
+      return { label: "Review started", detail: `${e.completedItemIds.length} items` };
+    case "review_completed":
+      return { label: "Review completed", detail: `${e.itemsCreated} created — ${e.summary}` };
+    case "review_failed":
+      return { label: "Review failed", detail: e.reason };
+    case "llm_tool_activity":
+      return { label: "Tool", detail: `#${e.itemId} · ${e.toolName} (${e.phase})` };
+    case "llm_token_update":
+      return {
+        label: "Tokens",
+        detail: `#${e.itemId} · ${e.inputTokens} in / ${e.outputTokens} out`,
+      };
+    case "llm_stuck_warning":
+      return {
+        label: "Stuck warning",
+        detail: `#${e.itemId} · silent ${Math.round(e.silentMs / 1000)}s`,
+      };
+    default:
+      return describeUnknownEvent(e);
+  }
+}
+
+// Exhaustiveness guard: `e` is `never` when every LoopEvent member above
+// is handled. A forward/unknown event still renders by its raw `type`.
+function describeUnknownEvent(e: never): { label: string; detail: string } {
+  const fallback = e as { type?: unknown };
+  return {
+    label: typeof fallback.type === "string" ? fallback.type : "event",
+    detail: "",
+  };
+}
+
+function EventTimeline({ projectId, backlogRoot }: { projectId: string; backlogRoot?: string }) {
+  const [events, setEvents] = useState<PersistedEvent[]>([]);
+  const [connected, setConnected] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Connect to the file-backed SSE endpoint. Re-connects when projectId
+  // or backlogRoot changes. The server replays the current run's history
+  // then tails new events, all under the "loop_event" SSE event name.
+  useEffect(() => {
+    if (!projectId) return;
+
+    const base = `/api/projects/${encodeURIComponent(projectId)}/loop/events`;
+    const url = backlogRoot ? `${base}?backlog=${encodeURIComponent(backlogRoot)}` : base;
+    const es = new EventSource(url);
+
+    es.onopen = () => setConnected(true);
+
+    es.onerror = () => setConnected(false);
+
+    es.addEventListener("loop_event", (e) => {
+      try {
+        const record = JSON.parse((e as MessageEvent<string>).data) as PersistedEvent;
+        if (typeof record?.type !== "string") return;
+        // Bounded buffer, mirroring LogPanel's .slice(-50); arrival order = seq order.
+        setEvents((prev) => [...prev, record].slice(-200));
+      } catch {
+        // Ignore parse errors — malformed SSE data
+      }
+    });
+
+    return () => {
+      es.close();
+      setConnected(false);
+    };
+  }, [projectId, backlogRoot]);
+
+  // Auto-scroll to the newest event after the list updates.
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [events]);
+
+  return (
+    <div
+      className="flex flex-col overflow-hidden rounded-lg border"
+      style={{
+        backgroundColor: "var(--color-surface-raised)",
+        borderColor: "var(--color-border)",
+      }}
+    >
+      {/* ── Panel header ────────────────────────────────────── */}
+      <div
+        className="flex flex-shrink-0 items-center justify-between border-b px-3 py-2"
+        style={{
+          borderColor: "var(--color-border)",
+          backgroundColor: "var(--color-surface)",
+        }}
+      >
+        <span
+          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: "var(--color-text-muted)" }}
+        >
+          Event Timeline
+        </span>
+        <span
+          className="flex items-center gap-1.5 text-xs"
+          style={{ color: connected ? "#16a34a" : "#9ca3af" }}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full bg-current ${connected ? "animate-pulse" : ""}`}
+            aria-hidden="true"
+          />
+          {connected ? "live" : "connecting…"}
+        </span>
+      </div>
+
+      {/* ── Event rows ──────────────────────────────────────── */}
+      <div
+        ref={scrollRef}
+        className="overflow-y-auto"
+        style={{ height: "360px", padding: "8px 12px", scrollbarWidth: "thin" }}
+      >
+        {events.length === 0 ? (
+          <p className="mt-1 text-xs italic" style={{ color: "var(--color-text-muted)" }}>
+            {connected ? "Waiting for loop events…" : "Connecting to event stream…"}
+          </p>
+        ) : (
+          events.map((event) => {
+            const { label, detail } = describeEvent(event);
+            const time = new Date(event.timestamp).toLocaleTimeString(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            });
+            return (
+              <div
+                key={event.seq}
+                className="flex items-baseline gap-2 py-1 text-xs leading-relaxed"
+                style={{ borderBottom: "1px solid var(--color-border)" }}
+              >
+                <span
+                  className="flex-shrink-0 font-mono"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  {time}
+                </span>
+                <span
+                  className="flex-shrink-0 font-semibold"
+                  style={{ color: "var(--color-text)" }}
+                >
+                  {label}
+                </span>
+                {detail && (
+                  <span className="min-w-0 truncate" style={{ color: "var(--color-text-muted)" }}>
+                    {detail}
+                  </span>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── ProgressViewer ───────────────────────────────────────────────
 //
 // Fetches .rauf/progress.md and renders it as formatted markdown.
@@ -908,9 +1144,15 @@ export function StatusView() {
         {/* end left column */}
 
         {/* ── Right column: live log panel ─────────────────────── */}
-        <div className="w-full xl:w-96 xl:flex-shrink-0 2xl:w-[480px]">
-          <SectionHeading>Live Log</SectionHeading>
-          <LogPanel projectId={projectId} />
+        <div className="w-full space-y-6 xl:w-96 xl:flex-shrink-0 2xl:w-[480px]">
+          <div>
+            <SectionHeading>Live Log</SectionHeading>
+            <LogPanel projectId={projectId} />
+          </div>
+          <div>
+            <SectionHeading>Event Timeline</SectionHeading>
+            <EventTimeline projectId={projectId} />
+          </div>
         </div>
       </div>
       {/* end two-column layout */}

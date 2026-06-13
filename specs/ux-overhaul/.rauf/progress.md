@@ -244,3 +244,25 @@
 - Sandbox runs leak residue into the PARENT tree (recovered-feature.txt, .rauf/backlog.json
   churn, a previously mis-tracked .rauf/archive/*.ndjson). Cleaned before signaling so the
   runner's commit carries only the real item-014 edits + the archive-untrack deletion.
+
+## Item 012 (web frontend EventTimeline + projects-view liveness badges)
+
+- Added `<EventTimeline>` to status.tsx (next to LogPanel in the right column). Mirrors LogPanel's
+  EventSource lifecycle verbatim — swaps URL (`/loop/events`), SSE event name (`loop_event`), parse
+  target (`PersistedEvent`). Bounded `.slice(-200)`; auto-scrolls to newest; `connected` dot.
+- `describeEvent(e: PersistedEvent)` is an exhaustive switch over all 24 LoopEvent types returning
+  `{label, detail}`. Exhaustiveness enforced by a `never`-typed `describeUnknownEvent(e: never)`
+  default — typecheck fails if a member is added without a branch; at runtime an unknown future type
+  renders by its raw `.type` (forward-stable, no crash).
+- backlogRoot prop forwarded as `?backlog=` (encodeURIComponent). Status page doesn't track a
+  non-default root selection today, so the prop is supported but unset there; forwarding logic lives
+  in the component (AC satisfied at the component level).
+- Projects view (index.tsx): added a dashboard-level `useQuery(["loops"])` against `/api/loops`
+  (reconciled listActiveLoops). Built a Set of live `projectPath`s, passed `live` to each ProjectCard,
+  which renders a minimal `<LiveDot>` ("Live" pill) alongside the existing `<StateBadge>`. Matched by
+  absolute `entry.projectPath === project.path` (both core-absolute).
+- BOUNDARY HELD: no Phase-4 status vocabulary — reused existing StateBadge label set as-is; LiveDot is
+  registry liveness only, not a LoopStateStatus label-map or new status badge. No mutation endpoints.
+- Frontend has no test harness (Phase 1) — relied on item 011 backend tests for parity. Verified via
+  pnpm typecheck && build (the exhaustive switch is the compile-time guarantee). SC-1 manual check (V5)
+  is the remaining human gate per spec 05 §8.

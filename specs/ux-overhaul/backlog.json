@@ -350,8 +350,8 @@
         "no Phase-4 status vocabulary/badges are introduced (boundary held)",
         "pnpm typecheck && pnpm build passes (frontend builds; no new frontend test harness required)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T00:05:08.165Z",
       "dependsOn": [
         "011"
       ],

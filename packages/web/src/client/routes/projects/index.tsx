@@ -1,6 +1,7 @@
+import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { DiscoveredProject, DerivedStatus } from "@rauf/core";
+import type { DiscoveredProject, DerivedStatus, ActiveLoopEntry } from "@rauf/core";
 import { raufFetchJson } from "../../lib/fetch";
 
 // ─── API shape ────────────────────────────────────────────────────
@@ -113,9 +114,38 @@ function BacklogCounts({ summary }: { summary: DerivedStatus["backlogSummary"] }
   );
 }
 
+// ─── Registry liveness indicator ──────────────────────────────────
+//
+// A minimal "a loop is live in this root" marker driven by GET /api/loops
+// (the reconciled active-loop registry). This is distinct from the
+// per-card <StateBadge> derived from state.json: it surfaces in-process
+// `rauf loop run`s the server never started. Phase-1 boundary: liveness
+// only — NOT a status-vocabulary badge (that is Phase 4).
+
+function LiveDot() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: "rgba(22, 163, 74, 0.15)", color: "#16a34a" }}
+      title="A loop is live in this project (active-loop registry)"
+    >
+      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
+      Live
+    </span>
+  );
+}
+
 // ─── ProjectCard ──────────────────────────────────────────────────
 
-function ProjectCard({ project, muted = false }: { project: DiscoveredProject; muted?: boolean }) {
+function ProjectCard({
+  project,
+  muted = false,
+  live = false,
+}: {
+  project: DiscoveredProject;
+  muted?: boolean;
+  live?: boolean;
+}) {
   const { data: status, isLoading: statusLoading } = useQuery({
     queryKey: ["projects", project.id, "status"],
     queryFn: () =>
@@ -154,14 +184,17 @@ function ProjectCard({ project, muted = false }: { project: DiscoveredProject; m
             {project.path}
           </p>
         </div>
-        {statusLoading ? (
-          <div
-            className="mt-0.5 h-5 w-14 flex-shrink-0 animate-pulse rounded-full"
-            style={{ backgroundColor: "var(--color-border)" }}
-          />
-        ) : (
-          <StateBadge state={loopState} />
-        )}
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          {live && <LiveDot />}
+          {statusLoading ? (
+            <div
+              className="mt-0.5 h-5 w-14 animate-pulse rounded-full"
+              style={{ backgroundColor: "var(--color-border)" }}
+            />
+          ) : (
+            <StateBadge state={loopState} />
+          )}
+        </div>
       </div>
 
       {/* Stack badge */}
@@ -293,12 +326,26 @@ export function ProjectsDashboard() {
     refetchInterval: 30_000,
   });
 
+  // Machine-wide active-loop registry — reconciled liveness across every
+  // execution mode and root (REQ-WEB-03). Drives the per-card LiveDot.
+  const { data: loopsData } = useQuery({
+    queryKey: ["loops"],
+    queryFn: () => raufFetchJson<{ loops: ActiveLoopEntry[] }>("/api/loops"),
+    refetchInterval: 30_000,
+  });
+
   function handleRefresh() {
     void queryClient.invalidateQueries({ queryKey: ["projects"] });
   }
 
   const projects = data?.projects ?? [];
   const ignored = data?.ignored ?? [];
+
+  // Set of project paths with a live loop, matched by absolute projectPath.
+  const liveProjectPaths = useMemo(
+    () => new Set((loopsData?.loops ?? []).map((entry) => entry.projectPath)),
+    [loopsData],
+  );
 
   return (
     <div className="p-6">
@@ -414,7 +461,11 @@ export function ProjectsDashboard() {
       {!isLoading && !isError && projects.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              live={liveProjectPaths.has(project.path)}
+            />
           ))}
         </div>
       )}
@@ -427,7 +478,12 @@ export function ProjectsDashboard() {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {ignored.map((project) => (
-              <ProjectCard key={project.id} project={project} muted />
+              <ProjectCard
+                key={project.id}
+                project={project}
+                muted
+                live={liveProjectPaths.has(project.path)}
+              />
             ))}
           </div>
         </div>
