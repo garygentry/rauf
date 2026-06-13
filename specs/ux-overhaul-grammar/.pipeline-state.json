@@ -2,9 +2,29 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T03:58:00Z",
-  "currentStage": "forge-3-specs",
+  "updatedAt": "2026-06-13T04:15:00Z",
+  "currentStage": "forge-4-backlog",
   "stages": {
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/00-core-definitions.md",
+        "specs/ux-overhaul-grammar/01-architecture-layout.md",
+        "specs/ux-overhaul-grammar/02-execution-grammar.md",
+        "specs/ux-overhaul-grammar/03-exit-codes.md",
+        "specs/ux-overhaul-grammar/04-signals-and-events.md",
+        "specs/ux-overhaul-grammar/05-cutover-and-feature-forge.md",
+        "specs/ux-overhaul-grammar/06-testing-strategy.md",
+        "specs/ux-overhaul-grammar/TRACEABILITY.md"
+      ],
+      "completedAt": "2026-06-13T04:15:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
+      "result": "7-doc suite + TRACEABILITY. Foundation (00 core-definitions, 01 architecture-layout) authored in-session; 02-05 fanned out to 4 parallel writers, 06-testing authored after. Every REQ/NFR covered (coverage grep clean). 00 = unified ExitCode contract (members+values+old\u2192new remap), signal enum +review, terminal\u2192code mappings, events versioning discipline, remediation table, version source version.ts:4. Writers verified source citations; refined version source to packages/core/src/version.ts:4 (current 0.4.0). Change ordering: loop does steps 1-6 (rauf repo), FF edits = out-of-loop step 7."
+    },
     "forge-verify-tech": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-tech-2026-06-13.md",
