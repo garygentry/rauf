@@ -38,8 +38,8 @@
         "No change to review-handling semantics (review-pass routing / item status unchanged)",
         "pnpm --filter @rauf/loop test && pnpm --filter @rauf/loop typecheck passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:16:38.891Z",
       "dependsOn": [
         "001"
       ],

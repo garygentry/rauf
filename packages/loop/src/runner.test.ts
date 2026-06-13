@@ -318,6 +318,34 @@ describe("LoopRunner", () => {
       expect(backlog.items[0].status).toBe("blocked");
     });
 
+    it("RAUF_REVIEW emits signal_parsed with signal:\"review\" (not \"done\")", async () => {
+      const reviewPayload = JSON.stringify({
+        items: [
+          {
+            type: "bug",
+            priority: 2,
+            title: "Fix: missing validation",
+            description: "Input not validated",
+            acceptanceCriteria: ["Validation added"],
+          },
+        ],
+        summary: "Found 1 issue",
+      });
+      setupProject(tmpDir, [pendingItem("001", "Review task")]);
+      writeMockClaude(binDir, `echo 'RAUF_REVIEW:${reviewPayload}'`);
+
+      const signalEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("signal_parsed", (e) => signalEvents.push(e));
+
+      await runner.start();
+
+      expect(signalEvents.length).toBeGreaterThanOrEqual(1);
+      expect((signalEvents[0] as Extract<LoopEvent, { type: "signal_parsed" }>).signal).toBe(
+        "review",
+      );
+    });
+
     it("RAUF_NEEDS_HUMAN sets the item aside (blocked+needsHuman) without halting the loop", async () => {
       setupProject(tmpDir, [pendingItem("001", "Human needed task")]);
       writeMockClaude(binDir, 'echo "RAUF_NEEDS_HUMAN:Need API key"');

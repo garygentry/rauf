@@ -653,7 +653,7 @@ export class LoopRunner extends TypedEventEmitter {
     const parsed = parseSignal(signalText);
     this.emitEvent("signal_parsed", {
       itemId: item.id,
-      signal: parsed.signal === "review" ? "done" : parsed.signal,
+      signal: parsed.signal,
       reason: parsed.reason,
     });
     appendLog(this.paths, `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`);
