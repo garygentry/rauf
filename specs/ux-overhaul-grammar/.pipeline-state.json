@@ -2,9 +2,25 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T04:45:00Z",
-  "currentStage": "forge-4-backlog",
+  "updatedAt": "2026-06-13T05:00:00Z",
+  "currentStage": "forge-5-loop",
   "stages": {
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/backlog.json"
+      ],
+      "completedAt": "2026-06-13T05:00:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "itemCount": 14,
+      "validation": "passed (rauf-stable 0.4.0 backlog validate, exit 0, valid:true, 0 findings)",
+      "result": "14 items (9 feature, 1 refactor=003 ExitCode sweep w/ agentDelegation, 3 chore=010/011/012 docs, 1 test=014 gate). DAG depth ~5; hubs 003 (ExitCode) + 006 (detached). feature-forge edits + v0.5.0 tag/release kept OUT-OF-LOOP (not in backlog) per REQ-CONTRACT-04/05. Est 21 iterations (14*1.5)."
+    },
     "forge-verify-specs": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-specs-2026-06-13.md",
