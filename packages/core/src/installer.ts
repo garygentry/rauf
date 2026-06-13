@@ -62,6 +62,7 @@ export const RAUF_GITIGNORE_ENTRIES = [
   "**/.rauf/CANCEL",
   "**/.rauf/iteration-status.json",
   "**/.rauf/rauf.log",
+  "**/.rauf/events.ndjson",
   "**/backlog.json.bak",
 ] as const;
 

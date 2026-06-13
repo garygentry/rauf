@@ -216,3 +216,31 @@
 - GOTCHA: SPEC-ARTIFACTS.md's CLAUDE_GREENFIELD.md.tmpl copy reads "...same content as
   CLAUDE_ADDON.md..." (abbreviated) at line ~289 — no separate edit needed for that locus.
 - All greps pass; pnpm test && pnpm typecheck && pnpm build all green.
+
+## Item 014 (integration, dogfood & compatibility gate)
+
+- Added `**/.rauf/events.ndjson` to `RAUF_GITIGNORE_ENTRIES` (installer.ts) — its own
+  comment requires sync with git-commit.ts's RUNTIME_EXCLUDE_PATHSPECS, which item 006
+  updated but the installer list missed. New installer.test.ts case locks it.
+- test-sandbox harness (setup.sh): now `rm -rf .rauf/events.ndjson .rauf/archive` each
+  reset and excludes both in `.sandbox-git/info/exclude`. GOTCHA: any untracked file the
+  runner doesn't create (e.g. a sabotage `archive` FILE) trips the dirty-tree guard and the
+  loop refuses to START (no state.json written) — so every sabotage artifact MUST be in the
+  sandbox exclude list or the run never begins.
+- verify.sh new assertions: (1) never-contradict — events.ndjson seq dense+monotonic from 0
+  (jq `to_entries | all(.key==.value.seq)`), terminal event == loop_completed, every done
+  item has an item_completed event; (2) dogfood commit — exactly one commit since the
+  `sandbox baseline` (rev-list baseline..HEAD == 1), msg `[rauf] 001:`, and `git show
+  --name-only` does NOT `grep -qx '.rauf/events.ndjson'` (exact match so a committed
+  archive/<ts>-events.ndjson doesn't false-match).
+- Best-effort-persistence scenario: events.ndjson as a DIRECTORY (append → EISDIR) + archive
+  as a FILE (rotateEventsLog's ensureDir(archive) fails first, so it can't move the dir out
+  of the way) → appendEvent fails silently ALL run while state.json/rauf.log (writable .rauf/)
+  keep the loop correct. GOTCHA: rauf.log says "Item 001 completed" (file), not "✓ Completed
+  #001" (console formatter only).
+- Compatibility check: `rauf status --all` STILL requires a `<path>` arg (exit 2 without it) —
+  pass the sandbox path even though --all is machine-wide. follow degrades on a missing
+  events.ndjson because follow-command wraps watchEvents in try/catch (retried per poll tick).
+- Sandbox runs leak residue into the PARENT tree (recovered-feature.txt, .rauf/backlog.json
+  churn, a previously mis-tracked .rauf/archive/*.ndjson). Cleaned before signaling so the
+  runner's commit carries only the real item-014 edits + the archive-untrack deletion.

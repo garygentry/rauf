@@ -147,6 +147,85 @@ assert_state_status_at() {
   fi
 }
 
+# ─── Event-log integration helpers (item 014) ────────────────────────
+
+# Assert events.ndjson and state.json never contradict across a run:
+# state.json is authoritative for status; events.ndjson is the stream/history.
+# Checks: non-empty log, dense+monotonic seq from 0, terminal loop_completed
+# event (consistent with the terminal state.json status), and every done item
+# carries a corresponding item_completed event.
+assert_events_never_contradict() {
+  local events="$SANDBOX_DIR/.rauf/events.ndjson"
+  local backlog="$SANDBOX_DIR/.rauf/backlog.json"
+
+  if [ -s "$events" ]; then
+    pass "events.ndjson is non-empty"
+  else
+    fail "events.ndjson missing or empty"
+    return
+  fi
+
+  # seq must be dense+monotonic from 0 (line index == .seq for every line).
+  if jq -s -e 'to_entries | all(.[]; .key == .value.seq)' "$events" >/dev/null; then
+    pass "events.ndjson seq is dense+monotonic from 0"
+  else
+    fail "events.ndjson seq is not dense/monotonic from 0"
+  fi
+
+  # The terminal event must be loop_completed (does not contradict a terminal
+  # state.json status such as limit_reached).
+  if [ "$(tail -n1 "$events" | jq -r '.type')" = "loop_completed" ]; then
+    pass "events terminal event = loop_completed (consistent with terminal state)"
+  else
+    fail "events terminal event is not loop_completed"
+  fi
+
+  # Never-contradict: every item state.json/backlog marks done has a matching
+  # item_completed event in the stream.
+  local ok_all=1
+  while IFS= read -r id; do
+    [ -z "$id" ] && continue
+    if ! jq -s -e --arg id "$id" \
+      'any(.[]; .type=="item_completed" and .itemId==$id)' "$events" >/dev/null; then
+      ok_all=0
+      fail "done item $id has no item_completed event (events/state contradict)"
+    fi
+  done < <(jq -r '.items[] | select(.status=="done") | .id' "$backlog")
+  [ "$ok_all" -eq 1 ] && pass "every done item has a corresponding item_completed event"
+}
+
+# Assert the dogfood commit rule end to end: exactly one commit per item since
+# the last sandbox baseline, the message is `[rauf] <id>:`, and the live
+# events.ndjson is NOT part of that commit (RUNTIME_EXCLUDE_PATHSPECS).
+assert_dogfood_commit() {
+  local baseline new
+  baseline=$(git rev-list -n1 --grep="sandbox baseline" HEAD 2>/dev/null)
+  if [ -z "$baseline" ]; then
+    fail "could not locate sandbox baseline commit"
+    return
+  fi
+  new=$(git rev-list "${baseline}..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$new" = "1" ]; then
+    pass "exactly one commit per item since baseline (runner-owns-commit)"
+  else
+    fail "expected exactly 1 commit since baseline, got $new"
+  fi
+
+  if git log -1 --format=%s HEAD | grep -q '^\[rauf\] 001:'; then
+    pass "per-item commit message is '[rauf] 001:'"
+  else
+    fail "per-item commit message is not '[rauf] 001:' (got '$(git log -1 --format=%s HEAD)')"
+  fi
+
+  # The live events.ndjson must never be in the commit (exact path, so a
+  # committed archive/<ts>-events.ndjson does not false-match).
+  if git show --name-only --format= HEAD | grep -qx '.rauf/events.ndjson'; then
+    fail "per-item commit includes live .rauf/events.ndjson (must be excluded)"
+  else
+    pass "per-item commit excludes live .rauf/events.ndjson (RUNTIME_EXCLUDE_PATHSPECS)"
+  fi
+}
+
 # ─── Run a scenario ──────────────────────────────────────────────────
 
 run_scenario() {
@@ -173,6 +252,11 @@ assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
 assert_state_status "limit_reached"
+# Event-log integration (item 014): events.ndjson and state.json never contradict,
+# and the per-item commit obeys the runner-owns-commit rule without committing
+# the live event log.
+assert_events_never_contradict
+assert_dogfood_commit
 
 # 2. stream-blocked: RAUF_BLOCKED marks item blocked
 run_scenario "stream-blocked"
@@ -477,6 +561,88 @@ if [ "$human_answer" = "null" ]; then
 else
   fail "humanAnswer not cleared (got '$human_answer')"
 fi
+
+# ─── Best-effort persistence is invisible (item 014) ─────────────────
+
+# 11. unwritable-events: events.ndjson persistence is best-effort (REQ-PERF-01 /
+#     REQ-REL-02). Make the event log unwritable and confirm the loop still
+#     completes and reports correct status from state.json + rauf.log — the
+#     persistence failure must be fully silent.
+#
+#     Sabotage: events.ndjson is a DIRECTORY (appendFileSync → EISDIR every
+#     write) and archive/ is a FILE (so rotateEventsLog's ensureDir(archive)
+#     fails and cannot move the directory out of the way — the unwritable path
+#     persists for the whole run). state.json/rauf.log live beside it in a
+#     writable .rauf/, so loop correctness is unaffected.
+echo ""
+echo "=== Scenario: unwritable-events (best-effort persistence) ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+export MOCK_CLAUDE_SCENARIO="stream-done"
+
+mkdir -p "$SANDBOX_DIR/.rauf/events.ndjson"
+: >"$SANDBOX_DIR/.rauf/archive"
+
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 || true
+
+# The loop completed the item despite the unwritable event log.
+assert_item_status "001" "done"
+assert_state_status "limit_reached"
+assert_done_file_exists
+
+# Persistence failure was silent: no events were written (path stayed a dir).
+if [ -d "$SANDBOX_DIR/.rauf/events.ndjson" ]; then
+  pass "events.ndjson persistence failed silently (path remained unwritable)"
+else
+  fail "events.ndjson sabotage was not preserved (rotation/append worked unexpectedly)"
+fi
+
+# Status is reported from state.json + rauf.log, not the event log.
+if grep -q "Item 001 completed" "$SANDBOX_DIR/.rauf/rauf.log"; then
+  pass "status recoverable from rauf.log (Item 001 completed) without the event log"
+else
+  fail "rauf.log missing completion record"
+fi
+
+# Clean up the sabotage so it never leaks into a commit or a later scenario.
+rm -rf "$SANDBOX_DIR/.rauf/events.ndjson" "$SANDBOX_DIR/.rauf/archive"
+
+# ─── Compatibility: no events.ndjson, no ~/.rauf/active (item 014) ───
+
+# 12. An install predating this version (no events.ndjson, no ~/.rauf/active)
+#     must keep working: status degrades gracefully (readEvents → ok([]),
+#     listActiveLoops over a missing ACTIVE_DIR → ok([])) and never crashes.
+echo ""
+echo "=== Scenario: compatibility (no events.ndjson / no ~/.rauf/active) ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+
+# Fresh setup has no state.json and no events.ndjson; a throwaway HOME has no
+# ~/.rauf/active. A status read must still succeed.
+assert_file_not_exists "$SANDBOX_DIR/.rauf/events.ndjson" ".rauf/events.ndjson (absent pre-run)"
+
+COMPAT_HOME="$(mktemp -d)"
+COMPAT_RC=0
+HOME="$COMPAT_HOME" rauf status "$SANDBOX_DIR" >/dev/null 2>&1 || COMPAT_RC=$?
+if [ "$COMPAT_RC" -eq 0 ]; then
+  pass "rauf status degrades gracefully with no events.ndjson / no ~/.rauf/active (exit 0)"
+else
+  fail "rauf status crashed with no events.ndjson / no ~/.rauf/active (exit $COMPAT_RC)"
+fi
+
+# status --all over a missing ACTIVE_DIR must also not crash.
+COMPAT_ALL_RC=0
+HOME="$COMPAT_HOME" rauf status "$SANDBOX_DIR" --all >/dev/null 2>&1 || COMPAT_ALL_RC=$?
+if [ "$COMPAT_ALL_RC" -eq 0 ]; then
+  pass "rauf status --all tolerates a missing ~/.rauf/active (exit 0)"
+else
+  fail "rauf status --all crashed with a missing ~/.rauf/active (exit $COMPAT_ALL_RC)"
+fi
+
+rm -rf "$COMPAT_HOME"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

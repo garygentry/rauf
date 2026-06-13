@@ -408,8 +408,8 @@
         "best-effort persistence is invisible: a sandbox run with an unwritable events.ndjson (e.g. read-only state dir) still completes the loop and reports correct status from state.json + rauf.log — persistence failure is silent (REQ-PERF-01/REQ-REL-02)",
         "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check all pass"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T00:01:20.415Z",
       "dependsOn": [
         "006",
         "007",

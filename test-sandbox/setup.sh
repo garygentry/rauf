@@ -6,6 +6,12 @@ SANDBOX_DIR="$(pwd)"
 # Remove transient state files
 rm -f .rauf/state.json .rauf/rauf.log .rauf/DONE .rauf/CANCEL
 rm -f .rauf/iteration-status.json .rauf/backlog.json.bak .rauf/answer-proof.txt
+# events.ndjson is a per-run runtime file the runner writes (rotating any prior
+# one into archive/). Remove both so each run starts from a clean slate and a
+# stale event log / archive never leaks into the sandbox's throwaway commits.
+# -rf also clears the unwritable-events.ndjson sabotage (a directory + an
+# archive FILE) the best-effort-persistence scenario leaves behind.
+rm -rf .rauf/events.ndjson .rauf/archive
 
 # Restore backlog to original (all pending)
 cp backlog-template.json .rauf/backlog.json
@@ -56,6 +62,9 @@ cat >"$SBX_GIT_DIR/info/exclude" <<'EOF'
 **/.rauf/CANCEL
 **/.rauf/iteration-status.json
 **/.rauf/rauf.log
+**/.rauf/events.ndjson
+**/.rauf/archive/
+**/.rauf/archive
 **/.rauf/answer-proof.txt
 **/backlog.json.bak
 EOF
