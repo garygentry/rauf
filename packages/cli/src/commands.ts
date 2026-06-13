@@ -98,6 +98,17 @@ export const ExitCode = {
 } as const;
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 
+/**
+ * Targeted remediation messages for removed subcommands (REQ-RMV-01 / 00 §5).
+ * Keyed by [command][subcommand]. Intercepted before the generic unknown-subcommand
+ * error so the targeted message wins. Exits USAGE(2), executes nothing.
+ */
+export const REMOVED_SUBCOMMAND_MESSAGES: Record<string, Record<string, string>> = {
+  loop: {
+    start: "`loop start` was removed in v0.5.0 — use `loop run --detached` (`-d`).",
+  },
+};
+
 // ─── Command Definitions ─────────────────────────────────────────
 //
 // All commands from SPEC-CLI.md are listed. Commands without handlers

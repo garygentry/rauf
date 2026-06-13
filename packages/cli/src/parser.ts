@@ -17,7 +17,17 @@ export interface ParsedArgs {
   args: string[];
   flags: Map<string, string | true>;
   globalFlags: GlobalFlags;
+  /** Set when a removed flag is detected; the caller should print this and exit USAGE(2). */
+  removedFlagError?: string;
 }
+
+/**
+ * Targeted remediation messages for removed flags (REQ-RMV-01 / 00 §5).
+ * Detected during flag parsing; exits USAGE(2), executes nothing.
+ */
+export const REMOVED_FLAG_MESSAGES: Record<string, string> = {
+  watch: "`--watch` was removed in v0.5.0 — use `--follow` (`-f`).",
+};
 
 /**
  * Parse CLI arguments into structured form.
@@ -134,6 +144,22 @@ export function parseArgs(argv: string[], subcommandNames?: Set<string>): Parsed
   if (flags.has("d") && !flags.has("detached")) {
     flags.set("detached", flags.get("d")!);
     flags.delete("d");
+  }
+
+  // Detect removed flags before handing off to any handler (REQ-RMV-01 / 00 §5).
+  // This fires before the handler runs, so the targeted message wins.
+  for (const flagName of Object.keys(REMOVED_FLAG_MESSAGES)) {
+    if (flags.has(flagName)) {
+      flags.delete(flagName);
+      return {
+        command,
+        subcommand,
+        args: positionals.slice(restStart),
+        flags,
+        globalFlags,
+        removedFlagError: REMOVED_FLAG_MESSAGES[flagName],
+      };
+    }
   }
 
   return {

@@ -21,6 +21,7 @@ import {
   findSubcommand,
   showCommandHelp,
   ExitCode,
+  REMOVED_SUBCOMMAND_MESSAGES,
 } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 
@@ -82,10 +83,16 @@ export async function runCli(): Promise<number> {
     return ExitCode.USAGE;
   }
 
-  // Re-parse with subcommand awareness if this command has subcommands
+  // Re-parse with subcommand awareness if this command has subcommands.
+  // Include removed subcommand names in the candidate set so the parser
+  // places them in the `subcommand` slot (enabling the remediation check below).
   let parsed = preparse;
   if (cmd.subcommands) {
-    parsed = parseArgs(argv, getSubcommandNames(cmd));
+    const removedForCmd = REMOVED_SUBCOMMAND_MESSAGES[commandName];
+    const extraNames = removedForCmd ? new Set(Object.keys(removedForCmd)) : undefined;
+    const subNames = getSubcommandNames(cmd);
+    const allNames = extraNames ? new Set([...subNames, ...extraNames]) : subNames;
+    parsed = parseArgs(argv, allNames);
   }
 
   // Build command context
@@ -96,8 +103,15 @@ export async function runCli(): Promise<number> {
     rawArgv: argv,
   };
 
+  // Intercept removed flags (REQ-RMV-01 / 00 §5) — fires before help and before any
+  // handler, so the targeted message wins over generic "unknown flag" behaviour.
+  if (parsed.removedFlagError) {
+    error(parsed.removedFlagError);
+    return ExitCode.USAGE;
+  }
+
   // Intercept --help / -h BEFORE any handler runs, so a help probe never
-  // triggers a side effect (e.g. `rauf loop start --help` must not start a loop).
+  // triggers a side effect (e.g. `rauf loop run --help` must not start a loop).
   if (parsed.flags.has("help") || parsed.flags.has("h")) {
     return showCommandHelp(commandName, ctx, parsed.subcommand ?? undefined);
   }
@@ -113,6 +127,14 @@ export async function runCli(): Promise<number> {
       }
       info("");
       info(`Run ${c.cyan(`rauf help ${commandName}`)} for details.`);
+      return ExitCode.USAGE;
+    }
+
+    // Intercept removed subcommands (REQ-RMV-01 / 00 §5) — fires before the generic
+    // unknown-subcommand error so the targeted message wins.
+    const removedMsg = REMOVED_SUBCOMMAND_MESSAGES[commandName]?.[parsed.subcommand];
+    if (removedMsg) {
+      error(removedMsg);
       return ExitCode.USAGE;
     }
 

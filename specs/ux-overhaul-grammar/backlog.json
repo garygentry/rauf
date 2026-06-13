@@ -226,8 +226,8 @@
         "The remediation fires before the generic unknown-subcommand/unknown-flag error (assert the specific message)",
         "pnpm typecheck && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:45:08.501Z",
       "dependsOn": [
         "003",
         "006"
