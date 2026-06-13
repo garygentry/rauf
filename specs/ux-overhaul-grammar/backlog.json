@@ -152,8 +152,8 @@
         "parser resolves -d to --detached",
         "pnpm typecheck && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:40:19.653Z",
       "dependsOn": [
         "003"
       ],

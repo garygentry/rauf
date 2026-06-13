@@ -61,8 +61,8 @@ describe("--version flag", () => {
 });
 
 describe("--help interception (item 023)", () => {
-  it("`loop start --help` prints help and does NOT start the loop or daemon", async () => {
-    const output = await withArgv(["loop", "start", "--help"], async () => {
+  it("`loop run --help` prints help and does NOT run the loop or daemon", async () => {
+    const output = await withArgv(["loop", "run", "--help"], async () => {
       const code = await runCli();
       expect(code).toBe(0);
     });
@@ -76,8 +76,8 @@ describe("--help interception (item 023)", () => {
     expect(combined).not.toContain("Loop started");
   });
 
-  it("`loop start -h` is intercepted the same as --help", async () => {
-    const output = await withArgv(["loop", "start", "-h"], async () => {
+  it("`loop run -h` is intercepted the same as --help", async () => {
+    const output = await withArgv(["loop", "run", "-h"], async () => {
       const code = await runCli();
       expect(code).toBe(0);
     });

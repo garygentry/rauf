@@ -286,12 +286,20 @@ export async function ensureServerRunning(ctx: CommandContext): Promise<boolean>
   return true;
 }
 
-// ─── handleLoopStart ────────────────────────────────────────────────
+// ─── runDetached (formerly handleLoopStart) ─────────────────────────
 
-export async function handleLoopStart(ctx: CommandContext): Promise<number> {
+/**
+ * Detached-run path (formerly `handleLoopStart`). Auto-starts the server daemon,
+ * POSTs the loop options to `POST /api/projects/:id/loop/start`, and returns
+ * immediately. Invoked only from the `--detached`/`-d` branch of `handleLoopRun`.
+ *
+ * `--follow` is handled CLI-side AFTER this returns (item 007) and is NOT in the
+ * request body — the body carries only loop options. The server still runs the
+ * loop in-process via LoopManager (canon P2: hide the mode, don't change it).
+ */
+async function runDetached(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
-  const follow = extractBoolFlag(ctx.flags, "follow");
   const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
@@ -373,28 +381,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
         const data = await resp.json();
         outputJson(data);
       } else {
-        success(`Loop started for ${c.cyan(id)}`);
-        info(
-          c.dim(
-            `Note: a ${c.cyan("rauf server stop")}/${c.cyan("restart")} interrupts this loop. ` +
-              `Use ${c.cyan("rauf loop run")} for the unattended-safe (in-process) mode.`,
-          ),
-        );
-      }
-
-      if (follow) {
-        const eventsUrl = apiUrl(port, id, "events");
-        info(c.dim("Following loop events... Press Ctrl+C to stop."));
-        const statusLine = new StatusLine({
-          isTTY: process.stdout.isTTY ?? false,
-          quiet: ctx.globalFlags.quiet,
-          json: ctx.globalFlags.json,
-          noColor: ctx.globalFlags.noColor,
-        });
-        return streamEventsUntilDone(eventsUrl, statusLine);
-      }
-
-      if (!ctx.globalFlags.json) {
+        success(`Loop started for ${c.cyan(id)} ${c.dim("(detached, server-owned)")}`);
         info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
       }
       return ExitCode.SUCCESS;
@@ -406,16 +393,40 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
     const errMsg = errBody?.error?.message ?? resp.statusText;
 
     if (resp.status === 409) {
+      // Loop already running — a correctable precondition, not a hard error.
       error(`Loop already running for ${id}.`);
       info(`Use ${c.cyan("rauf loop stop")} to stop it first.`);
-    } else {
-      error(`Failed to start loop: ${errMsg}`);
+      return ExitCode.USAGE; // 2 (00-core-definitions §1)
     }
+    error(`Failed to start loop: ${errMsg}`);
     return ExitCode.ERROR;
   } catch (e) {
     error(`Failed to connect to server: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   }
+}
+
+/**
+ * Attach the canonical live view to an already-detached, server-owned loop
+ * (the `loop run --detached --follow` case). Reuses the SSE/events surface every
+ * observer reads — no new observation path. Ctrl-C (SIGINT) detaches THE VIEW
+ * ONLY: `streamEventsUntilDone` interrupts its read and returns without issuing
+ * `POST /loop/stop`, so the server keeps running the loop. `--follow` is NOT in
+ * the request body — following is a pure read attached after the POST returns.
+ * Honors --json (NDJSON streaming) via the StatusLine's json mode.
+ */
+async function followDetached(ctx: CommandContext, projectPath: string): Promise<number> {
+  const port = getPort();
+  const id = projectId(projectPath);
+  const eventsUrl = apiUrl(port, id, "events");
+  info(c.dim("Following loop events... Press Ctrl+C to detach (the loop keeps running)."));
+  const statusLine = new StatusLine({
+    isTTY: process.stdout.isTTY ?? false,
+    quiet: ctx.globalFlags.quiet,
+    json: ctx.globalFlags.json,
+    noColor: ctx.globalFlags.noColor,
+  });
+  return streamEventsUntilDone(eventsUrl, statusLine);
 }
 
 // ─── handleLoopStop ─────────────────────────────────────────────────
@@ -654,6 +665,22 @@ export function loopRunExitCode(result: LoopResult): ExitCode {
 
 export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
+
+  // Detached mode (formerly `loop start`): delegate to the server-POST flow and
+  // return immediately. Bare `loop run` falls through to the unchanged in-process
+  // path below. `--detached`/`-d` is read and consumed here so it never leaks into
+  // the in-process path or the POST body (canon P2: hide the mode, don't change it).
+  const detached = extractBoolFlag(ctx.flags, "detached");
+  if (detached) {
+    const code = await runDetached(ctx);
+    if (code !== ExitCode.SUCCESS) return code;
+    // --follow attaches the live view CLI-side AFTER the POST returns (§3).
+    if (extractBoolFlag(ctx.flags, "follow")) {
+      return followDetached(ctx, projectPath);
+    }
+    return ExitCode.SUCCESS;
+  }
+
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const force = extractBoolFlag(ctx.flags, "force");
   // `rauf resume` sets this: recovery rewrites bookkeeping so the tree is dirty

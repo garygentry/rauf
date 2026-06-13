@@ -257,20 +257,19 @@ describe("help command", () => {
     expect(output.stdout).not.toContain("Subcommands:");
   });
 
-  it("renders subcommand usage + flags for `help loop start`", async () => {
+  it("renders subcommand usage + full flag view for `help loop run`", async () => {
     const cmd = findCommand("help")!;
-    const ctx = makeCtx({ args: ["loop", "start"] });
+    const ctx = makeCtx({ args: ["loop", "run"] });
     const output = await captureOutput(async () => {
       const code = await cmd.handler!(ctx);
       expect(code).toBe(ExitCode.SUCCESS);
     });
     // The subcommand usage line, not just the subcommand list.
     expect(output.stdout).toContain("Usage:");
-    expect(output.stdout).toContain("rauf loop start");
+    expect(output.stdout).toContain("rauf loop run");
     // A flag list with the documented flags.
     expect(output.stdout).toContain("Flags:");
     expect(output.stdout).toContain("--iterations");
-    expect(output.stdout).toContain("--follow");
     // It is the subcommand view, not the parent's subcommand table.
     expect(output.stdout).not.toContain("Subcommands:");
   });
@@ -290,7 +289,7 @@ describe("help command", () => {
   it("outputs JSON for subcommand help when --json", async () => {
     const cmd = findCommand("help")!;
     const ctx = makeCtx({
-      args: ["loop", "start"],
+      args: ["loop", "run"],
       globalFlags: { json: true, noColor: false, quiet: false, root: null },
     });
     const output = await captureOutput(async () => {
@@ -298,7 +297,7 @@ describe("help command", () => {
       expect(code).toBe(ExitCode.SUCCESS);
     });
     const parsed = JSON.parse(output.stdout);
-    expect(parsed.name).toBe("loop start");
+    expect(parsed.name).toBe("loop run");
     expect(Array.isArray(parsed.flags)).toBe(true);
     expect(parsed.flags.some((f: { name: string }) => f.name.startsWith("--iterations"))).toBe(
       true,

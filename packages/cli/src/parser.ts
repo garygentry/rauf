@@ -129,6 +129,13 @@ export function parseArgs(argv: string[], subcommandNames?: Set<string>): Parsed
     flags.delete("f");
   }
 
+  // Likewise normalize the -d short alias to the canonical --detached flag
+  // (one flag name per concept). Handlers only ever read "detached".
+  if (flags.has("d") && !flags.has("detached")) {
+    flags.set("detached", flags.get("d")!);
+    flags.delete("d");
+  }
+
   return {
     command,
     subcommand,

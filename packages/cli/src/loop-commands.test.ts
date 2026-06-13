@@ -10,6 +10,7 @@ import { LoopEventSchema } from "@rauf/core";
 
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
+import { parseArgs } from "./parser.js";
 import { configureOutput } from "./formatter.js";
 import {
   formatAndPrintEvent,
@@ -165,7 +166,7 @@ describe("loop command registration", () => {
     const loop = findCommand("loop")!;
     expect(loop.subcommands).toBeDefined();
     const subNames = loop.subcommands!.map((s) => s.name);
-    expect(subNames).toEqual(["start", "stop", "run", "review"]);
+    expect(subNames).toEqual(["stop", "run", "review"]);
   });
 
   it("no longer registers the removed monitor verbs (clean break, no aliases)", () => {
@@ -970,5 +971,134 @@ describe("loop run --pause-on-needs-human exit code", () => {
     expect(code).toBe(ExitCode.NEEDS_HUMAN);
     const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
     expect(state.status).toBe("complete");
+  });
+});
+
+// ─── loop run --detached delegates to the server-POST flow (item 006) ───
+
+describe("loop run --detached", () => {
+  let savedState: string | null = null;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    removeServerState();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-detached-"));
+  });
+
+  afterEach(() => {
+    removeServerState();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
+  });
+
+  /**
+   * A throwaway server that answers GET /api/health (so ensureServerRunning
+   * no-ops) and records POST .../loop/start so the test can assert delegation.
+   */
+  async function startMockServer(): Promise<{
+    port: number;
+    close: () => Promise<void>;
+    startCalls: Array<{ id: string; body: unknown }>;
+  }> {
+    const startCalls: Array<{ id: string; body: unknown }> = [];
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      const m = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/start$/);
+      if (req.method === "POST" && m) {
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", () => {
+          startCalls.push({ id: decodeURIComponent(m[1]!), body: raw ? JSON.parse(raw) : {} });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: { started: true } }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    return {
+      port,
+      startCalls,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  it("delegates to ensureServerRunning + POST /loop/start and returns immediately (no in-process LoopRunner)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+
+      // A bare project dir (no git repo, no precondition setup). The in-process
+      // path would refuse here; the detached path bypasses all of it.
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([["detached", true]]),
+      });
+
+      let code = -1;
+      const out = await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      // It hit the server's loop/start route exactly once for this project.
+      expect(startCalls.length).toBe(1);
+      expect(startCalls[0]!.id).toBe(path.basename(proj));
+      // It took the detached path, NOT the in-process LoopRunner path.
+      expect(out.stdout).toContain("Loop started");
+      expect(out.stdout).not.toContain("Running loop directly");
+      // No state.json was written (no in-process LoopRunner ever created it).
+      expect(fs.existsSync(path.join(proj, ".rauf", "state.json"))).toBe(false);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("resolves -d to --detached (same delegation path)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      // Parse `loop run <proj> -d` through the real parser so the -d→--detached
+      // alias normalization is exercised, then dispatch handleLoopRun.
+      const parsed = parseArgs(["loop", "run", proj, "-d"], new Set(["run", "stop", "review"]));
+      expect(parsed.flags.has("detached")).toBe(true);
+      expect(parsed.flags.has("d")).toBe(false);
+
+      const ctx = makeCtx({ args: parsed.args, flags: parsed.flags });
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+    } finally {
+      removeServerState();
+      await close();
+    }
   });
 });

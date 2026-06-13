@@ -41,12 +41,7 @@ import {
   handleServerStatus,
   handleServerLogs,
 } from "./server-commands.js";
-import {
-  handleLoopStart,
-  handleLoopStop,
-  handleLoopRun,
-  handleLoopReview,
-} from "./loop-commands.js";
+import { handleLoopStop, handleLoopRun, handleLoopReview } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
 import { handleReset } from "./reset-commands.js";
 import { handleResume } from "./resume-commands.js";
@@ -148,38 +143,6 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage rauf autonomous coding loops",
     usage: "rauf loop <subcommand> [path]",
     subcommands: [
-      {
-        name: "start",
-        description: "Start a loop via server",
-        usage: "rauf loop start [path] [options]",
-        flags: [
-          { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
-          {
-            name: "--retries <N>",
-            description: "Max retries per item before deferring (default: 3)",
-          },
-          {
-            name: "--timeout <N>",
-            description: "Per-iteration session timeout in minutes (default: 60)",
-          },
-          { name: "--model <name>", description: "Claude model to use" },
-          { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
-          {
-            name: "--create-branch <name>",
-            description: "Create & switch to a new feature branch before starting",
-          },
-          { name: "--follow", description: "Follow loop events in real-time after starting" },
-          {
-            name: "--retry-blocked",
-            description: "Unblock previously blocked items before starting",
-          },
-          {
-            name: "--suppress-iteration-review",
-            description: "Suppress per-iteration review hooks in child sessions",
-          },
-        ],
-        handler: handleLoopStart,
-      },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
       {
         name: "run",
