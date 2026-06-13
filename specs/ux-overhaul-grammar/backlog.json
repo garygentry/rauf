@@ -99,8 +99,8 @@
         "A table-driven test covers each LoopResult shape → expected code",
         "pnpm typecheck && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:27:00.527Z",
       "dependsOn": [
         "003"
       ],

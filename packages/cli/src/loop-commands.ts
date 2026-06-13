@@ -41,6 +41,7 @@ import {
   gitCommit,
   RUNTIME_EXCLUDE_PATHSPECS,
 } from "@rauf/loop";
+import type { LoopResult } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -615,6 +616,40 @@ async function connectSSE(
   }
 }
 
+// ─── loop run terminal exit-code mapping ────────────────────────────
+
+/**
+ * Whether a resolved LoopResult represents a usage/iteration-limit terminal
+ * (limit_reached / weekly_limit / paused_usage_limit). LoopResult carries this
+ * via the `limitReached` flag the runner sets when it writes a terminal limit
+ * state (00-core-definitions §2a / 03-exit-codes §3). If no limit signal is
+ * reachable, this is simply false and the LIMIT branch is not taken.
+ */
+function isLimitTerminal(result: LoopResult): boolean {
+  return result.limitReached === true;
+}
+
+/**
+ * Map a terminal `loop run` LoopResult to the unified exit code
+ * (00-core-definitions §2a). Pure over the resolved result. Order is
+ * significant — needs-human → limit → blocked → clean; the first match wins.
+ * The non-Result error path (the caller's catch) covers the ERROR(1) row.
+ * RUNNING(6) is NEVER returned here — a finished run is not running.
+ */
+export function loopRunExitCode(result: LoopResult): ExitCode {
+  const needsHuman = (result.needsHumanCount ?? 0) > 0 || result.pausedReason === "needs_human";
+  if (needsHuman) {
+    return ExitCode.NEEDS_HUMAN; // 3
+  }
+  if (isLimitTerminal(result)) {
+    return ExitCode.LIMIT; // 4 — limit-reached / usage-paused / sleeping terminal
+  }
+  if (result.blockedCount > 0) {
+    return ExitCode.BLOCKED; // 5 — terminal with blocked items
+  }
+  return ExitCode.SUCCESS; // 0 — clean: completed / idle / cancelled-graceful
+}
+
 // ─── handleLoopRun ──────────────────────────────────────────────────
 
 export async function handleLoopRun(ctx: CommandContext): Promise<number> {
@@ -977,9 +1012,8 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       }
     }
 
-    // Distinct non-zero code when --pause-on-needs-human halted the loop, so a
-    // supervising session can detect the pause (item 008).
-    return result.pausedReason === "needs_human" ? ExitCode.NEEDS_HUMAN : ExitCode.SUCCESS;
+    // Map the terminal LoopResult to the unified exit code (00-core-definitions §2a).
+    return loopRunExitCode(result);
   } catch (e) {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;

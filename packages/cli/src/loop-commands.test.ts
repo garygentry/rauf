@@ -17,7 +17,9 @@ import {
   createLoopBranch,
   buildPreconditionRemediation,
   handleLoopRun,
+  loopRunExitCode,
 } from "./loop-commands.js";
+import type { LoopResult } from "@rauf/loop";
 import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -89,6 +91,68 @@ function baseEvent<T extends LoopEvent["type"]>(
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────
+
+describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)", () => {
+  // Each row: a LoopResult shape and the expected unified exit code.
+  const base: LoopResult = { completedCount: 0, blockedCount: 0, cancelled: false };
+  const cases: Array<{ name: string; result: LoopResult; expected: number }> = [
+    {
+      name: "clean completion → SUCCESS(0)",
+      result: { ...base, completedCount: 3 },
+      expected: ExitCode.SUCCESS,
+    },
+    {
+      name: "idle / nothing to do → SUCCESS(0)",
+      result: { ...base },
+      expected: ExitCode.SUCCESS,
+    },
+    {
+      name: "graceful cancel → SUCCESS(0)",
+      result: { ...base, completedCount: 1, cancelled: true, gracefulStop: true },
+      expected: ExitCode.SUCCESS,
+    },
+    {
+      name: "pausedReason needs_human → NEEDS_HUMAN(3)",
+      result: { ...base, pausedReason: "needs_human" },
+      expected: ExitCode.NEEDS_HUMAN,
+    },
+    {
+      name: "needsHumanCount > 0 → NEEDS_HUMAN(3)",
+      result: { ...base, needsHumanCount: 2 },
+      expected: ExitCode.NEEDS_HUMAN,
+    },
+    {
+      name: "limitReached → LIMIT(4)",
+      result: { ...base, completedCount: 2, limitReached: true },
+      expected: ExitCode.LIMIT,
+    },
+    {
+      name: "blockedCount > 0 → BLOCKED(5)",
+      result: { ...base, blockedCount: 1 },
+      expected: ExitCode.BLOCKED,
+    },
+    {
+      name: "needs-human precedes limit (order)",
+      result: { ...base, needsHumanCount: 1, limitReached: true },
+      expected: ExitCode.NEEDS_HUMAN,
+    },
+    {
+      name: "limit precedes blocked (order)",
+      result: { ...base, blockedCount: 1, limitReached: true },
+      expected: ExitCode.LIMIT,
+    },
+  ];
+
+  it.each(cases)("$name", ({ result, expected }) => {
+    expect(loopRunExitCode(result)).toBe(expected);
+  });
+
+  it("never returns RUNNING(6) for any terminal shape", () => {
+    for (const { result } of cases) {
+      expect(loopRunExitCode(result)).not.toBe(ExitCode.RUNNING);
+    }
+  });
+});
 
 describe("loop command registration", () => {
   it("loop command exists in registry", () => {
@@ -889,7 +953,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
     expect(byId["002"].status).toBe("pending");
   });
 
-  it("without the flag, the same needs-human item does NOT change the exit code (SUCCESS)", async () => {
+  it("without the flag, the run completes but a needs-human item still maps to NEEDS_HUMAN (00 §2a)", async () => {
     const proj = makeRunnableProject([pendingItem("001")]);
     writeMockClaude('echo "RAUF_NEEDS_HUMAN:Need API key"');
 
@@ -900,7 +964,10 @@ describe("loop run --pause-on-needs-human exit code", () => {
       code = await handleLoopRun(ctx);
     });
 
-    expect(code).toBe(ExitCode.SUCCESS);
+    // Without --pause-on-needs-human the loop runs to completion (state "complete",
+    // the item is set aside, not a hard pause), but the unified terminal mapping
+    // reports NEEDS_HUMAN(3) because needsHumanCount > 0 (status<->loop-run parity).
+    expect(code).toBe(ExitCode.NEEDS_HUMAN);
     const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
     expect(state.status).toBe("complete");
   });
