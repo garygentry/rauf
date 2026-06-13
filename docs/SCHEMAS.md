@@ -376,7 +376,7 @@ interface LoopStartOptions {
 
 All events emitted by LoopRunner during the loop lifecycle. Discriminated on the `type` field. All events share a common base shape.
 
-> These shapes back the `rauf loop run --ndjson` **machine-observation surface**. This section is the source of truth for the data; the stability _promise_ and the `signal_parsed` `review`→`done` / circuit-breaker→`loop_error` gotchas live in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned).
+> These shapes back the `rauf loop run --ndjson` **machine-observation surface**. This section is the source of truth for the data; the stability _promise_ and the `signal_parsed` `review` / circuit-breaker→`loop_error` gotchas live in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned).
 
 ```typescript
 // Base fields shared by all events
@@ -389,32 +389,32 @@ interface LoopEventBase {
 
 ### All 24 Event Types
 
-| Type                  | Additional Fields                                             | Emitted When                                             |
-| --------------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| `loop_started`        | `maxIterations`, `model?`                                     | Loop begins                                              |
-| `iteration_start`     | `iteration`, `maxIterations`                                  | Each iteration starts                                    |
-| `item_selected`       | `itemId`, `title`, `priority`                                 | Next item picked from backlog                            |
-| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`              | LLM process launched                                     |
-| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`    | LLM process exits                                        |
-| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/none), `reason?` | Exit signal extracted from stdout                        |
-| `item_completed`      | `itemId`, `title`                                             | Item marked done                                         |
-| `item_blocked`        | `itemId`, `reason`                                            | Item marked blocked                                      |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`                             | Item re-queued for retry                                 |
-| `needs_human`         | `itemId`, `reason`                                            | Loop paused for human input                              |
-| `loop_paused`         | `reason` ("needs_human"), `itemId`                            | Loop halted in `paused_human` (`--pause-on-needs-human`) |
-| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                     | Claude API usage limit detected                          |
-| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                    | Usage limit window reset                                 |
-| `sleep_start`         | `sleepUntil`, `reason`                                        | Loop enters sleep (usage limit)                          |
-| `sleep_end`           | _(base only)_                                                 | Loop wakes from sleep                                    |
-| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`          | Loop finishes normally                                   |
-| `loop_error`          | `error`                                                       | Unexpected error terminates loop                         |
-| `loop_cancelled`      | _(base only)_                                                 | Loop cancelled via AbortController or CANCEL file        |
-| `review_started`      | `completedItemIds`                                            | Post-loop review pass begins                             |
-| `review_completed`    | `itemsCreated`, `summary`                                     | Review pass finished                                     |
-| `review_failed`       | `reason`                                                      | Review pass failed (non-fatal)                           |
-| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")              | Tool call starts or finishes in child session            |
-| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                       | Token count update from child session                    |
-| `llm_stuck_warning`   | `itemId`, `silentMs`                                          | Child session silent for too long                        |
+| Type                  | Additional Fields                                                    | Emitted When                                             |
+| --------------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                            | Loop begins                                              |
+| `iteration_start`     | `iteration`, `maxIterations`                                         | Each iteration starts                                    |
+| `item_selected`       | `itemId`, `title`, `priority`                                        | Next item picked from backlog                            |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                     | LLM process launched                                     |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`           | LLM process exits                                        |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?` | Exit signal extracted from stdout                        |
+| `item_completed`      | `itemId`, `title`                                                    | Item marked done                                         |
+| `item_blocked`        | `itemId`, `reason`                                                   | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`                                    | Item re-queued for retry                                 |
+| `needs_human`         | `itemId`, `reason`                                                   | Loop paused for human input                              |
+| `loop_paused`         | `reason` ("needs_human"), `itemId`                                   | Loop halted in `paused_human` (`--pause-on-needs-human`) |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                            | Claude API usage limit detected                          |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                           | Usage limit window reset                                 |
+| `sleep_start`         | `sleepUntil`, `reason`                                               | Loop enters sleep (usage limit)                          |
+| `sleep_end`           | _(base only)_                                                        | Loop wakes from sleep                                    |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                 | Loop finishes normally                                   |
+| `loop_error`          | `error`                                                              | Unexpected error terminates loop                         |
+| `loop_cancelled`      | _(base only)_                                                        | Loop cancelled via AbortController or CANCEL file        |
+| `review_started`      | `completedItemIds`                                                   | Post-loop review pass begins                             |
+| `review_completed`    | `itemsCreated`, `summary`                                            | Review pass finished                                     |
+| `review_failed`       | `reason`                                                             | Review pass failed (non-fatal)                           |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")                     | Tool call starts or finishes in child session            |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                              | Token count update from child session                    |
+| `llm_stuck_warning`   | `itemId`, `silentMs`                                                 | Child session silent for too long                        |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -465,7 +465,7 @@ type LoopEvent =
       timestamp: string;
       projectPath: string;
       itemId: string;
-      signal: "done" | "blocked" | "needs_human" | "none";
+      signal: "done" | "blocked" | "needs_human" | "review" | "none";
       reason?: string;
     }
   | {
@@ -577,9 +577,26 @@ type PersistedEvent = LoopEvent & {
 
 | Constant                | Value             | Meaning                                                                                                                                                    |
 | ----------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `EVENTS_SCHEMA_VERSION` | `"1"`             | `events.ndjson` record schema version. Forward-stable machine contract; bumped only under the Phase-3 versioning discipline.                               |
+| `EVENTS_SCHEMA_VERSION` | `"1"`             | `events.ndjson` record schema version. Forward-stable machine contract; bumped only under the versioning discipline below.                                 |
 | `TOKEN_COALESCE_MS`     | `1000`            | Coalescing window for `llm_token_update` persistence: at most one token-update record per interval. Independent of the runner's `TOKEN_EVENT_THROTTLE_MS`. |
 | `EVENTS_LOG_FILENAME`   | `"events.ndjson"` | Per-run event log file name within a backlog root's state directory.                                                                                       |
+
+**`events.ndjson` versioning discipline.** The persisted event log is a stable,
+versioned, **additive-only-within-a-major** machine surface (the same `LoopEvent`
+shapes as the `--ndjson` stream, plus the `seq` + `schemaVersion` envelope):
+
+1. Within a major version, no event `type` discriminator value is renamed or
+   removed, and no documented field is removed.
+2. Adding a new event `type` to the union, or a new optional field to an existing
+   event, is **additive** and requires **no** version bump.
+3. Readers MUST ignore unknown `type` values and unknown fields rather than
+   failing on them.
+4. `EVENTS_SCHEMA_VERSION` is incremented **only** on a breaking change — a
+   renamed or removed `type` or documented field.
+
+`EVENTS_SCHEMA_VERSION` stays `"1"` in v0.5.0: adding `"review"` to the
+`signal_parsed.signal` enum is an additive change to an existing field's value
+set (rule 2), so it triggers no bump.
 
 ## ActiveLoopEntry (~/.rauf/active/&lt;hash&gt;.json)
 

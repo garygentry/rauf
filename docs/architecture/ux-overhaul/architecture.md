@@ -9,7 +9,7 @@ decisions behind each piece.
 Before Phase 1, a loop's live `LoopEvent`s were the only un-persisted state. Two consequences
 followed:
 
-1. **Observation asymmetry.** The web server could only show events for loops *it* had
+1. **Observation asymmetry.** The web server could only show events for loops _it_ had
    started (it held them in memory). An in-process `rauf loop run` was invisible to it.
 2. **Mode-dependent monitoring.** The CLI's monitor commands behaved differently depending
    on whether a loop ran in-process or under the server.
@@ -65,10 +65,10 @@ that file, built on the `appendLine` / `readNdjson` primitives in `fs-utils.ts`:
 - **`appendEvent(paths, record)`** — append one record. Sandbox-validates the target path to
   `paths.stateDir` first (a path escape returns `PATH_VIOLATION` and writes nothing), then
   writes a single whole line. The runner is the only caller.
-- **`readEvents(paths)`** — the *replay* half of a `follow`: returns the current run's records
+- **`readEvents(paths)`** — the _replay_ half of a `follow`: returns the current run's records
   in `seq` order. Torn-trailing-line tolerant; a missing file returns `ok([])` (graceful
   absence, not an error).
-- **`watchEvents(paths, onRecords)`** — the *tail* half: returns a bare cleanup function and
+- **`watchEvents(paths, onRecords)`** — the _tail_ half: returns a bare cleanup function and
   invokes `onRecords` with each batch of newly-appended records. It tracks a byte offset and
   re-reads `[offset, EOF)` on each `fs.watch` "change", advancing the offset only past the
   last newline — so a partial trailing line is re-read and completed on the next fire, never
@@ -104,7 +104,7 @@ subprocess.
 
 `surfaceInspectedStatus(paths, status)` and `surfaceInspectedDir(inspectedDir, empty)` build
 an `InspectedStatusContext`: the directory that was inspected, whether it was empty, and the
-loops live in *other* roots (from `listActiveLoops`, excluding the inspected root itself).
+loops live in _other_ roots (from `listActiveLoops`, excluding the inspected root itself).
 This is the data layer behind "empty is never silent." `surfaceInspectedStatus` delegates to
 `surfaceInspectedDir` so the registry read and exclude-self filter live in exactly one place;
 the CLI is a pure presenter over this context (it reimplemented none of the filtering).
@@ -115,7 +115,7 @@ Two endpoints make the web a peer observer, not a privileged one:
 
 - **`GET /api/projects/:id/loop/events`** — resolves a `BacklogPaths` (honoring an optional
   `?backlog`), replays the current run via `readEvents`, then live-tails via `watchEvents`,
-  emitting each record as a `loop_event` SSE. It observes *any* loop, including an in-process
+  emitting each record as a `loop_event` SSE. It observes _any_ loop, including an in-process
   one the server never started. A `?backlog` that fails to resolve surfaces a `loop_error`
   rather than silently falling back to the default root.
 - **`GET /api/loops`** — returns `listActiveLoops()` (reconciled, self-healed), the web
@@ -123,7 +123,7 @@ Two endpoints make the web a peer observer, not a privileged one:
 
 The frontend `<EventTimeline>` consumes the file-backed `/loop/events` stream. (Status
 vocabulary and badges — `REVIEWING`, `PAUSED_USAGE_LIMIT`, "Needs Human" — are deliberately
-Phase 4: event *rendering* is not status *vocabulary*, and that boundary is held here.)
+Phase 4: event _rendering_ is not status _vocabulary_, and that boundary is held here.)
 
 ## Key design decisions
 
@@ -147,7 +147,7 @@ acceptable at Phase-1 event volumes.)
 
 ### D3 — `seq` is dense and assigned only on write
 
-The sequence number is incremented *only* when a record actually hits disk. Therefore a gap in
+The sequence number is incremented _only_ when a record actually hits disk. Therefore a gap in
 `seq` means **corruption, not coalescing** — coalesced/dropped token updates consume no `seq`.
 This is what makes `seq` a reliable integrity signal.
 
@@ -169,7 +169,7 @@ disk for inspection; the next run archives them before it begins.
 
 Registry correctness comes from reconciling each entry against its `.loop.lock` at list time,
 using `checkLockFile(lockPath)` — a function extracted from the existing `checkLock` so the
-registry can check an *arbitrary* lock path. Self-heal-on-read means no daemon, no cron, no
+registry can check an _arbitrary_ lock path. Self-heal-on-read means no daemon, no cron, no
 sweep race.
 
 ### D6 / D7 — Machine-wide scope, surfaced as `status --all`
@@ -193,8 +193,8 @@ archived logs. A server SSE path is an optional lower-latency opt-in, not the pr
 These properties must hold for the substrate to be trustworthy. The tests in
 `packages/*/src/**.test.ts` exist primarily to pin them.
 
-- **Two authorities, never contradicting.** `state.json` is authoritative for *status*;
-  `events.ndjson` is authoritative for *stream/history*. The registry `status` is advisory.
+- **Two authorities, never contradicting.** `state.json` is authoritative for _status_;
+  `events.ndjson` is authoritative for _stream/history_. The registry `status` is advisory.
 - **Single writer per root.** Only the runner writes `events.ndjson` for a given root. This is
   what reduces all possible corruption to "a torn trailing line," which every reader tolerates.
 - **Dense `seq`.** Within a run, `seq` is `0,1,2,…` with no gaps. A gap means corruption.
@@ -207,12 +207,12 @@ These properties must hold for the substrate to be trustworthy. The tests in
 
 ## What changed, by package
 
-| Package | Change |
-|---------|--------|
+| Package      | Change                                                                                                                                                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@rauf/core` | New `events-log.ts`, `loop-registry.ts`; `appendLine`/`readNdjson` in `fs-utils.ts`; `checkLockFile` extracted in `lock.ts`; `surfaceInspectedStatus`/`surfaceInspectedDir` in `status.ts`; `eventsLog`+`archive` on `BacklogPaths`; new schemas/constants |
-| `@rauf/loop` | `LoopRunner` wires event persistence (`emitEvent`→`persistEvent` with `seq`+coalescing), rotation + `seq` reset at `start()`, and registry register/update/deregister |
-| `@rauf/cli` | Clean-break monitor surface: top-level `follow`, `status --follow/-f`, `status --all`, empty-is-never-silent; removed `loop follow`/`loop watch`/`status --watch` |
-| `@rauf/web` | `GET /loop/events` (file-backed SSE) and `GET /api/loops` (registry); `<EventTimeline>` |
+| `@rauf/loop` | `LoopRunner` wires event persistence (`emitEvent`→`persistEvent` with `seq`+coalescing), rotation + `seq` reset at `start()`, and registry register/update/deregister                                                                                      |
+| `@rauf/cli`  | Clean-break monitor surface: top-level `follow`, `status --follow/-f`, `status --all`, empty-is-never-silent; removed `loop follow`/`loop watch`/`status --watch`                                                                                          |
+| `@rauf/web`  | `GET /loop/events` (file-backed SSE) and `GET /api/loops` (registry); `<EventTimeline>`                                                                                                                                                                    |
 
 For exact signatures see the [API Reference](./api-reference.md); for operator-facing usage see
 the [Monitoring Guide](./guides/monitoring.md).

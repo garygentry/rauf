@@ -65,7 +65,7 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog list <path> [--status <s>] [--type <t>] [--json]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -73,7 +73,7 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -88,12 +88,12 @@ export async function handleBacklogList(ctx: CommandContext): Promise<number> {
   if (statusFilter && !VALID_STATUSES.has(statusFilter)) {
     error(`Invalid status filter: "${statusFilter}"`);
     info(`Valid statuses: ${[...VALID_STATUSES].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   if (typeFilter && !VALID_TYPES.has(typeFilter)) {
     error(`Invalid type filter: "${typeFilter}"`);
     info(`Valid types: ${[...VALID_TYPES].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = readBacklog(paths);
@@ -149,7 +149,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info('Usage: rauf backlog add <path> --title "..." --type <t> --priority N [options]');
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -157,7 +157,7 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -181,23 +181,23 @@ export async function handleBacklogAdd(ctx: CommandContext): Promise<number> {
   // Validate required fields
   if (!title) {
     error("Missing required flag: --title");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   if (!type) {
     error("Missing required flag: --type");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   if (!VALID_TYPES.has(type)) {
     error(`Invalid type: "${type}"`);
     info(`Valid types: ${[...VALID_TYPES].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Priority defaults to 2 if not specified
   const priority = priorityNum ?? 2;
   if (priority < 1 || priority > 4 || !Number.isInteger(priority)) {
     error("Priority must be an integer from 1 to 4");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Parse dependsOn comma-separated list
@@ -250,7 +250,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   if (!targetPath || !itemId) {
     error("Missing required arguments: <path> <id>");
     info("Usage: rauf backlog edit <path> <id> [field options]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -258,7 +258,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -284,14 +284,14 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
   if (type && !VALID_TYPES.has(type)) {
     error(`Invalid type: "${type}"`);
     info(`Valid types: ${[...VALID_TYPES].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Validate status if provided
   if (status && !VALID_STATUSES.has(status)) {
     error(`Invalid status: "${status}"`);
     info(`Valid statuses: ${[...VALID_STATUSES].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Validate priority if provided
@@ -300,7 +300,7 @@ export async function handleBacklogEdit(ctx: CommandContext): Promise<number> {
     (priorityNum < 1 || priorityNum > 4 || !Number.isInteger(priorityNum))
   ) {
     error("Priority must be an integer from 1 to 4");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Parse dependsOn
@@ -347,7 +347,7 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
   if (!targetPath || !itemId) {
     error("Missing required arguments: <path> <id>");
     info("Usage: rauf backlog delete <path> <id> [--yes]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -355,7 +355,7 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -369,7 +369,7 @@ export async function handleBacklogDelete(ctx: CommandContext): Promise<number> 
   if (!yes) {
     error(`Deleting item ${itemId} requires confirmation.`);
     info("Pass --yes to confirm the deletion.");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = deleteItem(paths, itemId);
@@ -395,7 +395,7 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
   if (!targetPath || !itemId) {
     error("Missing required arguments: <path> <id>");
     info("Usage: rauf backlog show <path> <id> [--json]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -403,7 +403,7 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -420,7 +420,7 @@ export async function handleBacklogShow(ctx: CommandContext): Promise<number> {
   const item = result.value.items.find((i) => i.id === itemId);
   if (!item) {
     error(`Item not found: ${itemId}`);
-    return ExitCode.NOT_FOUND;
+    return ExitCode.USAGE;
   }
 
   if (ctx.globalFlags.json) {
@@ -446,7 +446,7 @@ export async function handleBacklogValidate(ctx: CommandContext): Promise<number
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog validate <path> [--backlog <dir>] [--specs-dir <dir>] [--json]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -455,14 +455,14 @@ export async function handleBacklogValidate(ctx: CommandContext): Promise<number
   if (!backlogRootResult.ok) {
     if (ctx.globalFlags.json) outputJson({ error: backlogRootResult.error });
     else error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
     // e.g. no backlog.json found → usage/IO error
     if (ctx.globalFlags.json) outputJson({ error: pathsResult.error });
     else error(pathsResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const paths = pathsResult.value;
 
@@ -476,7 +476,7 @@ export async function handleBacklogValidate(ctx: CommandContext): Promise<number
     // IO / JSON-parse failure → usage/IO exit code (2), NOT a validation finding.
     if (ctx.globalFlags.json) outputJson({ error: result.error });
     else error(result.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const { valid, findings } = result.value;
@@ -515,7 +515,7 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog restore <path> [--yes]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -523,7 +523,7 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -536,7 +536,7 @@ export async function handleBacklogRestore(ctx: CommandContext): Promise<number>
   if (!yes) {
     error("Restoring backlog from backup requires confirmation.");
     info("Pass --yes to confirm the restore.");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = restoreFromBackup(paths);
@@ -562,7 +562,7 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -570,7 +570,7 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -629,7 +629,7 @@ export async function handleBacklogSweep(ctx: CommandContext): Promise<number> {
   if (!yes) {
     error("Sweeping requires confirmation.");
     info("Pass --yes to confirm. Use --dry-run to preview without writing.");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = sweepBacklog(paths, { minAgeDays: minAgeDays ?? undefined });
@@ -661,7 +661,7 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog archive list <path>");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -669,7 +669,7 @@ export async function handleBacklogArchiveList(ctx: CommandContext): Promise<num
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -721,7 +721,7 @@ export async function handleBacklogArchiveView(ctx: CommandContext): Promise<num
   if (!targetPath || !month) {
     error("Missing required arguments: <path> <month>");
     info("Usage: rauf backlog archive view <path> <month>");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -729,7 +729,7 @@ export async function handleBacklogArchiveView(ctx: CommandContext): Promise<num
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -782,7 +782,7 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog archive purge <path> [--month YYYY-MM] [--yes]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -790,7 +790,7 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -804,7 +804,7 @@ export async function handleBacklogArchivePurge(ctx: CommandContext): Promise<nu
   if (!yes) {
     error("Purging archive requires confirmation.");
     info("Pass --yes to confirm.");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = purgeArchive(paths, month ?? undefined);
@@ -845,7 +845,7 @@ export async function handleBacklogArchiveDispatch(ctx: CommandContext): Promise
       error(`Unknown archive subcommand: "${subcommand ?? ""}"`);
       info("Valid subcommands: list, view, purge");
       info("Usage: rauf backlog archive <list|view|purge> <path> [options]");
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
   }
 }
 
@@ -860,7 +860,7 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     info(
       "Usage: rauf backlog reset <path> [--clear] [--keep-progress] [--keep-log] [--yes] [--json]",
     );
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -868,7 +868,7 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -886,7 +886,7 @@ export async function handleBacklogReset(ctx: CommandContext): Promise<number> {
     info(
       "Pass --yes to confirm. This will sweep done items, clear loop state, and reset stalled items.",
     );
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = resetProject(paths, {
@@ -947,7 +947,7 @@ export async function handleBacklogUnblock(ctx: CommandContext): Promise<number>
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf backlog unblock <path> [id]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -955,7 +955,7 @@ export async function handleBacklogUnblock(ctx: CommandContext): Promise<number>
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -1026,17 +1026,17 @@ function handleCoreError(
 
   switch (err.code) {
     case ErrorCodes.FILE_NOT_FOUND:
-      return ExitCode.NOT_FOUND;
+      return ExitCode.USAGE;
     case ErrorCodes.NOT_INSTALLED:
-      return ExitCode.NOT_FOUND;
+      return ExitCode.USAGE;
     case ErrorCodes.INVALID_JSON:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     case ErrorCodes.VALIDATION_ERROR:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     case ErrorCodes.CONFLICT:
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     case ErrorCodes.TRANSITION_INVALID:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     default:
       return ExitCode.ERROR;
   }

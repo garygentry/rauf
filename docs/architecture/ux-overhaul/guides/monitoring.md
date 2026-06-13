@@ -9,14 +9,14 @@ started.
 Phase 1 removed three monitor verbs/flags outright — **no aliases** (a ratified clean break).
 If you have muscle memory or scripts using the old forms, update them:
 
-| Removed | Use instead |
-|---------|-------------|
-| `rauf loop follow <path>` | `rauf follow <path>` (now a top-level verb) |
-| `rauf loop watch` | (gone) — use `rauf status --follow` or `rauf follow` |
-| `rauf status --watch` | `rauf status --follow` (or `-f`) |
+| Removed                   | Use instead                                          |
+| ------------------------- | ---------------------------------------------------- |
+| `rauf loop follow <path>` | `rauf follow <path>` (now a top-level verb)          |
+| `rauf loop watch`         | (gone) — use `rauf status --follow` or `rauf follow` |
+| `rauf status --watch`     | `rauf status --follow` (or `-f`)                     |
 
 `--follow` / `-f` is the **one** monitoring follow flag, shared by `status`, `log`, and `follow`.
-It is distinct from the unrelated `--follow` *execution* convenience flag on `loop start` (which
+It is distinct from the unrelated `--follow` _execution_ convenience flag on `loop start` (which
 streams SSE inline after starting a server-run loop).
 
 ## CLI commands
@@ -107,14 +107,14 @@ The web equivalent of `status --all` — returns `listActiveLoops()` (reconciled
 
 ## Choosing a surface
 
-| You want… | Use |
-|-----------|-----|
-| A quick snapshot of one loop | `rauf status .` |
-| To watch one loop live in a terminal | `rauf follow .` |
-| Just the human log | `rauf log . -f` |
-| Everything running on the machine | `rauf status --all` / `GET /api/loops` |
-| A live feed in the web UI / a custom dashboard | `GET /api/projects/:id/loop/events` (SSE) |
-| To build a programmatic observer | `readEvents` + `watchEvents` from `@rauf/core` (see the [API reference](../api-reference.md)) |
+| You want…                                      | Use                                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| A quick snapshot of one loop                   | `rauf status .`                                                                               |
+| To watch one loop live in a terminal           | `rauf follow .`                                                                               |
+| Just the human log                             | `rauf log . -f`                                                                               |
+| Everything running on the machine              | `rauf status --all` / `GET /api/loops`                                                        |
+| A live feed in the web UI / a custom dashboard | `GET /api/projects/:id/loop/events` (SSE)                                                     |
+| To build a programmatic observer               | `readEvents` + `watchEvents` from `@rauf/core` (see the [API reference](../api-reference.md)) |
 
 ## Notes & gotchas
 

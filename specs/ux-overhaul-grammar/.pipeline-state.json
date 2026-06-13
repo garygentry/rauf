@@ -1,0 +1,120 @@
+{
+  "feature": "ux-overhaul-grammar",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-13T02:51:57Z",
+  "updatedAt": "2026-06-13T12:40:00Z",
+  "currentStage": "forge-6-docs",
+  "stages": {
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-impl-2026-06-13.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-13T12:20:00Z",
+      "result": "4 parallel forge-verifiers. Gate GREEN (typecheck/lint/format/test all pass; core 910/cli 459/loop 291/web 199). 0 errors, 0 gaps; integration dim 0 findings (ExitCode sweep complete, 0 old members remain, invariants hold); testing dim 0 findings (spec-06 coverage complete). 2 inconsistencies (V-001 stale exit-code 6 in supervisor-pattern docs SPEC-CLI:527/SPEC-BACKLOG-TOOL-CONTRACT:244 should be 3; V-002 loop run help advertises --json/--interval but handler reads --ndjson/ignores --interval \u2014 needs decision), 4 improvements (V-003 DRY runDetached/handleLoopRun, V-004 stale status-commands comment, V-005 stale loop start in deferred Part-B section, V-006 LIMIT reachability test). All non-blocking; V-001/V-002 worth fixing pre-merge.",
+      "fixedAt": "2026-06-13T12:40:00Z"
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-13T05:13:15Z",
+      "completedAt": "2026-06-13T06:11:28Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "specs/ux-overhaul-grammar/.rauf/state.json"
+      ],
+      "result": "14/14 items done in 15 iterations (under 21 budget); 0 blocked/needs-human/deferred; --review pass found no issues (0 follow-up items). Commits 636686b..efb2c5d ([rauf] 001..014). Dogfooded on rauf-stable. OUT-OF-LOOP cutover remaining: feature-forge edits (minRunnerVersion->0.5.0, remove watch refs) + v0.5.0 tag/release + merge."
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-backlog-2026-06-13.md",
+      "findingsCount": 8,
+      "verifiedAt": "2026-06-13T05:15:00Z",
+      "validation": "passed (rauf-stable backlog validate exit 0, valid:true, 0 findings)",
+      "result": "4 parallel forge-verifiers + rauf-stable validate (exit 0). 8 findings, 0 errors. 3 gaps (V-001 item003 omits loop-commands.ts CONFLICT sites + migrate-commands.ts from file list/subtasks; V-002 loop stop USAGE(2)+hint:431 owned by no item; V-004 item012 missing 004/005 deps), 1 inconsistency (V-003 item013 version-bump under-gates v0.5.0 advertisement \u2014 add 001/002/009), 4 improvements (V-005 item014 vague AC, V-006 item005 AC disjunction, V-007 item010\u2192008 over-constrained, V-008 item012 specRefs missing 00/03). Schema/enum dim clean.",
+      "fixedAt": "2026-06-13T05:30:00Z"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/backlog.json"
+      ],
+      "completedAt": "2026-06-13T05:00:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "itemCount": 14,
+      "validation": "passed (rauf-stable 0.4.0 backlog validate, exit 0, valid:true, 0 findings)",
+      "result": "14 items (9 feature, 1 refactor=003 ExitCode sweep w/ agentDelegation, 3 chore=010/011/012 docs, 1 test=014 gate). DAG depth ~5; hubs 003 (ExitCode) + 006 (detached). feature-forge edits + v0.5.0 tag/release kept OUT-OF-LOOP (not in backlog) per REQ-CONTRACT-04/05. Est 21 iterations (14*1.5)."
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-specs-2026-06-13.md",
+      "findingsCount": 13,
+      "verifiedAt": "2026-06-13T04:30:00Z",
+      "result": "5 parallel forge-verifiers + deterministic validator (26 reqs, 0 uncovered/0 orphaned). 13 findings: 3 errors (V-011 runCommandNdjson->eventStreamCommand, V-012 artifact template paths wrong, V-013 mis-cited line), 4 gaps (V-001 CLI change-map omits ~8 ExitCode-touched files, V-006 loop stop untested, V-007 help/usage audit untested, V-008 REQ-SIG-02 no verification), 3 inconsistencies (V-002 server-commands no-change, V-004 TRACEABILITY EXIT-04 attrib, V-009 statusExitCode BLOCKED-as-enum), 3 improvements (V-003, V-005, V-010). types/contracts dim clean. None blocking.",
+      "fixedAt": "2026-06-13T04:45:00Z"
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/00-core-definitions.md",
+        "specs/ux-overhaul-grammar/01-architecture-layout.md",
+        "specs/ux-overhaul-grammar/02-execution-grammar.md",
+        "specs/ux-overhaul-grammar/03-exit-codes.md",
+        "specs/ux-overhaul-grammar/04-signals-and-events.md",
+        "specs/ux-overhaul-grammar/05-cutover-and-feature-forge.md",
+        "specs/ux-overhaul-grammar/06-testing-strategy.md",
+        "specs/ux-overhaul-grammar/TRACEABILITY.md"
+      ],
+      "completedAt": "2026-06-13T04:15:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
+      "result": "7-doc suite + TRACEABILITY. Foundation (00 core-definitions, 01 architecture-layout) authored in-session; 02-05 fanned out to 4 parallel writers, 06-testing authored after. Every REQ/NFR covered (coverage grep clean). 00 = unified ExitCode contract (members+values+old\u2192new remap), signal enum +review, terminal\u2192code mappings, events versioning discipline, remediation table, version source version.ts:4. Writers verified source citations; refined version source to packages/core/src/version.ts:4 (current 0.4.0). Change ordering: loop does steps 1-6 (rauf repo), FF edits = out-of-loop step 7."
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-tech-2026-06-13.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-13T03:45:00Z",
+      "result": "Single forge-verifier, 17/17 checks (14 pass, 3 fail). 0 errors \u2014 all ~20 source citations verified accurate. 2 gaps (V-002 REQ-EXEC-06 parity untraced+untested, V-005 FF ralph-loop-contract.md:51 stale 'watch' ref), 1 inconsistency (V-004 409\u2192USAGE decided-vs-open, needs user decision), 3 improvements (V-001 EventTimeline resolvable-now+renders signal via string interp, V-003 missing alternatives \u00a73.2/\u00a73.5, V-006 --follow must not enter server body). All non-blocking.",
+      "fixedAt": "2026-06-13T03:58:00Z"
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/tech-spec.md"
+      ],
+      "completedAt": "2026-06-13T03:30:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "result": "Surface+contract change; engine reused. Ratified tech decisions: (3.1) loop run --detached reuses loop start's server path (ensureServerRunning + POST /loop/start + LoopManager), verb removed\u2192flag branch; (3.2) ExitCode redefined in place to canon table (old NOT_FOUND/VALIDATION/CONFLICT \u2192 USAGE(2); 3=NEEDS_HUMAN/4=LIMIT/5=BLOCKED/6=RUNNING), loop run ternary\u2192full LoopResult map, statusExitCode rewritten; (3.3) flag canon; (3.4) review: add to SignalParsedSchema enum (schemas.ts:466) + remove collapse (runner.ts:655-656), no handling change; (3.5) events versioning = doc discipline, NO version bump (shapes already align); (3.6) remediation errors for loop start/--watch (USAGE exit, not alias); (3.7) feature-forge out-of-loop edits (minRunnerVersion 0.2.0\u21920.5.0 in 5 files); keep POST /loop/start URL. \u00a710 open items: parser.ts short-flag locus, --help rendering locus, 409/conflict\u2192USAGE confirm, <EventTimeline> review-value tolerance."
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-prd-2026-06-13.md",
+      "findingsCount": 5,
+      "verifiedAt": "2026-06-13T03:05:00Z",
+      "fixedAt": "2026-06-13T03:12:00Z",
+      "result": "Single forge-verifier, 15/15 checks (11 pass, 4 fail). 0 errors/0 inconsistencies; 3 gaps (V-001 missing Priority lines, V-002 --detached --follow lifecycle under-specified, V-003 CLI help-text obligation), 2 improvements (V-004 uneven canon traceability tags, V-005 proposed-vs-ratified v0.5.0). Canon coverage/exit-code fidelity/scope/requirements-only discipline all clean. None blocking."
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/PRD.md"
+      ],
+      "completedAt": "2026-06-13T02:51:57Z",
+      "basedOnVersions": {}
+    }
+  },
+  "notes": "Phase 2+3 of the UX/DX overhaul (CANON.md \u00a75-\u00a76), bundled as ONE breaking release (v0.5.0). Phase 1 (observation substrate) shipped + merged (main e85e878); this builds on it. Kickoff handoff: specs/ux-overhaul/PHASE-2-KICKOFF.md. CANON.md is the cross-cutting source of truth (canon wins on disagreement). RATIFIED in PRD session (CANON \u00a77): (1) execution grammar = `loop run --detached`/`-d`, `loop start` REMOVED (no alias); (2) monitoring placement already settled in P1 (top-level follow); (3) ADOPT proposed unified exit-code table (0 success/1 error/2 usage/3 needs-human/4 limit/5 blocked/6 running-query-time-status-only); both status + loop run use it; backlog validate keeps its own 0/1/2; (4) cutover = single flip at v0.5.0, runner version >= 0.5.0; (5) CLAUDE_ADDON.md->AGENT_ADDON.md rename DEFERRED to Part-B provider refactor (commit-rule fix already landed P1). Plus: removed verbs/flags (loop start, --watch) emit a TARGETED 'removed -> use X' error message, NOT an alias (executes nothing). feature-forge scope: IN SCOPE (revised 2026-06-13, was declare-contract-only). This feature ships the rauf-side changes AND updates feature-forge in lockstep as part of definition-of-done: bump loopRunner.minRunnerVersion 0.2.0->0.5.0 in references/forge-config-schema.json + skills/forge-5-loop/SKILL.md + compat/contract docs (COMPATIBILITY.md, CHANGELOG.md, references/ralph-loop-contract.md), re-validate FF exit-code/status-json reads. FF has NO loop start/--watch refs (it uses configurable loopRunner runCommand defaulting to `loop run --ndjson`), so the breaking surface for FF is just the version gate + exit-code reads. FF is a SEPARATE repo (/home/gary/workspace/feature-forge, main, epic support merged PR #2) OUTSIDE the rauf loop sandbox \u2014 so FF edits are an explicit OUT-OF-LOOP step at cutover (REQ-CONTRACT-05), gated as part of completion. New reqs: REQ-CONTRACT-04 (FF update in scope) + REQ-CONTRACT-05 (out-of-loop cross-repo execution). Also in scope: explicit `review` signal value (no more review->done collapse); reconcile signal-placement docs with the scan-from-end parser; events.ndjson formalized as a versioned additive-only machine surface (EVENTS_SCHEMA_VERSION already exists from P1). OUT of scope: Phase 4 (web recovery/vocabulary/badges = ux-overhaul-web), AGENT_ADDON rename, Part-B provider work, backlog schema redesign, eliminating an execution mode. SAFETY: dogfood implementing loops with frozen rauf-stable (forge.config pins loopRunner.bin=rauf-stable) \u2014 never the dev binary being rewritten; dev runner executes built dist/ (rebuild before testing). Branch: forge/ux-overhaul-grammar. Own --backlog root = specs/ux-overhaul-grammar/. Specs to update on done: SPEC-CLI/WEB/BACKLOG-TOOL-CONTRACT/SCHEMAS/ARCHITECTURE/ARTIFACTS."
+}

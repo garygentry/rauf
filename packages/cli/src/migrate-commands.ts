@@ -52,7 +52,7 @@ export async function handleMigrate(ctx: CommandContext): Promise<number> {
     error("Missing required argument: <path>");
     info("Usage: rauf migrate <path> [--dry-run] [--no-backup] [--clean-backups]");
     info("       rauf migrate --global");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const resolved = path.resolve(targetPath);
 
@@ -219,7 +219,7 @@ function stateLabel(state: MigrateReport["state"]): string {
 }
 
 function errorExitCode(code: string): number {
-  if (code === "LOCK_CONFLICT") return ExitCode.CONFLICT;
-  if (code === "INVALID_JSON" || code === "VALIDATION_ERROR") return ExitCode.VALIDATION;
+  if (code === "LOCK_CONFLICT") return ExitCode.USAGE;
+  if (code === "INVALID_JSON" || code === "VALIDATION_ERROR") return ExitCode.USAGE;
   return ExitCode.ERROR;
 }

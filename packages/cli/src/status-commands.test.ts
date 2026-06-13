@@ -3,9 +3,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
+import { handleStatus, handleLog, handleProgress, statusExitCode } from "./status-commands.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
+import type { DerivedStatus, LoopStateEnum } from "@rauf/core";
 import { configureOutput } from "./formatter.js";
 
 // ─── Fixtures ──────────────────────────────────────────────────────
@@ -81,7 +82,7 @@ describe("handleStatus", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleStatus(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns 0 (idle/complete) when .rauf directory does not exist", async () => {
@@ -102,14 +103,14 @@ describe("handleStatus", () => {
     expect(code).toBe(0);
   });
 
-  it("returns 1 when loop is RUNNING (state.json with running status)", async () => {
+  it("returns RUNNING(6) when loop is RUNNING (state.json with running status)", async () => {
     const projectDir = path.join(tmpDir, "running-project");
     const raufDir = createRaufProject(projectDir);
     createBacklog(raufDir);
     createStateJson(raufDir, { status: "running" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
-    expect(code).toBe(1);
+    expect(code).toBe(ExitCode.RUNNING);
   });
 
   it("returns 0 when loop is COMPLETE", async () => {
@@ -122,27 +123,27 @@ describe("handleStatus", () => {
     expect(code).toBe(0);
   });
 
-  it("returns 2 when loop is PAUSED_HUMAN", async () => {
+  it("returns NEEDS_HUMAN(3) when loop is PAUSED_HUMAN", async () => {
     const projectDir = path.join(tmpDir, "human-project");
     const raufDir = createRaufProject(projectDir);
     createBacklog(raufDir);
     createStateJson(raufDir, { status: "paused_human" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
-    expect(code).toBe(2);
+    expect(code).toBe(ExitCode.NEEDS_HUMAN);
   });
 
-  it("returns 3 when loop is LIMIT_REACHED", async () => {
+  it("returns LIMIT(4) when loop is LIMIT_REACHED", async () => {
     const projectDir = path.join(tmpDir, "limit-project");
     const raufDir = createRaufProject(projectDir);
     createBacklog(raufDir);
     createStateJson(raufDir, { status: "limit_reached" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
-    expect(code).toBe(3);
+    expect(code).toBe(ExitCode.LIMIT);
   });
 
-  it("returns 0 and SLEEPING_LIMIT loopState for sleeping_limit status", async () => {
+  it("returns LIMIT(4) and SLEEPING_LIMIT loopState for sleeping_limit status", async () => {
     const projectDir = path.join(tmpDir, "sleeping-limit-project");
     const raufDir = createRaufProject(projectDir);
     createBacklog(raufDir);
@@ -168,13 +169,13 @@ describe("handleStatus", () => {
     process.stdout.write = origWrite;
     configureOutput({ noColor: true, quiet: true, json: false });
 
-    expect(code).toBe(0);
+    expect(code).toBe(ExitCode.LIMIT);
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("loopState", "SLEEPING_LIMIT");
     expect(parsed).toHaveProperty("sleepUntil");
   });
 
-  it("returns 0 and WEEKLY_LIMIT loopState for weekly_limit status", async () => {
+  it("returns LIMIT(4) and WEEKLY_LIMIT loopState for weekly_limit status", async () => {
     const projectDir = path.join(tmpDir, "weekly-limit-project");
     const raufDir = createRaufProject(projectDir);
     createBacklog(raufDir);
@@ -200,7 +201,7 @@ describe("handleStatus", () => {
     process.stdout.write = origWrite;
     configureOutput({ noColor: true, quiet: true, json: false });
 
-    expect(code).toBe(0);
+    expect(code).toBe(ExitCode.LIMIT);
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("loopState", "WEEKLY_LIMIT");
     expect(parsed.sleepUntil).toBe("2026-02-27T05:00:00Z");
@@ -297,7 +298,7 @@ describe("handleStatus", () => {
     process.stdout.write = origWrite;
     configureOutput({ noColor: true, quiet: true, json: false });
 
-    expect(code).toBe(1);
+    expect(code).toBe(ExitCode.RUNNING);
     const parsed = JSON.parse(output);
     expect(parsed).toHaveProperty("loopState", "RUNNING");
     expect(parsed).toHaveProperty("stateSource", "state.json");
@@ -493,7 +494,7 @@ describe("handleLog", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleLog(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns SUCCESS with empty info when no log exists", async () => {
@@ -592,7 +593,7 @@ describe("handleProgress", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleProgress(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns SUCCESS with info message when progress.md is missing", async () => {
@@ -804,5 +805,62 @@ describe("log --json (one-shot)", () => {
     expect(Array.isArray(arr)).toBe(true);
     expect(arr).toContain("line a");
     expect(arr).toContain("line b");
+  });
+});
+
+// ─── statusExitCode (unified scheme, 00 §2b) ─────────────────────────
+
+describe("statusExitCode (unified exit-code scheme)", () => {
+  /** Minimal DerivedStatus carrying a backlog summary with the given blocked/deferred counts. */
+  function derivedWith(blocked: number, deferred = 0): DerivedStatus {
+    return {
+      loopState: "IDLE",
+      stateSource: "state.json",
+      iteration: null,
+      maxIterations: null,
+      currentItem: null,
+      lastSignal: null,
+      startedAt: null,
+      elapsed: null,
+      backlogSummary: {
+        pending: 0,
+        inProgress: 0,
+        blocked,
+        deferred,
+        done: 0,
+        total: blocked,
+      },
+    };
+  }
+
+  it.each<[LoopStateEnum, number]>([
+    ["RUNNING", ExitCode.RUNNING], // 6
+    ["PAUSED_HUMAN", ExitCode.NEEDS_HUMAN], // 3
+    ["LIMIT_REACHED", ExitCode.LIMIT], // 4
+    ["SLEEPING_LIMIT", ExitCode.LIMIT], // 4
+    ["WEEKLY_LIMIT", ExitCode.LIMIT], // 4
+    ["ERROR", ExitCode.ERROR], // 1
+    ["IDLE", ExitCode.SUCCESS], // 0
+    ["COMPLETE", ExitCode.SUCCESS], // 0
+    ["PAUSED", ExitCode.SUCCESS], // 0
+    ["NOT_INSTALLED", ExitCode.SUCCESS], // 0
+  ])("maps %s → %d (no derived status)", (state, expected) => {
+    expect(statusExitCode(state)).toBe(expected);
+  });
+
+  it("derives BLOCKED(5) for a clean terminal state with genuine blocks", () => {
+    expect(statusExitCode("IDLE", derivedWith(2))).toBe(ExitCode.BLOCKED);
+    expect(statusExitCode("COMPLETE", derivedWith(1))).toBe(ExitCode.BLOCKED);
+    expect(statusExitCode("PAUSED", derivedWith(1))).toBe(ExitCode.BLOCKED);
+  });
+
+  it("does NOT derive BLOCKED when blocked items are all deferred (runner false-blocks)", () => {
+    // 2 blocked, both deferred → genuine blocked is 0 → SUCCESS, not BLOCKED.
+    expect(statusExitCode("IDLE", derivedWith(2, 2))).toBe(ExitCode.SUCCESS);
+  });
+
+  it("does NOT derive BLOCKED for a non-terminal state even with genuine blocks", () => {
+    // RUNNING is query-time, not a clean terminal — stays RUNNING(6).
+    expect(statusExitCode("RUNNING", derivedWith(3))).toBe(ExitCode.RUNNING);
   });
 });

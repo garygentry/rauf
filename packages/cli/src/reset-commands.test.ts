@@ -145,7 +145,7 @@ describe("handleReset — lock handling", () => {
     );
 
     const code = await handleReset(makeCtx({ args: [projectDir] }));
-    expect(code).toBe(ExitCode.CONFLICT);
+    expect(code).toBe(ExitCode.USAGE);
 
     // Backlog untouched — deferred item still blocked.
     expect(readBacklogItems(projectDir)["001"]?.status).toBe("blocked");

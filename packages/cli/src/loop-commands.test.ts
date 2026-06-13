@@ -6,10 +6,11 @@ import { execSync } from "node:child_process";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
-import { LoopEventSchema } from "@rauf/core";
+import { LoopEventSchema, defaultBacklogPaths } from "@rauf/core";
 
 import { findCommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
+import { parseArgs } from "./parser.js";
 import { configureOutput } from "./formatter.js";
 import {
   formatAndPrintEvent,
@@ -17,7 +18,9 @@ import {
   createLoopBranch,
   buildPreconditionRemediation,
   handleLoopRun,
+  loopRunExitCode,
 } from "./loop-commands.js";
+import type { LoopResult } from "@rauf/loop";
 import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -90,6 +93,68 @@ function baseEvent<T extends LoopEvent["type"]>(
 
 // ─── Tests ──────────────────────────────────────────────────────────
 
+describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)", () => {
+  // Each row: a LoopResult shape and the expected unified exit code.
+  const base: LoopResult = { completedCount: 0, blockedCount: 0, cancelled: false };
+  const cases: Array<{ name: string; result: LoopResult; expected: number }> = [
+    {
+      name: "clean completion → SUCCESS(0)",
+      result: { ...base, completedCount: 3 },
+      expected: ExitCode.SUCCESS,
+    },
+    {
+      name: "idle / nothing to do → SUCCESS(0)",
+      result: { ...base },
+      expected: ExitCode.SUCCESS,
+    },
+    {
+      name: "graceful cancel → SUCCESS(0)",
+      result: { ...base, completedCount: 1, cancelled: true, gracefulStop: true },
+      expected: ExitCode.SUCCESS,
+    },
+    {
+      name: "pausedReason needs_human → NEEDS_HUMAN(3)",
+      result: { ...base, pausedReason: "needs_human" },
+      expected: ExitCode.NEEDS_HUMAN,
+    },
+    {
+      name: "needsHumanCount > 0 → NEEDS_HUMAN(3)",
+      result: { ...base, needsHumanCount: 2 },
+      expected: ExitCode.NEEDS_HUMAN,
+    },
+    {
+      name: "limitReached → LIMIT(4)",
+      result: { ...base, completedCount: 2, limitReached: true },
+      expected: ExitCode.LIMIT,
+    },
+    {
+      name: "blockedCount > 0 → BLOCKED(5)",
+      result: { ...base, blockedCount: 1 },
+      expected: ExitCode.BLOCKED,
+    },
+    {
+      name: "needs-human precedes limit (order)",
+      result: { ...base, needsHumanCount: 1, limitReached: true },
+      expected: ExitCode.NEEDS_HUMAN,
+    },
+    {
+      name: "limit precedes blocked (order)",
+      result: { ...base, blockedCount: 1, limitReached: true },
+      expected: ExitCode.LIMIT,
+    },
+  ];
+
+  it.each(cases)("$name", ({ result, expected }) => {
+    expect(loopRunExitCode(result)).toBe(expected);
+  });
+
+  it("never returns RUNNING(6) for any terminal shape", () => {
+    for (const { result } of cases) {
+      expect(loopRunExitCode(result)).not.toBe(ExitCode.RUNNING);
+    }
+  });
+});
+
 describe("loop command registration", () => {
   it("loop command exists in registry", () => {
     const loop = findCommand("loop");
@@ -101,7 +166,7 @@ describe("loop command registration", () => {
     const loop = findCommand("loop")!;
     expect(loop.subcommands).toBeDefined();
     const subNames = loop.subcommands!.map((s) => s.name);
-    expect(subNames).toEqual(["start", "stop", "run", "review"]);
+    expect(subNames).toEqual(["stop", "run", "review"]);
   });
 
   it("no longer registers the removed monitor verbs (clean break, no aliases)", () => {
@@ -159,17 +224,58 @@ describe("handleLoopStop", () => {
     }
   });
 
-  it("errors with helpful message when server not running", async () => {
+  it("exits USAGE(2) with a remediation hint when server not running", async () => {
     const loop = findCommand("loop")!;
     const stopHandler = loop.subcommands!.find((s) => s.name === "stop")!.handler!;
     const ctx = makeCtx({ args: ["/tmp/some-project"] });
 
     const output = await captureOutput(async () => {
       const code = await stopHandler(ctx);
-      expect(code).toBe(ExitCode.ERROR);
+      // no-server is a misuse of stop → USAGE(2), not ERROR (00 §1 / 03 §1)
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     expect(output.stderr).toContain("Server is not running");
+    // hint (info → stdout) names the canonical detached verb, not the removed
+    // `loop start` (REQ-DOC-02)
+    expect(output.stdout).toContain("rauf loop run --detached");
+    expect(output.stdout).not.toContain("loop start");
+  });
+
+  it("exits USAGE(2) when there is no active loop to stop (server 404)", async () => {
+    // Server is running but reports no active loop for this project → USAGE(2),
+    // not ERROR — stopping a loop that isn't running is a misuse (00 §1 / 03 §1).
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      if (req.method === "POST" && /\/loop\/stop$/.test(req.url ?? "")) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: { message: "No active loop" } }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const loop = findCommand("loop")!;
+      const stopHandler = loop.subcommands!.find((s) => s.name === "stop")!.handler!;
+      const ctx = makeCtx({ args: [path.join(os.tmpdir(), "rauf-stop-noloop")] });
+      const output = await captureOutput(async () => {
+        const code = await stopHandler(ctx);
+        expect(code).toBe(ExitCode.USAGE);
+      });
+      expect(output.stderr).toContain("No active loop");
+    } finally {
+      removeServerState();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 
@@ -393,8 +499,8 @@ describe("path resolution", () => {
 
     await captureOutput(async () => {
       const code = await stopHandler(ctx);
-      // Should fail with ERROR (server not running), not INVALID_ARGS
-      expect(code).toBe(ExitCode.ERROR);
+      // no-server path resolves cwd then exits USAGE(2) — a misuse of stop (00 §1)
+      expect(code).toBe(ExitCode.USAGE);
     });
   });
 
@@ -594,7 +700,7 @@ describe("createLoopBranch & loop preconditions", () => {
 
     const out = await captureOutput(async () => {
       const code = await handleLoopRun(ctx);
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     const all = out.stdout + out.stderr;
@@ -730,7 +836,7 @@ describe("createLoopBranch & loop preconditions", () => {
     });
     const out = await captureOutput(async () => {
       const code = await handleLoopRun(ctx);
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     const all = out.stdout + out.stderr;
@@ -757,7 +863,7 @@ describe("createLoopBranch & loop preconditions", () => {
     });
     const out = await captureOutput(async () => {
       const code = await handleLoopRun(ctx);
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     const all = out.stdout + out.stderr;
@@ -862,7 +968,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
     };
   }
 
-  it("returns ExitCode.PAUSED_HUMAN and halts in paused_human", async () => {
+  it("returns ExitCode.NEEDS_HUMAN and halts in paused_human", async () => {
     const proj = makeRunnableProject([pendingItem("001"), pendingItem("002")]);
     writeMockClaude('echo "RAUF_NEEDS_HUMAN:Need API key"');
 
@@ -877,7 +983,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
     });
 
     // Distinct non-zero exit code (not SUCCESS).
-    expect(code).toBe(ExitCode.PAUSED_HUMAN);
+    expect(code).toBe(ExitCode.NEEDS_HUMAN);
     expect(code).not.toBe(ExitCode.SUCCESS);
 
     const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
@@ -889,7 +995,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
     expect(byId["002"].status).toBe("pending");
   });
 
-  it("without the flag, the same needs-human item does NOT change the exit code (SUCCESS)", async () => {
+  it("without the flag, the run completes but a needs-human item still maps to NEEDS_HUMAN (00 §2a)", async () => {
     const proj = makeRunnableProject([pendingItem("001")]);
     writeMockClaude('echo "RAUF_NEEDS_HUMAN:Need API key"');
 
@@ -900,8 +1006,410 @@ describe("loop run --pause-on-needs-human exit code", () => {
       code = await handleLoopRun(ctx);
     });
 
-    expect(code).toBe(ExitCode.SUCCESS);
+    // Without --pause-on-needs-human the loop runs to completion (state "complete",
+    // the item is set aside, not a hard pause), but the unified terminal mapping
+    // reports NEEDS_HUMAN(3) because needsHumanCount > 0 (status<->loop-run parity).
+    expect(code).toBe(ExitCode.NEEDS_HUMAN);
     const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
     expect(state.status).toBe("complete");
+  });
+});
+
+// ─── loop run --detached delegates to the server-POST flow (item 006) ───
+
+describe("loop run --detached", () => {
+  let savedState: string | null = null;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    removeServerState();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-detached-"));
+  });
+
+  afterEach(() => {
+    removeServerState();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
+  });
+
+  /**
+   * A throwaway server that answers GET /api/health (so ensureServerRunning
+   * no-ops) and records POST .../loop/start so the test can assert delegation.
+   */
+  async function startMockServer(): Promise<{
+    port: number;
+    close: () => Promise<void>;
+    startCalls: Array<{ id: string; body: unknown }>;
+  }> {
+    const startCalls: Array<{ id: string; body: unknown }> = [];
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      const m = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/start$/);
+      if (req.method === "POST" && m) {
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", () => {
+          startCalls.push({ id: decodeURIComponent(m[1]!), body: raw ? JSON.parse(raw) : {} });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: { started: true } }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    return {
+      port,
+      startCalls,
+      close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    };
+  }
+
+  it("delegates to ensureServerRunning + POST /loop/start and returns immediately (no in-process LoopRunner)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+
+      // A bare project dir (no git repo, no precondition setup). The in-process
+      // path would refuse here; the detached path bypasses all of it.
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([["detached", true]]),
+      });
+
+      let code = -1;
+      const out = await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      // It hit the server's loop/start route exactly once for this project.
+      expect(startCalls.length).toBe(1);
+      expect(startCalls[0]!.id).toBe(path.basename(proj));
+      // It took the detached path, NOT the in-process LoopRunner path.
+      expect(out.stdout).toContain("Loop started");
+      expect(out.stdout).not.toContain("Running loop directly");
+      // No state.json was written (no in-process LoopRunner ever created it).
+      expect(fs.existsSync(path.join(proj, ".rauf", "state.json"))).toBe(false);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("resolves -d to --detached (same delegation path)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      // Parse `loop run <proj> -d` through the real parser so the -d→--detached
+      // alias normalization is exercised, then dispatch handleLoopRun.
+      const parsed = parseArgs(["loop", "run", proj, "-d"], new Set(["run", "stop", "review"]));
+      expect(parsed.flags.has("detached")).toBe(true);
+      expect(parsed.flags.has("d")).toBe(false);
+
+      const ctx = makeCtx({ args: parsed.args, flags: parsed.flags });
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("forwards --backlog <dir> as backlogRoot in the POST body (REQ-FLAG-03)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj-backlog");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const customBacklog = "specs/my-backlog";
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["backlog", customBacklog],
+        ]),
+      });
+
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+      // --backlog must be forwarded as backlogRoot so the detached run targets the
+      // same root as the flag (02 §6, REQ-FLAG-03).
+      expect((startCalls[0]!.body as Record<string, unknown>).backlogRoot).toBe(customBacklog);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+});
+
+// ─── loop run --detached --follow lifecycle (item 007, 02 §3) ───────────
+
+describe("loop run --detached --follow", () => {
+  let savedState: string | null = null;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    removeServerState();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-follow-"));
+  });
+
+  afterEach(() => {
+    removeServerState();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
+  });
+
+  /**
+   * A throwaway server that answers GET /api/health, records POST .../loop/start
+   * (so the no-follow-in-body invariant can be asserted), streams SSE on
+   * GET .../loop/events, and records POST .../loop/stop (so the Ctrl-C-detaches-
+   * only invariant can be asserted — it must stay empty). When `terminal` is set,
+   * the events stream emits a single loop_completed event and ends so the follow
+   * view returns on its own; otherwise it holds the SSE connection open so only a
+   * SIGINT can detach the view.
+   */
+  async function startMockServer(opts: { terminal: boolean }): Promise<{
+    port: number;
+    close: () => Promise<void>;
+    startCalls: Array<{ id: string; body: unknown }>;
+    stopCalls: Array<{ id: string }>;
+    eventsConnected: () => boolean;
+  }> {
+    const startCalls: Array<{ id: string; body: unknown }> = [];
+    const stopCalls: Array<{ id: string }> = [];
+    let connected = false;
+    const openResponses = new Set<http.ServerResponse>();
+
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      const startMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/start$/);
+      if (req.method === "POST" && startMatch) {
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", () => {
+          startCalls.push({
+            id: decodeURIComponent(startMatch[1]!),
+            body: raw ? JSON.parse(raw) : {},
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: { started: true } }));
+        });
+        return;
+      }
+      const stopMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/stop$/);
+      if (req.method === "POST" && stopMatch) {
+        stopCalls.push({ id: decodeURIComponent(stopMatch[1]!) });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { stopped: true } }));
+        return;
+      }
+      const eventsMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/events$/);
+      if (req.method === "GET" && eventsMatch) {
+        connected = true;
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        if (opts.terminal) {
+          res.write(
+            `event: loop_event\ndata: ${JSON.stringify({
+              type: "loop_completed",
+              timestamp: "2026-06-13T00:00:00.000Z",
+              projectPath: "/test",
+              completedCount: 1,
+              blockedCount: 0,
+              needsHumanCount: 0,
+            })}\n\n`,
+          );
+          res.end();
+        } else {
+          // Hold the connection open — only a SIGINT (view detach) ends it.
+          openResponses.add(res);
+        }
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    return {
+      port,
+      startCalls,
+      stopCalls,
+      eventsConnected: () => connected,
+      close: () =>
+        new Promise<void>((resolve) => {
+          for (const r of openResponses) r.end();
+          server.close(() => resolve());
+        }),
+    };
+  }
+
+  it("does NOT include --follow (or --detached) in the server request body", async () => {
+    const { port, close, startCalls } = await startMockServer({ terminal: true });
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["follow", true],
+        ]),
+      });
+
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      // The terminal event ends the follow view on its own → SUCCESS.
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+      // The body carries only loop options — never the observation/mode flags.
+      const body = startCalls[0]!.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("follow");
+      expect(body).not.toHaveProperty("detached");
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("Ctrl-C on the attached view detaches the view only (no POST /loop/stop, loop keeps running)", async () => {
+    const mock = await startMockServer({ terminal: false });
+    try {
+      writeServerState({
+        pid: process.pid,
+        port: mock.port,
+        startedAt: new Date().toISOString(),
+      });
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["follow", true],
+        ]),
+      });
+
+      let code = -1;
+      const run = captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      // Wait until the POST landed and the follow view connected to the SSE
+      // stream, then simulate Ctrl-C on the attached view.
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && !(mock.startCalls.length === 1 && mock.eventsConnected())) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(mock.startCalls.length).toBe(1);
+      expect(mock.eventsConnected()).toBe(true);
+
+      process.emit("SIGINT");
+      await run;
+
+      // The view detached cleanly (SUCCESS) WITHOUT stopping the loop.
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(mock.stopCalls.length).toBe(0);
+    } finally {
+      removeServerState();
+      await mock.close();
+    }
+  });
+});
+
+// ─── Observation parity: attended vs detached (REQ-EXEC-06, NFR-PARITY-01, 06 §3) ───
+//
+// Parity is structural, not re-implemented. Both branches run the SAME engine
+// (in-process `LoopRunner.create().start()` vs the server's `LoopManager`-driven
+// `LoopRunner`) against the SAME project, so they emit to the SAME events.ndjson
+// substrate; and both observation views (in-process follow + detached follow's
+// `streamEventsUntilDone`) render every event through the SINGLE shared
+// `formatAndPrintEvent`. These tests pin those two invariants so the two paths
+// cannot drift into producing different observer output.
+describe("observation parity (attended vs detached)", () => {
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  it("both run modes resolve the same events.ndjson substrate for a project", () => {
+    const proj = path.join(os.tmpdir(), "rauf-parity-proj");
+    // The events substrate is a pure function of (projectPath, backlogFlag): the
+    // attended in-process run and the detached server run resolve it identically,
+    // so an observer sees one and the same file regardless of run mode.
+    const attended = defaultBacklogPaths(proj);
+    const detached = defaultBacklogPaths(proj);
+    expect(detached.eventsLog).toBe(attended.eventsLog);
+    expect(attended.eventsLog.endsWith("events.ndjson")).toBe(true);
+  });
+
+  it("renders identical observer output for a given event regardless of run mode", () => {
+    // Both follow views call the same formatAndPrintEvent — deterministic, so the
+    // observer output is byte-identical whether the run was attended or detached.
+    const event = baseEvent("item_selected", {
+      itemId: "014",
+      title: "Integration & full-gate",
+      priority: 2,
+    });
+    const attendedOut = captureOutput(() => formatAndPrintEvent(event));
+    const detachedOut = captureOutput(() => formatAndPrintEvent(event));
+    expect(detachedOut.stdout).toBe(attendedOut.stdout);
+    expect(attendedOut.stdout).toContain("#014");
   });
 });

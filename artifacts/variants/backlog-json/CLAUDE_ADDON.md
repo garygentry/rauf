@@ -20,6 +20,11 @@ When running as a rauf loop iteration, follow these operational rules:
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
+> Output the signal on a line by itself, as your final line — that's the safest
+> habit. The runner scans backwards from the end and uses the **last** signal
+> line, so trailing text after it (a commit message, a summary) does **not** break
+> detection.
+
 ### Rules
 - ONE item per iteration — do not work on multiple items
 - Do not modify `backlog.json` — the loop runner manages status

@@ -41,12 +41,7 @@ import {
   handleServerStatus,
   handleServerLogs,
 } from "./server-commands.js";
-import {
-  handleLoopStart,
-  handleLoopStop,
-  handleLoopRun,
-  handleLoopReview,
-} from "./loop-commands.js";
+import { handleLoopStop, handleLoopRun, handleLoopReview } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
 import { handleReset } from "./reset-commands.js";
 import { handleResume } from "./resume-commands.js";
@@ -87,18 +82,32 @@ export interface CommandDef {
 
 // ─── Exit Codes ──────────────────────────────────────────────────
 
+/**
+ * Unified process exit codes (v0.5.0). Used by `status` (current loop state) and
+ * `loop run` (terminal outcome). A MACHINE CONTRACT — downstream tools (feature-forge)
+ * depend on these values. `backlog validate` keeps its own 0/1/2 triad.
+ */
 export const ExitCode = {
-  SUCCESS: 0,
-  ERROR: 1,
-  INVALID_ARGS: 2,
-  NOT_FOUND: 3,
-  VALIDATION: 4,
-  CONFLICT: 5,
-  // `rauf loop run --pause-on-needs-human` halted because an item needs human
-  // input. Distinct non-zero code so a supervising session can detect the pause
-  // (item 008). Mirrors `status` exiting 2 for PAUSED_HUMAN.
-  PAUSED_HUMAN: 6,
+  SUCCESS: 0, // clean terminal: idle / complete
+  ERROR: 1, // generic failure
+  USAGE: 2, // bad args / IO / failed precondition (incl. loop-already-running 409)
+  NEEDS_HUMAN: 3, // PAUSED_HUMAN
+  LIMIT: 4, // limit reached / usage-paused / sleeping
+  BLOCKED: 5, // terminal with blocked items
+  RUNNING: 6, // running — QUERY-TIME ONLY (`status`); never a `loop run` terminal code
 } as const;
+export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
+
+/**
+ * Targeted remediation messages for removed subcommands (REQ-RMV-01 / 00 §5).
+ * Keyed by [command][subcommand]. Intercepted before the generic unknown-subcommand
+ * error so the targeted message wins. Exits USAGE(2), executes nothing.
+ */
+export const REMOVED_SUBCOMMAND_MESSAGES: Record<string, Record<string, string>> = {
+  loop: {
+    start: "`loop start` was removed in v0.5.0 — use `loop run --detached` (`-d`).",
+  },
+};
 
 // ─── Command Definitions ─────────────────────────────────────────
 //
@@ -145,44 +154,22 @@ export const COMMANDS: CommandDef[] = [
     description: "Manage rauf autonomous coding loops",
     usage: "rauf loop <subcommand> [path]",
     subcommands: [
-      {
-        name: "start",
-        description: "Start a loop via server",
-        usage: "rauf loop start [path] [options]",
-        flags: [
-          { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
-          {
-            name: "--retries <N>",
-            description: "Max retries per item before deferring (default: 3)",
-          },
-          {
-            name: "--timeout <N>",
-            description: "Per-iteration session timeout in minutes (default: 60)",
-          },
-          { name: "--model <name>", description: "Claude model to use" },
-          { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
-          {
-            name: "--create-branch <name>",
-            description: "Create & switch to a new feature branch before starting",
-          },
-          { name: "--follow", description: "Follow loop events in real-time after starting" },
-          {
-            name: "--retry-blocked",
-            description: "Unblock previously blocked items before starting",
-          },
-          {
-            name: "--suppress-iteration-review",
-            description: "Suppress per-iteration review hooks in child sessions",
-          },
-        ],
-        handler: handleLoopStart,
-      },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
       {
         name: "run",
-        description: "Run loop directly in-process",
-        usage: "rauf loop run [path] [options]",
+        description: "Run a loop (in-process) or start a detached server-managed loop",
+        usage: "rauf loop run [path] [--detached|-d] [options]",
         flags: [
+          {
+            name: "--detached, -d",
+            description:
+              "Start a detached server-managed loop (auto-starts server if needed); returns immediately. Use `rauf follow` to observe.",
+          },
+          {
+            name: "--follow, -f",
+            description:
+              "After starting detached, attach the follow view (Ctrl-C detaches view only)",
+          },
           { name: "--iterations <N>", description: "Max iterations (default: backlog-derived)" },
           {
             name: "--retries <N>",
@@ -194,6 +181,12 @@ export const COMMANDS: CommandDef[] = [
           },
           { name: "--model <name>", description: "Claude model to use" },
           { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+          {
+            name: "--ndjson",
+            description:
+              "Stream loop events as NDJSON to stdout (one JSON event per line; the machine-readable event stream)",
+          },
+          { name: "--json", description: "Emit the final result summary as JSON" },
           { name: "--force", description: "Skip git preconditions (protected branch, dirty tree)" },
           {
             name: "--allow-dirty",
@@ -208,10 +201,6 @@ export const COMMANDS: CommandDef[] = [
           {
             name: "--suppress-iteration-review",
             description: "Suppress per-iteration review hooks in child sessions",
-          },
-          {
-            name: "--ndjson",
-            description: "Emit one JSON object per loop event to stdout (machine-readable)",
           },
           {
             name: "--seed-backlog",
@@ -503,7 +492,7 @@ export function showCommandHelp(
         `${c.red("Unknown command:")} ${commandName}\n\nRun ${c.cyan("rauf help")} for available commands.`,
       );
     }
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Resolve a targeted subcommand, if one was named and exists.

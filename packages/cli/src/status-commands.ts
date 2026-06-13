@@ -35,14 +35,15 @@ import { c, info, print, error, warn, outputJson } from "./formatter.js";
 // ─── handleStatus ─────────────────────────────────────────────────
 //
 // Print loop status summary for a project.
-// Exit codes per spec: 0=idle/complete, 1=running, 2=blocked/needs_human, 3=limit_reached
+// Exit codes per the unified v0.5.0 scheme (00 §1 / 03-exit-codes): 0=success (idle/complete),
+// 1=error, 2=usage, 3=needs-human, 4=limit, 5=blocked, 6=running (query-time, status only)
 
 export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--all] [--backlog <dir>]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const all = extractBoolFlag(ctx.flags, "all");
@@ -65,7 +66,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag);
     if (!backlogRootResult.ok) {
       error(backlogRootResult.error.message);
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
     const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
     if (!pathsResult.ok) {
@@ -85,7 +86,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 
     if (ctx.globalFlags.json) {
       outputJson(result.value);
-      return statusExitCode(result.value.loopState);
+      return statusExitCode(result.value.loopState, result.value);
     }
 
     printStatusSummary(result.value);
@@ -95,7 +96,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
         ctx.globalFlags.json,
       );
     }
-    return statusExitCode(result.value.loopState);
+    return statusExitCode(result.value.loopState, result.value);
   } else {
     // Default root + list active non-default roots
     const defaultRoot = path.join(resolved, ".rauf");
@@ -136,7 +137,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
       const status = result.value;
       if (ctx.globalFlags.json) {
         outputJson(status);
-        return statusExitCode(status.loopState);
+        return statusExitCode(status.loopState, status);
       }
 
       printStatusSummary(status);
@@ -165,7 +166,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 
     if (defaultPathsResult.ok) {
       const result = deriveStatus(defaultPathsResult.value);
-      if (result.ok) return statusExitCode(result.value.loopState);
+      if (result.ok) return statusExitCode(result.value.loopState, result.value);
     }
     return ExitCode.SUCCESS;
   }
@@ -253,7 +254,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf log <path> [--tail N] [--follow] [--json] [--backlog <dir>]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -264,7 +265,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -313,7 +314,7 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf progress <path>");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -322,7 +323,7 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -488,18 +489,48 @@ async function handleStatusFollow(
 
 // ─── Status formatting ───────────────────────────────────────────
 
-/** Map LoopStateEnum to the status-specific exit code */
-function statusExitCode(state: LoopStateEnum): number {
+/**
+ * Genuine blocks = items with status `blocked` minus the runner-deferred subset
+ * (those the runtime gave up on, not an explicit agent block / needs-human).
+ * Shared by the status summary and the BLOCKED(5) exit-code derivation so they
+ * agree on what "blocked" means.
+ */
+export function genuineBlockedCount(summary: DerivedStatus["backlogSummary"]): number {
+  const deferred = summary.deferred ?? 0;
+  return Math.max(0, summary.blocked - deferred);
+}
+
+/**
+ * Map the current LoopStateEnum to the unified exit code (00 §2b, v0.5.0).
+ * `status` is the only command that may return RUNNING(6) (query-time state).
+ *
+ * BLOCKED(5) is *derived*, not a LoopStateEnum value: a clean terminal state
+ * (IDLE / COMPLETE / PAUSED) with a genuine-blocked count > 0 returns BLOCKED(5)
+ * instead of SUCCESS(0), so `status` and `loop run` agree on BLOCKED. The
+ * derived status is consulted only for that carrier — pass it from the caller.
+ */
+export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): number {
   switch (state) {
     case "RUNNING":
-      return 1;
+      return ExitCode.RUNNING; // 6
     case "PAUSED_HUMAN":
-      return 2;
+      return ExitCode.NEEDS_HUMAN; // 3
     case "LIMIT_REACHED":
-      return 3;
-    default:
-      // IDLE, COMPLETE, PAUSED, ERROR, NOT_INSTALLED → 0
-      return 0;
+    case "SLEEPING_LIMIT":
+    case "WEEKLY_LIMIT":
+      return ExitCode.LIMIT; // 4
+    case "ERROR":
+      return ExitCode.ERROR; // 1
+    case "IDLE":
+    case "COMPLETE":
+    case "PAUSED":
+      // Clean terminal: BLOCKED(5) if there are genuine blocks, else SUCCESS(0).
+      if (derived && genuineBlockedCount(derived.backlogSummary) > 0) {
+        return ExitCode.BLOCKED; // 5
+      }
+      return ExitCode.SUCCESS; // 0
+    case "NOT_INSTALLED":
+      return ExitCode.SUCCESS; // 0
   }
 }
 
@@ -599,7 +630,7 @@ function printStatusSummary(status: DerivedStatus): void {
   // `blocked` is the total; `deferred` is the runner-gave-up subset. The
   // remainder is the genuine blocks (explicit agent block / needs-human).
   const deferred = s.deferred ?? 0;
-  const genuineBlocked = Math.max(0, s.blocked - deferred);
+  const genuineBlocked = genuineBlockedCount(s);
   print("");
   print(c.bold("Backlog:"));
   print(`  Pending:     ${s.pending}`);

@@ -34,7 +34,7 @@ export async function handleProfileShow(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf profile show <path>");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -64,7 +64,7 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf profile detect <path>");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -104,7 +104,7 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
     info("");
     info("Keys: test, typecheck, lint, build, format, stack, packageManager, monorepo");
     info("Set a command key to '' to disable (null).");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -130,13 +130,13 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
   } else if (key === "monorepo") {
     if (value !== "true" && value !== "false") {
       error(`Invalid value for 'monorepo': "${value}". Expected 'true' or 'false'.`);
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
     profile.monorepo = value === "true";
   } else {
     error(`Unknown profile key: "${key}"`);
     info("Valid keys: test, typecheck, lint, build, format, stack, packageManager, monorepo");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const writeResult = writeMarkerFile(resolved, { ...marker, profile });
@@ -198,13 +198,13 @@ export async function handleConfigGet(ctx: CommandContext): Promise<number> {
     error("Missing required argument: <key>");
     info("Usage: rauf config get <key>");
     info("Keys: rootDirectory, port, theme");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   if (!VALID_CONFIG_KEYS.has(key)) {
     error(`Unknown config key: "${key}"`);
     info(`Valid keys: ${[...VALID_CONFIG_KEYS].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const result = readToolConfig();
@@ -233,13 +233,13 @@ export async function handleConfigSet(ctx: CommandContext): Promise<number> {
     error("Missing required arguments: <key> <value>");
     info("Usage: rauf config set <key> <value>");
     info("Keys: rootDirectory, port, theme");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   if (!VALID_CONFIG_KEYS.has(key)) {
     error(`Unknown config key: "${key}"`);
     info(`Valid keys: ${[...VALID_CONFIG_KEYS].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const readResult = readToolConfig();
@@ -254,13 +254,13 @@ export async function handleConfigSet(ctx: CommandContext): Promise<number> {
     const portNum = parseInt(rawValue, 10);
     if (isNaN(portNum) || portNum <= 0) {
       error(`Invalid port value: "${rawValue}". Must be a positive integer.`);
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
     config.port = portNum;
   } else if (key === "theme") {
     if (rawValue !== "light" && rawValue !== "dark" && rawValue !== "system") {
       error(`Invalid theme value: "${rawValue}". Valid: light, dark, system.`);
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
     config.theme = rawValue;
   } else if (key === "rootDirectory") {
@@ -449,15 +449,15 @@ function handleCoreError(
 
   switch (err.code) {
     case ErrorCodes.FILE_NOT_FOUND:
-      return ExitCode.NOT_FOUND;
+      return ExitCode.USAGE;
     case ErrorCodes.NOT_INSTALLED:
-      return ExitCode.NOT_FOUND;
+      return ExitCode.USAGE;
     case ErrorCodes.INVALID_JSON:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     case ErrorCodes.VALIDATION_ERROR:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     case ErrorCodes.CONFLICT:
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     default:
       return ExitCode.ERROR;
   }

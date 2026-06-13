@@ -125,7 +125,7 @@ async function captureOutput(fn: () => Promise<unknown>) {
 describe("handleBacklogList", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleBacklogList(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns ERROR for missing backlog root", async () => {
@@ -258,7 +258,7 @@ describe("handleBacklogList", () => {
     });
 
     const code = await handleBacklogList(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("invalid --type returns INVALID_ARGS", async () => {
@@ -271,7 +271,7 @@ describe("handleBacklogList", () => {
     });
 
     const code = await handleBacklogList(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("empty backlog shows info message, not error", async () => {
@@ -295,7 +295,7 @@ describe("handleBacklogList", () => {
 describe("handleBacklogAdd", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleBacklogAdd(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS when --title missing", async () => {
@@ -308,7 +308,7 @@ describe("handleBacklogAdd", () => {
     });
 
     const code = await handleBacklogAdd(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS when --type missing", async () => {
@@ -321,7 +321,7 @@ describe("handleBacklogAdd", () => {
     });
 
     const code = await handleBacklogAdd(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS for invalid --type", async () => {
@@ -337,7 +337,7 @@ describe("handleBacklogAdd", () => {
     });
 
     const code = await handleBacklogAdd(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("creates an item with required fields", async () => {
@@ -535,7 +535,7 @@ describe("handleBacklogAdd", () => {
 describe("handleBacklogEdit", () => {
   it("returns INVALID_ARGS when missing path and id", async () => {
     const code = await handleBacklogEdit(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS when id is missing", async () => {
@@ -544,7 +544,7 @@ describe("handleBacklogEdit", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleBacklogEdit(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("updates title when --title provided", async () => {
@@ -624,7 +624,7 @@ describe("handleBacklogEdit", () => {
     });
 
     const code = await handleBacklogEdit(ctx);
-    expect(code).toBe(ExitCode.VALIDATION);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS for invalid --type", async () => {
@@ -637,7 +637,7 @@ describe("handleBacklogEdit", () => {
     });
 
     const code = await handleBacklogEdit(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS for invalid --status", async () => {
@@ -650,7 +650,7 @@ describe("handleBacklogEdit", () => {
     });
 
     const code = await handleBacklogEdit(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("shows success without --json when update succeeds", async () => {
@@ -678,7 +678,7 @@ describe("handleBacklogEdit", () => {
 describe("handleBacklogDelete", () => {
   it("returns INVALID_ARGS when missing path and id", async () => {
     const code = await handleBacklogDelete(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS without --yes (requires confirmation)", async () => {
@@ -687,7 +687,7 @@ describe("handleBacklogDelete", () => {
 
     const ctx = makeCtx({ args: [projectDir, "001"] });
     const code = await handleBacklogDelete(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("deletes item with --yes flag", async () => {
@@ -745,7 +745,7 @@ describe("handleBacklogDelete", () => {
     });
 
     const code = await handleBacklogDelete(ctx);
-    expect(code).toBe(ExitCode.VALIDATION);
+    expect(code).toBe(ExitCode.USAGE);
   });
 });
 
@@ -754,7 +754,7 @@ describe("handleBacklogDelete", () => {
 describe("handleBacklogShow", () => {
   it("returns INVALID_ARGS when missing path and id", async () => {
     const code = await handleBacklogShow(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS when id is missing", async () => {
@@ -763,7 +763,7 @@ describe("handleBacklogShow", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleBacklogShow(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("shows item detail in human-readable format", async () => {
@@ -814,7 +814,7 @@ describe("handleBacklogShow", () => {
 
     const ctx = makeCtx({ args: [projectDir, "999"] });
     const code = await handleBacklogShow(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("shows completedAt for done items", async () => {
@@ -839,7 +839,7 @@ describe("handleBacklogShow", () => {
 describe("handleBacklogRestore", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleBacklogRestore(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS without --yes (requires confirmation)", async () => {
@@ -848,7 +848,7 @@ describe("handleBacklogRestore", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleBacklogRestore(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("restores backlog from .bak file with --yes", async () => {
@@ -952,7 +952,7 @@ describe("error handling and recovery messages", () => {
     const ctx = makeCtx({ args: [projectDir] });
 
     const code = await handleBacklogList(ctx);
-    expect(code).toBe(ExitCode.VALIDATION);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("malformed backlog.json includes recovery suggestion on stdout", async () => {
@@ -1022,7 +1022,7 @@ describe("error handling and recovery messages", () => {
 
     const output = await captureOutput(async () => {
       const code = await handleBacklogDelete(ctx);
-      expect(code).toBe(ExitCode.INVALID_ARGS);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     // Error should appear on stderr even with --quiet
@@ -1042,7 +1042,7 @@ describe("error handling and recovery messages", () => {
 
     const output = await captureOutput(async () => {
       const code = await handleBacklogRestore(ctx);
-      expect(code).toBe(ExitCode.INVALID_ARGS);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     expect(output.stderr.length).toBeGreaterThan(0);
@@ -1061,7 +1061,7 @@ describe("error handling and recovery messages", () => {
 
     const output = await captureOutput(async () => {
       const code = await handleBacklogEdit(ctx);
-      expect(code).toBe(ExitCode.VALIDATION);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     // Should mention valid transitions
@@ -1101,7 +1101,7 @@ describe("backlog command registry handlers", () => {
 describe("handleBacklogReset", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleBacklogReset(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS without --yes (requires confirmation)", async () => {
@@ -1110,7 +1110,7 @@ describe("handleBacklogReset", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleBacklogReset(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("resets project state with --yes", async () => {
@@ -1219,7 +1219,7 @@ describe("handleBacklogValidate", () => {
     fs.writeFileSync(path.join(raufDir, "backlog.json"), "{ not valid json");
 
     const code = await handleBacklogValidate(makeCtx({ args: [projectDir] }));
-    expect(code).toBe(ExitCode.INVALID_ARGS); // 2 = usage/IO error
+    expect(code).toBe(ExitCode.USAGE); // 2 = usage/IO error
   });
 
   it("--json emits { valid, findings }", async () => {

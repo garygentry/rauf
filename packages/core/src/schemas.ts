@@ -463,7 +463,7 @@ const LlmExitedSchema = LoopEventBaseSchema.extend({
 const SignalParsedSchema = LoopEventBaseSchema.extend({
   type: z.literal("signal_parsed"),
   itemId: z.string(),
-  signal: z.enum(["done", "blocked", "needs_human", "none"]),
+  signal: z.enum(["done", "blocked", "needs_human", "review", "none"]),
   reason: z.string().optional(),
 });
 

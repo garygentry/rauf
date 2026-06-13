@@ -103,13 +103,13 @@ async function captureOutput(fn: () => Promise<unknown>) {
 describe("handleInstall", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleInstall(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns NOT_FOUND for non-existent directory", async () => {
     const ctx = makeCtx({ args: [path.join(tmpDir, "nonexistent")] });
     const code = await handleInstall(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("installs rauf into an existing project", async () => {
@@ -212,7 +212,7 @@ describe("handleInstall", () => {
 describe("handleInit", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleInit(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("creates a new project with git and ralph", async () => {
@@ -272,7 +272,7 @@ describe("handleInit", () => {
     });
 
     const code = await handleInit(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns CONFLICT if path already has .rauf.json", async () => {
@@ -282,7 +282,7 @@ describe("handleInit", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleInit(ctx);
-    expect(code).toBe(ExitCode.CONFLICT);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("--seed populates backlog from a markdown file", async () => {
@@ -337,7 +337,7 @@ describe("handleInit", () => {
 describe("handleUpdate", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleUpdate(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns NOT_FOUND for non-installed project", async () => {
@@ -346,7 +346,7 @@ describe("handleUpdate", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleUpdate(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("updates artifacts in an installed project", async () => {
@@ -408,7 +408,7 @@ describe("handleUpdate", () => {
 describe("handleUninstall", () => {
   it("returns INVALID_ARGS when no path argument", async () => {
     const code = await handleUninstall(makeCtx());
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns NOT_FOUND for non-installed project", async () => {
@@ -417,7 +417,7 @@ describe("handleUninstall", () => {
 
     const ctx = makeCtx({ args: [projectDir] });
     const code = await handleUninstall(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("uninstalls rauf from an installed project", async () => {
@@ -515,7 +515,7 @@ describe("exit codes", () => {
         flags: new Map([["yes", true as string | true]]),
       }),
     );
-    expect(code1).toBe(ExitCode.NOT_FOUND);
+    expect(code1).toBe(ExitCode.USAGE);
   });
 
   it("update returns NOT_FOUND for non-installed project", async () => {
@@ -523,7 +523,7 @@ describe("exit codes", () => {
     fs.mkdirSync(dir, { recursive: true });
 
     const code = await handleUpdate(makeCtx({ args: [dir] }));
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("uninstall returns NOT_FOUND for non-installed project", async () => {
@@ -531,7 +531,7 @@ describe("exit codes", () => {
     fs.mkdirSync(dir, { recursive: true });
 
     const code = await handleUninstall(makeCtx({ args: [dir] }));
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 });
 

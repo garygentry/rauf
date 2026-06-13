@@ -9,13 +9,26 @@ Import everything from the package barrel:
 
 ```ts
 import {
-  appendEvent, readEvents, watchEvents, rotateEventsLog,
-  registerLoop, deregisterLoop, updateLoopStatus, listActiveLoops, registryEntryPath,
-  appendLine, readNdjson,
-  surfaceInspectedStatus, surfaceInspectedDir,
+  appendEvent,
+  readEvents,
+  watchEvents,
+  rotateEventsLog,
+  registerLoop,
+  deregisterLoop,
+  updateLoopStatus,
+  listActiveLoops,
+  registryEntryPath,
+  appendLine,
+  readNdjson,
+  surfaceInspectedStatus,
+  surfaceInspectedDir,
   checkLockFile,
-  EVENTS_SCHEMA_VERSION, TOKEN_COALESCE_MS, EVENTS_LOG_FILENAME,
-  type PersistedEvent, type ActiveLoopEntry, type InspectedStatusContext,
+  EVENTS_SCHEMA_VERSION,
+  TOKEN_COALESCE_MS,
+  EVENTS_LOG_FILENAME,
+  type PersistedEvent,
+  type ActiveLoopEntry,
+  type InspectedStatusContext,
 } from "@rauf/core";
 ```
 
@@ -26,7 +39,7 @@ import {
 ### `appendEvent(paths, record): Result<void>`
 
 ```ts
-function appendEvent(paths: BacklogPaths, record: PersistedEvent): Result<void>
+function appendEvent(paths: BacklogPaths, record: PersistedEvent): Result<void>;
 ```
 
 Append one persisted event to `paths.eventsLog`. The path is sandbox-validated to
@@ -43,7 +56,7 @@ prefer letting the runner emit events.
 ### `readEvents(paths): Result<PersistedEvent[]>`
 
 ```ts
-function readEvents(paths: BacklogPaths): Result<PersistedEvent[]>
+function readEvents(paths: BacklogPaths): Result<PersistedEvent[]>;
 ```
 
 Read the **current run's** persisted events, in `seq` order. The replay half of `follow`'s
@@ -64,7 +77,7 @@ if (events.ok) {
 function watchEvents(
   paths: BacklogPaths,
   onRecords: (records: PersistedEvent[]) => void,
-): () => void
+): () => void;
 ```
 
 Tail `paths.eventsLog` for newly-appended records. Returns a **bare cleanup function** (not a
@@ -88,7 +101,7 @@ stop();
 ### `rotateEventsLog(paths): Result<void>`
 
 ```ts
-function rotateEventsLog(paths: BacklogPaths): Result<void>
+function rotateEventsLog(paths: BacklogPaths): Result<void>;
 ```
 
 Move the prior run's `events.ndjson` to `paths.archive` as `{ts}-events.ndjson`, so the live
@@ -103,7 +116,7 @@ file. **You generally do not call this directly** — the runner owns rotation.
 ### `registerLoop(entry): Result<void>`
 
 ```ts
-function registerLoop(entry: ActiveLoopEntry): Result<void>
+function registerLoop(entry: ActiveLoopEntry): Result<void>;
 ```
 
 Write the loop's registry entry to `~/.rauf/active/<sha256(resolve(stateDir))[:16]>.json`. The
@@ -113,7 +126,7 @@ concurrency-safe.
 ### `deregisterLoop(stateDir): Result<void>`
 
 ```ts
-function deregisterLoop(stateDir: string): Result<void>
+function deregisterLoop(stateDir: string): Result<void>;
 ```
 
 Remove the registry entry for `stateDir`. The runner calls this in the run's `finally`. Crash
@@ -123,7 +136,7 @@ live — but a clean exit removes its own entry immediately.
 ### `updateLoopStatus(stateDir, status): Result<void>`
 
 ```ts
-function updateLoopStatus(stateDir: string, status: LoopStateStatus): Result<void>
+function updateLoopStatus(stateDir: string, status: LoopStateStatus): Result<void>;
 ```
 
 Refresh the **advisory** `status` field of an existing entry. The runner pairs this with its
@@ -133,7 +146,7 @@ for the cross-root listing and must not be trusted over it. A missing entry is a
 ### `listActiveLoops(): Result<ActiveLoopEntry[]>`
 
 ```ts
-function listActiveLoops(): Result<ActiveLoopEntry[]>
+function listActiveLoops(): Result<ActiveLoopEntry[]>;
 ```
 
 List every confirmed-live loop, machine-wide, **reconciled on read**. For each entry it: parses
@@ -154,7 +167,7 @@ if (live.ok) {
 ### `registryEntryPath(stateDir): string`
 
 ```ts
-const registryEntryPath: (stateDir: string) => string
+const registryEntryPath: (stateDir: string) => string;
 ```
 
 Compute the absolute registry-entry path for a state dir (the `sha256(...)[:16].json` under
@@ -170,7 +183,7 @@ newline-delimited JSON file.
 ### `appendLine(filePath, line): Result<void>`
 
 ```ts
-function appendLine(filePath: string, line: string): Result<void>
+function appendLine(filePath: string, line: string): Result<void>;
 ```
 
 Append a single line (ensuring a trailing newline). Catches fs errors and returns
@@ -179,7 +192,7 @@ Append a single line (ensuring a trailing newline). Catches fs errors and return
 ### `readNdjson<T>(filePath, schema): Result<T[]>`
 
 ```ts
-function readNdjson<T>(filePath: string, schema: z.ZodType<T>): Result<T[]>
+function readNdjson<T>(filePath: string, schema: z.ZodType<T>): Result<T[]>;
 ```
 
 Read and schema-validate a newline-delimited JSON file. **Tolerates a torn trailing line**: any
@@ -198,7 +211,7 @@ const records = readNdjson(filePath, PersistedEventSchema);
 ### `surfaceInspectedStatus(paths, status): InspectedStatusContext`
 
 ```ts
-function surfaceInspectedStatus(paths: BacklogPaths, status: DerivedStatus): InspectedStatusContext
+function surfaceInspectedStatus(paths: BacklogPaths, status: DerivedStatus): InspectedStatusContext;
 ```
 
 Build the "empty is never silent" context from a resolved `BacklogPaths` and its already-derived
@@ -207,7 +220,7 @@ Build the "empty is never silent" context from a resolved `BacklogPaths` and its
 ### `surfaceInspectedDir(inspectedDir, empty): InspectedStatusContext`
 
 ```ts
-function surfaceInspectedDir(inspectedDir: string, empty: boolean): InspectedStatusContext
+function surfaceInspectedDir(inspectedDir: string, empty: boolean): InspectedStatusContext;
 ```
 
 The raw-path entry point, for when no `DerivedStatus`/`BacklogPaths` could be resolved (e.g. an
@@ -216,8 +229,8 @@ reconciled registry and exclude the inspected root itself; the filtering lives h
 
 ```ts
 interface InspectedStatusContext {
-  inspectedDir: string;          // the state dir that was inspected (always present)
-  empty: boolean;                // true when the root has no usable state of its own
+  inspectedDir: string; // the state dir that was inspected (always present)
+  empty: boolean; // true when the root has no usable state of its own
   liveElsewhere: ActiveLoopEntry[]; // loops live in OTHER roots (reconciled, self-excluded)
 }
 ```
@@ -233,7 +246,7 @@ cannot.
 ### `checkLockFile(lockPath): Result<LockStatus>`
 
 ```ts
-function checkLockFile(lockPath: string): Result<LockStatus>
+function checkLockFile(lockPath: string): Result<LockStatus>;
 ```
 
 Determine liveness of a lock at an **arbitrary path** (extracted from `checkLock` so the registry
@@ -259,36 +272,36 @@ Flat by design, so a reader needs no join to interpret a record.
 
 ```ts
 type ActiveLoopEntry = {
-  stateDir: string;     // resolved (absolute) state dir — the registry key source + reconcile anchor
-  projectPath: string;  // project root containing the .rauf.json marker
-  backlogRoot: string;  // the --backlog root (projectPath/.rauf for the default root)
-  pid: number;          // runner OS pid, used for liveness reconciliation
-  startedAt: string;    // ISO-8601 registration timestamp
+  stateDir: string; // resolved (absolute) state dir — the registry key source + reconcile anchor
+  projectPath: string; // project root containing the .rauf.json marker
+  backlogRoot: string; // the --backlog root (projectPath/.rauf for the default root)
+  pid: number; // runner OS pid, used for liveness reconciliation
+  startedAt: string; // ISO-8601 registration timestamp
   status: LoopStateStatus; // ADVISORY last-known status — never trust over state.json
 };
 ```
 
 ### Constants
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `EVENTS_LOG_FILENAME` | `"events.ndjson"` | Event-log file name within a state dir |
-| `EVENTS_SCHEMA_VERSION` | `"1"` | Record schema version (forward-stable; bumped only under the Phase-3 versioning discipline) |
-| `TOKEN_COALESCE_MS` | `1000` | Min ms between persisted `llm_token_update` records |
+| Constant                | Value             | Meaning                                                                                     |
+| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| `EVENTS_LOG_FILENAME`   | `"events.ndjson"` | Event-log file name within a state dir                                                      |
+| `EVENTS_SCHEMA_VERSION` | `"1"`             | Record schema version (forward-stable; bumped only under the Phase-3 versioning discipline) |
+| `TOKEN_COALESCE_MS`     | `1000`            | Min ms between persisted `llm_token_update` records                                         |
 
 ### `BacklogPaths` additions
 
 `resolveBacklogPaths()` now also returns:
 
-| Field | Value |
-|-------|-------|
-| `eventsLog` | `<stateDir>/events.ndjson` |
-| `archive` | `<stateDir>/archive` (rotation target for prior runs) |
+| Field       | Value                                                 |
+| ----------- | ----------------------------------------------------- |
+| `eventsLog` | `<stateDir>/events.ndjson`                            |
+| `archive`   | `<stateDir>/archive` (rotation target for prior runs) |
 
 ## When to use these directly
 
 - **Building a custom observer** (a dashboard, an alerting hook, a pipeline gate) → `readEvents`
-  + `watchEvents` for the stream, `listActiveLoops` for liveness, `deriveStatus` for status.
+  - `watchEvents` for the stream, `listActiveLoops` for liveness, `deriveStatus` for status.
 - **Reading another tool's NDJSON** → `readNdjson` with your own schema.
 
 ## When NOT to use these directly

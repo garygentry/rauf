@@ -4,7 +4,7 @@ Phase 1 makes a rauf loop's activity **observable from files alone**. Every loop
 persists its event stream to `events.ndjson` inside the backlog root's state directory,
 and registers itself in a machine-wide active-loop registry. Because all observers — the
 CLI, the web server, and any pipeline tool — reconstruct state by reading those files,
-they see the *same* picture whether the loop runs in-process (`rauf loop run`) or under the
+they see the _same_ picture whether the loop runs in-process (`rauf loop run`) or under the
 server daemon (`rauf loop start`). This collapses the old asymmetry where the web UI showed
 a degraded view of in-process runs and the four monitor commands behaved differently by
 execution mode.
@@ -61,7 +61,7 @@ crashed loop that never deregistered is detected as dead and **self-healed** (pr
 next time anyone lists.
 
 **Two authorities, never contradicting.** `state.json` is authoritative for a loop's
-*current status*. `events.ndjson` is authoritative for its *stream and history*. The
+_current status_. `events.ndjson` is authoritative for its _stream and history_. The
 registry's `status` field is **advisory only** — a convenience for cross-root listing that
 must never be trusted over `state.json`.
 
@@ -78,27 +78,27 @@ tolerated by every reader (skipped, never half-parsed).
 All new surface is exported from `@rauf/core` (barrel re-exports `events-log` and
 `loop-registry`). The CLI and web packages consume it; they add no new core logic.
 
-| Module | What it provides |
-|--------|------------------|
-| `@rauf/core` → `events-log` | `appendEvent`, `readEvents`, `watchEvents`, `rotateEventsLog` |
-| `@rauf/core` → `loop-registry` | `registerLoop`, `deregisterLoop`, `updateLoopStatus`, `listActiveLoops`, `registryEntryPath` |
-| `@rauf/core` → `fs-utils` | `appendLine`, `readNdjson` (NDJSON primitives the event log builds on) |
-| `@rauf/core` → `status` | `surfaceInspectedStatus`, `surfaceInspectedDir`, `InspectedStatusContext` (the empty-is-never-silent data layer) |
-| `@rauf/core` → `lock` | `checkLockFile` (lock liveness from a path; the registry's reconciliation primitive) |
-| `@rauf/core` → `schemas` | `PersistedEvent`, `ActiveLoopEntry`, `EVENTS_SCHEMA_VERSION`, `TOKEN_COALESCE_MS`, `EVENTS_LOG_FILENAME` |
-| `@rauf/cli` | `status` / `log` / `follow` monitoring verbs (file-backed) |
-| `@rauf/web` | `GET /api/projects/:id/loop/events` (SSE), `GET /api/loops`, `<EventTimeline>` |
+| Module                         | What it provides                                                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `@rauf/core` → `events-log`    | `appendEvent`, `readEvents`, `watchEvents`, `rotateEventsLog`                                                    |
+| `@rauf/core` → `loop-registry` | `registerLoop`, `deregisterLoop`, `updateLoopStatus`, `listActiveLoops`, `registryEntryPath`                     |
+| `@rauf/core` → `fs-utils`      | `appendLine`, `readNdjson` (NDJSON primitives the event log builds on)                                           |
+| `@rauf/core` → `status`        | `surfaceInspectedStatus`, `surfaceInspectedDir`, `InspectedStatusContext` (the empty-is-never-silent data layer) |
+| `@rauf/core` → `lock`          | `checkLockFile` (lock liveness from a path; the registry's reconciliation primitive)                             |
+| `@rauf/core` → `schemas`       | `PersistedEvent`, `ActiveLoopEntry`, `EVENTS_SCHEMA_VERSION`, `TOKEN_COALESCE_MS`, `EVENTS_LOG_FILENAME`         |
+| `@rauf/cli`                    | `status` / `log` / `follow` monitoring verbs (file-backed)                                                       |
+| `@rauf/web`                    | `GET /api/projects/:id/loop/events` (SSE), `GET /api/loops`, `<EventTimeline>`                                   |
 
 ## Configuration
 
 Phase 1 introduces **no new user configuration**. Behavior is governed by constants in
 `@rauf/core`:
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `EVENTS_LOG_FILENAME` | `"events.ndjson"` | Event-log file name within a state dir |
-| `EVENTS_SCHEMA_VERSION` | `"1"` | Event-log record schema version (forward-stable) |
-| `TOKEN_COALESCE_MS` | `1000` | Min interval between persisted `llm_token_update` records |
+| Constant                | Value             | Meaning                                                   |
+| ----------------------- | ----------------- | --------------------------------------------------------- |
+| `EVENTS_LOG_FILENAME`   | `"events.ndjson"` | Event-log file name within a state dir                    |
+| `EVENTS_SCHEMA_VERSION` | `"1"`             | Event-log record schema version (forward-stable)          |
+| `TOKEN_COALESCE_MS`     | `1000`            | Min interval between persisted `llm_token_update` records |
 
 The runtime `events.ndjson` is gitignored (`**/.rauf/events.ndjson`) and excluded from the
 runner's per-item `git add -A` commits.

@@ -61,12 +61,12 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 - Each command is a separate file in `src/commands/`
 - Can call core functions directly (headless) or HTTP API (when server running)
 - `rauf loop run` creates a LoopRunner in-process (no server required)
-- `rauf loop start/stop/follow/review` route through the server API or run directly
+- `rauf loop run --detached`/`loop stop`/`follow`/`loop review` route through the server API or run directly
 - `recovery.ts` provides shared helpers (`reconcileAndRequeue`, `guardLoopLock`, `recoverInterruptedLoop`) used by both `rauf reset` and `rauf resume`
-- `rauf loop run` is the **unattended-safe mode** — the loop runs in the CLI process, so `rauf server stop`/`restart` cannot kill it. `rauf loop start` routes through the server daemon and is interruptible.
-- `maxIterations` bounds a **single process run** of `rauf loop run` or `rauf loop start`, not the cumulative work across restarts. The iteration counter resets to zero each time the process starts. `rauf resume` applies a fresh budget for each continuation.
+- `rauf loop run` is the **unattended-safe mode** — the loop runs in the CLI process, so `rauf server stop`/`restart` cannot kill it. `rauf loop run --detached` routes through the server daemon and is interruptible.
+- `maxIterations` bounds a **single process run** of `rauf loop run`, not the cumulative work across restarts. The iteration counter resets to zero each time the process starts. `rauf resume` applies a fresh budget for each continuation.
 - Outputs human-readable by default, `--json` for machine-readable
-- Exit codes follow standard (0=success, 1=error, 2=bad args, etc.)
+- Exit codes: unified scheme — SUCCESS(0)/ERROR(1)/USAGE(2)/NEEDS_HUMAN(3)/LIMIT(4)/BLOCKED(5)/RUNNING(6)
 
 ### packages/web
 
@@ -162,10 +162,10 @@ User → CLI `rauf install ./project`
        → CLI formats installation report
 ```
 
-### Loop Lifecycle (server mode)
+### Loop Lifecycle (detached mode)
 
 ```
-User → CLI `rauf loop start ./project`
+User → CLI `rauf loop run --detached ./project`
        → CLI auto-starts server daemon if needed
        → POST /api/projects/:id/loop/start
        → LoopManager.startLoop()

@@ -95,7 +95,7 @@ describe("handleFollow", () => {
       globalFlags: { json: false, quiet: true, noColor: true, root: null },
       rawArgv: [],
     };
-    expect(await handleFollow(ctx)).toBe(ExitCode.INVALID_ARGS);
+    expect(await handleFollow(ctx)).toBe(ExitCode.USAGE);
   });
 
   it("replays the current run's events then exits on a terminal state (formatted)", async () => {

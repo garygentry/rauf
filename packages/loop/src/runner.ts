@@ -69,6 +69,13 @@ export interface LoopResult {
   reviewSummary?: string;
   /** Set when the loop halted in paused_human via --pause-on-needs-human (item 008). */
   pausedReason?: "needs_human";
+  /**
+   * Set when the loop terminated in a usage/iteration-limit state
+   * (limit_reached / weekly_limit / paused_usage_limit). Carries the LIMIT
+   * terminal so `loop run` can map it to ExitCode.LIMIT (00-core-definitions §2a).
+   * Analogous to `pausedReason` — a clearly-named optional carrier, not a shape change.
+   */
+  limitReached?: boolean;
 }
 
 /** Result of a review pass */
@@ -113,6 +120,8 @@ export class LoopRunner extends TypedEventEmitter {
   private reviewSummary: string | null = null;
   /** Set when --pause-on-needs-human halts the loop (item 008); surfaced on LoopResult. */
   private pausedReason: "needs_human" | null = null;
+  /** Set when the loop wrote a terminal limit state; surfaced as LoopResult.limitReached. */
+  private limitTerminal = false;
   /** Per-run dense sequence counter for persisted events (assigned only when a record is written). */
   private eventSeq = 0;
   /** Last wall-clock ms an llm_token_update was persisted to FILE (coalescing window). */
@@ -242,7 +251,12 @@ export class LoopRunner extends TypedEventEmitter {
       // (4) Pre-loop usage limit preflight
       const preflightResult = await this.runUsagePreflight();
       if (preflightResult === "exit") {
-        return { completedCount: 0, blockedCount: 0, cancelled: false };
+        return {
+          completedCount: 0,
+          blockedCount: 0,
+          cancelled: false,
+          ...(this.limitTerminal ? { limitReached: true } : {}),
+        };
       }
 
       // Emit loop_started
@@ -282,6 +296,7 @@ export class LoopRunner extends TypedEventEmitter {
             ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
             cancelled: this.isCancelled(),
             ...(this.pausedReason ? { pausedReason: this.pausedReason } : {}),
+            ...(this.limitTerminal ? { limitReached: true } : {}),
           };
         }
 
@@ -293,6 +308,7 @@ export class LoopRunner extends TypedEventEmitter {
               completedCount: this.completedCount,
               blockedCount: this.blockedCount,
               cancelled: this.isCancelled(),
+              ...(this.limitTerminal ? { limitReached: true } : {}),
             };
           }
         }
@@ -351,6 +367,7 @@ export class LoopRunner extends TypedEventEmitter {
         cancelled: false,
         ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
         ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
+        ...(this.limitTerminal ? { limitReached: true } : {}),
       };
     } catch (e) {
       // Crash cleanup: reset in_progress item to pending
@@ -653,7 +670,7 @@ export class LoopRunner extends TypedEventEmitter {
     const parsed = parseSignal(signalText);
     this.emitEvent("signal_parsed", {
       itemId: item.id,
-      signal: parsed.signal === "review" ? "done" : parsed.signal,
+      signal: parsed.signal,
       reason: parsed.reason,
     });
     appendLog(this.paths, `Signal: ${parsed.signal}${parsed.reason ? ` (${parsed.reason})` : ""}`);
@@ -1222,6 +1239,19 @@ export class LoopRunner extends TypedEventEmitter {
     lastSignal?: LoopState["lastSignal"],
     error?: string,
   ): void {
+    // Track whether the loop has settled into a terminal usage/iteration-limit
+    // state so the resolved LoopResult can carry the LIMIT terminal (00 §2a).
+    // sleeping_limit is transient (the loop resumes), so it is NOT terminal here;
+    // re-entering a running/active state clears the flag.
+    if (
+      status === "limit_reached" ||
+      status === "weekly_limit" ||
+      status === "paused_usage_limit"
+    ) {
+      this.limitTerminal = true;
+    } else if (status === "running" || status === "starting" || status === "reviewing") {
+      this.limitTerminal = false;
+    }
     writeLoopState(this.paths, {
       status,
       iteration: this.iterationCount,

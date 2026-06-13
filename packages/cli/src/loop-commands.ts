@@ -1,11 +1,11 @@
 // ─── Loop Command Handlers ──────────────────────────────────────────
 //
-// Implements: rauf loop start/stop/run/review
+// Implements: rauf loop stop/run/review
 //
 // Smart routing:
-//   start  → auto-starts server daemon if not running, POST to server API
-//   stop   → POST to server API, error if server not running
-//   run    → direct mode, creates LoopRunner in-process (no server)
+//   stop           → POST to server API; USAGE if no server / no active loop
+//   run            → direct mode, creates LoopRunner in-process (no server)
+//   run --detached → auto-starts server daemon if needed, POST to server API
 //
 // The live-view verb is the top-level `follow` command (follow-command.ts);
 // the old `loop follow` / `loop watch` monitor verbs were removed (clean break).
@@ -41,6 +41,7 @@ import {
   gitCommit,
   RUNTIME_EXCLUDE_PATHSPECS,
 } from "@rauf/loop";
+import type { LoopResult } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -285,45 +286,74 @@ export async function ensureServerRunning(ctx: CommandContext): Promise<boolean>
   return true;
 }
 
-// ─── handleLoopStart ────────────────────────────────────────────────
+// ─── runDetached (formerly handleLoopStart) ─────────────────────────
 
-export async function handleLoopStart(ctx: CommandContext): Promise<number> {
+/**
+ * Detached-run path (formerly `handleLoopStart`). Auto-starts the server daemon,
+ * POSTs the loop options to `POST /api/projects/:id/loop/start`, and returns
+ * immediately. Invoked only from the `--detached`/`-d` branch of `handleLoopRun`.
+ *
+ * `--follow` is handled CLI-side AFTER this returns (item 007) and is NOT in the
+ * request body — the body carries only loop options. The server still runs the
+ * loop in-process via LoopManager (canon P2: hide the mode, don't change it).
+ */
+/**
+ * Apply the `--create-branch <name>` flag: create & switch to the branch before
+ * the loop starts (a local git op, performed CLI-side so the server only sees
+ * the resulting branch). Shared by `loop run` (in-process) and the detached
+ * path. Returns an ExitCode to return-early on failure, or null to continue
+ * (including the no-flag and already-on-branch cases).
+ */
+async function applyCreateLoopBranch(
+  ctx: CommandContext,
+  projectPath: string,
+): Promise<number | null> {
+  const createBranch = extractStringFlag(ctx.flags, "create-branch");
+  if (createBranch === null) return null;
+  const branchResult = await createLoopBranch(projectPath, createBranch);
+  if (!branchResult.ok) {
+    error(branchResult.error.message);
+    return ExitCode.USAGE;
+  }
+  info(
+    branchResult.value.switched
+      ? `Switched to new branch ${c.cyan(createBranch)}`
+      : `Already on branch ${c.cyan(createBranch)}`,
+  );
+  return null;
+}
+
+/**
+ * Apply the `--retry-blocked` flag: unblock previously-blocked items before the
+ * run. Resolves the backlog paths from `--backlog` internally so both the
+ * in-process and detached paths share one implementation. Best-effort — a path
+ * resolution failure is silently skipped (the run proceeds without unblocking).
+ */
+function unblockIfRequested(ctx: CommandContext, projectPath: string): void {
+  if (!extractBoolFlag(ctx.flags, "retry-blocked")) return;
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  if (!brResult.ok) return;
+  const prResult = resolveBacklogPaths(projectPath, brResult.value);
+  if (!prResult.ok) return;
+  const ubResult = unblockItems(prResult.value);
+  if (ubResult.ok && ubResult.value.unblockedCount > 0) {
+    info(
+      `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
+    );
+  }
+}
+
+async function runDetached(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
-  const follow = extractBoolFlag(ctx.flags, "follow");
-  const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
-  // Create & switch to a feature branch before starting (mirrors `loop run`).
-  // The switch is a local git operation, so it happens CLI-side before the
-  // server request — the server only sees the resulting branch.
-  const createBranch = extractStringFlag(ctx.flags, "create-branch");
-  if (createBranch !== null) {
-    const branchResult = await createLoopBranch(projectPath, createBranch);
-    if (!branchResult.ok) {
-      error(branchResult.error.message);
-      return ExitCode.CONFLICT;
-    }
-    if (branchResult.value.switched) {
-      info(`Switched to new branch ${c.cyan(createBranch)}`);
-    }
-  }
-
-  if (retryBlocked) {
-    // Resolve paths for unblock operation
-    const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-    if (brResult.ok) {
-      const prResult = resolveBacklogPaths(projectPath, brResult.value);
-      if (prResult.ok) {
-        const ubResult = unblockItems(prResult.value);
-        if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-          info(
-            `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
-          );
-        }
-      }
-    }
-  }
+  // Create & switch to a feature branch, then unblock retries — both CLI-side
+  // before the server request, and both shared with in-process `loop run`.
+  const branchExit = await applyCreateLoopBranch(ctx, projectPath);
+  if (branchExit !== null) return branchExit;
+  unblockIfRequested(ctx, projectPath);
 
   // Auto-start server if not running
   const running = await ensureServerRunning(ctx);
@@ -372,28 +402,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
         const data = await resp.json();
         outputJson(data);
       } else {
-        success(`Loop started for ${c.cyan(id)}`);
-        info(
-          c.dim(
-            `Note: a ${c.cyan("rauf server stop")}/${c.cyan("restart")} interrupts this loop. ` +
-              `Use ${c.cyan("rauf loop run")} for the unattended-safe (in-process) mode.`,
-          ),
-        );
-      }
-
-      if (follow) {
-        const eventsUrl = apiUrl(port, id, "events");
-        info(c.dim("Following loop events... Press Ctrl+C to stop."));
-        const statusLine = new StatusLine({
-          isTTY: process.stdout.isTTY ?? false,
-          quiet: ctx.globalFlags.quiet,
-          json: ctx.globalFlags.json,
-          noColor: ctx.globalFlags.noColor,
-        });
-        return streamEventsUntilDone(eventsUrl, statusLine);
-      }
-
-      if (!ctx.globalFlags.json) {
+        success(`Loop started for ${c.cyan(id)} ${c.dim("(detached, server-owned)")}`);
         info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
       }
       return ExitCode.SUCCESS;
@@ -405,16 +414,40 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
     const errMsg = errBody?.error?.message ?? resp.statusText;
 
     if (resp.status === 409) {
+      // Loop already running — a correctable precondition, not a hard error.
       error(`Loop already running for ${id}.`);
       info(`Use ${c.cyan("rauf loop stop")} to stop it first.`);
-    } else {
-      error(`Failed to start loop: ${errMsg}`);
+      return ExitCode.USAGE; // 2 (00-core-definitions §1)
     }
+    error(`Failed to start loop: ${errMsg}`);
     return ExitCode.ERROR;
   } catch (e) {
     error(`Failed to connect to server: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   }
+}
+
+/**
+ * Attach the canonical live view to an already-detached, server-owned loop
+ * (the `loop run --detached --follow` case). Reuses the SSE/events surface every
+ * observer reads — no new observation path. Ctrl-C (SIGINT) detaches THE VIEW
+ * ONLY: `streamEventsUntilDone` interrupts its read and returns without issuing
+ * `POST /loop/stop`, so the server keeps running the loop. `--follow` is NOT in
+ * the request body — following is a pure read attached after the POST returns.
+ * Honors --json (NDJSON streaming) via the StatusLine's json mode.
+ */
+async function followDetached(ctx: CommandContext, projectPath: string): Promise<number> {
+  const port = getPort();
+  const id = projectId(projectPath);
+  const eventsUrl = apiUrl(port, id, "events");
+  info(c.dim("Following loop events... Press Ctrl+C to detach (the loop keeps running)."));
+  const statusLine = new StatusLine({
+    isTTY: process.stdout.isTTY ?? false,
+    quiet: ctx.globalFlags.quiet,
+    json: ctx.globalFlags.json,
+    noColor: ctx.globalFlags.noColor,
+  });
+  return streamEventsUntilDone(eventsUrl, statusLine);
 }
 
 // ─── handleLoopStop ─────────────────────────────────────────────────
@@ -428,9 +461,9 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
   if (!isServerRunning()) {
     error("Server is not running.");
     info(
-      `Start the server with ${c.cyan("rauf server start")} or use ${c.cyan("rauf loop start")} which auto-starts.`,
+      `Start the server with ${c.cyan("rauf server start")} or use ${c.cyan("rauf loop run --detached")} which auto-starts.`,
     );
-    return ExitCode.ERROR;
+    return ExitCode.USAGE; // 2 — no-server is a misuse of stop (00-core-definitions §1)
   }
 
   try {
@@ -463,9 +496,9 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
 
     if (resp.status === 404) {
       error(`No active loop for ${id}.`);
-    } else {
-      error(`Failed to stop loop: ${errMsg}`);
+      return ExitCode.USAGE; // 2 — no-loop-to-stop is a misuse (00-core-definitions §1)
     }
+    error(`Failed to stop loop: ${errMsg}`);
     return ExitCode.ERROR;
   } catch (e) {
     error(`Failed to connect to server: ${e instanceof Error ? e.message : String(e)}`);
@@ -615,10 +648,60 @@ async function connectSSE(
   }
 }
 
+// ─── loop run terminal exit-code mapping ────────────────────────────
+
+/**
+ * Whether a resolved LoopResult represents a usage/iteration-limit terminal
+ * (limit_reached / weekly_limit / paused_usage_limit). LoopResult carries this
+ * via the `limitReached` flag the runner sets when it writes a terminal limit
+ * state (00-core-definitions §2a / 03-exit-codes §3). If no limit signal is
+ * reachable, this is simply false and the LIMIT branch is not taken.
+ */
+function isLimitTerminal(result: LoopResult): boolean {
+  return result.limitReached === true;
+}
+
+/**
+ * Map a terminal `loop run` LoopResult to the unified exit code
+ * (00-core-definitions §2a). Pure over the resolved result. Order is
+ * significant — needs-human → limit → blocked → clean; the first match wins.
+ * The non-Result error path (the caller's catch) covers the ERROR(1) row.
+ * RUNNING(6) is NEVER returned here — a finished run is not running.
+ */
+export function loopRunExitCode(result: LoopResult): ExitCode {
+  const needsHuman = (result.needsHumanCount ?? 0) > 0 || result.pausedReason === "needs_human";
+  if (needsHuman) {
+    return ExitCode.NEEDS_HUMAN; // 3
+  }
+  if (isLimitTerminal(result)) {
+    return ExitCode.LIMIT; // 4 — limit-reached / usage-paused / sleeping terminal
+  }
+  if (result.blockedCount > 0) {
+    return ExitCode.BLOCKED; // 5 — terminal with blocked items
+  }
+  return ExitCode.SUCCESS; // 0 — clean: completed / idle / cancelled-graceful
+}
+
 // ─── handleLoopRun ──────────────────────────────────────────────────
 
 export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
+
+  // Detached mode (formerly `loop start`): delegate to the server-POST flow and
+  // return immediately. Bare `loop run` falls through to the unchanged in-process
+  // path below. `--detached`/`-d` is read and consumed here so it never leaks into
+  // the in-process path or the POST body (canon P2: hide the mode, don't change it).
+  const detached = extractBoolFlag(ctx.flags, "detached");
+  if (detached) {
+    const code = await runDetached(ctx);
+    if (code !== ExitCode.SUCCESS) return code;
+    // --follow attaches the live view CLI-side AFTER the POST returns (§3).
+    if (extractBoolFlag(ctx.flags, "follow")) {
+      return followDetached(ctx, projectPath);
+    }
+    return ExitCode.SUCCESS;
+  }
+
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const force = extractBoolFlag(ctx.flags, "force");
   // `rauf resume` sets this: recovery rewrites bookkeeping so the tree is dirty
@@ -663,20 +746,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
   // Create & switch to a feature branch first (before the precondition check)
   // so `--create-branch feat/x` takes a project off a protected/dirty branch
-  // and into a runnable state in one step.
-  const createBranch = extractStringFlag(ctx.flags, "create-branch");
-  if (createBranch !== null) {
-    const branchResult = await createLoopBranch(projectPath, createBranch);
-    if (!branchResult.ok) {
-      error(branchResult.error.message);
-      return ExitCode.CONFLICT;
-    }
-    if (branchResult.value.switched) {
-      info(`Switched to new branch ${c.cyan(createBranch)}`);
-    } else {
-      info(`Already on branch ${c.cyan(createBranch)}`);
-    }
-  }
+  // and into a runnable state in one step. Shared with the detached path.
+  const branchExit = await applyCreateLoopBranch(ctx, projectPath);
+  if (branchExit !== null) return branchExit;
 
   // --seed-backlog: commit an otherwise-clean tree's backlog before the
   // precondition check, so a freshly-authored backlog isn't swept into item
@@ -688,7 +760,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     const seedResult = await seedBacklog(projectPath, paths);
     if (!seedResult.ok) {
       error(seedResult.error.message);
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
     if (seedResult.value.committed) {
       info(`Seeded backlog: committed ${c.cyan(seedResult.value.commitHash || "(staged)")}`);
@@ -708,7 +780,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       for (const line of buildPreconditionRemediation(ctx.args[0] ?? ".")) {
         info(line);
       }
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
   }
 
@@ -730,20 +802,12 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
   const reviewOnly = extractBoolFlag(ctx.flags, "review-only");
   const review = extractBoolFlag(ctx.flags, "review") || reviewOnly;
-  const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
   // Opt-in: halt (state paused_human) on the first RAUF_NEEDS_HUMAN so a
   // supervising session can detect the pause and inject an answer (item 008).
   const pauseOnNeedsHuman = extractBoolFlag(ctx.flags, "pause-on-needs-human");
 
-  if (retryBlocked) {
-    const ubResult = unblockItems(paths);
-    if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-      info(
-        `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
-      );
-    }
-  }
+  unblockIfRequested(ctx, projectPath);
 
   const options = LoopStartOptionsSchema.parse({
     maxIterations: iterations,
@@ -977,9 +1041,8 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       }
     }
 
-    // Distinct non-zero code when --pause-on-needs-human halted the loop, so a
-    // supervising session can detect the pause (item 008).
-    return result.pausedReason === "needs_human" ? ExitCode.PAUSED_HUMAN : ExitCode.SUCCESS;
+    // Map the terminal LoopResult to the unified exit code (00-core-definitions §2a).
+    return loopRunExitCode(result);
   } catch (e) {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;

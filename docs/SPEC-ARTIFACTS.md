@@ -50,7 +50,7 @@ These cover the root `.rauf/` directory as well as nested backlog dirs (`specs/<
 
 The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner class, replacing the legacy shell scripts. The loop is started via:
 
-- **`rauf loop start`** — server mode (via LoopManager)
+- **`rauf loop run --detached`** — server mode (via LoopManager)
 - **`rauf loop run`** — direct mode (in-process, no server)
 
 ### Design Principle: Loop Runner Owns Status
