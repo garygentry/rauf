@@ -2,9 +2,13 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T05:30:00Z",
+  "updatedAt": "2026-06-13T05:13:15Z",
   "currentStage": "forge-5-loop",
   "stages": {
+    "forge-5-loop": {
+      "status": "in-progress",
+      "startedAt": "2026-06-13T05:13:15Z"
+    },
     "forge-verify-backlog": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-backlog-2026-06-13.md",
