@@ -524,7 +524,7 @@ Detect an interrupted loop and continue it from where it stopped.
 - All items done → report "all done", no relaunch
 - No eligible items after recovery (only genuine blocks/needsHuman remain) → report and exit without spawning
 
-**Supervisor pattern (live human-in-the-loop):** run the loop with `rauf loop run . --ndjson --pause-on-needs-human` and watch the NDJSON stream. On a `loop_paused` (or `needs_human`) event — or by detecting the exit code `6` / a `paused_human` `status --json` — gather the human's answer, then call `rauf resume . --answer <id> "<answer>"` to inject it and continue. The answered item is re-queued, runs with the answer in its prompt, completes, and the answer is cleared. See [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the machine surfaces this pattern relies on.
+**Supervisor pattern (live human-in-the-loop):** run the loop with `rauf loop run . --ndjson --pause-on-needs-human` and watch the NDJSON stream. On a `loop_paused` (or `needs_human`) event — or by detecting the exit code `3` (NEEDS_HUMAN) / a `paused_human` `status --json` — gather the human's answer, then call `rauf resume . --answer <id> "<answer>"` to inject it and continue. The answered item is re-queued, runs with the answer in its prompt, completes, and the answer is cleared. See [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the machine surfaces this pattern relies on.
 
 ---
 

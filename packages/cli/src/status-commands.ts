@@ -35,7 +35,8 @@ import { c, info, print, error, warn, outputJson } from "./formatter.js";
 // ─── handleStatus ─────────────────────────────────────────────────
 //
 // Print loop status summary for a project.
-// Exit codes per spec: 0=idle/complete, 1=running, 2=blocked/needs_human, 3=limit_reached
+// Exit codes per the unified v0.5.0 scheme (00 §1 / 03-exit-codes): 0=success (idle/complete),
+// 1=error, 2=usage, 3=needs-human, 4=limit, 5=blocked, 6=running (query-time, status only)
 
 export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];

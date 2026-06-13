@@ -182,10 +182,11 @@ export const COMMANDS: CommandDef[] = [
           { name: "--model <name>", description: "Claude model to use" },
           { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
           {
-            name: "--interval <seconds>",
-            description: "Poll interval for --follow (default: 2)",
+            name: "--ndjson",
+            description:
+              "Stream loop events as NDJSON to stdout (one JSON event per line; the machine-readable event stream)",
           },
-          { name: "--json", description: "Emit JSON / NDJSON output (machine-readable)" },
+          { name: "--json", description: "Emit the final result summary as JSON" },
           { name: "--force", description: "Skip git preconditions (protected branch, dirty tree)" },
           {
             name: "--allow-dirty",

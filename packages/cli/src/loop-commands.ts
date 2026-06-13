@@ -297,42 +297,63 @@ export async function ensureServerRunning(ctx: CommandContext): Promise<boolean>
  * request body — the body carries only loop options. The server still runs the
  * loop in-process via LoopManager (canon P2: hide the mode, don't change it).
  */
+/**
+ * Apply the `--create-branch <name>` flag: create & switch to the branch before
+ * the loop starts (a local git op, performed CLI-side so the server only sees
+ * the resulting branch). Shared by `loop run` (in-process) and the detached
+ * path. Returns an ExitCode to return-early on failure, or null to continue
+ * (including the no-flag and already-on-branch cases).
+ */
+async function applyCreateLoopBranch(
+  ctx: CommandContext,
+  projectPath: string,
+): Promise<number | null> {
+  const createBranch = extractStringFlag(ctx.flags, "create-branch");
+  if (createBranch === null) return null;
+  const branchResult = await createLoopBranch(projectPath, createBranch);
+  if (!branchResult.ok) {
+    error(branchResult.error.message);
+    return ExitCode.USAGE;
+  }
+  info(
+    branchResult.value.switched
+      ? `Switched to new branch ${c.cyan(createBranch)}`
+      : `Already on branch ${c.cyan(createBranch)}`,
+  );
+  return null;
+}
+
+/**
+ * Apply the `--retry-blocked` flag: unblock previously-blocked items before the
+ * run. Resolves the backlog paths from `--backlog` internally so both the
+ * in-process and detached paths share one implementation. Best-effort — a path
+ * resolution failure is silently skipped (the run proceeds without unblocking).
+ */
+function unblockIfRequested(ctx: CommandContext, projectPath: string): void {
+  if (!extractBoolFlag(ctx.flags, "retry-blocked")) return;
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
+  if (!brResult.ok) return;
+  const prResult = resolveBacklogPaths(projectPath, brResult.value);
+  if (!prResult.ok) return;
+  const ubResult = unblockItems(prResult.value);
+  if (ubResult.ok && ubResult.value.unblockedCount > 0) {
+    info(
+      `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
+    );
+  }
+}
+
 async function runDetached(ctx: CommandContext): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
   const id = projectId(projectPath);
-  const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
-  // Create & switch to a feature branch before starting (mirrors `loop run`).
-  // The switch is a local git operation, so it happens CLI-side before the
-  // server request — the server only sees the resulting branch.
-  const createBranch = extractStringFlag(ctx.flags, "create-branch");
-  if (createBranch !== null) {
-    const branchResult = await createLoopBranch(projectPath, createBranch);
-    if (!branchResult.ok) {
-      error(branchResult.error.message);
-      return ExitCode.USAGE;
-    }
-    if (branchResult.value.switched) {
-      info(`Switched to new branch ${c.cyan(createBranch)}`);
-    }
-  }
-
-  if (retryBlocked) {
-    // Resolve paths for unblock operation
-    const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-    if (brResult.ok) {
-      const prResult = resolveBacklogPaths(projectPath, brResult.value);
-      if (prResult.ok) {
-        const ubResult = unblockItems(prResult.value);
-        if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-          info(
-            `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
-          );
-        }
-      }
-    }
-  }
+  // Create & switch to a feature branch, then unblock retries — both CLI-side
+  // before the server request, and both shared with in-process `loop run`.
+  const branchExit = await applyCreateLoopBranch(ctx, projectPath);
+  if (branchExit !== null) return branchExit;
+  unblockIfRequested(ctx, projectPath);
 
   // Auto-start server if not running
   const running = await ensureServerRunning(ctx);
@@ -725,20 +746,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
   // Create & switch to a feature branch first (before the precondition check)
   // so `--create-branch feat/x` takes a project off a protected/dirty branch
-  // and into a runnable state in one step.
-  const createBranch = extractStringFlag(ctx.flags, "create-branch");
-  if (createBranch !== null) {
-    const branchResult = await createLoopBranch(projectPath, createBranch);
-    if (!branchResult.ok) {
-      error(branchResult.error.message);
-      return ExitCode.USAGE;
-    }
-    if (branchResult.value.switched) {
-      info(`Switched to new branch ${c.cyan(createBranch)}`);
-    } else {
-      info(`Already on branch ${c.cyan(createBranch)}`);
-    }
-  }
+  // and into a runnable state in one step. Shared with the detached path.
+  const branchExit = await applyCreateLoopBranch(ctx, projectPath);
+  if (branchExit !== null) return branchExit;
 
   // --seed-backlog: commit an otherwise-clean tree's backlog before the
   // precondition check, so a freshly-authored backlog isn't swept into item
@@ -792,20 +802,12 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
   const reviewOnly = extractBoolFlag(ctx.flags, "review-only");
   const review = extractBoolFlag(ctx.flags, "review") || reviewOnly;
-  const retryBlocked = extractBoolFlag(ctx.flags, "retry-blocked");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
   // Opt-in: halt (state paused_human) on the first RAUF_NEEDS_HUMAN so a
   // supervising session can detect the pause and inject an answer (item 008).
   const pauseOnNeedsHuman = extractBoolFlag(ctx.flags, "pause-on-needs-human");
 
-  if (retryBlocked) {
-    const ubResult = unblockItems(paths);
-    if (ubResult.ok && ubResult.value.unblockedCount > 0) {
-      info(
-        `Unblocked ${ubResult.value.unblockedCount} items: ${ubResult.value.unblockedIds.join(", ")}`,
-      );
-    }
-  }
+  unblockIfRequested(ctx, projectPath);
 
   const options = LoopStartOptionsSchema.parse({
     maxIterations: iterations,

@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T06:11:28Z",
+  "updatedAt": "2026-06-13T12:40:00Z",
   "currentStage": "forge-6-docs",
   "stages": {
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-impl-2026-06-13.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-13T12:20:00Z",
+      "result": "4 parallel forge-verifiers. Gate GREEN (typecheck/lint/format/test all pass; core 910/cli 459/loop 291/web 199). 0 errors, 0 gaps; integration dim 0 findings (ExitCode sweep complete, 0 old members remain, invariants hold); testing dim 0 findings (spec-06 coverage complete). 2 inconsistencies (V-001 stale exit-code 6 in supervisor-pattern docs SPEC-CLI:527/SPEC-BACKLOG-TOOL-CONTRACT:244 should be 3; V-002 loop run help advertises --json/--interval but handler reads --ndjson/ignores --interval \u2014 needs decision), 4 improvements (V-003 DRY runDetached/handleLoopRun, V-004 stale status-commands comment, V-005 stale loop start in deferred Part-B section, V-006 LIMIT reachability test). All non-blocking; V-001/V-002 worth fixing pre-merge.",
+      "fixedAt": "2026-06-13T12:40:00Z"
+    },
     "forge-5-loop": {
       "status": "complete",
       "startedAt": "2026-06-13T05:13:15Z",

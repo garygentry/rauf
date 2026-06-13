@@ -241,7 +241,7 @@ the loop.
 > on the right one for the command you ran.
 
 **Supervisor pattern:** run `rauf loop run . --ndjson --pause-on-needs-human`;
-on a `loop_paused` (or `needs_human`) event — or on the exit code `6` — gather
+on a `loop_paused` (or `needs_human`) event — or on the exit code `3` (NEEDS_HUMAN) — gather
 the human's answer and call `rauf resume . --answer <id> "<answer>"` to inject
 it and continue.
 
@@ -359,20 +359,20 @@ The core business logic — backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOC
 
 ### 2.1 Functional Requirements
 
-| ID    | Requirement                                                                                                                                     | Priority |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| FR-1  | Rauf MUST support multiple LLM providers through a common interface                                                                             | P0       |
-| FR-2  | The `claude-cli` provider MUST replicate current behavior exactly (zero regression)                                                             | P0       |
-| FR-3  | A `generic-cli` provider MUST allow users to configure any CLI agent via `.rauf.json` or `~/.rauf/config.json`                                  | P0       |
-| FR-4  | A `claude-sdk` provider MUST support the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) with API key auth                                  | P1       |
-| FR-5  | Provider selection MUST be configurable at three levels: per-item, per-project, and global default                                              | P1       |
-| FR-6  | The signal protocol (`RAUF_DONE`, `RAUF_BLOCKED`, `RAUF_NEEDS_HUMAN`) MUST remain the standard completion mechanism for all CLI-based providers | P0       |
-| FR-7  | SDK-based providers MAY use structured signal capture (e.g., MCP tool call) as a more reliable alternative to text parsing                      | P1       |
-| FR-8  | Each provider MUST be able to report usage/rate limits in a normalized format                                                                   | P1       |
-| FR-9  | Each provider MUST validate that required credentials exist before starting a loop                                                              | P0       |
-| FR-10 | SDK-based providers SHOULD stream progress events (tool use, thinking) for live dashboard visibility                                            | P2       |
-| FR-11 | Additional providers (`openai-codex`, `gemini-cli`) SHOULD be implementable without modifying core loop logic                                   | P1       |
-| FR-12 | The CLI MUST accept a `--provider` flag on `rauf loop run` and `rauf loop start`                                                                | P1       |
+| ID    | Requirement                                                                                                                                                                                                                                       | Priority |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| FR-1  | Rauf MUST support multiple LLM providers through a common interface                                                                                                                                                                               | P0       |
+| FR-2  | The `claude-cli` provider MUST replicate current behavior exactly (zero regression)                                                                                                                                                               | P0       |
+| FR-3  | A `generic-cli` provider MUST allow users to configure any CLI agent via `.rauf.json` or `~/.rauf/config.json`                                                                                                                                    | P0       |
+| FR-4  | A `claude-sdk` provider MUST support the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) with API key auth                                                                                                                                    | P1       |
+| FR-5  | Provider selection MUST be configurable at three levels: per-item, per-project, and global default                                                                                                                                                | P1       |
+| FR-6  | The signal protocol (`RAUF_DONE`, `RAUF_BLOCKED`, `RAUF_NEEDS_HUMAN`) MUST remain the standard completion mechanism for all CLI-based providers                                                                                                   | P0       |
+| FR-7  | SDK-based providers MAY use structured signal capture (e.g., MCP tool call) as a more reliable alternative to text parsing                                                                                                                        | P1       |
+| FR-8  | Each provider MUST be able to report usage/rate limits in a normalized format                                                                                                                                                                     | P1       |
+| FR-9  | Each provider MUST validate that required credentials exist before starting a loop                                                                                                                                                                | P0       |
+| FR-10 | SDK-based providers SHOULD stream progress events (tool use, thinking) for live dashboard visibility                                                                                                                                              | P2       |
+| FR-11 | Additional providers (`openai-codex`, `gemini-cli`) SHOULD be implementable without modifying core loop logic                                                                                                                                     | P1       |
+| FR-12 | The CLI MUST accept a `--provider` flag on `rauf loop run` (and the detached `--detached` form). _Note: `loop start` was removed in v0.5.0 — this deferred Part-B FR predates that and should be re-scoped to `loop run` when Part-B is specced._ | P1       |
 
 ### 2.2 Non-Functional Requirements
 
