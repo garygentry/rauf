@@ -21,6 +21,17 @@
   (`["start","stop","run","review"]` → `["stop","run","review"]`). Item 010 still owns adding the
   `--detached`/`--follow` flag DOC entries to `run` + the `loop stop` hint reword.
 
+- **Item 007 (--detached --follow lifecycle):** The wiring already existed from 006 — `handleLoopRun`'s
+  detached branch calls `followDetached` after `runDetached` returns SUCCESS, and `streamEventsUntilDone`
+  registers a SIGINT/SIGTERM handler that only aborts the SSE controller + resolves SUCCESS (never POSTs
+  `/loop/stop`). 007 was purely the two invariant tests in `loop-commands.test.ts` (new describe block
+  `loop run --detached --follow`): (1) no-follow-in-body — drive the real handler against a mock server that
+  streams a terminal `loop_completed` so the view returns on its own, then assert the recorded POST body has
+  neither `follow` nor `detached`; (2) Ctrl-C-detaches-only — mock server holds the SSE connection open +
+  records any `/loop/stop` POST, poll until `startCalls===1 && eventsConnected`, then `process.emit("SIGINT")`,
+  await, assert SUCCESS + `stopCalls.length===0`. Mock server must answer GET `.../loop/events` (SSE) in
+  addition to health/start/stop. `process.emit("SIGINT")` (synthetic, not a real signal) is safe in vitest.
+
 - **Pre-existing format debt (for item 014 full-gate):** `pnpm format:check` already fails on 5 committed
   files NOT touched by item 005: `packages/loop/src/runner.test.ts` (items 002/004) and four
   `docs/architecture/ux-overhaul/*.md`. They are Prettier violations baked into earlier commits — run

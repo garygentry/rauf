@@ -177,8 +177,8 @@
         "Ctrl-C on the attached view detaches the view only (no POST /loop/stop, loop keeps running)",
         "pnpm typecheck && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:47:58.820Z",
       "dependsOn": [
         "006"
       ],

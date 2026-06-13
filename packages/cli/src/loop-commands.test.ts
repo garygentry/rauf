@@ -1102,3 +1102,201 @@ describe("loop run --detached", () => {
     }
   });
 });
+
+// ─── loop run --detached --follow lifecycle (item 007, 02 §3) ───────────
+
+describe("loop run --detached --follow", () => {
+  let savedState: string | null = null;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+    try {
+      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
+    } catch {
+      savedState = null;
+    }
+    removeServerState();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-follow-"));
+  });
+
+  afterEach(() => {
+    removeServerState();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (savedState !== null) {
+      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
+      fs.writeFileSync(SERVER_STATE_FILE, savedState);
+    }
+  });
+
+  /**
+   * A throwaway server that answers GET /api/health, records POST .../loop/start
+   * (so the no-follow-in-body invariant can be asserted), streams SSE on
+   * GET .../loop/events, and records POST .../loop/stop (so the Ctrl-C-detaches-
+   * only invariant can be asserted — it must stay empty). When `terminal` is set,
+   * the events stream emits a single loop_completed event and ends so the follow
+   * view returns on its own; otherwise it holds the SSE connection open so only a
+   * SIGINT can detach the view.
+   */
+  async function startMockServer(opts: { terminal: boolean }): Promise<{
+    port: number;
+    close: () => Promise<void>;
+    startCalls: Array<{ id: string; body: unknown }>;
+    stopCalls: Array<{ id: string }>;
+    eventsConnected: () => boolean;
+  }> {
+    const startCalls: Array<{ id: string; body: unknown }> = [];
+    const stopCalls: Array<{ id: string }> = [];
+    let connected = false;
+    const openResponses = new Set<http.ServerResponse>();
+
+    const server = http.createServer((req, res) => {
+      if (req.url === "/api/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      const startMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/start$/);
+      if (req.method === "POST" && startMatch) {
+        let raw = "";
+        req.on("data", (chunk) => (raw += chunk));
+        req.on("end", () => {
+          startCalls.push({
+            id: decodeURIComponent(startMatch[1]!),
+            body: raw ? JSON.parse(raw) : {},
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: { started: true } }));
+        });
+        return;
+      }
+      const stopMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/stop$/);
+      if (req.method === "POST" && stopMatch) {
+        stopCalls.push({ id: decodeURIComponent(stopMatch[1]!) });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ data: { stopped: true } }));
+        return;
+      }
+      const eventsMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/events$/);
+      if (req.method === "GET" && eventsMatch) {
+        connected = true;
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        if (opts.terminal) {
+          res.write(
+            `event: loop_event\ndata: ${JSON.stringify({
+              type: "loop_completed",
+              timestamp: "2026-06-13T00:00:00.000Z",
+              projectPath: "/test",
+              completedCount: 1,
+              blockedCount: 0,
+              needsHumanCount: 0,
+            })}\n\n`,
+          );
+          res.end();
+        } else {
+          // Hold the connection open — only a SIGINT (view detach) ends it.
+          openResponses.add(res);
+        }
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const port = typeof addr === "object" && addr !== null ? addr.port : 0;
+    return {
+      port,
+      startCalls,
+      stopCalls,
+      eventsConnected: () => connected,
+      close: () =>
+        new Promise<void>((resolve) => {
+          for (const r of openResponses) r.end();
+          server.close(() => resolve());
+        }),
+    };
+  }
+
+  it("does NOT include --follow (or --detached) in the server request body", async () => {
+    const { port, close, startCalls } = await startMockServer({ terminal: true });
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["follow", true],
+        ]),
+      });
+
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      // The terminal event ends the follow view on its own → SUCCESS.
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+      // The body carries only loop options — never the observation/mode flags.
+      const body = startCalls[0]!.body as Record<string, unknown>;
+      expect(body).not.toHaveProperty("follow");
+      expect(body).not.toHaveProperty("detached");
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
+  it("Ctrl-C on the attached view detaches the view only (no POST /loop/stop, loop keeps running)", async () => {
+    const mock = await startMockServer({ terminal: false });
+    try {
+      writeServerState({
+        pid: process.pid,
+        port: mock.port,
+        startedAt: new Date().toISOString(),
+      });
+      const proj = path.join(tmpDir, "proj");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["follow", true],
+        ]),
+      });
+
+      let code = -1;
+      const run = captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      // Wait until the POST landed and the follow view connected to the SSE
+      // stream, then simulate Ctrl-C on the attached view.
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline && !(mock.startCalls.length === 1 && mock.eventsConnected())) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(mock.startCalls.length).toBe(1);
+      expect(mock.eventsConnected()).toBe(true);
+
+      process.emit("SIGINT");
+      await run;
+
+      // The view detached cleanly (SUCCESS) WITHOUT stopping the loop.
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(mock.stopCalls.length).toBe(0);
+    } finally {
+      removeServerState();
+      await mock.close();
+    }
+  });
+});
