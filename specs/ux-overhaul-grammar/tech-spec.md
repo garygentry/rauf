@@ -41,7 +41,7 @@ No new packages or modules. All changes are edits within the existing 4-package 
 
 ## 3. Technical Decisions
 
-### 3.1 `loop run --detached` reuses the server path (REQ-EXEC-01/02/03/04/05)
+### 3.1 `loop run --detached` reuses the server path (REQ-EXEC-01/02/03/04/05/06)
 
 `loop run --detached` delegates to the **exact mechanism `loop start` uses today**: `ensureServerRunning(ctx)`
 (`packages/cli/src/loop-commands.ts:258-286`, auto-starts the daemon via `handleServerStart`/`startDaemon`
@@ -56,8 +56,14 @@ with the same request body `handleLoopStart` builds (`loop-commands.ts:336-367`)
   verb and its logic folded into the `--detached` branch (shared helper to avoid duplication).
 - **`--detached --follow` (REQ-EXEC-04):** after the server-POST returns, attach the canonical top-level
   `follow` view. Lifecycle (per PRD): Ctrl-C on the attached view **detaches the view only**; the loop
-  keeps running server-side. Stopping requires `loop stop` (`POST /loop/stop`, unchanged).
+  keeps running server-side. Stopping requires `loop stop` (`POST /loop/stop`, unchanged). `--follow` is an
+  observation concern handled **CLI-side AFTER the POST returns**; it is **NOT** part of the server request
+  body, which carries only loop options (the `handleLoopStart` body builder, `loop-commands.ts:334-357`).
 - **`loop stop` (REQ-EXEC-05):** unchanged — already targets the server/detached loop.
+- **Observation parity (REQ-EXEC-06, NFR-PARITY-01):** both branches feed the **same file-backed substrate**
+  (`state.json` + `events.ndjson`), so an attended and a detached run of the same backlog stay
+  observationally identical — the `--detached` branch adds **no new observation path**. Parity is inherited
+  from the Phase 1 substrate, not re-implemented here.
 - **Rationale:** canon P2 ("hide the mode, don't change it"). Zero execution-semantics change; lowest risk.
 - **Alternatives considered:** server spawning a detached `rauf loop run` subprocess (rejected — changes
   execution semantics for no grammar-phase benefit).
@@ -80,8 +86,10 @@ the enum is **redefined** to the canon table and every call site is audited and 
 
 **Old non-canon semantic uses are folded into `USAGE`(2) or `ERROR`(1):** the old `NOT_FOUND`
 (e.g. "no loop to stop", missing project), `VALIDATION` (bad input), and `CONFLICT` (loop already
-running — `loop run`/`loop start` 409) all become **`USAGE`(2)** (failed-precondition/usage errors), since
-the canon reserves 3/4/5/6 for loop-state outcomes. Each call site currently using
+running — the `loop run --detached` 409) all become **`USAGE`(2)** (failed-precondition/usage errors), since
+the canon reserves 3/4/5/6 for loop-state outcomes and 1 for generic failure — an already-running 409 is a
+precondition the operator can correct. **(Resolved decision, 2026-06-13: 409/already-running → `USAGE`(2).)**
+Each call site currently using
 `NOT_FOUND`/`VALIDATION`/`CONFLICT` must be reviewed and re-pointed (grep the CLI for `ExitCode.NOT_FOUND`,
 `.VALIDATION`, `.CONFLICT`).
 
@@ -97,6 +105,8 @@ the canon reserves 3/4/5/6 for loop-state outcomes. Each call site currently usi
   `IDLE`/`COMPLETE`/`PAUSED`/`ERROR`/`NOT_INSTALLED`→ per canon (0, except `ERROR`→1).
 - **`backlog validate` untouched (REQ-EXIT-03):** keeps 0/1/2.
 - **Rationale:** one coherent enum, single contract; clean break (no parallel scheme).
+- **Alternatives considered:** a new `ExitCodeV2` enum + gradual migration (rejected — parallel schemes are
+  exactly the inconsistency we're removing; zero external users make an in-place remap safe).
 
 ### 3.3 Flag canon (REQ-FLAG-01/02/03/04)
 
@@ -133,6 +143,10 @@ the version (no breaking shape change); it documents the additive-only disciplin
 (b) no documented field removed, (c) readers ignore unknown types/fields, (d) version bumped only on a
 breaking change. REQ-EVT-02 (same shapes) is satisfied by the shared `LoopEventSchema`.
 
+- **Alternatives considered:** bump `EVENTS_SCHEMA_VERSION` to `"2"` to mark the formalization (rejected —
+  there is no shape change, so a bump would force every consumer to re-gate for nothing; this is the first
+  *formal* version of an already-existing field, not a breaking change to the log).
+
 ### 3.6 Removed-command remediation (REQ-RMV-01)
 
 Invoking `loop start` (or `--watch`) must exit non-zero with a targeted message naming the replacement,
@@ -151,7 +165,11 @@ done (REQ-CONTRACT-05). Concrete edits (verified locations):
 - `references/forge-config-schema.json` — `minRunnerVersion` default `0.2.0` → **`0.5.0`**.
 - `skills/forge-5-loop/SKILL.md` — the `minRunnerVersion` default reference `0.2.0` → `0.5.0`.
 - `COMPATIBILITY.md`, `CHANGELOG.md`, `references/ralph-loop-contract.md` — align the documented minimum
-  and the contract notes.
+  version and the contract notes.
+- `references/ralph-loop-contract.md` **line ~51** lists `watch` in the rauf monitoring surface
+  ("status (+ --json) / list / **watch** / follow / log / version") — **remove/replace `watch` with
+  `follow`** to match the v0.5.0 grammar (REQ-FLAG-01, REQ-RMV-01). This is the one stale *token* in
+  feature-forge (distinct from the no-`loop start`-invocations point above).
 - **Re-validate** feature-forge's `status --json` reads and any exit-code assumptions against the new
   scheme (§3.2). feature-forge invokes `loop run … --ndjson` (its configurable `runCommand`), **not**
   `loop start` — so no verb references to change there.
@@ -204,13 +222,15 @@ and is **not** changed (review is a per-item parsed signal, not a loop-level out
 | events versioning docs | `core/src/schemas.ts:663` (no code change) + docs | document discipline | REQ-EVT-01 |
 | web start route | `web/src/server/routes/loop.ts:145-199` | retain (URL/contract unchanged) | REQ-EXEC-03 |
 | project specs | `docs/SPEC-CLI.md`, `SPEC-WEB.md`, `SPEC-BACKLOG-TOOL-CONTRACT.md`, `SCHEMAS.md`, `ARCHITECTURE.md`, `SPEC-ARTIFACTS.md` | update to new surface | REQ-DOC-01, REQ-SIG-02, REQ-EVT-01 |
-| feature-forge (separate repo) | `references/forge-config-schema.json`, `skills/forge-5-loop/SKILL.md`, `COMPATIBILITY.md`, `CHANGELOG.md`, `references/ralph-loop-contract.md` | `minRunnerVersion` → 0.5.0; revalidate reads | REQ-CONTRACT-04 (out-of-loop, REQ-CONTRACT-05) |
+| feature-forge (separate repo) | `references/forge-config-schema.json`, `skills/forge-5-loop/SKILL.md`, `COMPATIBILITY.md`, `CHANGELOG.md`, `references/ralph-loop-contract.md` | `minRunnerVersion` → 0.5.0; revalidate reads; **remove `watch` from `ralph-loop-contract.md:51`** | REQ-CONTRACT-04 (out-of-loop, REQ-CONTRACT-05) |
 | rauf package versions | `package.json`s | bump to 0.5.0 | REQ-CONTRACT-02 |
 
 **Downstream importers of `ExitCode`:** all within `@rauf/cli`. `signal_parsed` consumers: the web
-`<EventTimeline>` (renders the event; adding `review` is additive — verify its switch tolerates the new
-value), and any tool reading `events.ndjson`. **WARNING — verify at impl:** the exact `parser.ts` short-flag
-mechanism and the precise `--help`/usage rendering locus were not pinned by research (R1 returned no detail).
+`<EventTimeline>` (a local fn in `web/src/client/routes/projects/status.tsx`) renders `signal_parsed` via
+**string interpolation of `e.signal`** (no value-level switch — the outer `switch` is on `e.type`), so the
+new `review` value renders verbatim with **no web change needed**; plus any tool reading `events.ndjson`.
+**WARNING — verify at impl:** the exact `parser.ts` short-flag mechanism and the precise `--help`/usage
+rendering locus were not pinned by research (R1 returned no detail).
 
 ## 7. Error Handling
 
@@ -231,6 +251,10 @@ Vitest, colocated `*.test.ts`. New/updated coverage:
 - **`review` signal:** `signal_parsed` now emits `"review"` (no collapse); schema accepts it; a work-item
   `RAUF_REVIEW` no longer mislabels as `done`.
 - **Flag canon:** `--json` honored under `--follow`; `-d` parses to `--detached`.
+- **Observation parity (REQ-EXEC-06, NFR-PARITY-01):** an attended run and a detached run of the same
+  backlog produce equivalent observer output (`events.ndjson` / `status`). Primary assurance is that both
+  branches feed the unchanged Phase-1 substrate (so parity is structural, not re-implemented); the
+  `--detached` delegation test plus this equivalence check guard against the new branch diverging.
 - Full gate (typecheck/lint/format/tests) green (NFR-QUALITY-01). The web frontend has no tests — lean on
   backend/CLI tests.
 
@@ -246,7 +270,7 @@ No new external or internal package dependencies. Cross-repo coordination only: 
 1. **`parser.ts` short-flag mechanism** — the exact way `-d`/`--detached` (and existing `-f`) are wired was
    not pinned by research; confirm at implementation (low risk — Phase 1 already added `-f`).
 2. **`--help`/usage rendering locus** — confirm where help text is generated to update it (REQ-DOC-02).
-3. **Old-`CONFLICT`(loop-already-running) mapping** — spec'd here as `USAGE`(2); confirm that's the desired
-   code for the 409/already-running case rather than a generic `ERROR`(1).
-4. **`<EventTimeline>` switch** — verify the web timeline's event rendering tolerates the new
-   `signal: "review"` value (Phase 4 owns status vocabulary, but the event value is additive now).
+
+_Resolved during tech verification (2026-06-13):_ the 409/already-running exit code is **`USAGE`(2)** (see
+§3.2/§7); and the web `<EventTimeline>` renders `signal_parsed` via string interpolation, so the new
+`review` value is additive with **no web change** (see §6).

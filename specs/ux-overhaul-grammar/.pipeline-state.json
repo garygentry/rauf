@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T03:30:00Z",
+  "updatedAt": "2026-06-13T03:58:00Z",
   "currentStage": "forge-3-specs",
   "stages": {
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-tech-2026-06-13.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-13T03:45:00Z",
+      "result": "Single forge-verifier, 17/17 checks (14 pass, 3 fail). 0 errors \u2014 all ~20 source citations verified accurate. 2 gaps (V-002 REQ-EXEC-06 parity untraced+untested, V-005 FF ralph-loop-contract.md:51 stale 'watch' ref), 1 inconsistency (V-004 409\u2192USAGE decided-vs-open, needs user decision), 3 improvements (V-001 EventTimeline resolvable-now+renders signal via string interp, V-003 missing alternatives \u00a73.2/\u00a73.5, V-006 --follow must not enter server body). All non-blocking.",
+      "fixedAt": "2026-06-13T03:58:00Z"
+    },
     "forge-2-tech": {
       "status": "complete",
       "version": 1,
