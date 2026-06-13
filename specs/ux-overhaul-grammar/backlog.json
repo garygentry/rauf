@@ -125,8 +125,8 @@
         "Tests: it.each over the 10 enum values + a derived-BLOCKED case",
         "pnpm typecheck && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:32:07.797Z",
       "dependsOn": [
         "003"
       ],
