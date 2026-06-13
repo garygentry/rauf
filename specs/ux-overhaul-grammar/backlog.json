@@ -1,24 +1,24 @@
 {
   "schemaVersion": "1",
-  "project": "rauf \u2014 ux-overhaul-grammar (Phase 2+3: command grammar & contract flip, v0.5.0)",
-  "description": "Phase 2+3 of the rauf UX/DX overhaul as one breaking v0.5.0 flip: collapse loop run/loop start into `loop run --detached`, normalize the flag canon, unify exit codes across status + loop run, add an explicit `review` signal, and formalize events.ndjson versioning. Surface + contract change \u2014 the execution engine, server daemon, and Phase-1 observation substrate are reused. Specs in specs/ux-overhaul-grammar/ (00-06 + TRACEABILITY); cross-cutting canon in specs/ux-overhaul/CANON.md. feature-forge lockstep edits + the v0.5.0 tag/release are an OUT-OF-LOOP manual cutover step (REQ-CONTRACT-04/05) \u2014 intentionally NOT in this backlog. Dogfood with the frozen rauf-stable binary; the version bump (013) does not affect the running loop.",
+  "project": "rauf — ux-overhaul-grammar (Phase 2+3: command grammar & contract flip, v0.5.0)",
+  "description": "Phase 2+3 of the rauf UX/DX overhaul as one breaking v0.5.0 flip: collapse loop run/loop start into `loop run --detached`, normalize the flag canon, unify exit codes across status + loop run, add an explicit `review` signal, and formalize events.ndjson versioning. Surface + contract change — the execution engine, server daemon, and Phase-1 observation substrate are reused. Specs in specs/ux-overhaul-grammar/ (00-06 + TRACEABILITY); cross-cutting canon in specs/ux-overhaul/CANON.md. feature-forge lockstep edits + the v0.5.0 tag/release are an OUT-OF-LOOP manual cutover step (REQ-CONTRACT-04/05) — intentionally NOT in this backlog. Dogfood with the frozen rauf-stable binary; the version bump (013) does not affect the running loop.",
   "items": [
     {
       "id": "001",
       "type": "feature",
       "priority": 1,
       "title": "Add \"review\" to the signal_parsed event enum (core)",
-      "description": "In packages/core/src/schemas.ts, add \"review\" to the `signal` enum of `SignalParsedSchema` (~line 466) so the on-the-wire enum becomes `z.enum([\"done\", \"blocked\", \"needs_human\", \"review\", \"none\"])`. This is purely additive \u2014 it aligns the event enum with the already-existing internal `SignalType` (packages/loop/src/signal-parser.ts, which already includes \"review\"). Do NOT change `LoopStateSignalSchema` (~line 183 = clean|blocked|needs_human|error) \u2014 that is state.json.lastSignal, a separate vocabulary. Do not touch the runner yet (the collapse removal is item 002). This item only widens the schema enum.",
+      "description": "In packages/core/src/schemas.ts, add \"review\" to the `signal` enum of `SignalParsedSchema` (~line 466) so the on-the-wire enum becomes `z.enum([\"done\", \"blocked\", \"needs_human\", \"review\", \"none\"])`. This is purely additive — it aligns the event enum with the already-existing internal `SignalType` (packages/loop/src/signal-parser.ts, which already includes \"review\"). Do NOT change `LoopStateSignalSchema` (~line 183 = clean|blocked|needs_human|error) — that is state.json.lastSignal, a separate vocabulary. Do not touch the runner yet (the collapse removal is item 002). This item only widens the schema enum.",
       "acceptanceCriteria": [
         "SignalParsedSchema.signal enum is exactly [\"done\", \"blocked\", \"needs_human\", \"review\", \"none\"]",
         "LoopStateSignalSchema is unchanged",
         "A signal_parsed record with signal:\"review\" validates against PersistedEventSchema",
         "pnpm --filter @rauf/core typecheck && pnpm --filter @rauf/core test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:13:58.554Z",
       "dependsOn": [],
-      "notes": "Foundation for the review-signal fix. 00-core-definitions.md \u00a73 is authoritative for the enum; 04-signals-and-events.md \u00a71a has before/after.",
+      "notes": "Foundation for the review-signal fix. 00-core-definitions.md §3 is authoritative for the enum; 04-signals-and-events.md §1a has before/after.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -30,10 +30,10 @@
       "id": "002",
       "type": "feature",
       "priority": 1,
-      "title": "Remove the review\u2192done collapse at the signal_parsed emit site (loop)",
-      "description": "In packages/loop/src/runner.ts at the signal_parsed emit site (~lines 655-656), remove the `parsed.signal === \"review\" ? \"done\" : parsed.signal` downcast so the emitted/persisted signal_parsed event reports `\"review\"` truthfully. After item 001 widened the schema enum, this is a one-line change plus its test. This also fixes the latent bug where a WORK item emitting RAUF_REVIEW emitted signal_parsed:\"done\" while the item was actually retried/deferred. Do NOT change review *handling* semantics (review-pass routing, item status, exit-classifier) \u2014 those are out of scope; exit-classifier.ts already handles \"review\".",
+      "title": "Remove the review→done collapse at the signal_parsed emit site (loop)",
+      "description": "In packages/loop/src/runner.ts at the signal_parsed emit site (~lines 655-656), remove the `parsed.signal === \"review\" ? \"done\" : parsed.signal` downcast so the emitted/persisted signal_parsed event reports `\"review\"` truthfully. After item 001 widened the schema enum, this is a one-line change plus its test. This also fixes the latent bug where a WORK item emitting RAUF_REVIEW emitted signal_parsed:\"done\" while the item was actually retried/deferred. Do NOT change review *handling* semantics (review-pass routing, item status, exit-classifier) — those are out of scope; exit-classifier.ts already handles \"review\".",
       "acceptanceCriteria": [
-        "The review\u2192done downcast at the signal_parsed emit site is removed",
+        "The review→done downcast at the signal_parsed emit site is removed",
         "A work item emitting RAUF_REVIEW produces signal_parsed.signal === \"review\" (not \"done\")",
         "No change to review-handling semantics (review-pass routing / item status unchanged)",
         "pnpm --filter @rauf/loop test && pnpm --filter @rauf/loop typecheck passes"
@@ -43,7 +43,7 @@
       "dependsOn": [
         "001"
       ],
-      "notes": "Depends on 001 so the emitted \"review\" value validates against the widened schema. 04-signals-and-events.md \u00a71 is authoritative.",
+      "notes": "Depends on 001 so the emitted \"review\" value validates against the widened schema. 04-signals-and-events.md §1 is authoritative.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -55,7 +55,7 @@
       "type": "refactor",
       "priority": 1,
       "title": "Redefine ExitCode to the unified table + re-point all CLI call sites (atomic)",
-      "description": "Redefine the `ExitCode` const in packages/cli/src/commands.ts (~lines 90-101) to the unified canon table from 00-core-definitions.md \u00a71: SUCCESS=0, ERROR=1, USAGE=2, NEEDS_HUMAN=3, LIMIT=4, BLOCKED=5, RUNNING=6. Then re-point EVERY call site across the CLI package per the 03-exit-codes.md \u00a72 remap: INVALID_ARGS\u2192USAGE (rename, same value 2); NOT_FOUND\u2192USAGE(2); VALIDATION\u2192USAGE(2); CONFLICT\u2192USAGE(2) (incl. loop-already-running 409); PAUSED_HUMAN\u2192NEEDS_HUMAN(3). This is a HARD COMPILE BREAK that MUST land as ONE atomic commit \u2014 the build is never red mid-sweep. Affected files (per 03 \u00a72): commands.ts (the const + its own uses incl. dispatch fallback), backlog-commands.ts, install-commands.ts, profile-config-commands.ts, migrate-commands.ts, reset-commands.ts, resume-commands.ts, main.ts, follow-command.ts, server-commands.ts (~:406/:630 CONFLICT\u2192USAGE), loop-commands.ts (the 4 CONFLICT\u2192USAGE loop-already-running/lock-conflict sites ~:305/:672/:691/:711 \u2014 NOT :982, which is item 004's loop-run terminal mapping). Update commands.test.ts AND loop-commands.test.ts (~:597/:733/:760 CONFLICT assertions) literal-value assertions to the new values. Do NOT change the loop run / status exit MAPPINGS here (items 004/005) \u2014 only the const definition + member re-points so the package compiles.",
+      "description": "Redefine the `ExitCode` const in packages/cli/src/commands.ts (~lines 90-101) to the unified canon table from 00-core-definitions.md §1: SUCCESS=0, ERROR=1, USAGE=2, NEEDS_HUMAN=3, LIMIT=4, BLOCKED=5, RUNNING=6. Then re-point EVERY call site across the CLI package per the 03-exit-codes.md §2 remap: INVALID_ARGS→USAGE (rename, same value 2); NOT_FOUND→USAGE(2); VALIDATION→USAGE(2); CONFLICT→USAGE(2) (incl. loop-already-running 409); PAUSED_HUMAN→NEEDS_HUMAN(3). This is a HARD COMPILE BREAK that MUST land as ONE atomic commit — the build is never red mid-sweep. Affected files (per 03 §2): commands.ts (the const + its own uses incl. dispatch fallback), backlog-commands.ts, install-commands.ts, profile-config-commands.ts, migrate-commands.ts, reset-commands.ts, resume-commands.ts, main.ts, follow-command.ts, server-commands.ts (~:406/:630 CONFLICT→USAGE), loop-commands.ts (the 4 CONFLICT→USAGE loop-already-running/lock-conflict sites ~:305/:672/:691/:711 — NOT :982, which is item 004's loop-run terminal mapping). Update commands.test.ts AND loop-commands.test.ts (~:597/:733/:760 CONFLICT assertions) literal-value assertions to the new values. Do NOT change the loop run / status exit MAPPINGS here (items 004/005) — only the const definition + member re-points so the package compiles.",
       "acceptanceCriteria": [
         "ExitCode const equals SUCCESS:0/ERROR:1/USAGE:2/NEEDS_HUMAN:3/LIMIT:4/BLOCKED:5/RUNNING:6",
         "grep -rE 'ExitCode\\.(INVALID_ARGS|NOT_FOUND|VALIDATION|CONFLICT|PAUSED_HUMAN)' packages/*/src returns no matches",
@@ -67,17 +67,17 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": [],
-      "notes": "Highest-fan-out change. >6 files, so parallelized via agentDelegation (exception to the file-count limit) \u2014 but the const redefinition in commands.ts MUST happen first, then per-file re-points run independently. 00 \u00a71 (remap) + 03 \u00a72 (per-file checklist) are authoritative.",
+      "notes": "Highest-fan-out change. >6 files, so parallelized via agentDelegation (exception to the file-count limit) — but the const redefinition in commands.ts MUST happen first, then per-file re-points run independently. 00 §1 (remap) + 03 §2 (per-file checklist) are authoritative.",
       "estimatedIterations": 2,
       "model": "opus",
       "agentDelegation": {
         "recommendedConcurrency": 5,
-        "strategy": "FIRST the lead agent redefines the ExitCode const in commands.ts (00 \u00a71) and re-points commands.ts itself; THEN sub-agents re-point the remaining files in parallel (each file is an independent find/replace of old member \u2192 new per the 03 \u00a72 remap). All share one final `pnpm typecheck && pnpm test` verification; the commit is atomic.",
+        "strategy": "FIRST the lead agent redefines the ExitCode const in commands.ts (00 §1) and re-points commands.ts itself; THEN sub-agents re-point the remaining files in parallel (each file is an independent find/replace of old member → new per the 03 §2 remap). All share one final `pnpm typecheck && pnpm test` verification; the commit is atomic.",
         "subtasks": [
-          "Re-point ExitCode members in packages/cli/src/backlog-commands.ts and install-commands.ts per 03 \u00a72 remap",
-          "Re-point ExitCode members in packages/cli/src/profile-config-commands.ts, migrate-commands.ts, reset-commands.ts, resume-commands.ts per 03 \u00a72 remap",
-          "Re-point ExitCode members in packages/cli/src/server-commands.ts (~:406/:630 CONFLICT\u2192USAGE), main.ts, follow-command.ts per 03 \u00a72 remap",
-          "Re-point the 4 ExitCode.CONFLICT loop-already-running/lock-conflict sites in packages/cli/src/loop-commands.ts (~:305/:672/:691/:711) to USAGE per 03 \u00a72 \u2014 do NOT touch :982 (item 004 owns the loop-run terminal mapping); update loop-commands.test.ts CONFLICT assertions (~:597/:733/:760)",
+          "Re-point ExitCode members in packages/cli/src/backlog-commands.ts and install-commands.ts per 03 §2 remap",
+          "Re-point ExitCode members in packages/cli/src/profile-config-commands.ts, migrate-commands.ts, reset-commands.ts, resume-commands.ts per 03 §2 remap",
+          "Re-point ExitCode members in packages/cli/src/server-commands.ts (~:406/:630 CONFLICT→USAGE), main.ts, follow-command.ts per 03 §2 remap",
+          "Re-point the 4 ExitCode.CONFLICT loop-already-running/lock-conflict sites in packages/cli/src/loop-commands.ts (~:305/:672/:691/:711) to USAGE per 03 §2 — do NOT touch :982 (item 004 owns the loop-run terminal mapping); update loop-commands.test.ts CONFLICT assertions (~:597/:733/:760)",
           "Update packages/cli/src/commands.test.ts literal-value assertions to the new ExitCode values"
         ]
       },
@@ -92,11 +92,11 @@
       "type": "feature",
       "priority": 1,
       "title": "Map loop run terminal outcome to the unified exit code",
-      "description": "Replace the single terminal-exit ternary in packages/cli/src/loop-commands.ts (~lines 979-983, currently `pausedReason === \"needs_human\" ? PAUSED_HUMAN : SUCCESS`) with the full LoopResult\u2192exit-code mapping from 00-core-definitions.md \u00a72a. Map over LoopResult (packages/loop/src/runner.ts ~:62-72): run failed/errored \u2192 ERROR(1); pausedReason===\"needs_human\" OR needsHumanCount>0 \u2192 NEEDS_HUMAN(3); limit-reached/usage-paused/sleeping terminal \u2192 LIMIT(4); blockedCount>0 \u2192 BLOCKED(5); otherwise (clean: completed/idle/cancelled-graceful) \u2192 SUCCESS(0). RUNNING(6) is NEVER a terminal code. If LoopResult has no explicit limit carrier, derive it as 03-exit-codes.md \u00a73 describes (or document the known gap). Add a table-driven unit test over LoopResult shapes.",
+      "description": "Replace the single terminal-exit ternary in packages/cli/src/loop-commands.ts (~lines 979-983, currently `pausedReason === \"needs_human\" ? PAUSED_HUMAN : SUCCESS`) with the full LoopResult→exit-code mapping from 00-core-definitions.md §2a. Map over LoopResult (packages/loop/src/runner.ts ~:62-72): run failed/errored → ERROR(1); pausedReason===\"needs_human\" OR needsHumanCount>0 → NEEDS_HUMAN(3); limit-reached/usage-paused/sleeping terminal → LIMIT(4); blockedCount>0 → BLOCKED(5); otherwise (clean: completed/idle/cancelled-graceful) → SUCCESS(0). RUNNING(6) is NEVER a terminal code. If LoopResult has no explicit limit carrier, derive it as 03-exit-codes.md §3 describes (or document the known gap). Add a table-driven unit test over LoopResult shapes.",
       "acceptanceCriteria": [
-        "loop run returns the \u00a72a code for each terminal outcome (error\u21921, needs_human\u21923, limit\u21924, blocked\u21925, clean\u21920)",
+        "loop run returns the §2a code for each terminal outcome (error→1, needs_human→3, limit→4, blocked→5, clean→0)",
         "RUNNING(6) is never returned as a loop run terminal code",
-        "A table-driven test covers each LoopResult shape \u2192 expected code",
+        "A table-driven test covers each LoopResult shape → expected code",
         "pnpm typecheck && pnpm test passes"
       ],
       "status": "pending",
@@ -104,7 +104,7 @@
       "dependsOn": [
         "003"
       ],
-      "notes": "Depends on 003 (uses the redefined ExitCode members). 00 \u00a72a + 03 \u00a73 are authoritative.",
+      "notes": "Depends on 003 (uses the redefined ExitCode members). 00 §2a + 03 §3 are authoritative.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -117,11 +117,11 @@
       "type": "feature",
       "priority": 1,
       "title": "Rewrite statusExitCode to the unified scheme (+ derived BLOCKED)",
-      "description": "Rewrite `statusExitCode` in packages/cli/src/status-commands.ts (~lines 492-504) to the unified state\u2192code mapping from 00-core-definitions.md \u00a72b, over LoopStateEnum (packages/core/src/schemas.ts ~:228-239): RUNNING\u2192RUNNING(6); PAUSED_HUMAN\u2192NEEDS_HUMAN(3); LIMIT_REACHED/SLEEPING_LIMIT/WEEKLY_LIMIT\u2192LIMIT(4); ERROR\u2192ERROR(1); IDLE/COMPLETE/PAUSED/NOT_INSTALLED\u2192SUCCESS(0). Additionally support derived BLOCKED(5): a clean terminal state (IDLE/COMPLETE/PAUSED) WITH genuine-blocked>0 \u2192 BLOCKED(5). `blocked` is NOT a LoopStateEnum value, so this requires widening the signature to `statusExitCode(state, derived)` and consulting the backlog summary's genuine-blocked count (see status-commands genuineBlocked). If the widening is deferred, document it as a known gap per 03-exit-codes.md \u00a74. Tests: an it.each over the 10 LoopStateEnum values + a separate derived-BLOCKED case.",
+      "description": "Rewrite `statusExitCode` in packages/cli/src/status-commands.ts (~lines 492-504) to the unified state→code mapping from 00-core-definitions.md §2b, over LoopStateEnum (packages/core/src/schemas.ts ~:228-239): RUNNING→RUNNING(6); PAUSED_HUMAN→NEEDS_HUMAN(3); LIMIT_REACHED/SLEEPING_LIMIT/WEEKLY_LIMIT→LIMIT(4); ERROR→ERROR(1); IDLE/COMPLETE/PAUSED/NOT_INSTALLED→SUCCESS(0). Additionally support derived BLOCKED(5): a clean terminal state (IDLE/COMPLETE/PAUSED) WITH genuine-blocked>0 → BLOCKED(5). `blocked` is NOT a LoopStateEnum value, so this requires widening the signature to `statusExitCode(state, derived)` and consulting the backlog summary's genuine-blocked count (see status-commands genuineBlocked). If the widening is deferred, document it as a known gap per 03-exit-codes.md §4. Tests: an it.each over the 10 LoopStateEnum values + a separate derived-BLOCKED case.",
       "acceptanceCriteria": [
-        "statusExitCode maps all 10 LoopStateEnum values per \u00a72b",
+        "statusExitCode maps all 10 LoopStateEnum values per §2b",
         "statusExitCode is widened to (state, derived) and a clean terminal state with genuine-blocked>0 returns BLOCKED(5)",
-        "If the widening is deferred, 03 \u00a74 records the known gap AND a test asserts terminal-with-blocked currently maps to SUCCESS(0) so status<->loop-run BLOCKED parity is tracked",
+        "If the widening is deferred, 03 §4 records the known gap AND a test asserts terminal-with-blocked currently maps to SUCCESS(0) so status<->loop-run BLOCKED parity is tracked",
         "Tests: it.each over the 10 enum values + a derived-BLOCKED case",
         "pnpm typecheck && pnpm test passes"
       ],
@@ -130,7 +130,7 @@
       "dependsOn": [
         "003"
       ],
-      "notes": "Depends on 003. BLOCKED is derived, not an enum value \u2014 do not add it to LoopStateEnum. 00 \u00a72b + 03 \u00a74 are authoritative.",
+      "notes": "Depends on 003. BLOCKED is derived, not an enum value — do not add it to LoopStateEnum. 00 §2b + 03 §4 are authoritative.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -143,7 +143,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Add loop run --detached; remove loop start (fold into shared helper)",
-      "description": "Implement the execution-grammar collapse from 02-execution-grammar.md \u00a72. In packages/cli/src/loop-commands.ts: add a `--detached`/`-d` branch to `handleLoopRun` (~:620) \u2014 when set, delegate to the EXISTING server path: `ensureServerRunning(ctx)` (~:258-286, unchanged) then POST /api/projects/:id/loop/start using the same request body builder loop-commands.ts uses today (~:334-357), then return immediately (printing the `rauf follow <path>` hint). Bare `loop run` keeps the existing in-process `LoopRunner.create().start()` path, unchanged. Remove `handleLoopStart` (~:290) as a dispatchable verb: drop the `loop start` subcommand from the registry in packages/cli/src/commands.ts, and fold handleLoopStart's body into a shared detached helper invoked by the --detached branch (no logic duplication). In packages/cli/src/parser.ts, add `-d` as the short alias for `--detached`. Do NOT change execution semantics (server still runs the loop in-process via LoopManager) and do NOT change the POST /loop/start route. Do NOT implement the removed-command remediation message here (item 009) beyond the verb no longer being dispatchable.",
+      "description": "Implement the execution-grammar collapse from 02-execution-grammar.md §2. In packages/cli/src/loop-commands.ts: add a `--detached`/`-d` branch to `handleLoopRun` (~:620) — when set, delegate to the EXISTING server path: `ensureServerRunning(ctx)` (~:258-286, unchanged) then POST /api/projects/:id/loop/start using the same request body builder loop-commands.ts uses today (~:334-357), then return immediately (printing the `rauf follow <path>` hint). Bare `loop run` keeps the existing in-process `LoopRunner.create().start()` path, unchanged. Remove `handleLoopStart` (~:290) as a dispatchable verb: drop the `loop start` subcommand from the registry in packages/cli/src/commands.ts, and fold handleLoopStart's body into a shared detached helper invoked by the --detached branch (no logic duplication). In packages/cli/src/parser.ts, add `-d` as the short alias for `--detached`. Do NOT change execution semantics (server still runs the loop in-process via LoopManager) and do NOT change the POST /loop/start route. Do NOT implement the removed-command remediation message here (item 009) beyond the verb no longer being dispatchable.",
       "acceptanceCriteria": [
         "loop run --detached (and -d) delegates to ensureServerRunning + POST /loop/start and returns immediately (assert with the server mocked); does NOT create an in-process LoopRunner",
         "Bare loop run still runs in-process via LoopRunner.create().start()",
@@ -157,7 +157,7 @@
       "dependsOn": [
         "003"
       ],
-      "notes": "Depends on 003 (USAGE for the 409/already-running path). Reuse the server path verbatim \u2014 canon P2 'hide the mode, don't change it'. 02 \u00a72 is authoritative.",
+      "notes": "Depends on 003 (USAGE for the 409/already-running path). Reuse the server path verbatim — canon P2 'hide the mode, don't change it'. 02 §2 is authoritative.",
       "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
@@ -170,7 +170,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Compose --detached --follow with view-only Ctrl-C lifecycle",
-      "description": "Implement `loop run --detached --follow` per 02-execution-grammar.md \u00a73. After the detached server POST returns (item 006), attach the canonical top-level `follow` view CLI-side. `--follow` is an observation concern handled entirely CLI-side AFTER the POST returns \u2014 it MUST NOT be added to the server request body (the body carries only loop options). Lifecycle: interrupting the attached view (Ctrl-C) detaches the VIEW ONLY \u2014 it must NOT issue POST /loop/stop and must NOT stop the loop; the loop keeps running server-side. Stopping a detached run requires an explicit `loop stop`. Add tests for both the no-follow-in-body invariant and the Ctrl-C-detaches-only behavior.",
+      "description": "Implement `loop run --detached --follow` per 02-execution-grammar.md §3. After the detached server POST returns (item 006), attach the canonical top-level `follow` view CLI-side. `--follow` is an observation concern handled entirely CLI-side AFTER the POST returns — it MUST NOT be added to the server request body (the body carries only loop options). Lifecycle: interrupting the attached view (Ctrl-C) detaches the VIEW ONLY — it must NOT issue POST /loop/stop and must NOT stop the loop; the loop keeps running server-side. Stopping a detached run requires an explicit `loop stop`. Add tests for both the no-follow-in-body invariant and the Ctrl-C-detaches-only behavior.",
       "acceptanceCriteria": [
         "loop run --detached --follow attaches the top-level follow view after the POST returns",
         "--follow is NOT included in the server request body",
@@ -182,7 +182,7 @@
       "dependsOn": [
         "006"
       ],
-      "notes": "Depends on 006. 02 \u00a73 is authoritative.",
+      "notes": "Depends on 006. 02 §3 is authoritative.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -194,7 +194,7 @@
       "type": "feature",
       "priority": 2,
       "title": "Apply the flag canon across the CLI read/run surface",
-      "description": "Apply the flag canon from 02-execution-grammar.md \u00a76. (1) `--json` must be honored on every read/monitor command including streaming ones (NDJSON where streaming) \u2014 e.g. `status --follow --json` emits NDJSON. (2) `--backlog <dir>` must be forwarded into the detached POST body (as backlogRoot) so a detached run targets the same root as the flag. (3) `--interval <seconds>` accepted under `--follow`. `--follow`/`-f` already exist from Phase 1 \u2014 keep them green; do not reintroduce `--watch`. Add tests for status --follow --json (NDJSON) and the detached POST body carrying backlogRoot from --backlog.",
+      "description": "Apply the flag canon from 02-execution-grammar.md §6. (1) `--json` must be honored on every read/monitor command including streaming ones (NDJSON where streaming) — e.g. `status --follow --json` emits NDJSON. (2) `--backlog <dir>` must be forwarded into the detached POST body (as backlogRoot) so a detached run targets the same root as the flag. (3) `--interval <seconds>` accepted under `--follow`. `--follow`/`-f` already exist from Phase 1 — keep them green; do not reintroduce `--watch`. Add tests for status --follow --json (NDJSON) and the detached POST body carrying backlogRoot from --backlog.",
       "acceptanceCriteria": [
         "status --follow --json emits NDJSON (one JSON object per line)",
         "loop run --detached --backlog <dir> forwards backlogRoot in the POST body",
@@ -207,7 +207,7 @@
       "dependsOn": [
         "006"
       ],
-      "notes": "Depends on 006 (the detached POST body). 02 \u00a76 is authoritative. REQ-FLAG-03 --backlog is largely Phase-1-inherited; the new bit is forwarding it into the detached POST.",
+      "notes": "Depends on 006 (the detached POST body). 02 §6 is authoritative. REQ-FLAG-03 --backlog is largely Phase-1-inherited; the new bit is forwarding it into the detached POST.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -219,7 +219,7 @@
       "type": "feature",
       "priority": 1,
       "title": "Add targeted remediation errors for removed verbs/flags",
-      "description": "Implement removed-command remediation per 00-core-definitions.md \u00a75 and 02-execution-grammar.md \u00a77. Invoking a removed verb/flag must exit USAGE(2) with a targeted message naming the replacement, executing NOTHING (this is an error message, NOT an alias \u2014 it must not run the replacement). Lookup table: `loop start` \u2192 \"`loop start` was removed in v0.5.0 \u2014 use `loop run --detached` (`-d`).\"; `--watch` (on any command) \u2192 \"`--watch` was removed in v0.5.0 \u2014 use `--follow` (`-f`).\". The interceptor must fire BEFORE the generic unknown-subcommand / unknown-flag error so the targeted message wins. Loci: the command dispatch in packages/cli/src/commands.ts (for `loop start`) and the flag-parsing path in packages/cli/src/parser.ts (for `--watch`). Add tests asserting the exact messages, the USAGE(2) exit, and that nothing is executed.",
+      "description": "Implement removed-command remediation per 00-core-definitions.md §5 and 02-execution-grammar.md §7. Invoking a removed verb/flag must exit USAGE(2) with a targeted message naming the replacement, executing NOTHING (this is an error message, NOT an alias — it must not run the replacement). Lookup table: `loop start` → \"`loop start` was removed in v0.5.0 — use `loop run --detached` (`-d`).\"; `--watch` (on any command) → \"`--watch` was removed in v0.5.0 — use `--follow` (`-f`).\". The interceptor must fire BEFORE the generic unknown-subcommand / unknown-flag error so the targeted message wins. Loci: the command dispatch in packages/cli/src/commands.ts (for `loop start`) and the flag-parsing path in packages/cli/src/parser.ts (for `--watch`). Add tests asserting the exact messages, the USAGE(2) exit, and that nothing is executed.",
       "acceptanceCriteria": [
         "`rauf loop start ...` exits USAGE(2) with the message naming `loop run --detached`, and starts no loop (no server POST, no LoopRunner)",
         "`--watch` on any command exits USAGE(2) with the message naming `--follow`, executing nothing",
@@ -232,7 +232,7 @@
         "003",
         "006"
       ],
-      "notes": "Depends on 003 (USAGE) and 006 (loop start removed). Not an alias \u2014 executes nothing. 00 \u00a75 + 02 \u00a77 are authoritative.",
+      "notes": "Depends on 003 (USAGE) and 006 (loop start removed). Not an alias — executes nothing. 00 §5 + 02 §7 are authoritative.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -245,7 +245,7 @@
       "type": "chore",
       "priority": 2,
       "title": "Update CLI --help/usage to the new grammar (no stale tokens)",
-      "description": "Update the CLI help/usage strings to the new grammar per 02-execution-grammar.md \u00a78 and 05-cutover-and-feature-forge.md \u00a76b. In packages/cli/src/commands.ts, update the top-level and per-command SubcommandDef usage/help strings: single `loop run [--detached|-d]` (no `loop start`), no `--watch`, canonical `--follow`/`-f`, `--json`, `--backlog <dir>`, `--interval <seconds>`. There must be NO stale `loop start` / `--watch` tokens anywhere in the help/usage surface or the `loop stop` hint \u2014 EXCEPT the REQ-RMV-01 remediation messages (item 009), which are the only allowed mentions. Also extend scope to packages/cli/src/loop-commands.ts: update the handleLoopStop no-server hint at ~:431 \u2014 replace `rauf loop start` with `rauf loop run --detached` (02 \u00a74 / REQ-DOC-02). Verify with a snapshot of top-level + `loop --help` or a grep over the rendered help / registry.",
+      "description": "Update the CLI help/usage strings to the new grammar per 02-execution-grammar.md §8 and 05-cutover-and-feature-forge.md §6b. In packages/cli/src/commands.ts, update the top-level and per-command SubcommandDef usage/help strings: single `loop run [--detached|-d]` (no `loop start`), no `--watch`, canonical `--follow`/`-f`, `--json`, `--backlog <dir>`, `--interval <seconds>`. There must be NO stale `loop start` / `--watch` tokens anywhere in the help/usage surface or the `loop stop` hint — EXCEPT the REQ-RMV-01 remediation messages (item 009), which are the only allowed mentions. Also extend scope to packages/cli/src/loop-commands.ts: update the handleLoopStop no-server hint at ~:431 — replace `rauf loop start` with `rauf loop run --detached` (02 §4 / REQ-DOC-02). Verify with a snapshot of top-level + `loop --help` or a grep over the rendered help / registry.",
       "acceptanceCriteria": [
         "Help/usage shows `loop run [--detached|-d]` and no `loop start` verb",
         "No `--watch` token in any usage/help string or the loop stop hint (except the item-009 remediation messages)",
@@ -259,7 +259,7 @@
         "006",
         "009"
       ],
-      "notes": "Depends on the grammar (006), flags (008), remediation (009) landing. 02 \u00a78 + 05 \u00a76b are authoritative.",
+      "notes": "Depends on the grammar (006), flags (008), remediation (009) landing. 02 §8 + 05 §6b are authoritative.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -272,7 +272,7 @@
       "type": "chore",
       "priority": 2,
       "title": "Reconcile signal-placement docs + document events versioning",
-      "description": "Per 04-signals-and-events.md \u00a72-\u00a73 and 00-core-definitions.md \u00a74. (1) In docs/SPEC-BACKLOG-TOOL-CONTRACT.md: replace the \u00a7A.2 'final line' framing with the canonical scan-from-end wording (04 \u00a72a verbatim block) \u2014 the parser scans backwards from the end and uses the last signal line, so trailing text doesn't defeat detection; update the signal_parsed payload row + gotcha #1 to include `review` and replace the collapse note (04 \u00a72b); and document the additive-only events.ndjson versioning discipline (00 \u00a74): additive-only within a major, readers ignore unknown types/fields, bump EVENTS_SCHEMA_VERSION only on a breaking change (it stays \"1\" this release). (2) Mirror the versioning discipline in docs/SCHEMAS.md. (3) Reword the agent templates artifacts/variants/backlog-json/CLAUDE_ADDON.md (~:18) and artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl (~:32-34) to drop the strictly-last-line claim (keep 'output the signal as your final line' as a habit, but stop implying trailing output causes failure). If those templates feed packages/core/src/embedded-artifacts.ts, regenerate via `pnpm --filter @rauf/core build`.",
+      "description": "Per 04-signals-and-events.md §2-§3 and 00-core-definitions.md §4. (1) In docs/SPEC-BACKLOG-TOOL-CONTRACT.md: replace the §A.2 'final line' framing with the canonical scan-from-end wording (04 §2a verbatim block) — the parser scans backwards from the end and uses the last signal line, so trailing text doesn't defeat detection; update the signal_parsed payload row + gotcha #1 to include `review` and replace the collapse note (04 §2b); and document the additive-only events.ndjson versioning discipline (00 §4): additive-only within a major, readers ignore unknown types/fields, bump EVENTS_SCHEMA_VERSION only on a breaking change (it stays \"1\" this release). (2) Mirror the versioning discipline in docs/SCHEMAS.md. (3) Reword the agent templates artifacts/variants/backlog-json/CLAUDE_ADDON.md (~:18) and artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl (~:32-34) to drop the strictly-last-line claim (keep 'output the signal as your final line' as a habit, but stop implying trailing output causes failure). If those templates feed packages/core/src/embedded-artifacts.ts, regenerate via `pnpm --filter @rauf/core build`.",
       "acceptanceCriteria": [
         "SPEC-BACKLOG-TOOL-CONTRACT.md no longer frames the signal as strictly the 'final line'; signal_parsed row + gotcha include `review`",
         "The events.ndjson additive-only versioning discipline is documented in SPEC-BACKLOG-TOOL-CONTRACT.md and SCHEMAS.md",
@@ -285,7 +285,7 @@
         "001",
         "002"
       ],
-      "notes": "Depends on 001/002 (the review value exists). 04 \u00a72/\u00a73 + 00 \u00a74 are authoritative. Landmine: embedded-artifacts.ts is the INSTALLED copy \u2014 regenerate via core build, don't hand-edit.",
+      "notes": "Depends on 001/002 (the review value exists). 04 §2/§3 + 00 §4 are authoritative. Landmine: embedded-artifacts.ts is the INSTALLED copy — regenerate via core build, don't hand-edit.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -298,7 +298,7 @@
       "type": "chore",
       "priority": 2,
       "title": "Update project SPEC docs to the landed v0.5.0 surface",
-      "description": "Update the remaining project spec docs to match the landed surface (05-cutover-and-feature-forge.md \u00a76a). docs/SPEC-CLI.md: remove the `loop start` section, fix the status + loop run exit-code tables to the unified scheme (00 \u00a71 / 03), and fix the follow note. docs/SPEC-WEB.md: note that POST /api/projects/:id/loop/start is now the detached-run backend (URL/contract unchanged). docs/ARCHITECTURE.md: update the data-flow diagram verbs (loop run --detached, not loop start). docs/SPEC-ARTIFACTS.md: fix the `loop start` mention (~:53). No stale `loop start` / `--watch` / old-exit-code references should remain in these four docs.",
+      "description": "Update the remaining project spec docs to match the landed surface (05-cutover-and-feature-forge.md §6a). docs/SPEC-CLI.md: remove the `loop start` section, fix the status + loop run exit-code tables to the unified scheme (00 §1 / 03), and fix the follow note. docs/SPEC-WEB.md: note that POST /api/projects/:id/loop/start is now the detached-run backend (URL/contract unchanged). docs/ARCHITECTURE.md: update the data-flow diagram verbs (loop run --detached, not loop start). docs/SPEC-ARTIFACTS.md: fix the `loop start` mention (~:53). No stale `loop start` / `--watch` / old-exit-code references should remain in these four docs.",
       "acceptanceCriteria": [
         "docs/SPEC-CLI.md has no `loop start` section and its exit-code tables match the unified scheme",
         "docs/SPEC-WEB.md notes the detached-run backend; docs/ARCHITECTURE.md verbs updated; docs/SPEC-ARTIFACTS.md `loop start` mention fixed",
@@ -314,7 +314,7 @@
         "006",
         "009"
       ],
-      "notes": "Depends on the exit-code (003), grammar (006), remediation (009) decisions landing. 05 \u00a76a is authoritative. SPEC-BACKLOG-TOOL-CONTRACT + SCHEMAS are handled in item 011.",
+      "notes": "Depends on the exit-code (003), grammar (006), remediation (009) decisions landing. 05 §6a is authoritative. SPEC-BACKLOG-TOOL-CONTRACT + SCHEMAS are handled in item 011.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -328,7 +328,7 @@
       "type": "chore",
       "priority": 1,
       "title": "Bump rauf version to 0.5.0",
-      "description": "Bump the rauf version to 0.5.0 per 05-cutover-and-feature-forge.md \u00a72. The authoritative source that `rauf version --json` reads is packages/core/src/version.ts (~line 4, currently \"0.4.0\") \u2014 change it to \"0.5.0\". Keep the package.json `version` fields across the workspace packages in sync (set them to 0.5.0 too). This is what feature-forge's minRunnerVersion gate keys on at the cutover. Note: dogfooding uses the frozen rauf-stable binary, so this bump does not affect the running loop. Do NOT create a git tag or publish a release (that is the out-of-loop manual cutover step).",
+      "description": "Bump the rauf version to 0.5.0 per 05-cutover-and-feature-forge.md §2. The authoritative source that `rauf version --json` reads is packages/core/src/version.ts (~line 4, currently \"0.4.0\") — change it to \"0.5.0\". Keep the package.json `version` fields across the workspace packages in sync (set them to 0.5.0 too). This is what feature-forge's minRunnerVersion gate keys on at the cutover. Note: dogfooding uses the frozen rauf-stable binary, so this bump does not affect the running loop. Do NOT create a git tag or publish a release (that is the out-of-loop manual cutover step).",
       "acceptanceCriteria": [
         "packages/core/src/version.ts reports 0.5.0",
         "Workspace package.json version fields are 0.5.0 and in sync",
@@ -351,7 +351,7 @@
         "011",
         "012"
       ],
-      "notes": "Depends on the full contract+grammar+docs surface (items 001-012) landing \u2014 the version is what feature-forge's minRunnerVersion gate keys on to require the WHOLE v0.5.0 contract (00 \u00a76), so it must not advertise 0.5.0 until the signal/exit-code/grammar/remediation pieces are all in. 05 \u00a72 + 00 \u00a76 + 01 \u00a73 step 7 authoritative. Do not tag/release (out-of-loop).",
+      "notes": "Depends on the full contract+grammar+docs surface (items 001-012) landing — the version is what feature-forge's minRunnerVersion gate keys on to require the WHOLE v0.5.0 contract (00 §6), so it must not advertise 0.5.0 until the signal/exit-code/grammar/remediation pieces are all in. 05 §2 + 00 §6 + 01 §3 step 7 authoritative. Do not tag/release (out-of-loop).",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -364,10 +364,10 @@
       "type": "test",
       "priority": 2,
       "title": "Integration & full-gate: confirm coherence + spec-06 coverage",
-      "description": "Final integration and full-gate pass per 06-testing-strategy.md. Confirm the whole change set is coherent and the full quality gate passes: `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` all green. Ensure the spec-06 test coverage is present across the suite (add any missing cases): exit-code tables (loop run terminal mapping + statusExitCode incl. the derived-BLOCKED case), --detached delegation (delegates to server POST; bare run in-process), --detached --follow lifecycle + observation parity (attended vs detached produce equivalent observer output / both feed the same file substrate), removed-command remediation (loop start/--watch \u2192 USAGE message, executes nothing), the review signal (signal_parsed:\"review\" + the work-item regression), flag canon (--json under --follow; -d\u2192--detached; --backlog forwarded), and the help/usage no-stale-token audit (no `loop start`/`--watch` except remediation). Do NOT perform the feature-forge edits or the v0.5.0 tag/release \u2014 those are the out-of-loop manual cutover step.",
+      "description": "Final integration and full-gate pass per 06-testing-strategy.md. Confirm the whole change set is coherent and the full quality gate passes: `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test` all green. Ensure the spec-06 test coverage is present across the suite (add any missing cases): exit-code tables (loop run terminal mapping + statusExitCode incl. the derived-BLOCKED case), --detached delegation (delegates to server POST; bare run in-process), --detached --follow lifecycle + observation parity (attended vs detached produce equivalent observer output / both feed the same file substrate), removed-command remediation (loop start/--watch → USAGE message, executes nothing), the review signal (signal_parsed:\"review\" + the work-item regression), flag canon (--json under --follow; -d→--detached; --backlog forwarded), and the help/usage no-stale-token audit (no `loop start`/`--watch` except remediation). Do NOT perform the feature-forge edits or the v0.5.0 tag/release — those are the out-of-loop manual cutover step.",
       "acceptanceCriteria": [
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test all pass",
-        "Every REQ row in 06 \u00a7Requirement-Coverage maps to at least one passing test; in particular these spec-06 tests not pinned by an earlier item's AC are present and green: (a) the loop stop no-server/no-loop paths exit USAGE(2) and its hint names `rauf loop run --detached`; (b) the call-site-audit regression (test or CI grep) asserts no source references the removed ExitCode member names; (c) the observation-parity check (attended vs detached equivalent observer output)",
+        "Every REQ row in 06 §Requirement-Coverage maps to at least one passing test; in particular these spec-06 tests not pinned by an earlier item's AC are present and green: (a) the loop stop no-server/no-loop paths exit USAGE(2) and its hint names `rauf loop run --detached`; (b) the call-site-audit regression (test or CI grep) asserts no source references the removed ExitCode member names; (c) the observation-parity check (attended vs detached equivalent observer output)",
         "No stale `loop start` / `--watch` tokens in help/usage (except remediation messages)",
         "The feature-forge edits and v0.5.0 tag/release are NOT performed here (out-of-loop)"
       ],
