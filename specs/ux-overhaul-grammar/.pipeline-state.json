@@ -2,9 +2,21 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T03:12:00Z",
-  "currentStage": "forge-2-tech",
+  "updatedAt": "2026-06-13T03:30:00Z",
+  "currentStage": "forge-3-specs",
   "stages": {
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul-grammar/tech-spec.md"
+      ],
+      "completedAt": "2026-06-13T03:30:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "result": "Surface+contract change; engine reused. Ratified tech decisions: (3.1) loop run --detached reuses loop start's server path (ensureServerRunning + POST /loop/start + LoopManager), verb removed\u2192flag branch; (3.2) ExitCode redefined in place to canon table (old NOT_FOUND/VALIDATION/CONFLICT \u2192 USAGE(2); 3=NEEDS_HUMAN/4=LIMIT/5=BLOCKED/6=RUNNING), loop run ternary\u2192full LoopResult map, statusExitCode rewritten; (3.3) flag canon; (3.4) review: add to SignalParsedSchema enum (schemas.ts:466) + remove collapse (runner.ts:655-656), no handling change; (3.5) events versioning = doc discipline, NO version bump (shapes already align); (3.6) remediation errors for loop start/--watch (USAGE exit, not alias); (3.7) feature-forge out-of-loop edits (minRunnerVersion 0.2.0\u21920.5.0 in 5 files); keep POST /loop/start URL. \u00a710 open items: parser.ts short-flag locus, --help rendering locus, 409/conflict\u2192USAGE confirm, <EventTimeline> review-value tolerance."
+    },
     "forge-verify-prd": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-prd-2026-06-13.md",
