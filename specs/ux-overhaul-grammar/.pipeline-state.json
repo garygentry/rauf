@@ -2,12 +2,20 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T05:13:15Z",
-  "currentStage": "forge-5-loop",
+  "updatedAt": "2026-06-13T06:11:28Z",
+  "currentStage": "forge-6-docs",
   "stages": {
     "forge-5-loop": {
-      "status": "in-progress",
-      "startedAt": "2026-06-13T05:13:15Z"
+      "status": "complete",
+      "startedAt": "2026-06-13T05:13:15Z",
+      "completedAt": "2026-06-13T06:11:28Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "specs/ux-overhaul-grammar/.rauf/state.json"
+      ],
+      "result": "14/14 items done in 15 iterations (under 21 budget); 0 blocked/needs-human/deferred; --review pass found no issues (0 follow-up items). Commits 636686b..efb2c5d ([rauf] 001..014). Dogfooded on rauf-stable. OUT-OF-LOOP cutover remaining: feature-forge edits (minRunnerVersion->0.5.0, remove watch refs) + v0.5.0 tag/release + merge."
     },
     "forge-verify-backlog": {
       "status": "findings-applied",
