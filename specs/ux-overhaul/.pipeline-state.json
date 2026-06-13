@@ -2,9 +2,21 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-13T00:20:00Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-06-13T01:29:09Z",
+  "currentStage": "complete",
   "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-13T01:29:09Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1, "forge-4-backlog": 1 },
+      "artifacts": [
+        "docs/architecture/ux-overhaul/README.md",
+        "docs/architecture/ux-overhaul/architecture.md",
+        "docs/architecture/ux-overhaul/api-reference.md",
+        "docs/architecture/ux-overhaul/guides/monitoring.md"
+      ],
+      "result": "Standard 4-doc set (user-confirmed), grounded in implementation (real @rauf/core signatures, not specs). Covers the observation substrate: README (concepts/exports), architecture (data flow + D1-D9 + invariants), api-reference (events-log/loop-registry/fs-utils/status/lock exports + types/constants), guides/monitoring (CLI+web surface, clean-break migration). Based on forge-5-loop impl (commits 58e7844..72b8100) + forge-verify-impl fixes (3d102dc)."
+    },
     "forge-verify-impl": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul/.verification/VERIFY-impl-2026-06-13.md",
