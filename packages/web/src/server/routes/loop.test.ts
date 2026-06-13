@@ -9,9 +9,36 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// The active-loop registry lives at ~/.rauf/active/. Redirect HOME to an
+// isolated temp dir BEFORE @rauf/core is imported (os.homedir() reads $HOME on
+// POSIX; ACTIVE_DIR is bound at core module load) so listActiveLoops() never
+// touches the real ~/.rauf. Mirrors the CLI status-discovery.test.ts pattern.
+const { TMP_HOME } = vi.hoisted(() => {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const nodeOs = require("node:os") as typeof import("node:os");
+  const nodePath = require("node:path") as typeof import("node:path");
+  const nodeFs = require("node:fs") as typeof import("node:fs");
+  /* eslint-enable @typescript-eslint/no-require-imports */
+  const dir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "rauf-web-loop-home-"));
+  process.env.HOME = dir;
+  process.env.USERPROFILE = dir; // Windows parity (harmless on POSIX)
+  return { TMP_HOME: dir };
+});
+
+import {
+  registerLoop,
+  LOCK_FILENAME,
+  EVENTS_LOG_FILENAME,
+  type ActiveLoopEntry,
+  type PersistedEvent,
+} from "@rauf/core";
+
 import { createApp } from "../app.js";
 import { resetLoopManager } from "../loop-manager.js";
+
+const ACTIVE_DIR = path.join(TMP_HOME, ".rauf", "active");
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -86,6 +113,80 @@ function createProject(name: string, items: unknown[] = []): string {
   return projectPath;
 }
 
+/** Seed a project's events.ndjson with PersistedEvent records (one JSON line each). */
+function seedEvents(projectPath: string, records: PersistedEvent[]): void {
+  const raufDir = path.join(projectPath, ".rauf");
+  fs.mkdirSync(raufDir, { recursive: true });
+  const lines = records.map((r) => JSON.stringify(r)).join("\n") + "\n";
+  fs.writeFileSync(path.join(raufDir, EVENTS_LOG_FILENAME), lines);
+}
+
+/** Build a minimal valid loop_started PersistedEvent. */
+function loopStarted(projectPath: string, seq: number): PersistedEvent {
+  return {
+    type: "loop_started",
+    timestamp: new Date(seq * 1000).toISOString(),
+    projectPath,
+    maxIterations: 5,
+    seq,
+    schemaVersion: "1",
+  };
+}
+
+/** Register a live loop in the (isolated) registry with a live lock holding our pid. */
+function registerLiveLoop(label: string): string {
+  const stateDir = path.resolve(fs.mkdtempSync(path.join(os.tmpdir(), `rauf-web-live-${label}-`)));
+  fs.writeFileSync(
+    path.join(stateDir, LOCK_FILENAME),
+    JSON.stringify({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      processStartTime: null, // null → recycle check skipped; our pid is alive
+    }),
+  );
+  registerLoop({
+    stateDir,
+    projectPath: path.dirname(stateDir),
+    backlogRoot: path.join(stateDir, ".."),
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+    status: "running",
+  });
+  return stateDir;
+}
+
+/**
+ * Read an SSE response body, accumulating text until `predicate(buf)` is true or
+ * the timeout elapses, then cancel the stream (triggering the handler's abort
+ * cleanup). The handler blocks until client disconnect, so we MUST cancel.
+ */
+async function readSSEUntil(
+  res: Response,
+  predicate: (buf: string) => boolean,
+  timeoutMs = 2000,
+): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  const deadline = Date.now() + timeoutMs;
+  try {
+    while (Date.now() < deadline) {
+      const tick = await Promise.race([
+        reader.read(),
+        new Promise<{ value: undefined; done: false }>((r) =>
+          setTimeout(() => r({ value: undefined, done: false }), 100),
+        ),
+      ]);
+      if (tick.done) break;
+      if (tick.value) buf += decoder.decode(tick.value, { stream: true });
+      if (predicate(buf)) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return buf;
+}
+
 const pendingItem = {
   id: "001",
   type: "feature",
@@ -106,6 +207,7 @@ beforeEach(() => {
 afterEach(() => {
   process.env["PATH"] = originalPath;
   resetLoopManager();
+  fs.rmSync(ACTIVE_DIR, { recursive: true, force: true });
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -259,6 +361,7 @@ describe("GET /:id/loop/events", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/event-stream");
+    await readSSEUntil(res, (b) => b.includes("heartbeat"));
   });
 
   it("returns 400 for invalid project ID", async () => {
@@ -268,46 +371,141 @@ describe("GET /:id/loop/events", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("replays events.ndjson as loop_event SSE (no server-owned runner)", async () => {
+    // V1: file-backed replay — the server never started this loop, yet the
+    // events.ndjson is streamed back. Proves in-process parity (REQ-WEB-01, SC-1).
+    const projectPath = createProject("test-project");
+    seedEvents(projectPath, [loopStarted(projectPath, 0), loopStarted(projectPath, 1)]);
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/events", {
+      method: "GET",
+    });
+    expect(res.status).toBe(200);
+
+    const buf = await readSSEUntil(res, (b) => (b.match(/event: loop_event/g) ?? []).length >= 2);
+    const loopEventCount = (buf.match(/event: loop_event/g) ?? []).length;
+    expect(loopEventCount).toBeGreaterThanOrEqual(2);
+    expect(buf).toContain('"seq":0');
+    expect(buf).toContain('"seq":1');
+    expect(buf).toContain('"type":"loop_started"');
+  });
+
+  it("missing events.ndjson → empty timeline, heartbeat only, no error", async () => {
+    // V3: graceful absence (REQ-REL-03). A backlog.json exists but no event log.
+    createProject("test-project");
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/events", {
+      method: "GET",
+    });
+    expect(res.status).toBe(200);
+
+    const buf = await readSSEUntil(res, (b) => b.includes("heartbeat"), 1000);
+    expect(buf).toContain("event: heartbeat");
+    expect(buf).not.toContain("event: loop_event");
+    expect(buf).not.toContain("event: loop_error");
+  });
+
+  it("?backlog resolution failure emits loop_error (NOT a silent default-root fallback)", async () => {
+    // A ?backlog escaping the project root fails resolveBacklogRoot. The handler
+    // must surface the error rather than tailing the wrong (default) root
+    // (REQ-DISC-01/02). Seed the default root with events to prove they are NOT
+    // streamed when resolution fails.
+    const projectPath = createProject("test-project");
+    seedEvents(projectPath, [loopStarted(projectPath, 0)]);
+    const app = makeApp(tmpDir);
+
+    const res = await app.request(
+      "/api/projects/test-project/loop/events?backlog=" + encodeURIComponent("../../escape"),
+      { method: "GET" },
+    );
+    expect(res.status).toBe(200);
+
+    const buf = await readSSEUntil(res, (b) => b.includes("event: loop_error"), 1000);
+    expect(buf).toContain("event: loop_error");
+    expect(buf).toContain("PATH_VIOLATION");
+    // The default root's seeded event must NOT have leaked through.
+    expect(buf).not.toContain("event: loop_event");
+  });
+
+  it("tolerates a torn trailing line in events.ndjson — replays complete records, no 500 (REQ-REL-01)", async () => {
+    // Concurrent-tail safety (07-testing-strategy.md §5): tailing while a writer
+    // appends only ever exposes a torn TRAILING line. readNdjson skips it, so the
+    // endpoint must stay 200 (never 500) and replay only the complete records.
+    const projectPath = createProject("test-project");
+    seedEvents(projectPath, [loopStarted(projectPath, 0), loopStarted(projectPath, 1)]);
+    // Simulate a writer caught mid-append: a partial trailing line, no newline.
+    fs.appendFileSync(
+      path.join(projectPath, ".rauf", EVENTS_LOG_FILENAME),
+      '{"type":"loop_started","projectPath":"x","maxIterations":5,"seq":2,"schemaVer',
+    );
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/events", {
+      method: "GET",
+    });
+    // The torn line must not turn into a 500 — the whole point of REQ-REL-01.
+    expect(res.status).toBe(200);
+
+    const buf = await readSSEUntil(res, (b) => (b.match(/event: loop_event/g) ?? []).length >= 2);
+    // Exactly the two complete records replay; the torn fragment is skipped.
+    expect((buf.match(/event: loop_event/g) ?? []).length).toBe(2);
+    expect(buf).toContain('"seq":0');
+    expect(buf).toContain('"seq":1');
+    expect(buf).not.toContain('"seq":2');
+    expect(buf).not.toContain("event: loop_error");
+  });
 });
 
 // ─── GET /api/loops ──────────────────────────────────────────────
 
 describe("GET /api/loops", () => {
-  it("returns an empty list when no loops are running", async () => {
+  it("returns an empty list when no loops are registered", async () => {
     const app = makeApp(tmpDir);
     const res = await app.request("/api/loops", { method: "GET" });
 
     expect(res.status).toBe(200);
-    const body = (await json(res)) as { data: { loops: Array<{ projectPath: string }> } };
+    const body = (await json(res)) as { data: { loops: ActiveLoopEntry[] } };
     expect(body.data.loops).toEqual([]);
   });
 
-  it("lists in-flight loops with their project paths", async () => {
-    const projectPath = createProject("test-project", [pendingItem]);
-    setupLongRunningClaude();
+  it("returns reconciled registry entries (any mode, not just server-owned)", async () => {
+    // V2: a loop registered in the registry — with no manager runner — is listed
+    // as a full ActiveLoopEntry (REQ-WEB-03, REQ-DISC-05).
+    const stateDir = registerLiveLoop("a");
     const app = makeApp(tmpDir);
-
-    // Start a loop so it stays in-flight
-    const startRes = await app.request("/api/projects/test-project/loop/start", {
-      method: "POST",
-      headers: {
-        "X-Rauf-Request": "true",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ maxIterations: 5 }),
-    });
-    expect(startRes.status).toBe(200);
 
     const res = await app.request("/api/loops", { method: "GET" });
     expect(res.status).toBe(200);
-    const body = (await json(res)) as { data: { loops: Array<{ projectPath: string }> } };
-    expect(body.data.loops).toEqual([{ projectPath }]);
+    const body = (await json(res)) as { data: { loops: ActiveLoopEntry[] } };
+    expect(body.data.loops).toHaveLength(1);
+    const entry = body.data.loops[0]!;
+    expect(entry.stateDir).toBe(stateDir);
+    expect(entry.pid).toBe(process.pid);
+    expect(entry.status).toBe("running");
+  });
 
-    // Stop it so afterEach doesn't leave a dangling sleep
-    await app.request("/api/projects/test-project/loop/stop", {
-      method: "POST",
-      headers: { "X-Rauf-Request": "true" },
+  it("excludes a stale registry entry (self-heal)", async () => {
+    // A registered entry with no live lock reconciles as not-live and is pruned.
+    const stateDir = path.resolve(fs.mkdtempSync(path.join(os.tmpdir(), "rauf-web-stale-")));
+    registerLoop({
+      stateDir,
+      projectPath: path.dirname(stateDir),
+      backlogRoot: path.join(stateDir, ".."),
+      pid: 2147483646, // a pid that is (essentially certainly) dead
+      startedAt: new Date().toISOString(),
+      status: "running",
     });
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/loops", { method: "GET" });
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { loops: ActiveLoopEntry[] } };
+    expect(body.data.loops).toEqual([]);
+
+    fs.rmSync(stateDir, { recursive: true, force: true });
   });
 });
 

@@ -69,7 +69,7 @@ function makeCtx(
       json: globalFlags.json ?? false,
       quiet: globalFlags.quiet ?? true,
       noColor: globalFlags.noColor ?? true,
-      root: undefined,
+      root: null,
     },
     rawArgv: [],
   };
@@ -688,5 +688,121 @@ describe("handleProgress", () => {
     const ctx = makeCtx([projectDir]);
     const code = await handleProgress(ctx);
     expect(code).toBe(ExitCode.SUCCESS);
+  });
+});
+
+// ─── Follow surface (item 009a) ────────────────────────────────────
+
+/** Capture process.stdout.write while running fn; restore afterwards. */
+async function captureStdout(fn: () => Promise<number>): Promise<{ code: number; out: string }> {
+  let out = "";
+  const orig = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: unknown) => {
+    out += String(chunk);
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    const code = await fn();
+    return { code, out };
+  } finally {
+    process.stdout.write = orig;
+  }
+}
+
+function writeEventsLog(raufDir: string, projectPath: string): void {
+  const lines = [
+    JSON.stringify({
+      type: "loop_started",
+      timestamp: new Date().toISOString(),
+      projectPath,
+      maxIterations: 5,
+      seq: 0,
+      schemaVersion: "1",
+    }),
+  ];
+  fs.writeFileSync(path.join(raufDir, "events.ndjson"), lines.join("\n") + "\n");
+}
+
+describe("status --follow", () => {
+  it("streams one DerivedStatus snapshot as NDJSON under --json, stops on SIGINT", async () => {
+    const projectDir = path.join(tmpDir, "status-follow-json");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir);
+
+    const ctx = makeCtx([projectDir], { follow: true, interval: "0.05" }, { json: true });
+    const { code, out } = await captureStdout(async () => {
+      const p = handleStatus(ctx);
+      // First tick runs synchronously; interrupt to end the stream.
+      setTimeout(() => process.emit("SIGINT"), 30);
+      return p;
+    });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const firstLine = out.split("\n").find((l) => l.trim().length > 0)!;
+    const snapshot = JSON.parse(firstLine);
+    expect(snapshot).toHaveProperty("loopState");
+  });
+});
+
+describe("log --follow", () => {
+  it("replays events.ndjson and stops on SIGINT (formatted)", async () => {
+    const projectDir = path.join(tmpDir, "log-follow");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), "first log line\n");
+    writeEventsLog(raufDir, projectDir);
+
+    const ctx = makeCtx([projectDir], { follow: true });
+    const { code, out } = await captureStdout(async () => {
+      const p = handleLog(ctx);
+      setTimeout(() => process.emit("SIGINT"), 30);
+      return p;
+    });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(out).toContain("first log line");
+    expect(out).toContain("loop_started");
+  });
+
+  it("emits NDJSON objects (log + events) under --follow --json", async () => {
+    const projectDir = path.join(tmpDir, "log-follow-json");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), "raw line\n");
+    writeEventsLog(raufDir, projectDir);
+
+    const ctx = makeCtx([projectDir], { follow: true }, { json: true });
+    const { code, out } = await captureStdout(async () => {
+      const p = handleLog(ctx);
+      setTimeout(() => process.emit("SIGINT"), 30);
+      return p;
+    });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const objs = out
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l));
+    expect(objs).toContainEqual(expect.objectContaining({ source: "log", line: "raw line" }));
+    expect(objs).toContainEqual(expect.objectContaining({ type: "loop_started", seq: 0 }));
+  });
+});
+
+describe("log --json (one-shot)", () => {
+  it("emits the tail as a JSON array of log lines", async () => {
+    const projectDir = path.join(tmpDir, "log-json");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    fs.writeFileSync(path.join(raufDir, "rauf.log"), "line a\nline b\n");
+
+    const ctx = makeCtx([projectDir], {}, { json: true });
+    const { code, out } = await captureStdout(() => handleLog(ctx));
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const arr = JSON.parse(out);
+    expect(Array.isArray(arr)).toBe(true);
+    expect(arr).toContain("line a");
+    expect(arr).toContain("line b");
   });
 });

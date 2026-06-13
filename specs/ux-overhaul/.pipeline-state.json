@@ -1,0 +1,117 @@
+{
+  "feature": "ux-overhaul",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-12T00:00:00Z",
+  "updatedAt": "2026-06-13T01:29:09Z",
+  "currentStage": "complete",
+  "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-13T01:29:09Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1, "forge-4-backlog": 1 },
+      "artifacts": [
+        "docs/architecture/ux-overhaul/README.md",
+        "docs/architecture/ux-overhaul/architecture.md",
+        "docs/architecture/ux-overhaul/api-reference.md",
+        "docs/architecture/ux-overhaul/guides/monitoring.md"
+      ],
+      "result": "Standard 4-doc set (user-confirmed), grounded in implementation (real @rauf/core signatures, not specs). Covers the observation substrate: README (concepts/exports), architecture (data flow + D1-D9 + invariants), api-reference (events-log/loop-registry/fs-utils/status/lock exports + types/constants), guides/monitoring (CLI+web surface, clean-break migration). Based on forge-5-loop impl (commits 58e7844..72b8100) + forge-verify-impl fixes (3d102dc)."
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-impl-2026-06-13.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-13T00:20:00Z",
+      "fixedAt": "2026-06-13T00:45:00Z",
+      "result": "4-way parallel forge-verifier fan-out (req-coverage, integration, testing, code-quality). All gates PASS (typecheck/lint/format clean; 0 errors). 6 findings all applied: Step1 V-001/V-002 (stale loop-follow/status--watch refs in CLI hint + docs/SPEC-CLI.md), Step2 V-004/V-005/V-006 (added 7 spec-required tests), Step3 V-003 (option a: adopted core surfaceInspectedStatus/new surfaceInspectedDir data layer; CLI now pure presenter). Post-fix: typecheck/lint/format exit 0; tests 1818 green (core 910, loop 290, cli 419, web 199)."
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-12T22:50:49Z",
+      "completedAt": "2026-06-13T00:07:36Z",
+      "basedOnVersions": { "forge-4-backlog": 1 },
+      "artifacts": ["specs/ux-overhaul/.rauf/state.json"],
+      "result": "15/15 items done in 16 iterations (under 23 budget); 0 blocked/needs-human/deferred; --review pass found no issues (0 follow-up items). Commits 58e7844..72b8100 ([rauf] 001..014)."
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-backlog-2026-06-12.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-12T23:55:00Z",
+      "fixedAt": "2026-06-12T23:59:00Z",
+      "commitHash": "ce2a092",
+      "validation": "passed (rauf-stable backlog validate, exit 0, 0 findings); 25/25 checks executed via 4 parallel verifiers; all 6 findings applied (V-003 split 009→009a/009b, V-006 explicit deps), backlog now 15 items, re-validated clean"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/ux-overhaul/backlog.json"],
+      "completedAt": "2026-06-12T21:55:00Z",
+      "commitHash": "3bb3442",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "itemCount": 14,
+      "validation": "passed (rauf-stable 0.4.0, exit 0, 0 findings)"
+    },
+    "forge-verify-specs": {
+      "status": "passed",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-specs-2026-06-12.md",
+      "findingsCount": 14,
+      "verifiedAt": "2026-06-12T23:00:00Z",
+      "fixedAt": "2026-06-12T23:30:00Z",
+      "commitHash": "dd18ff7",
+      "reverifiedAt": "2026-06-12T21:50:00Z",
+      "reverifyFindingsFile": "specs/ux-overhaul/.verification/VERIFY-specs-2026-06-12-reverify.md",
+      "reverifyResult": "passed (14/14 resolved; 1 regression RV-1 found and fixed inline)"
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/ux-overhaul/00-core-definitions.md",
+        "specs/ux-overhaul/01-architecture-layout.md",
+        "specs/ux-overhaul/02-event-log.md",
+        "specs/ux-overhaul/03-active-loop-registry.md",
+        "specs/ux-overhaul/04-cli-monitoring-surface.md",
+        "specs/ux-overhaul/05-web-observation-parity.md",
+        "specs/ux-overhaul/06-agent-commit-rule.md",
+        "specs/ux-overhaul/07-testing-strategy.md",
+        "specs/ux-overhaul/TRACEABILITY.md"
+      ],
+      "completedAt": "2026-06-12T22:30:00Z",
+      "commitHash": "d7e2502",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 }
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/ux-overhaul/PRD.md"],
+      "completedAt": "2026-06-12T00:00:00Z",
+      "commitHash": "b8ed6b1",
+      "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-prd-2026-06-12.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-12T00:00:00Z",
+      "fixedAt": "2026-06-12T00:00:00Z",
+      "commitHash": "bd8dea2"
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/ux-overhaul/tech-spec.md"],
+      "completedAt": "2026-06-12T20:34:50Z",
+      "commitHash": "9288deb",
+      "basedOnVersions": { "forge-1-prd": 1 }
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-tech-2026-06-12.md",
+      "findingsCount": 10,
+      "verifiedAt": "2026-06-12T21:00:00Z",
+      "fixedAt": "2026-06-12T21:10:00Z"
+    }
+  },
+  "notes": "This PRD covers Phase 1 (observation substrate) ONLY of the 4-phase CANON.md plan. ACTION FOR LATER: each subsequent phase must be spun up as its own feature-forge feature and run through the pipeline logically/in order — Phase 2 (execution-grammar clean break: run --detached, etc.) depends on Phase 1's monitor model; Phase 3 (contract & exit-code unification + events.ndjson formal versioning + review-signal fix) depends on Phases 1-2 and is the feature-forge-contract-breaking flip (bundle w/ minRunnerVersion bump, proposed v0.5.0); Phase 4 (web recovery actions + status vocabulary/badges + provider-agnostic agent templates) depends on Phase 1 substrate. Likely feature names: ux-overhaul-grammar (P2+P3 as one breaking flip) and ux-overhaul-web (P4). Ratified in this PRD session: clean-break monitor surface (remove loop watch/loop follow/--watch, NO aliases); cross-root discovery via central active-loop registry with stale-entry self-heal; events.ndjson resets per run (prior runs archived); state.json authoritative for status, events.ndjson authoritative stream/history with never-contradict invariant; best-effort hardened append (per-run seq, schemaVersion envelope from day one, torn-trailing-line reader tolerance); persist-all-events with token-update coalescing; web read-path included in Phase 1 (recovery buttons deferred to Phase 4); commit-rule fix across both templates + prompt-builder reminder (AGENT_ADDON rename stays with Part-B provider refactor). Dogfood with rauf-stable per forge.config.json. TECH-SPEC (v1) decisions ratified: D1 persist in LoopRunner.emitEvent() — runner owns per-run seq + token coalescing, core appendEvent owns the fs write, best-effort try/catch, single writer per root; D2 FLAT record = LoopEvent + seq + schemaVersion (PersistedEventSchema = LoopEventSchema ∩ {seq,schemaVersion}); seq is the DENSE persisted-record sequence (assigned only on write) so gaps mean corruption not coalescing; D3 token coalescing = time-based last-write-wins ≈1/sec (TOKEN_COALESCE_MS=1000, mirrors iteration-status throttle); D4 rotate events.ndjson → archive/{ts}-events.ndjson at runner.start() (reset.ts {ts}- pattern); D5 registry = per-loop entry files ~/.rauf/active/<sha256(stateDir)[:16]>.json, structurally concurrency-safe, reconcile-on-read against .loop.lock via NEW checkLockFile(lockPath) extracted from checkLock, self-heal/prune stale; D6 discovery scope = machine-wide (no scoping flag in P1); D7 cross-root listing = status --all; D8 web = backend parity (/loop/events tails events.ndjson, /api/loops reads registry) + NEW frontend <EventTimeline> consuming file-backed /loop/events (Scope B, bounded) — status label-map + missing badges (REVIEWING/PAUSED_USAGE_LIMIT/Needs Human) stay Phase 4 (event rendering ≠ status vocabulary, boundary holds); D9 follow = file-based primary (replay current-run events.ndjson then fs.watch-tail), server SSE optional latency opt, replay current-run ONLY. KEY IMPL LANDMINES: embedded-artifacts.ts (lines 42/364/423) carries the commit-rule bug and is the INSTALLED source — must regenerate via `pnpm --filter @rauf/core build` (runs generate-embedded-artifacts.ts), not just edit templates; add events.ndjson to RUNTIME_EXCLUDE_PATHSPECS in git-commit.ts; dev loop runs built dist/@rauf/loop (rebuild before testing). CONTRACT: Phase 1 is ADDITIVE — NO minRunnerVersion bump, NO feature-forge changes (those are Phase 3/v0.5.0). New core modules: events-log.ts, loop-registry.ts; new fs-utils helpers appendLine + readNdjson (torn-line tolerant). Web frontend has NO tests today — lean on backend tests for parity."
+}

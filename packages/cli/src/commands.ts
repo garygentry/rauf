@@ -23,6 +23,7 @@ import {
   handleBacklogValidate,
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
+import { handleFollow } from "./follow-command.js";
 import {
   handleProfileShow,
   handleProfileDetect,
@@ -43,10 +44,8 @@ import {
 import {
   handleLoopStart,
   handleLoopStop,
-  handleLoopFollow,
   handleLoopRun,
   handleLoopReview,
-  handleLoopWatch,
 } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
 import { handleReset } from "./reset-commands.js";
@@ -179,7 +178,6 @@ export const COMMANDS: CommandDef[] = [
         handler: handleLoopStart,
       },
       { name: "stop", description: "Stop a running loop", handler: handleLoopStop },
-      { name: "follow", description: "Follow loop events in real-time", handler: handleLoopFollow },
       {
         name: "run",
         description: "Run loop directly in-process",
@@ -238,12 +236,6 @@ export const COMMANDS: CommandDef[] = [
         description: "Review completed items and create fix items",
         usage: "rauf loop review [path] [--model MODEL] [--timeout N]",
         handler: handleLoopReview,
-      },
-      {
-        name: "watch",
-        description: "Watch live iteration status (tool activity, tokens)",
-        usage: "rauf loop watch [path] [--json]",
-        handler: handleLoopWatch,
       },
     ],
   },
@@ -335,14 +327,31 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "status",
     description: "Show loop status for a project",
-    usage: "rauf status <path> [--watch] [--interval N]",
+    usage: "rauf status [path] [--follow] [--json] [--interval N] [--all] [--backlog <dir>]",
     handler: handleStatus,
   },
   {
     name: "log",
     description: "View loop log for a project",
-    usage: "rauf log <path> [--tail N] [--follow]",
+    usage: "rauf log [path] [--tail N] [--follow] [--json] [--backlog <dir>]",
     handler: handleLog,
+  },
+  {
+    name: "follow",
+    description: "Follow a loop's live event stream (replay current run, then tail)",
+    usage: "rauf follow [path] [--json] [--interval N] [--backlog <dir>]",
+    flags: [
+      {
+        name: "--json",
+        description: "Emit one PersistedEvent (NDJSON) per line instead of formatted output",
+      },
+      {
+        name: "--interval <N>",
+        description: "Poll fallback interval in seconds when fs.watch is unavailable (default: 2)",
+      },
+      { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+    ],
+    handler: handleFollow,
   },
   {
     name: "progress",

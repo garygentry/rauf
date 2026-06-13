@@ -28,6 +28,7 @@ export const ErrorCodes = {
   CONFLICT: "CONFLICT",
   TRANSITION_INVALID: "TRANSITION_INVALID",
   LOCK_CONFLICT: "LOCK_CONFLICT",
+  IO_ERROR: "IO_ERROR",
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

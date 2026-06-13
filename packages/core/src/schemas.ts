@@ -598,6 +598,81 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   LlmStuckWarningSchema,
 ]);
 
+// ─── PersistedEvent (events.ndjson) ──────────────────────────────
+
+/**
+ * One line of events.ndjson: a full LoopEvent plus a per-run dense sequence
+ * number and a schema-version tag.
+ *
+ * FLAT by design: the entire LoopEvent is preserved, so a reader needs no join
+ * against another surface to interpret a record. This is the first
+ * z.intersection in the codebase; intersecting the discriminated union with the
+ * envelope forfeits the discriminated-union fast path but is acceptable at
+ * Phase-1 event volumes. `LoopEventSchema.and(envelope)` is an equivalent
+ * terser spelling.
+ */
+export const PersistedEventSchema = z.intersection(
+  LoopEventSchema,
+  z.object({
+    /**
+     * Monotonic, dense, per-run sequence number. Assigned ONLY when a record is
+     * actually written to disk, so coalesced/dropped token updates never consume
+     * a seq. Reset to 0 at the start of each run.
+     */
+    seq: z.number().int().nonnegative(),
+    /**
+     * Event-log schema version. "1" for Phase 1. Forward-stable machine
+     * contract.
+     */
+    schemaVersion: z.string(),
+  }),
+);
+
+// ─── ActiveLoopEntry (~/.rauf/active/<hash>.json) ────────────────
+
+/**
+ * A registry entry describing one currently-running loop. Written at loop start
+ * (registerLoop), refreshed on each status transition (updateLoopStatus), and
+ * removed at loop exit (deregisterLoop). One file per loop under ~/.rauf/active/,
+ * keyed by sha256(resolvedStateDir)[:16].
+ */
+export const ActiveLoopEntrySchema = z.object({
+  /** Resolved (absolute) state directory — the registry key source AND the
+   *  reconciliation anchor (its .loop.lock is ground truth). */
+  stateDir: z.string(),
+  /** Project root the loop runs against (contains .rauf.json marker). */
+  projectPath: z.string(),
+  /** The --backlog root (equals projectPath/.rauf for the default root). */
+  backlogRoot: z.string(),
+  /** OS process id of the runner, used for liveness reconciliation. */
+  pid: z.number().int(),
+  /** ISO-8601 timestamp the loop registered. */
+  startedAt: z.string(),
+  /**
+   * Advisory last-known status. state.json remains the SINGLE authoritative
+   * source for current status; this field is a convenience for the cross-root
+   * listing and MUST NOT be trusted over state.json.
+   */
+  status: LoopStateStatusSchema,
+});
+
+// ─── Event-log constants ─────────────────────────────────────────
+
+/** events.ndjson record schema version. Forward-stable machine contract.
+ *  Bumped only under the formal versioning discipline that lands in Phase 3. */
+export const EVENTS_SCHEMA_VERSION = "1";
+
+/**
+ * Coalescing window for llm_token_update persistence: at most one token-update
+ * record is written to events.ndjson per this interval (time-based,
+ * last-write-wins). DELIBERATELY independent of, and finer than, the runner's
+ * existing TOKEN_EVENT_THROTTLE_MS that gates iteration-status.json.
+ */
+export const TOKEN_COALESCE_MS = 1000;
+
+/** Per-run event log file name within a backlog root's state directory. */
+export const EVENTS_LOG_FILENAME = "events.ndjson";
+
 // ─── Review Payload (parsed from RAUF_REVIEW signal) ─────────────
 
 export const ReviewItemSchema = z.object({
@@ -659,6 +734,10 @@ export type SweepResult = z.infer<typeof SweepResultSchema>;
 export type BacklogItemSource = z.infer<typeof BacklogItemSourceSchema>;
 export type LoopStartOptions = z.infer<typeof LoopStartOptionsSchema>;
 export type LoopEvent = z.infer<typeof LoopEventSchema>;
+/** A LoopEvent persisted to events.ndjson, carrying seq + schemaVersion. */
+export type PersistedEvent = z.infer<typeof PersistedEventSchema>;
+/** One live-loop registry entry. */
+export type ActiveLoopEntry = z.infer<typeof ActiveLoopEntrySchema>;
 export type ReviewItem = z.infer<typeof ReviewItemSchema>;
 export type ReviewPayload = z.infer<typeof ReviewPayloadSchema>;
 export type IterationStatus = z.infer<typeof IterationStatusSchema>;

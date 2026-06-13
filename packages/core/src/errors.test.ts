@@ -62,10 +62,11 @@ describe("err()", () => {
   });
 
   it("works without details field", () => {
-    const result = err({
+    const error: RaufError = {
       code: ErrorCodes.INVALID_JSON,
       message: "parse error",
-    });
+    };
+    const result = err(error);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.details).toBeUndefined();
@@ -104,6 +105,8 @@ describe("ErrorCodes", () => {
     expect(ErrorCodes.NOT_INSTALLED).toBe("NOT_INSTALLED");
     expect(ErrorCodes.CONFLICT).toBe("CONFLICT");
     expect(ErrorCodes.TRANSITION_INVALID).toBe("TRANSITION_INVALID");
+    expect(ErrorCodes.LOCK_CONFLICT).toBe("LOCK_CONFLICT");
+    expect(ErrorCodes.IO_ERROR).toBe("IO_ERROR");
   });
 
   it("is a const object (values match keys)", () => {
@@ -112,7 +115,7 @@ describe("ErrorCodes", () => {
     }
   });
 
-  it("has exactly 9 error codes", () => {
-    expect(Object.keys(ErrorCodes)).toHaveLength(9);
+  it("has exactly 10 error codes", () => {
+    expect(Object.keys(ErrorCodes)).toHaveLength(10);
   });
 });

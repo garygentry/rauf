@@ -60,6 +60,8 @@ export interface BacklogPaths {
   archive: string;
   /** Path to .loop.lock */
   lock: string;
+  /** Path to events.ndjson — the persisted per-run event stream (= stateDir/events.ndjson). */
+  eventsLog: string;
 }
 
 /**
@@ -185,6 +187,7 @@ export function resolveBacklogPaths(
     iterationStatus: path.join(stateDir, "iteration-status.json"),
     archive: path.join(stateDir, "archive"),
     lock: path.join(stateDir, ".loop.lock"),
+    eventsLog: path.join(stateDir, "events.ndjson"),
   });
 }
 
@@ -242,5 +245,6 @@ export function defaultBacklogPaths(projectPath: string): BacklogPaths {
     iterationStatus: path.join(stateDir, "iteration-status.json"),
     archive: path.join(stateDir, "archive"),
     lock: path.join(stateDir, LOCK_FILENAME),
+    eventsLog: path.join(stateDir, "events.ndjson"),
   };
 }

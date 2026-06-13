@@ -1,0 +1,429 @@
+{
+  "schemaVersion": "1",
+  "project": "rauf — UX/DX Overhaul Phase 1 (observation substrate)",
+  "description": "Phase 1 of the UX/DX overhaul: a file-backed observation substrate. Persist every loop event to events.ndjson (per-run, versioned, seq-ordered), add a machine-wide active-loop registry under ~/.rauf/active/ with reconcile-on-read self-heal, give the CLI a single clean monitoring surface (status/log --follow, follow command, status --all, empty-is-never-silent) with the old monitor verbs removed (clean break, no aliases), bring the web read-path to parity (file-backed /loop/events + reconciled /api/loops + EventTimeline), and fix the agent commit rule across all template loci. ADDITIVE — no minRunnerVersion bump, no feature-forge contract changes (those are Phase 3). Dogfooded with rauf-stable. Verify pipeline: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add core shared types, constants, and IO_ERROR error code",
+      "description": "Foundation for Phase 1. Add to packages/core/src/schemas.ts: (a) PersistedEventSchema = z.intersection(LoopEventSchema, z.object({ seq: z.number().int().nonnegative(), schemaVersion: z.string() })) and type PersistedEvent = z.infer<...>; (b) ActiveLoopEntrySchema = z.object with fields stateDir, projectPath, backlogRoot (all z.string()), pid (z.number().int()), startedAt (z.string()), status: LoopStateStatusSchema (already defined in this file at schemas.ts:167) and type ActiveLoopEntry; (c) constants EVENTS_SCHEMA_VERSION = \"1\", TOKEN_COALESCE_MS = 1000, EVENTS_LOG_FILENAME = \"events.ndjson\". In packages/core/src/errors.ts add IO_ERROR: \"IO_ERROR\" to the ErrorCodes const (no other new code). In packages/core/src/backlog-root.ts add an eventsLog: string field to the BacklogPaths interface and populate it as path.join(stateDir, \"events.ndjson\") inside the returned object literal of resolveBacklogPaths() (function at backlog-root.ts:126). Re-export all new public symbols from packages/core/src/index.ts (barrel uses export *). Update docs/SCHEMAS.md to document the new types, constants, IO_ERROR code, and BacklogPaths.eventsLog field with the same JSDoc as 00-core-definitions.md. Every type/field gets a JSDoc comment. Do NOT add new status values (Phase 4) and do NOT extend the 24 LoopEvent member schemas individually.",
+      "acceptanceCriteria": [
+        "PersistedEventSchema is z.intersection(LoopEventSchema, {seq, schemaVersion}); PersistedEvent type infers; seq is non-negative int, schemaVersion is string",
+        "ActiveLoopEntrySchema has exactly the 6 fields (stateDir, projectPath, backlogRoot, pid, startedAt, status) each with JSDoc; status reuses LoopStateStatusSchema",
+        "EVENTS_SCHEMA_VERSION === \"1\", TOKEN_COALESCE_MS === 1000, EVENTS_LOG_FILENAME === \"events.ndjson\"",
+        "IO_ERROR is added to ErrorCodes and is the only new error code",
+        "BacklogPaths gains exactly one field eventsLog = stateDir/events.ndjson; no other BacklogPaths field changes",
+        "All new public symbols are re-exported from packages/core/src/index.ts",
+        "docs/SCHEMAS.md documents the new types, constants, IO_ERROR, and eventsLog field",
+        "pnpm --filter @rauf/core typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T22:58:51.242Z",
+      "dependsOn": [],
+      "notes": "This is the vocabulary every other item builds on. LoopStateStatusSchema, LoopEventSchema, BacklogPaths, Result/ok/err, RaufError all already exist in core — reference, do not redefine. PersistedEventSchema is the first z.intersection in the codebase; LoopEventSchema.and(envelope) is an equivalent terser spelling.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/00-core-definitions.md",
+        "specs/ux-overhaul/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add appendLine + readNdjson primitives to fs-utils",
+      "description": "Add two filesystem primitives to packages/core/src/fs-utils.ts that the event log builds on. (1) appendLine(filePath: string, line: string): Result<void> — append a single line (ensuring a trailing newline) using fs.appendFileSync; catch fs errors and return err({ code: IO_ERROR, message }) rather than throwing. (2) readNdjson<T>(filePath: string, schema: ZodSchema<T>): Result<T[]> — read a newline-delimited JSON file, parse and schema-validate each line, and TOLERATE a torn trailing line: any line that fails JSON.parse or schema validation is skipped (not fatal). A missing file returns ok([]) (graceful absence, not an error). Follow the existing fs-utils Result conventions and the validatePath sandbox helper where a write occurs. Extend packages/core/src/fs-utils.test.ts with coverage: append creates+appends, append error path, readNdjson happy path, readNdjson skips a torn/garbage trailing line, readNdjson of a missing file returns ok([]).",
+      "acceptanceCriteria": [
+        "appendLine(filePath, line) appends one whole line and returns Result<void>; on fs failure returns err with code IO_ERROR and never throws",
+        "readNdjson<T>(filePath, schema) returns ok(T[]) for a valid file, skipping any line that fails JSON.parse or schema validation (torn-trailing-line tolerance)",
+        "readNdjson of a missing file returns ok([]), not an error",
+        "fs-utils.test.ts covers: append create/append, append error, readNdjson valid, readNdjson torn trailing line skipped, readNdjson missing file -> ok([])",
+        "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:00:28.247Z",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "These are the lowest-level write/read primitives; events-log.ts (item 003) is built entirely on them. Mirror the torn-line tolerance pattern that watchLog/readLogTail already model.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/02-event-log.md",
+        "specs/ux-overhaul/07-testing-strategy.md",
+        "specs/ux-overhaul/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement events-log.ts core module (append/read/rotate/watch)",
+      "description": "Create packages/core/src/events-log.ts exporting four functions (re-export all from index.ts): (1) appendEvent(paths: BacklogPaths, record: PersistedEvent): Result<void> — validatePath(paths.eventsLog, [paths.stateDir]) then serialize the record to one line and appendLine; returns Result, never throws. (2) readEvents(paths: BacklogPaths): Result<PersistedEvent[]> — readNdjson(paths.eventsLog, PersistedEventSchema); missing file -> ok([]). (3) rotateEventsLog(paths: BacklogPaths): Result<void> — no-op ok if events.ndjson absent; else validatePath, ensureDir(paths.archive), rename events.ndjson -> archive/{ts}-events.ndjson where {ts} is YYYYMMDD-HHMMSS (module-private eventsArchiveTimestamp() mirroring reset.ts archiveTimestamp). TRUNCATE-ON-FAIL: if the rename throws, fs.writeFileSync(paths.eventsLog, \"\") to empty the file before returning err(IO_ERROR), so a new run always starts from a clean file (preserves seq-monotonicity + never-contradict). (4) watchEvents(paths, onRecords): () => void — replay current file then fs.watch-tail via byte-offset re-read, returning a bare cleanup fn; mirror the existing watchLog. Add packages/core/src/events-log.test.ts.",
+      "acceptanceCriteria": [
+        "appendEvent validates path to paths.stateDir, writes one PersistedEvent per line, returns Result, never throws; out-of-sandbox path returns err(PATH_VIOLATION)",
+        "readEvents returns ok(PersistedEvent[]) in seq/append order; missing file returns ok([])",
+        "rotateEventsLog moves events.ndjson to archive/{YYYYMMDD-HHMMSS}-events.ndjson and leaves a fresh (absent) file; no-op ok on first run",
+        "rotateEventsLog truncate-on-fail: when the archive rename fails, events.ndjson is left empty (0 bytes) and err(IO_ERROR) is returned",
+        "watchEvents replays existing records then tails new appends via byte-offset re-read and returns a cleanup function",
+        "events-log.test.ts covers append->read, seq order, rotate, rotate no-op, rotate-failure-truncates, missing-file ok([]), torn-line tolerance, sandbox reject",
+        "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:04:52.983Z",
+      "dependsOn": [
+        "001",
+        "002"
+      ],
+      "notes": "rotateEventsLog uses fs.renameSync directly (matches reset.ts archiving rauf.log). reset.ts's archiveTimestamp is module-private, so define an identical private helper here. The runner (item 006) owns the per-run seq counter and best-effort posture — this module only does the fs work.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/02-event-log.md",
+        "specs/ux-overhaul/00-core-definitions.md",
+        "specs/ux-overhaul/07-testing-strategy.md",
+        "specs/ux-overhaul/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Extract checkLockFile(lockPath) from checkLock in lock.ts",
+      "description": "Refactor packages/core/src/lock.ts to extract a new exported function checkLockFile(lockPath: string): Result<LockStatus> from the body of the existing checkLock(paths: BacklogPaths): Result<LockStatus> (currently lock.ts:198–233). Parameterize the logic on a raw lock-file path instead of a BacklogPaths, reusing the existing module-private isProcessAlive and isProcessRecycled helpers unchanged. Then make checkLock(paths) a thin delegate that calls checkLockFile(paths.lock). External behavior of checkLock MUST NOT change. This new entry point lets the loop registry (item 005) reconcile an arbitrary loop's .loop.lock by path. Extend packages/core/src/lock.test.ts to cover checkLockFile directly (locked/live, stale, missing -> not locked, pid-recycled) and confirm checkLock still behaves identically.",
+      "acceptanceCriteria": [
+        "checkLockFile(lockPath): Result<LockStatus> is exported and contains the reconciliation logic (liveness + recycle + stale detection)",
+        "checkLock(paths) delegates to checkLockFile(paths.lock) and its observable behavior is unchanged",
+        "isProcessAlive / isProcessRecycled remain module-private and are reused, not duplicated",
+        "checkLockFile is re-exported from packages/core/src/index.ts",
+        "lock.test.ts covers checkLockFile (live lock, stale lock, missing lock, recycled pid) and confirms checkLock parity",
+        "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:05:51.205Z",
+      "dependsOn": [],
+      "notes": "Pure refactor preserving behavior — dependency-free, can run in parallel with item 001. LockStatus is already exported (lock.ts:39). The registry's reconcile-on-read (item 005) is the consumer.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/ux-overhaul/03-active-loop-registry.md",
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement loop-registry.ts core module (register/list/reconcile)",
+      "description": "Create packages/core/src/loop-registry.ts exporting registerLoop, deregisterLoop, updateLoopStatus, listActiveLoops, registryEntryPath (re-export from index.ts). Entries are one file per loop at ~/.rauf/active/<sha256(resolved stateDir)[:16]>.json; module-private ACTIVE_DIR = path.join(TOOL_CONFIG_DIR, \"active\") and key(stateDir) hashes path.resolve(stateDir). Import LOCK_FILENAME and checkLockFile (do not redefine). registerLoop(entry): atomicWrite the ActiveLoopEntry (best-effort). deregisterLoop(stateDir): idempotent unlink. updateLoopStatus(stateDir, status): refresh the entry's status if the file exists, else no-op ok (advisory; state.json stays authoritative). listActiveLoops(): glob ACTIVE_DIR/*.json, parse each (skip corrupt), reconcile each against {entry.stateDir}/.loop.lock via checkLockFile + entry.pid match — if not live, unlink the stale entry (self-heal) and exclude it; return ok(sorted live entries); missing ACTIVE_DIR -> ok([]). Pure file reads/writes, no subprocess. Add packages/core/src/loop-registry.test.ts.",
+      "acceptanceCriteria": [
+        "registryEntryPath/key derive ~/.rauf/active/<sha256(path.resolve(stateDir))[:16]>.json (cwd-independent)",
+        "registerLoop atomic-writes an ActiveLoopEntry; deregisterLoop is idempotent (no error if already gone)",
+        "updateLoopStatus refreshes an existing entry and is a no-op ok when the entry is missing",
+        "listActiveLoops reconciles each entry against its .loop.lock via checkLockFile, unlinks stale entries (self-heal), excludes them, and returns only confirmed-live entries sorted deterministically",
+        "listActiveLoops returns ok([]) when ACTIVE_DIR is missing; corrupt entry files are skipped, not fatal",
+        "loop-registry.test.ts covers register/list, stale self-heal, corrupt-entry skip, missing-dir ok([]), sandbox/key determinism",
+        "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:08:17.300Z",
+      "dependsOn": [
+        "001",
+        "004"
+      ],
+      "notes": "Concurrency-safe structurally: distinct stateDirs -> distinct files. The .loop.lock is ground truth; the registry is a fast index reconciled on every read. A live loop holds its lock continuously (acquire once at start, release once in finally — no mid-run rewrite), so a reconciling reader never prunes a live loop. updateLoopStatus is intentionally a no-op on missing entry.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/03-active-loop-registry.md",
+        "specs/ux-overhaul/00-core-definitions.md",
+        "specs/ux-overhaul/07-testing-strategy.md",
+        "specs/ux-overhaul/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 1,
+      "title": "Wire event-log persistence into the loop runner",
+      "description": "Edit packages/loop/src/runner.ts to persist events. Add private fields eventSeq = 0 and lastTokenPersistMs = 0, and a private persistEvent(event: LoopEvent): void called from emitEvent(): for event.type === 'llm_token_update', coalesce — if Date.now() - lastTokenPersistMs < TOKEN_COALESCE_MS return (drop from FILE only; still emit in-memory), else set lastTokenPersistMs = now; build record: PersistedEvent = { ...event, seq: this.eventSeq++, schemaVersion: EVENTS_SCHEMA_VERSION }; then void appendEvent(this.paths, record) — best-effort, Result discarded, never throws (appendEvent does not throw). In start(): immediately after ensureStateDir and BEFORE the first emit, call rotateEventsLog(this.paths) then set this.eventSeq = 0. Also add 'events.ndjson' to RUNTIME_EXCLUDE_PATHSPECS in packages/loop/src/git-commit.ts so the loop never commits its own event log. Rebuild before testing: the dev loop runs built dist/@rauf/loop, so run pnpm --filter @rauf/loop build (and @rauf/core if changed).",
+      "acceptanceCriteria": [
+        "emitEvent persists every LoopEvent via persistEvent using void appendEvent(...) (best-effort, no try/catch, never throws)",
+        "seq is dense and per-run: assigned only when a record is written (coalesced token updates consume no seq)",
+        "llm_token_update is coalesced to <= ~1/TOKEN_COALESCE_MS in the FILE while still emitted in-memory",
+        "start() calls rotateEventsLog(this.paths) then resets eventSeq=0 before the first emitted event",
+        "events.ndjson is added to RUNTIME_EXCLUDE_PATHSPECS in git-commit.ts (the loop does not commit events.ndjson)",
+        "Runner-affected packages rebuilt (pnpm --filter @rauf/loop build); pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:14:44.642Z",
+      "dependsOn": [
+        "001",
+        "003"
+      ],
+      "notes": "appendEvent/rotateEventsLog/EVENTS_SCHEMA_VERSION/TOKEN_COALESCE_MS/PersistedEvent come from @rauf/core (item 003/001). TOKEN_COALESCE_MS (1000ms) is deliberately independent of the runner's existing TOKEN_EVENT_THROTTLE_MS (5000ms, runner.ts:70). The first emit after start() is loop_started -> seq 0. Verify with test-sandbox after building.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/02-event-log.md",
+        "specs/ux-overhaul/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "feature",
+      "priority": 1,
+      "title": "Wire active-loop registry into the loop runner",
+      "description": "Edit packages/loop/src/runner.ts to register the loop in the active-loop registry. In start(), AFTER acquireLock succeeds (and beside the rotateEventsLog call added in item 006), call registerLoop with an ActiveLoopEntry built from this.paths (stateDir, projectPath, backlogRoot), process.pid, the current ISO timestamp, and the initial status. In the run's finally block, beside the existing releaseLock(this.paths), call deregisterLoop(this.paths.stateDir) (idempotent). Pair updateLoopStatus(this.paths.stateDir, status) with each writeState status transition so the registry's advisory status stays roughly current (state.json remains authoritative). All registry calls are best-effort (discard the Result; a registry failure must never crash or block the loop). Rebuild before testing (dev loop runs built dist/@rauf/loop): pnpm --filter @rauf/loop build.",
+      "acceptanceCriteria": [
+        "start() calls registerLoop after acquireLock succeeds, writing an ActiveLoopEntry with stateDir/projectPath/backlogRoot/pid/startedAt/status",
+        "the run's finally calls deregisterLoop(stateDir) beside releaseLock (idempotent)",
+        "each writeState status transition is paired with updateLoopStatus(stateDir, status)",
+        "all registry calls are best-effort (Result discarded) and never throw or block the loop",
+        "Runner rebuilt (pnpm --filter @rauf/loop build); a sandbox run registers a live entry that disappears on exit",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:16:37.775Z",
+      "dependsOn": [
+        "001",
+        "005",
+        "006"
+      ],
+      "notes": "Depends on 006 because both edit runner.start() — sequencing avoids edit conflicts. registerLoop only after acquireLock guarantees the lock is present whenever the entry exists (so listActiveLoops never prunes a live loop). Verify register/deregister with test-sandbox.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/03-active-loop-registry.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "Surface inspected dir + cross-root liveness in status.ts",
+      "description": "Extend packages/core/src/status.ts so a status read is never silently 'idle'. Update deriveStatus and the empty-path/no-state callers to surface (a) the exact directory that was inspected, and (b) cross-root liveness from the registry — i.e. consult listActiveLoops() so that when the inspected root has no state but live loops exist elsewhere, the result carries that information rather than a bare 'idle'. Keep state.json authoritative for the inspected root's own status; the registry only adds the cross-root signal. This is the core data change; the CLI/web presentation of empty-not-silent and status --all is built on top in items 009/010/011. Maintain Result conventions and packages/core's zero-imports-from-cli/web rule. Add/extend status tests for: empty root surfaces inspected dir, empty root with live loops elsewhere surfaces cross-root liveness, populated root unchanged.",
+      "acceptanceCriteria": [
+        "deriveStatus / empty-path callers expose the inspected directory in their result",
+        "deriveStatus's signature is NOT changed (per 04 §1); the inspected directory + cross-root liveness are surfaced via the existing DerivedStatus fields (e.g. the stateSource:\"none\" discriminator, 04 §8) or a sibling helper callers invoke — not by altering deriveStatus's shape",
+        "an empty/no-state inspected root reports cross-root liveness via listActiveLoops() rather than a bare 'idle'",
+        "state.json remains authoritative for the inspected root's own status (registry status stays advisory)",
+        "packages/core retains zero imports from cli/web",
+        "status tests cover empty-root-surfaces-dir, empty-with-live-elsewhere, populated-root-unchanged",
+        "pnpm --filter @rauf/core test && pnpm --filter @rauf/core typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:22:57.646Z",
+      "dependsOn": [
+        "005"
+      ],
+      "notes": "This is the data layer for REQ-DISC-01/02 (empty-is-never-silent) and the cross-root surfacing the CLI/web render. Don't put presentation here — just make the truthful data available. Per 04 §1 the deriveStatus signature must NOT change; surface (don't re-derive) via the existing stateSource:\"none\" discriminator (04 §8).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/04-cli-monitoring-surface.md",
+        "specs/ux-overhaul/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "009a",
+      "type": "feature",
+      "priority": 1,
+      "title": "CLI follow surface (additive): follow command + status/log --follow + -f parser",
+      "description": "Add a single follow vocabulary to the packages/cli monitoring surface — ADDITIVE ONLY, no removals (the clean break is item 009b). ADD: status --follow and log --follow, with -f as the short alias, and a new top-level `follow` command that replays the current run's events.ndjson then tails it (file-backed, via readEvents + watchEvents from @rauf/core). In packages/cli/src/parser.ts, normalize the -f short flag to the canonical --follow once, immediately before the final return { command, ... } (the flags map is complete once the arg loop exits), so handlers only ever read 'follow'. Preserve --json / NDJSON output and the --backlog <dir> targeting spelling on the monitoring commands. --interval <seconds> is reused verbatim as the poll cadence under --follow; the follow command's replay-then-tail is current-run-only. Add tests for the new follow surface.",
+      "acceptanceCriteria": [
+        "status --follow and log --follow work, with -f as a short alias normalized to --follow in parser.ts",
+        "a new top-level `follow` command replays the current run then tails events.ndjson (file-backed via readEvents + watchEvents)",
+        "--json/NDJSON output and --backlog <dir> targeting are honored on the monitoring commands",
+        "no old monitor verbs are removed in this item (removal is 009b); the old verbs still function until then",
+        "tests cover the new follow surface (status/log --follow, -f normalization, follow replay+tail)",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:30:09.662Z",
+      "dependsOn": [
+        "003",
+        "008"
+      ],
+      "notes": "Split from former item 009 (V-003): the additive half. The clean-break removal of status --watch / loop watch / loop follow is item 009b, which depends on this — add-then-remove ordering means the new surface exists before the old one is deleted.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/04-cli-monitoring-surface.md",
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "009b",
+      "type": "feature",
+      "priority": 1,
+      "title": "CLI clean break: remove old monitor verbs (status --watch, loop watch, loop follow)",
+      "description": "Complete the Phase-1-ratified clean break of the legacy CLI monitor surface — no aliases, no deprecation shims. Remove `status --watch` (and its handleStatusWatch branch), the `loop watch` verb, and the `loop follow` verb entirely, so invoking any of them errors. The replacement follow surface (status/log --follow, the `follow` command) was added in item 009a and must remain fully working. Update the clean-break test assertions: removed verbs/flags now error; the new follow surface passes.",
+      "acceptanceCriteria": [
+        "status --watch, the loop watch verb, and the loop follow verb are removed entirely (invoking them errors; no aliases)",
+        "the 009a follow surface (status/log --follow, -f, follow command) remains fully working after the removals",
+        "clean-break test assertions updated: removed verbs/flags error, new follow surface passes",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:35:38.801Z",
+      "dependsOn": [
+        "009a"
+      ],
+      "notes": "Split from former item 009 (V-003): the clean-break half. Depends on 009a so the new follow surface exists before the old verbs are deleted. This is a deliberate breaking change to the CLI monitor surface.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/04-cli-monitoring-surface.md",
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "feature",
+      "priority": 1,
+      "title": "CLI cross-root discovery — status --all + empty-not-silent",
+      "description": "Build the CLI presentation on top of the status.ts data layer (item 008) and the registry (item 005). ADD a `status --all` flag that lists every machine-wide live loop via listActiveLoops() (reconciled), with a deterministic, human-readable rendering and a --json form. Implement the empty-is-never-silent presentation: when a status read finds no state for the inspected root, print the inspected directory and, if loops are live elsewhere, point the user at them (never a bare 'idle' with no context). Add the new CLI tests: empty-not-silent output, and status --all listing/JSON shape.",
+      "acceptanceCriteria": [
+        "status --all lists all machine-wide live loops via listActiveLoops() with stable ordering, in both human and --json forms",
+        "an empty inspected root prints the inspected directory and surfaces cross-root live loops when present (never a bare silent 'idle')",
+        "CLI tests cover empty-not-silent rendering and status --all (human + --json)",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:42:15.284Z",
+      "dependsOn": [
+        "005",
+        "008",
+        "009b"
+      ],
+      "notes": "Depends on 009b (the terminal of the 009a/009b split) because it extends the same status command surface (avoid edit conflicts). The reconciliation (self-heal of stale entries) lives in listActiveLoops; the CLI just renders the already-truthful list.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/04-cli-monitoring-surface.md",
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "Web backend observation parity (file-backed /loop/events + /api/loops)",
+      "description": "Bring the web read-path to file parity with the CLI in packages/web server. (1) Rewrite GET /api/projects/:id/loop/events: replace the manager.subscribe(...) source with file-backed replay-then-tail. First resolve a full BacklogPaths — call resolveBacklogRoot(projectPath, backlogParam); on its err, emit an SSE loop_error and return (do NOT silently fall back to the default root — that would tail the wrong root); then resolveBacklogPaths(projectPath, resolvedRoot ?? projectPath); on its err, run a heartbeat-only stream (graceful absence). When paths resolved, replay via readEvents (emit each PersistedEvent as a loop_event SSE) then tail via watchEvents (push cleanup onto the existing cleanups array). Retain the existing validateProjectPath guard, the immediate + 15s heartbeats, and abort/cleanup. (2) GET /api/loops returns reconciled listActiveLoops(). (3) Demote the loop-manager in-memory buffer to an optional latency cache (no longer the sole source). Add web route tests (replay+tail, ?backlog resolution failure surfaces error not default-root, /api/loops shape).",
+      "acceptanceCriteria": [
+        "GET /loop/events sources from readEvents (replay) + watchEvents (tail); emits PersistedEvent bodies under the loop_event SSE event; watcher cleanup is pushed onto cleanups (no leak)",
+        "?backlog= resolution failure emits an SSE error and returns — it does NOT silently fall back to the default root; a resolved-but-fileless root yields a heartbeat-only stream",
+        "GET /api/loops returns reconciled listActiveLoops() output",
+        "the loop-manager in-memory buffer is no longer the sole source for /loop/events (demoted to optional cache)",
+        "existing validateProjectPath guard, immediate+15s heartbeats, and abort/cleanup are retained; server still binds 127.0.0.1 and GET routes need no X-Rauf-Request header",
+        "web route tests cover replay+tail, ?backlog resolution-failure (error not default-root), and /api/loops shape",
+        "pnpm test && pnpm typecheck passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:47:52.023Z",
+      "dependsOn": [
+        "003",
+        "005"
+      ],
+      "notes": "resolveBacklogRoot/resolveBacklogPaths and readEvents/watchEvents are @rauf/core exports. The wire shape is unchanged except bodies are now PersistedEvent (LoopEvent + seq + schemaVersion) — additive, ignored by type-only consumers. Status vocabulary/badges proper are Phase 4; this is read-path parity only.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/05-web-observation-parity.md",
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "012",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web frontend EventTimeline + projects-view liveness badges",
+      "description": "Add the client-side observation UI in packages/web. (1) Create an <EventTimeline> React component on the loop status page that opens an EventSource against the file-backed GET /loop/events (replay-then-tail), appends each loop_event, and renders the 24 LoopEvent types with minimal, readable labels (mirror the existing LogPanel EventSource lifecycle: connect, append, reconnect, cleanup). It forwards an optional non-default backlog root as the ?backlog= query param. (2) Wire projects-view liveness badges driven by GET /api/loops so each project reflects whether a loop is live. Keep the rendering minimal — full status vocabulary/badges (REVIEWING / PAUSED_USAGE_LIMIT / Needs Human) are explicitly Phase 4 and must NOT be pulled forward. Note: the web frontend has no test harness today; rely on the backend tests from item 011 for parity and verify the component manually.",
+      "acceptanceCriteria": [
+        "<EventTimeline> opens an EventSource on /loop/events, replays then tails, and includes a render branch for each of the 24 LoopEvent types via an exhaustive switch over the discriminated union (typecheck enforces no missing case); lifecycle mirrors LogPanel (connect/append/reconnect/cleanup). Visual confirmation that all 24 render correctly is the manual SC-1 check (spec 07 §6), not an automated gate — Phase 1 has no frontend harness",
+        "EventTimeline forwards a non-default backlog root as ?backlog=",
+        "projects-view shows per-project liveness badges driven by GET /api/loops",
+        "no Phase-4 status vocabulary/badges are introduced (boundary held)",
+        "pnpm typecheck && pnpm build passes (frontend builds; no new frontend test harness required)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-13T00:05:08.165Z",
+      "dependsOn": [
+        "011"
+      ],
+      "notes": "Frontend has no unit-test harness in Phase 1 — backend tests (011) carry the parity guarantee. This is the only P2 item. Hold the Phase-4 boundary strictly (event rendering != status vocabulary).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/05-web-observation-parity.md"
+      ]
+    },
+    {
+      "id": "013",
+      "type": "chore",
+      "priority": 1,
+      "title": "Fix agent commit rule across all source loci + regenerate embedded copy",
+      "description": "Correct the agent commit rule so the canonical instruction (the agent must NOT run git add/commit — the loop runner stages and commits after the agent signals done) is identical across all loci, then regenerate the embedded copy. Edit five source loci: (1) artifacts CLAUDE_ADDON.md; (2) artifacts CLAUDE_GREENFIELD.md.tmpl; (3) .rauf/RAUF.md.tmpl (two edits); (4) docs/SPEC-ARTIFACTS.md; (5) ADD the reminder in packages/loop/src/prompt-builder.ts. Then REGENERATE packages/core/src/embedded-artifacts.ts by running `pnpm --filter @rauf/core build` (which runs generate-embedded-artifacts.ts) — do NOT hand-edit embedded-artifacts.ts; it is generated from the templates and is the installed source. Add a CI-able doc/template grep guard that asserts the canonical rule phrasing is present in each locus and the wrong phrasing is absent. (Note: git-commit.ts's events.ndjson exclude — spec 06 locus 7 — is owned by item 006, not this item; this item edits 5 hand-authored source loci and regenerates the 6th, embedded-artifacts.ts.)",
+      "acceptanceCriteria": [
+        "The canonical commit rule (agent does NOT git add/commit; runner commits) is present and identical in CLAUDE_ADDON.md, CLAUDE_GREENFIELD.md.tmpl, .rauf/RAUF.md.tmpl (both edits), and docs/SPEC-ARTIFACTS.md",
+        "prompt-builder.ts adds the commit-rule reminder to the built prompt",
+        "embedded-artifacts.ts is REGENERATED via pnpm --filter @rauf/core build (not hand-edited) and reflects the corrected templates",
+        "a doc/template grep guard asserts the canonical phrasing present and the wrong phrasing absent across loci",
+        "pnpm test && pnpm typecheck && pnpm build passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T23:50:28.696Z",
+      "dependsOn": [],
+      "notes": "Dependency-free — can run in parallel with the core stream. CRITICAL: embedded-artifacts.ts carries the bug and is the INSTALLED source; it MUST be regenerated via the build, never hand-edited. The AGENT_ADDON rename stays with the Phase-3 provider refactor — do NOT rename here.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "agentDelegation": {
+        "recommendedConcurrency": 3,
+        "strategy": "Each sub-agent edits one independent locus to the identical canonical commit-rule phrasing; they touch disjoint files. After all edits land, the parent runs `pnpm --filter @rauf/core build` to regenerate embedded-artifacts.ts and adds the grep guard (shared verification — do NOT parallelize the regen).",
+        "subtasks": [
+          "Edit artifacts/CLAUDE_ADDON.md and artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl to the canonical commit rule (agent does NOT git add/commit; runner commits) per 06-agent-commit-rule.md loci 1-2",
+          "Edit .rauf/RAUF.md.tmpl (both edit sites) and docs/SPEC-ARTIFACTS.md to the canonical commit rule per 06-agent-commit-rule.md loci 3 and 5",
+          "Add the commit-rule reminder to packages/loop/src/prompt-builder.ts per 06-agent-commit-rule.md locus 6"
+        ]
+      },
+      "specReferences": [
+        "specs/ux-overhaul/06-agent-commit-rule.md",
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "014",
+      "type": "test",
+      "priority": 1,
+      "title": "Integration, dogfood & compatibility gate",
+      "description": "Cross-cutting verification that ties the substrate together. (1) test-sandbox integration: assert events.ndjson and state.json never contradict (state.json authoritative for status, events.ndjson the stream/history), exercising a sandbox run end to end. (2) Dogfood/commit-rule: confirm a loop iteration produces exactly ONE commit per item and that events.ndjson is NOT included in that commit (RUNTIME_EXCLUDE_PATHSPECS). (3) Compatibility: an existing install with no events.ndjson still works — status/follow degrade gracefully (readEvents -> ok([]), no crash), and machine-wide discovery tolerates a missing ~/.rauf/active. (4) Final gate: the full project pipeline is green. Rebuild artifacts first (the dev loop runs built dist): pnpm build.",
+      "acceptanceCriteria": [
+        "test-sandbox integration asserts events.ndjson <-> state.json never contradict across a run",
+        "a dogfood loop iteration produces exactly one commit per item and does NOT commit events.ndjson",
+        "compatibility: an install with no events.ndjson and no ~/.rauf/active works — status/follow degrade gracefully without crashing",
+        "best-effort persistence is invisible: a sandbox run with an unwritable events.ndjson (e.g. read-only state dir) still completes the loop and reports correct status from state.json + rauf.log — persistence failure is silent (REQ-PERF-01/REQ-REL-02)",
+        "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check all pass"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-13T00:01:20.415Z",
+      "dependsOn": [
+        "006",
+        "007",
+        "009b",
+        "010",
+        "011",
+        "013"
+      ],
+      "notes": "This is the final integration item — it depends on all the wiring (runner event+registry, CLI surface, web backend) and the commit-rule fix. Use the test-sandbox mock-Claude scenarios for the dogfood/never-contradict checks. Rebuild dist before sandbox runs.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul/07-testing-strategy.md"
+      ]
+    }
+  ]
+}

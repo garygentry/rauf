@@ -67,6 +67,7 @@ describe("COMMANDS registry", () => {
     expect(names).toContain("status");
     expect(names).toContain("log");
     expect(names).toContain("progress");
+    expect(names).toContain("follow");
     expect(names).toContain("profile");
     expect(names).toContain("config");
     expect(names).toContain("projects");

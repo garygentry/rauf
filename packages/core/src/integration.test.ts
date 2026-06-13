@@ -114,6 +114,7 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
     blockedItems: [],
     deferredItems: [],
     error: null,
+    baseCommitHash: null,
     ...overrides,
   };
 }
@@ -266,8 +267,8 @@ describe("Integration: greenfield init creates valid project", () => {
     const result = initProject(projectDir, {
       artifactsDir: ARTIFACTS_DIR,
       preset: "node-typescript",
-      name: "my-greenfield",
-      description: "A fresh greenfield project",
+      projectName: "my-greenfield",
+      projectDescription: "A fresh greenfield project",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -336,7 +337,7 @@ describe("Integration: greenfield init creates valid project", () => {
     const result = initProject(projectDir, {
       artifactsDir: ARTIFACTS_DIR,
       preset: "node-typescript",
-      name: "seeded-project",
+      projectName: "seeded-project",
       seedFile: seedPath,
     });
     expect(result.ok).toBe(true);
@@ -366,7 +367,7 @@ describe("Integration: greenfield init creates valid project", () => {
     const result = initProject(projectDir, {
       artifactsDir: ARTIFACTS_DIR,
       preset: "python",
-      name: "py-project",
+      projectName: "py-project",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -703,7 +704,7 @@ describe("Integration: status derivation with mock state.json", () => {
     updateItem(defaultBacklogPaths(projectDir), "001", { status: "in_progress" });
     updateItem(defaultBacklogPaths(projectDir), "001", { status: "done" });
 
-    writeStateJson(projectDir, makeLoopState({ status: "completed" }));
+    writeStateJson(projectDir, makeLoopState({ status: "complete" }));
 
     const result = deriveStatus(defaultBacklogPaths(projectDir));
     expect(result.ok).toBe(true);

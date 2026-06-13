@@ -7,6 +7,7 @@ import { readBacklog } from "./backlog.js";
 import { type BacklogPaths, SCAN_SKIP_DIRS } from "./backlog-root.js";
 import { checkLock } from "./lock.js";
 import { readIterationStatus } from "./iteration-status.js";
+import { listActiveLoops } from "./loop-registry.js";
 import {
   LoopStateSchema,
   LOG_PATTERNS,
@@ -15,6 +16,7 @@ import {
   type DerivedStatus,
   type BacklogSummary,
   type LockSummary,
+  type ActiveLoopEntry,
 } from "./schemas.js";
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -369,6 +371,81 @@ export function deriveStatus(paths: BacklogPaths): Result<DerivedStatus> {
 
   // Tier 2: Fall back to log parsing
   return ok({ ...deriveFromLogParsing(paths), lock });
+}
+
+// ─── surfaceInspectedStatus ─────────────────────────────────────
+//
+// Empty-is-never-silent data layer (REQ-DISC-01/02). `deriveStatus` keeps its
+// signature (per 04 §1); this sibling helper is what callers invoke to make a
+// status read truthful instead of a bare silent "idle". It surfaces (a) the
+// exact directory that was inspected, and (b) cross-root liveness pulled from
+// the reconciled active-loop registry — so an inspected root with no usable
+// state of its own can still point at loops live elsewhere on the machine.
+
+/**
+ * The truthful context behind a status read, so it is never silently "idle".
+ * Built from a `DerivedStatus` plus the cross-root active-loop registry; the
+ * CLI/web (items 009–011) render this — the data lives here.
+ */
+export interface InspectedStatusContext {
+  /** The exact state directory that was inspected (always present). */
+  inspectedDir: string;
+  /**
+   * True when the inspected root has no usable state of its own — i.e. the
+   * `DerivedStatus.stateSource === "none"` discriminator (04 §8). This is the
+   * "nothing here" case where cross-root liveness matters most.
+   */
+  empty: boolean;
+  /**
+   * Loops confirmed live in OTHER backlog roots, from the reconciled
+   * `listActiveLoops()` registry (self-healed, stale entries excluded). The
+   * registry `status` is advisory only — `state.json` stays authoritative for
+   * the inspected root's own status. Empty when the registry is unreadable, so
+   * a registry hiccup never suppresses the inspected-directory signal.
+   */
+  liveElsewhere: ActiveLoopEntry[];
+}
+
+/**
+ * Surface the inspected directory + cross-root liveness for a status read.
+ *
+ * `deriveStatus(paths)` answers "what is THIS root doing" (state.json
+ * authoritative); this answers "and if the answer was nothing, what was
+ * inspected and is anything live elsewhere". It reads only files — the
+ * registry is reconciled on read — and never spawns subprocesses.
+ *
+ * @param paths  the backlog paths that were inspected
+ * @param status the already-derived status for those paths (its `stateSource`
+ *               decides the `empty` discriminator without re-deriving anything)
+ */
+export function surfaceInspectedStatus(
+  paths: BacklogPaths,
+  status: DerivedStatus,
+): InspectedStatusContext {
+  return surfaceInspectedDir(paths.stateDir, status.stateSource === "none");
+}
+
+/**
+ * Surface the inspected directory + cross-root liveness from a raw state-dir
+ * path, for the case where no `DerivedStatus`/`BacklogPaths` could be resolved
+ * (e.g. an uninstalled or unresolvable root) but the read must still never go
+ * silent (REQ-DISC-01/02). `surfaceInspectedStatus` delegates here so the
+ * cross-root filtering lives in exactly one place.
+ *
+ * @param inspectedDir the state directory that was inspected
+ * @param empty        whether the inspected root has no usable state of its own
+ */
+export function surfaceInspectedDir(inspectedDir: string, empty: boolean): InspectedStatusContext {
+  const inspectedResolved = path.resolve(inspectedDir);
+
+  // Registry status is advisory; a registry read failure must not hide the
+  // inspected directory (REQ-DISC-01 holds even when REQ-DISC-02 cannot).
+  const live = listActiveLoops();
+  const liveElsewhere = live.ok
+    ? live.value.filter((e) => path.resolve(e.stateDir) !== inspectedResolved)
+    : [];
+
+  return { inspectedDir, empty, liveElsewhere };
 }
 
 // ─── readLogTail ────────────────────────────────────────────────

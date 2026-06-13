@@ -129,6 +129,7 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
     blockedItems: [],
     deferredItems: [],
     error: null,
+    baseCommitHash: null,
     ...overrides,
   };
 }
@@ -1795,6 +1796,7 @@ describe("ensureBacklog", () => {
         iterationStatus: path.join(stateDir, "iteration-status.json"),
         archive: path.join(stateDir, "archive"),
         lock: path.join(stateDir, ".loop.lock"),
+        eventsLog: path.join(stateDir, "events.ndjson"),
       };
 
       // ensureBacklog should create empty backlog, not return NOT_INSTALLED
@@ -1973,6 +1975,7 @@ describe("non-default root", () => {
         iterationStatus: path.join(authStateDir, "iteration-status.json"),
         archive: path.join(authStateDir, "archive"),
         lock: path.join(authStateDir, ".loop.lock"),
+        eventsLog: path.join(authStateDir, "events.ndjson"),
       };
 
       // Read from the non-default root

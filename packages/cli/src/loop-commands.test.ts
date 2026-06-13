@@ -23,7 +23,11 @@ import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /** Capture stdout/stderr during a function call */
-function captureOutput(fn: () => void | Promise<void>) {
+function captureOutput(fn: () => Promise<void>): Promise<{ stdout: string; stderr: string }>;
+function captureOutput(fn: () => void): { stdout: string; stderr: string };
+function captureOutput(
+  fn: () => void | Promise<void>,
+): { stdout: string; stderr: string } | Promise<{ stdout: string; stderr: string }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const origStdout = process.stdout.write;
@@ -97,7 +101,20 @@ describe("loop command registration", () => {
     const loop = findCommand("loop")!;
     expect(loop.subcommands).toBeDefined();
     const subNames = loop.subcommands!.map((s) => s.name);
-    expect(subNames).toEqual(["start", "stop", "follow", "run", "review", "watch"]);
+    expect(subNames).toEqual(["start", "stop", "run", "review"]);
+  });
+
+  it("no longer registers the removed monitor verbs (clean break, no aliases)", () => {
+    const loop = findCommand("loop")!;
+    const subNames = loop.subcommands!.map((s) => s.name);
+    expect(subNames).not.toContain("watch");
+    expect(subNames).not.toContain("follow");
+  });
+
+  it("exposes a top-level follow command (the promoted live-view verb)", () => {
+    const follow = findCommand("follow");
+    expect(follow).toBeDefined();
+    expect(follow!.handler).toBeDefined();
   });
 
   it("all subcommands have handlers", () => {
@@ -153,47 +170,6 @@ describe("handleLoopStop", () => {
     });
 
     expect(output.stderr).toContain("Server is not running");
-  });
-});
-
-describe("handleLoopFollow", () => {
-  let savedState: string | null = null;
-
-  beforeEach(() => {
-    configureOutput({ noColor: true, quiet: false, json: false });
-    // Back up and remove server state so isServerRunning() returns false
-    try {
-      savedState = fs.readFileSync(SERVER_STATE_FILE, "utf-8");
-    } catch {
-      savedState = null;
-    }
-    try {
-      fs.unlinkSync(SERVER_STATE_FILE);
-    } catch {
-      /* ok */
-    }
-  });
-
-  afterEach(() => {
-    // Restore server state
-    if (savedState !== null) {
-      fs.mkdirSync(path.dirname(SERVER_STATE_FILE), { recursive: true });
-      fs.writeFileSync(SERVER_STATE_FILE, savedState);
-    }
-  });
-
-  it("errors when server not running", async () => {
-    const loop = findCommand("loop")!;
-    const followHandler = loop.subcommands!.find((s) => s.name === "follow")!.handler!;
-    const ctx = makeCtx({ args: ["/tmp/some-project"] });
-
-    const output = await captureOutput(async () => {
-      const code = await followHandler(ctx);
-      expect(code).toBe(ExitCode.ERROR);
-    });
-
-    // With no server running, direct mode is used → resolveBacklogPaths fails for /tmp/some-project
-    expect(output.stderr).toContain("not found");
   });
 });
 
@@ -546,6 +522,7 @@ describe("createLoopBranch & loop preconditions", () => {
         ".rauf/CANCEL",
         ".rauf/.loop.lock",
         ".rauf/rauf.log",
+        ".rauf/events.ndjson",
         ".rauf/iteration-status.json",
         ".rauf/backlog.json.bak",
         "",
@@ -852,6 +829,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
         ".rauf/CANCEL",
         ".rauf/.loop.lock",
         ".rauf/rauf.log",
+        ".rauf/events.ndjson",
         ".rauf/iteration-status.json",
         ".rauf/backlog.json.bak",
         "",

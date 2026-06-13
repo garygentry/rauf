@@ -853,6 +853,19 @@ describe("install — .gitignore entries", () => {
     }
   });
 
+  // REQ-COMMIT-02 / item 014: events.ndjson is a runtime file the runner writes
+  // mid-run and excludes from per-item commits (RUNTIME_EXCLUDE_PATHSPECS). The
+  // installer's .gitignore list MUST cover it too, or an existing install whose
+  // .gitignore predates the event log would track it. Keep in sync with
+  // packages/loop/src/git-commit.ts RUNTIME_EXCLUDE_PATHSPECS.
+  it("ignores .rauf/events.ndjson (runner-written, never tracked)", () => {
+    expect(RAUF_GITIGNORE_ENTRIES).toContain("**/.rauf/events.ndjson");
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
+    expect(gitignore).toContain("**/.rauf/events.ndjson");
+  });
+
   it("appends entries to an existing .gitignore without touching other lines", () => {
     createFakeProject(tmpDir, { git: true });
     fs.writeFileSync(path.join(tmpDir, ".gitignore"), "node_modules/\ndist/\n");

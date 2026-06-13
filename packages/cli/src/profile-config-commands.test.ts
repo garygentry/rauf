@@ -67,7 +67,7 @@ function makeCtx(
       json: globalFlags.json ?? false,
       quiet: globalFlags.quiet ?? true,
       noColor: globalFlags.noColor ?? true,
-      root: globalFlags.root,
+      root: globalFlags.root ?? null,
     },
     rawArgv: [],
   };

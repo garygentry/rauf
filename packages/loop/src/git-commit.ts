@@ -22,6 +22,7 @@ export const RUNTIME_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/.rauf/CANCEL",
   ":(exclude,glob)**/.rauf/iteration-status.json",
   ":(exclude,glob)**/.rauf/rauf.log",
+  ":(exclude,glob)**/.rauf/events.ndjson",
   // backlog.json.bak sits beside backlog.json (root .rauf/ or specs/<feature>/).
   ":(exclude,glob)**/backlog.json.bak",
 ];

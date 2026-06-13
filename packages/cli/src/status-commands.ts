@@ -10,14 +10,21 @@ import {
   deriveStatus,
   readLogTail,
   watchLog,
+  readEvents,
+  watchEvents,
   fileExists,
   resolveBacklogRoot,
   resolveBacklogPaths,
   scanActiveRoots,
   detectMigrationState,
+  listActiveLoops,
+  surfaceInspectedStatus,
+  surfaceInspectedDir,
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
+  type PersistedEvent,
+  type InspectedStatusContext,
 } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
@@ -34,18 +41,23 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: rauf status <path> [--watch] [--interval N]");
+    info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--all] [--backlog <dir>]");
     return ExitCode.INVALID_ARGS;
   }
 
-  const watch = extractBoolFlag(ctx.flags, "watch");
+  const all = extractBoolFlag(ctx.flags, "all");
+  const follow = extractBoolFlag(ctx.flags, "follow"); // -f resolved in parser
   const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
 
-  if (watch) {
-    // Pass backlogFlag to watch mode
-    return handleStatusWatch(resolved, interval, backlogFlag ?? undefined);
+  if (all) {
+    // Machine-wide listing of every live loop via the reconciled registry (§9).
+    return handleStatusAll(ctx.globalFlags.json);
+  }
+
+  if (follow) {
+    return handleStatusFollow(resolved, interval, backlogFlag ?? undefined, ctx.globalFlags.json);
   }
 
   if (backlogFlag) {
@@ -77,6 +89,12 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     }
 
     printStatusSummary(result.value);
+    if (result.value.stateSource === "none") {
+      renderInspectedStatus(
+        surfaceInspectedStatus(pathsResult.value, result.value),
+        ctx.globalFlags.json,
+      );
+    }
     return statusExitCode(result.value.loopState);
   } else {
     // Default root + list active non-default roots
@@ -95,6 +113,12 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
         }
         return ExitCode.ERROR;
       }
+      // No installed/usable state at the default root and not a legacy project:
+      // never go silent — name the inspected directory and surface any loop live
+      // elsewhere on the machine (REQ-DISC-01/02). No resolved paths/status here,
+      // so use the raw-dir entry point into the same core data layer.
+      renderInspectedStatus(surfaceInspectedDir(defaultRoot, true), ctx.globalFlags.json);
+      return ExitCode.SUCCESS;
     }
 
     if (defaultPathsResult.ok) {
@@ -116,6 +140,12 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
       }
 
       printStatusSummary(status);
+      if (status.stateSource === "none") {
+        renderInspectedStatus(
+          surfaceInspectedStatus(defaultPathsResult.value, status),
+          ctx.globalFlags.json,
+        );
+      }
     }
 
     // Scan for active non-default roots
@@ -141,6 +171,79 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   }
 }
 
+// ─── Empty-is-never-silent surfacing ─────────────────────────────
+//
+// Render the empty-is-never-silent footer (REQ-DISC-01/02). Names the inspected
+// directory, then, if a loop is live in a DIFFERENT root, names that root and its
+// (advisory) state. The cross-root DATA (registry read, reconciliation, self-heal,
+// and the exclude-self filter) is the core `surfaceInspectedStatus` /
+// `surfaceInspectedDir` data layer (item 008) — this is presentation only, so the
+// filtering lives in exactly one place (no CLI/core drift).
+
+function renderInspectedStatus(context: InspectedStatusContext, json: boolean): void {
+  const { inspectedDir, empty, liveElsewhere } = context;
+
+  if (json) {
+    outputJson({
+      inspected: inspectedDir,
+      empty,
+      liveElsewhere: liveElsewhere.map((e) => ({
+        backlogRoot: e.backlogRoot,
+        stateDir: e.stateDir,
+        status: e.status,
+        pid: e.pid,
+      })),
+    });
+    return;
+  }
+
+  info(`No loop activity in ${c.cyan(inspectedDir)}.`); // (a) name the inspected directory
+  if (liveElsewhere.length > 0) {
+    // (b) surface live loops in other roots
+    print("");
+    print(c.bold("A loop is live in another backlog root:"));
+    for (const e of liveElsewhere) {
+      print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid})`)}`);
+    }
+    info(
+      `Re-run with ${c.cyan("--backlog <dir>")} to inspect it, or ${c.cyan("rauf status --all")} to list all.`,
+    );
+  }
+}
+
+// ─── status --all (machine-wide live loops) ──────────────────────
+//
+// List every backlog root with a live loop across the machine, reading the same
+// reconciled registry (`listActiveLoops`), honoring --json. The registry status
+// shown is advisory (REQ-OBS-02); the authoritative status for one root comes
+// from `rauf status --backlog <root>`.
+
+async function handleStatusAll(json: boolean): Promise<number> {
+  const live = listActiveLoops();
+  if (!live.ok) {
+    if (json) outputJson({ error: live.error });
+    else error(live.error.message);
+    return ExitCode.ERROR;
+  }
+
+  if (json) {
+    outputJson({ loops: live.value });
+    return ExitCode.SUCCESS;
+  }
+
+  if (live.value.length === 0) {
+    info("No live loops on this machine.");
+    return ExitCode.SUCCESS;
+  }
+
+  print(c.bold("Live loops (machine-wide):"));
+  for (const e of live.value) {
+    const started = new Date(e.startedAt).toLocaleTimeString();
+    print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid}, since ${started})`)}`);
+  }
+  return ExitCode.SUCCESS;
+}
+
 // ─── handleLog ────────────────────────────────────────────────────
 //
 // Print the last N lines of rauf.log. With --follow, stream until Ctrl+C.
@@ -149,7 +252,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info("Usage: rauf log <path> [--tail N] [--follow]");
+    info("Usage: rauf log <path> [--tail N] [--follow] [--json] [--backlog <dir>]");
     return ExitCode.INVALID_ARGS;
   }
 
@@ -171,7 +274,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const paths = pathsResult.value;
 
   if (follow) {
-    return handleLogFollow(paths, tailN);
+    return handleLogFollow(paths, tailN, ctx.globalFlags.json);
   }
 
   const result = readLogTail(paths, tailN);
@@ -183,6 +286,11 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
       info(`No log yet. Start the loop with: ${c.cyan("rauf loop run")}`);
     }
     return ExitCode.ERROR;
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson(result.value); // string[] of rauf.log lines
+    return ExitCode.SUCCESS;
   }
 
   if (result.value.length === 0) {
@@ -250,24 +358,49 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
 
 // ─── Internal: log follow mode ───────────────────────────────────
 
-async function handleLogFollow(paths: BacklogPaths, initialLines: number): Promise<number> {
-  // Show existing tail first
+async function handleLogFollow(
+  paths: BacklogPaths,
+  initialLines: number,
+  json: boolean,
+): Promise<number> {
+  // Each emitted unit honors `json`:
+  //   json=true  → one NDJSON object per line ({source:"log",line} | PersistedEvent)
+  //   json=false → the formatted human line / event
+  const emitLog = (line: string): void => {
+    if (json) process.stdout.write(JSON.stringify({ source: "log", line }) + "\n");
+    else print(line);
+  };
+  const emitEvent = (ev: PersistedEvent): void => {
+    if (json) process.stdout.write(JSON.stringify(ev) + "\n");
+    else print(`${c.dim(`#${ev.seq}`)} ${c.cyan(ev.type)}`);
+  };
+
+  // Replay: tail rauf.log + readEvents(paths) for events.ndjson (current run only).
   const tailResult = readLogTail(paths, initialLines);
   if (tailResult.ok && tailResult.value.length > 0) {
-    for (const line of tailResult.value) {
-      print(line);
-    }
+    for (const line of tailResult.value) emitLog(line);
+  }
+  const replayEvents = readEvents(paths);
+  if (replayEvents.ok) {
+    for (const ev of replayEvents.value) emitEvent(ev);
   }
 
-  // Stream new lines as they appear
+  // Tail: watchLog for rauf.log + watchEvents for events.ndjson, interleaved.
   return new Promise<number>((resolve) => {
-    let cleanup: (() => void) | null = null;
+    let stopLog: (() => void) | null = null;
+    let stopEvents: (() => void) | null = null;
 
     const stop = () => {
-      if (cleanup) {
-        cleanup();
-        cleanup = null;
+      if (stopLog) {
+        stopLog();
+        stopLog = null;
       }
+      if (stopEvents) {
+        stopEvents();
+        stopEvents = null;
+      }
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
       resolve(ExitCode.SUCCESS);
     };
 
@@ -275,33 +408,44 @@ async function handleLogFollow(paths: BacklogPaths, initialLines: number): Promi
     process.on("SIGTERM", stop);
 
     try {
-      cleanup = watchLog(paths, (newLines) => {
-        for (const line of newLines) {
-          print(line);
-        }
+      stopLog = watchLog(paths, (newLines) => {
+        for (const line of newLines) emitLog(line);
       });
     } catch {
-      // watchLog may throw if the log file doesn't exist yet — that's ok
-      // Just wait until interrupted
+      // watchLog may throw if the log file doesn't exist yet — that's ok.
     }
 
-    // If the process is not interactive (e.g. no TTY and no watch possible),
-    // we still resolve on signal only
+    try {
+      stopEvents = watchEvents(paths, (records) => {
+        for (const ev of records) emitEvent(ev);
+      });
+    } catch {
+      // events.ndjson may not exist yet — that's ok.
+    }
   });
 }
 
-// ─── Status watch mode ──────────────────────────────────────────
+// ─── Status follow mode ─────────────────────────────────────────
+//
+// Poll deriveStatus on --interval; emit on CHANGE only. In --json mode this
+// streams one DerivedStatus snapshot per change (NDJSON). Non-JSON follow is the
+// screen-clearing re-render (the human display the old --watch printed; the verb
+// changed, not the human presentation).
 
-async function handleStatusWatch(
+async function handleStatusFollow(
   projectPath: string,
   intervalSeconds: number,
-  backlogFlag?: string,
+  backlogFlag: string | undefined,
+  json: boolean,
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     let running = true;
+    let lastSerialized: string | null = null;
 
     const stop = () => {
       running = false;
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
       resolve(ExitCode.SUCCESS);
     };
     process.on("SIGINT", stop);
@@ -310,37 +454,32 @@ async function handleStatusWatch(
     const tick = () => {
       if (!running) return;
 
-      // Clear screen and move cursor to top-left
-      process.stdout.write("\x1b[2J\x1b[H");
-
-      const now = new Date().toLocaleTimeString();
-      print(c.dim(`rauf status  (${now})  Ctrl+C to stop`));
-      print("");
-
-      // Resolve paths for the target backlog root
       const rootResult = resolveBacklogRoot(projectPath, backlogFlag);
       if (!rootResult.ok) {
-        error(rootResult.error.message);
-        if (running) setTimeout(tick, intervalSeconds * 1000);
-        return;
-      }
-      const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
-      if (!pathsResult.ok) {
-        error(pathsResult.error.message);
-        if (running) setTimeout(tick, intervalSeconds * 1000);
-        return;
-      }
-
-      const result = deriveStatus(pathsResult.value);
-      if (!result.ok) {
-        error(result.error.message);
+        if (!json) error(rootResult.error.message);
       } else {
-        printStatusSummary(result.value);
+        const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+        if (pathsResult.ok) {
+          const result = deriveStatus(pathsResult.value);
+          if (result.ok) {
+            if (json) {
+              // One DerivedStatus snapshot per CHANGE (NDJSON).
+              const serialized = JSON.stringify(result.value);
+              if (serialized !== lastSerialized) {
+                lastSerialized = serialized;
+                process.stdout.write(serialized + "\n");
+              }
+            } else {
+              process.stdout.write("\x1b[2J\x1b[H");
+              print(c.dim(`rauf status  (${new Date().toLocaleTimeString()})  Ctrl+C to stop`));
+              print("");
+              printStatusSummary(result.value);
+            }
+          }
+        }
       }
 
-      if (running) {
-        setTimeout(tick, intervalSeconds * 1000);
-      }
+      if (running) setTimeout(tick, intervalSeconds * 1000);
     };
 
     tick();

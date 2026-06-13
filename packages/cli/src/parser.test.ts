@@ -61,6 +61,24 @@ describe("parseArgs", () => {
     });
   });
 
+  describe("-f follow normalization", () => {
+    it("normalizes -f to the canonical follow flag", () => {
+      const result = parseArgs(["status", ".", "-f"]);
+      expect(result.flags.has("follow")).toBe(true);
+      expect(result.flags.has("f")).toBe(false);
+    });
+
+    it("leaves an explicit --follow intact", () => {
+      const result = parseArgs(["status", ".", "--follow"]);
+      expect(result.flags.get("follow")).toBe(true);
+    });
+
+    it("does not invent a follow flag when neither -f nor --follow is present", () => {
+      const result = parseArgs(["status", "."]);
+      expect(result.flags.has("follow")).toBe(false);
+    });
+  });
+
   describe("global flags", () => {
     it("extracts --json", () => {
       const result = parseArgs(["--json", "version"]);

@@ -21,6 +21,9 @@ import {
   readBacklog,
   resolveMaxIterations,
   validatePath,
+  readEvents,
+  watchEvents,
+  listActiveLoops,
 } from "@rauf/core";
 
 import { errorResponse } from "../app.js";
@@ -89,18 +92,26 @@ const SSE_HEARTBEAT_MS = 15_000;
 
 // ─── createLoopsRouter ───────────────────────────────────────────
 //
-// GET /api/loops → list every in-flight loop across all projects.
+// GET /api/loops → list every live loop across the machine.
 //
 // Read-only; mounted at the top level (not under a project id) so the
 // CLI can ask "is anything running anywhere?" before a server-wide
 // stop/restart, which would otherwise cancel every project's loop.
+//
+// Sources from the reconciled active-loop registry (listActiveLoops),
+// NOT the in-memory manager — so an in-process `rauf loop run` the
+// server never started is still reported (REQ-WEB-03, REQ-DISC-05).
+// listActiveLoops self-heals: a crashed loop that never deregistered is
+// excluded and its stale entry unlinked, so the web never reports a dead
+// loop as live. Degrade to an empty list on registry IO error.
 
 export function createLoopsRouter(): Hono {
   const router = new Hono();
 
   router.get("/", (c) => {
-    const manager = getLoopManager();
-    return c.json({ data: { loops: manager.listActive() } });
+    const result = listActiveLoops();
+    const loops = result.ok ? result.value : [];
+    return c.json({ data: { loops } });
   });
 
   return router;
@@ -226,9 +237,13 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
 
   // ── GET /:id/loop/events ──────────────────────────────────────
   //
-  // SSE stream of LoopEvent objects. Each event is JSON-encoded.
-  // Heartbeats sent every 30s to keep the connection alive.
-  // Streams until client disconnects.
+  // SSE stream of PersistedEvent objects, sourced from the loop's
+  // events.ndjson (NOT the in-memory manager buffer): replay the current
+  // run's history via readEvents, then live-tail new appends via
+  // watchEvents. This observes ANY loop — including an in-process
+  // `rauf loop run` the server never started (REQ-WEB-01, REQ-OBS-04).
+  // Each record is JSON-encoded under the `loop_event` SSE event.
+  // Heartbeats keep the connection alive; streams until client disconnects.
 
   router.get("/:id/loop/events", (c) => {
     const id = c.req.param("id");
@@ -253,23 +268,58 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       // Immediate heartbeat so the connection is active from the start
       await stream.writeSSE({ data: new Date().toISOString(), event: "heartbeat" });
 
-      // Subscribe to loop events for this project
+      // 0. Resolve a full BacklogPaths. resolveBacklogRoot handles the optional
+      //    ?backlog= query. A *resolution* failure is distinct from graceful
+      //    *absence*: surface it to the client rather than silently tailing the
+      //    DEFAULT root's events.ndjson, which would be the wrong root and
+      //    re-introduce the cross-root "looking in the wrong place" footgun
+      //    (REQ-DISC-01/02). Do NOT fall back to the default root here.
       const backlogParam = c.req.query("backlog");
-      let resolvedBacklogRoot: string | undefined;
-      if (backlogParam) {
-        const rootResult = resolveBacklogRoot(projectPath, backlogParam);
-        if (rootResult.ok) resolvedBacklogRoot = rootResult.value;
+      const rootResult = resolveBacklogRoot(projectPath, backlogParam);
+      if (!rootResult.ok) {
+        await stream.writeSSE({
+          data: JSON.stringify({ error: rootResult.error }),
+          event: "loop_error",
+        });
+        cleanups.forEach((fn) => fn());
+        return;
       }
-      const manager = getLoopManager();
-      const unsubscribe = manager.subscribe(
-        projectPath,
-        (event) => {
-          if (stream.aborted || stream.closed) return;
-          stream.writeSSE({ data: JSON.stringify(event), event: "loop_event" }).catch(() => {});
-        },
-        resolvedBacklogRoot,
-      );
-      cleanups.push(unsubscribe);
+
+      // resolveBacklogPaths failure → graceful absence: a resolved root with no
+      // backlog.json yet. Run a heartbeat-only stream (no replay, no tail); once
+      // a backlog.json exists, a reconnect streams normally (REQ-REL-03).
+      const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
+      const paths = pathsResult.ok ? pathsResult.value : undefined;
+
+      if (paths) {
+        // 1. History replay (REQ-OBS-04): the current run's events.ndjson in seq
+        //    order. Missing file → ok([]) (REQ-REL-03) → empty timeline, no error.
+        const replay = readEvents(paths);
+        if (replay.ok) {
+          for (const record of replay.value) {
+            if (stream.aborted || stream.closed) break;
+            await stream.writeSSE({ data: JSON.stringify(record), event: "loop_event" });
+          }
+        }
+
+        // 2. Live tail (REQ-WEB-01): watchEvents fires with newly-appended
+        //    PersistedEvents. It throws synchronously if events.ndjson is absent
+        //    (no file to watch yet); tolerate that — the heartbeat keeps the
+        //    connection alive and a reconnect picks the file up once it exists.
+        try {
+          const stopTail = watchEvents(paths, (records) => {
+            if (stream.aborted || stream.closed) return;
+            for (const record of records) {
+              stream
+                .writeSSE({ data: JSON.stringify(record), event: "loop_event" })
+                .catch(() => {});
+            }
+          });
+          cleanups.push(stopTail);
+        } catch {
+          /* events.ndjson not present yet — heartbeat-only until reconnect */
+        }
+      }
 
       // Heartbeat every 15s
       const heartbeatInterval = setInterval(() => {

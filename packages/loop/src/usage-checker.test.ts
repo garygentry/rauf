@@ -31,7 +31,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     await checkUsageLimit("test-token-123");
 
@@ -57,7 +57,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     await checkUsageLimit("token");
 
@@ -75,7 +75,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result).toEqual({ limited: false });
@@ -91,7 +91,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result.limited).toBe(true);
@@ -110,7 +110,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result.limited).toBe(true);
@@ -128,7 +128,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result.limited).toBe(true);
@@ -147,7 +147,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result.limited).toBe(true);
@@ -164,7 +164,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result.retryAfter).toBeGreaterThan(3500);
@@ -181,7 +181,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result.retryAfter).toBe(0);
@@ -190,7 +190,7 @@ describe("checkUsageLimit", () => {
   it("returns { limited: false } on network error", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error("Network error: ECONNREFUSED");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result).toEqual({ limited: false });
@@ -200,7 +200,7 @@ describe("checkUsageLimit", () => {
   it("returns { limited: false } on HTTP error status", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response("Unauthorized", { status: 401, statusText: "Unauthorized" });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result).toEqual({ limited: false });
@@ -213,7 +213,7 @@ describe("checkUsageLimit", () => {
         status: 500,
         statusText: "Internal Server Error",
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result).toEqual({ limited: false });
@@ -223,7 +223,7 @@ describe("checkUsageLimit", () => {
   it("returns { limited: false } on malformed JSON response", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response("not json", { status: 200 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result).toEqual({ limited: false });
@@ -239,7 +239,7 @@ describe("checkUsageLimit", () => {
         }),
         { status: 200 },
       );
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
     expect(result).toEqual({ limited: false });

@@ -233,7 +233,7 @@ When running as a rauf loop iteration, follow these operational rules:
 7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
 8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
-10. Commit your changes with message: `[rauf] <item-id>: <title>`
+10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
 ### Rules
 
@@ -327,7 +327,7 @@ If any command is not configured (empty), skip it.
 4. Read `.rauf/progress.md` for context from previous iterations
 5. Implement the task
 6. Run verification: `{{verifyCommand}}`
-7. Commit with: `[rauf] <id>: <title>`
+7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as `[rauf] <id>: <title>` after you signal `RAUF_DONE`).
 8. Output your exit signal:
    - `RAUF_DONE` — all criteria met
    - `RAUF_BLOCKED:<reason>` — cannot proceed

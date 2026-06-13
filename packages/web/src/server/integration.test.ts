@@ -316,7 +316,7 @@ describe("API Integration: status round-trip", () => {
     expect(res.status).toBe(200);
 
     const body = (await json(res)) as {
-      data: { state: string; backlogSummary: { total: number } };
+      data: { loopState: string; backlogSummary: { total: number } };
     };
     expect(body.data.loopState).toBe("IDLE");
     expect(body.data.backlogSummary.total).toBe(0); // Empty backlog
@@ -340,7 +340,7 @@ describe("API Integration: status round-trip", () => {
     const res = await app.request(`/api/projects/${projectName}/status`);
     expect(res.status).toBe(200);
 
-    const body = (await json(res)) as { data: { state: string; currentItem: string } };
+    const body = (await json(res)) as { data: { loopState: string; currentItem: string } };
     expect(body.data.loopState).toBe("RUNNING");
     expect(body.data.currentItem).toBe("001");
   });

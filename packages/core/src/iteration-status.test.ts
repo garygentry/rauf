@@ -126,6 +126,7 @@ describe("iteration-status", () => {
       iterationStatus: path.join(customStateDir, "iteration-status.json"),
       archive: path.join(customStateDir, "archive"),
       lock: path.join(customStateDir, ".loop.lock"),
+      eventsLog: path.join(customStateDir, "events.ndjson"),
     };
 
     const status = makeStatus({ currentTool: "Write" });

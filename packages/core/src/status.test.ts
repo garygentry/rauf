@@ -119,9 +119,15 @@ function writeIterationStatusFile(updatedAt: string = new Date().toISOString()):
   );
 }
 
-/** Create a minimal valid LoopState */
-function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
-  return {
+/**
+ * Create a minimal valid LoopState.
+ *
+ * The return type narrows `updatedAt` to a non-null `string` (the helper always
+ * supplies one) so the result is directly assignable to both `LoopState` and the
+ * `writeLoopState` parameter shape (which accepts `updatedAt?: string`).
+ */
+function makeLoopState(overrides: Partial<LoopState> = {}): LoopState & { updatedAt: string } {
+  const base: LoopState = {
     status: "running",
     iteration: 2,
     maxIterations: 10,
@@ -133,13 +139,16 @@ function makeLoopState(overrides: Partial<LoopState> = {}): LoopState {
     blockedItems: [],
     deferredItems: [],
     error: null,
+    baseCommitHash: null,
     ...overrides,
   };
+  return { ...base, updatedAt: base.updatedAt ?? new Date().toISOString() };
 }
 
 /** Create a minimal valid Backlog */
 function makeBacklog(items: BacklogItem[] = [], overrides: Partial<Backlog> = {}): Backlog {
   return {
+    schemaVersion: "1",
     project: "test-project",
     description: "A test project",
     items,
@@ -1104,7 +1113,7 @@ describe("writeLoopState", () => {
     // Missing iteration and other required fields
     const partialState = {
       status: "running",
-    } as unknown as LoopState;
+    } as unknown as Parameters<typeof writeLoopState>[1];
 
     const result = writeLoopState(makePaths(), partialState);
     expect(result.ok).toBe(false);

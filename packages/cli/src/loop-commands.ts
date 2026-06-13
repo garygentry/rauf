@@ -1,27 +1,22 @@
 // ─── Loop Command Handlers ──────────────────────────────────────────
 //
-// Implements: rauf loop start/stop/follow/run
+// Implements: rauf loop start/stop/run/review
 //
 // Smart routing:
 //   start  → auto-starts server daemon if not running, POST to server API
 //   stop   → POST to server API, error if server not running
-//   follow → SSE stream from server, format events for terminal
 //   run    → direct mode, creates LoopRunner in-process (no server)
+//
+// The live-view verb is the top-level `follow` command (follow-command.ts);
+// the old `loop follow` / `loop watch` monitor verbs were removed (clean break).
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
   readToolConfig,
   LoopStartOptionsSchema,
-  readIterationStatus,
   type LoopEvent,
-  type IterationStatus,
-  deriveStatus,
-  readLogTail,
-  watchLog,
   unblockItems,
-  defaultBacklogPaths,
   resolveBacklogRoot,
   resolveBacklogPaths,
   checkLock,
@@ -399,7 +394,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
       }
 
       if (!ctx.globalFlags.json) {
-        info(`Follow: ${c.cyan(`rauf loop follow ${ctx.args[0] ?? "."}`)}`);
+        info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
       }
       return ExitCode.SUCCESS;
     }
@@ -564,151 +559,6 @@ async function streamEventsUntilDone(url: string, sl?: StatusLine): Promise<numb
         finish(ExitCode.ERROR);
       });
   });
-}
-
-// ─── followDirectMode ───────────────────────────────────────────────
-
-/** Terminal states that indicate the loop is no longer active */
-const TERMINAL_LOOP_STATES: ReadonlySet<string> = new Set([
-  "IDLE",
-  "COMPLETE",
-  "ERROR",
-  "PAUSED",
-  "PAUSED_HUMAN",
-  "LIMIT_REACHED",
-  "WEEKLY_LIMIT",
-]);
-
-const DIRECT_MODE_POLL_MS = 2000;
-
-/**
- * Follow loop output in direct mode by tailing .rauf/rauf.log
- * and polling deriveStatus() to detect when the loop stops.
- */
-async function followDirectMode(projectPath: string, paths?: BacklogPaths): Promise<number> {
-  const id = projectId(projectPath);
-  const resolvedPaths = paths ?? defaultBacklogPaths(projectPath);
-
-  // Check if a loop is currently active
-  const statusResult = deriveStatus(resolvedPaths);
-  if (!statusResult.ok) {
-    error(`Failed to read project status: ${statusResult.error.message}`);
-    return ExitCode.ERROR;
-  }
-
-  const { loopState } = statusResult.value;
-  if (loopState !== "RUNNING" && loopState !== "SLEEPING_LIMIT") {
-    error(`No active loop for ${c.cyan(id)} (state: ${loopState}).`);
-    info(`Start a loop with ${c.cyan("rauf loop run .")} or ${c.cyan("rauf loop start .")}`);
-    return ExitCode.ERROR;
-  }
-
-  // Print recent log lines for context
-  const tailResult = readLogTail(resolvedPaths, 20);
-  if (tailResult.ok && tailResult.value.length > 0) {
-    info(c.dim("─── recent log ───"));
-    for (const line of tailResult.value) {
-      print(c.dim(line));
-    }
-    info(c.dim("─── live tail ────"));
-  }
-
-  info(`Following loop output for ${c.cyan(id)}...`);
-  info(c.dim("Press Ctrl+C to stop."));
-
-  return new Promise<number>((resolve) => {
-    let resolved = false;
-    let stopWatcher: (() => void) | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-    let watcherActive = false;
-
-    const finish = (code: number) => {
-      if (resolved) return;
-      resolved = true;
-      if (pollTimer) clearInterval(pollTimer);
-      if (stopWatcher) stopWatcher();
-      process.removeListener("SIGINT", onSignal);
-      process.removeListener("SIGTERM", onSignal);
-      resolve(code);
-    };
-
-    const onSignal = () => finish(ExitCode.SUCCESS);
-    process.on("SIGINT", onSignal);
-    process.on("SIGTERM", onSignal);
-
-    // Try to start watching the log file
-    const tryStartWatcher = () => {
-      if (watcherActive) return;
-      try {
-        stopWatcher = watchLog(resolvedPaths, (lines) => {
-          for (const line of lines) {
-            print(line);
-          }
-        });
-        watcherActive = true;
-      } catch {
-        // Log file doesn't exist yet — will retry on next poll
-      }
-    };
-
-    tryStartWatcher();
-
-    // Poll deriveStatus to detect terminal states
-    pollTimer = setInterval(() => {
-      // Retry watcher setup if it hasn't started yet
-      if (!watcherActive) tryStartWatcher();
-
-      const result = deriveStatus(resolvedPaths);
-      if (!result.ok) return;
-
-      if (TERMINAL_LOOP_STATES.has(result.value.loopState)) {
-        print("");
-        info(`Loop ended (${result.value.loopState}).`);
-        finish(result.value.loopState === "ERROR" ? ExitCode.ERROR : ExitCode.SUCCESS);
-      }
-    }, DIRECT_MODE_POLL_MS);
-  });
-}
-
-// ─── handleLoopFollow ───────────────────────────────────────────────
-
-export async function handleLoopFollow(ctx: CommandContext): Promise<number> {
-  const projectPath = resolveProjectPath(ctx);
-  const id = projectId(projectPath);
-  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
-
-  // Server mode: existing SSE streaming behavior
-  if (isServerRunning()) {
-    const port = getPort();
-    const eventsUrl = apiUrl(port, id, "events");
-    const url = backlogFlag ? `${eventsUrl}?backlog=${encodeURIComponent(backlogFlag)}` : eventsUrl;
-
-    info(`Following loop events for ${c.cyan(id)}...`);
-    info(c.dim("Press Ctrl+C to stop."));
-
-    const statusLine = new StatusLine({
-      isTTY: process.stdout.isTTY ?? false,
-      quiet: ctx.globalFlags.quiet,
-      json: ctx.globalFlags.json,
-      noColor: ctx.globalFlags.noColor,
-    });
-
-    return streamEventsUntilDone(url, statusLine);
-  }
-
-  // Direct mode: resolve paths for correct log file location
-  const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-  if (!backlogRootResult.ok) {
-    error(backlogRootResult.error.message);
-    return ExitCode.ERROR;
-  }
-  const pathsResult = resolveBacklogPaths(projectPath, backlogRootResult.value);
-  if (!pathsResult.ok) {
-    error(pathsResult.error.message);
-    return ExitCode.ERROR;
-  }
-
-  return followDirectMode(projectPath, pathsResult.value);
 }
 
 /** Connect to an SSE endpoint, parse events, and invoke callback for each LoopEvent */
@@ -1380,129 +1230,6 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       print(`${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}`);
       break;
   }
-}
-
-// ─── handleLoopWatch ─────────────────────────────────────────────
-
-export async function handleLoopWatch(ctx: CommandContext): Promise<number> {
-  const projectPath = resolveProjectPath(ctx);
-  const jsonOutput = ctx.globalFlags.json;
-  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
-
-  // Resolve backlog paths
-  const backlogRootResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-  if (!backlogRootResult.ok) {
-    error(backlogRootResult.error.message);
-    return ExitCode.ERROR;
-  }
-  const pathsResult = resolveBacklogPaths(projectPath, backlogRootResult.value);
-  if (!pathsResult.ok) {
-    error(pathsResult.error.message);
-    return ExitCode.ERROR;
-  }
-  const watchPaths = pathsResult.value;
-
-  // Initial read
-  const initial = readIterationStatus(watchPaths);
-  if (!initial) {
-    if (jsonOutput) {
-      outputJson({ status: "no_iteration" });
-    } else {
-      info("No active iteration. Waiting for iteration-status.json...");
-    }
-  } else {
-    renderWatchOutput(initial, jsonOutput);
-  }
-
-  return new Promise<number>((resolve) => {
-    let resolved = false;
-    let watcher: fs.FSWatcher | undefined;
-
-    const finish = (code: number) => {
-      if (resolved) return;
-      resolved = true;
-      watcher?.close();
-      process.removeListener("SIGINT", onSignal);
-      process.removeListener("SIGTERM", onSignal);
-      resolve(code);
-    };
-
-    const onSignal = () => finish(ExitCode.SUCCESS);
-    process.on("SIGINT", onSignal);
-    process.on("SIGTERM", onSignal);
-
-    const watchDir = path.dirname(watchPaths.iterationStatus);
-
-    try {
-      watcher = fs.watch(watchDir, (eventType, filename) => {
-        if (filename !== "iteration-status.json") return;
-
-        const status = readIterationStatus(watchPaths);
-        if (status) {
-          renderWatchOutput(status, jsonOutput);
-        } else {
-          // File was deleted — iteration ended
-          if (jsonOutput) {
-            outputJson({ status: "iteration_ended" });
-          } else {
-            print("");
-            info("Iteration ended (status file removed).");
-          }
-          finish(ExitCode.SUCCESS);
-        }
-      });
-
-      watcher.on("error", () => {
-        error(`Watch error on ${path.relative(process.cwd(), watchDir)} directory`);
-        finish(ExitCode.ERROR);
-      });
-    } catch (e) {
-      error(`Cannot watch directory: ${e instanceof Error ? e.message : String(e)}`);
-      finish(ExitCode.ERROR);
-    }
-  });
-}
-
-function renderWatchOutput(status: IterationStatus, json: boolean): void {
-  if (json) {
-    outputJson(status);
-    return;
-  }
-
-  const elapsed = formatElapsedWatch(status.startedAt);
-  const lastAgo = formatAgo(status.lastActivityAt);
-  const inK = (status.tokens.input / 1000).toFixed(1);
-  const outK = (status.tokens.output / 1000).toFixed(1);
-  const toolLine = status.currentTool
-    ? `${c.cyan("\u2192")} ${status.currentTool}`
-    : c.dim("(idle)");
-  const stuckLine = status.stuckWarning ? `  ${c.yellow("\u26A0 Possibly stuck")}` : "";
-
-  // Clear screen and render
-  process.stdout.write("\x1b[2J\x1b[H");
-  print(`${c.bold("Item")} #${status.itemId}`);
-  print(`${c.bold("Phase:")} tool_use ${toolLine}${stuckLine}`);
-  print(`${c.bold("Tokens:")} ${c.cyan(`${inK}k`)} in / ${c.cyan(`${outK}k`)} out`);
-  print(`${c.bold("Active for")} ${elapsed} | ${c.bold("Last activity:")} ${lastAgo}`);
-  if (status.recentTools.length > 0) {
-    print(`${c.bold("Recent:")} ${c.dim(status.recentTools.join(", "))}`);
-  }
-}
-
-function formatElapsedWatch(isoTimestamp: string): string {
-  const ms = Date.now() - new Date(isoTimestamp).getTime();
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  if (totalSec < 60) return `${totalSec}s`;
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}m ${s}s`;
-}
-
-function formatAgo(isoTimestamp: string): string {
-  const ms = Date.now() - new Date(isoTimestamp).getTime();
-  const sec = Math.max(0, Math.floor(ms / 1000));
-  if (sec < 60) return `${sec}s ago`;
-  return `${Math.floor(sec / 60)}m ago`;
 }
 
 /** Format ISO timestamp to HH:MM:SS */
