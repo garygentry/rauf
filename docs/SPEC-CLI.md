@@ -21,7 +21,6 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | ------------------------------------- | -------------------------------------------------------------- |
 | [loop start](#rauf-loop-start-path)   | Start a loop via the server API (auto-starts server if needed) |
 | [loop stop](#rauf-loop-stop-path)     | Stop a running loop gracefully                                 |
-| [loop follow](#rauf-loop-follow-path) | Stream live events from a running loop                         |
 | [loop run](#rauf-loop-run-path)       | Run a loop directly in-process (no server required)            |
 | [loop review](#rauf-loop-review-path) | Run a standalone review pass over completed backlog items      |
 
@@ -161,15 +160,6 @@ Stop a running loop gracefully for the project at `[path]` (defaults to `.`).
 - Sends a graceful cancel via `POST /api/projects/:id/loop/stop`
 - Requires the server to be running (does not auto-start)
 - Returns exit code 3 if no active loop found for the project
-
-### rauf loop follow [path]
-
-Attach to a running loop and stream its events to the terminal.
-
-- Connects to `GET /api/projects/:id/loop/events` (SSE)
-- Events are formatted with colors and Unicode icons (iteration, item selection, signals, etc.)
-- Requires the server to be running
-- Runs until the loop completes or Ctrl+C
 
 ### rauf loop run [path]
 
@@ -444,8 +434,9 @@ Show a status summary for the project at `[path]`.
 - **Last signal:** the `lastSignal` from `state.json` (e.g. `clean`, `blocked`, `needs_human`)
 - **Blocked breakdown:** `Blocked: N` (genuine agent blocks) and `Deferred: N` (runner false-blocks — items with `deferred: true`) are shown separately so the aftermath of a usage-limit event is legible
 - Indicates state source: "via state.json" or "via log parsing (fallback)"
-- `--watch`: continuously refresh the status display (clears and redraws screen)
-- `--interval N`: refresh interval in seconds (default: 2, requires `--watch`)
+- `--follow` / `-f`: continuously refresh the status display (clears and redraws screen), runs until Ctrl+C
+- `--interval N`: refresh interval in seconds (default: 2, applies under `--follow`)
+- `--all`: list every live loop machine-wide (reads the active-loop registry), not just the loop at `[path]`
 
 - `--json`: emit the `DerivedStatus` object. This is a **machine-observation surface** with a versioned compatibility promise — see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the canonical field/enum list and the blocked-vs-needsHuman-vs-deferred distinction.
 
@@ -463,7 +454,20 @@ Show a status summary for the project at `[path]`.
 Tail the rauf loop log file (`.rauf/rauf.log`) for the project at `[path]`.
 
 - `--tail N`: show the last N lines (default: 20)
-- `--follow`: stream new lines as they are written (tail -f behavior), runs until Ctrl+C
+- `--follow` / `-f`: stream new lines as they are written (tail -f behavior), runs until Ctrl+C
+
+### rauf follow [path]
+
+Attach to a loop and stream its events to the terminal — the single canonical live-view verb (replaces the removed `loop follow` and `status --watch`). File-backed: replays the current run's `.rauf/events.ndjson`, then tails it for new events. **Does not require the server.**
+
+- Replays the current run's events, then follows (`readEvents` + `watchEvents`), polling `state.json` (`deriveStatus`) for the terminal state
+- Replays the **current run only** — it does not stitch the archived (`archive/`) logs
+- `--json`: emit events as NDJSON (one JSON event per line)
+- `--interval N`: terminal-state poll interval in seconds (default: 2)
+- `--backlog <dir>`: follow a specific backlog directory's loop
+- Runs until the loop reaches a terminal state or Ctrl+C
+
+> Note: `--follow` / `-f` is the one **monitoring** follow flag, shared by `status`, `log`, and `follow`. It is distinct from the unrelated `--follow` **execution** convenience flag on `loop start` (which streams SSE inline after starting a server-run loop).
 
 ### rauf progress [path]
 
@@ -619,6 +623,6 @@ Machine-readable (`--json`):
 
 ## Headless vs Server Mode
 
-The loop commands (`loop start`, `loop stop`, `loop follow`) require the server. All other commands call `packages/core` functions directly in-process and work without the server running.
+The loop commands (`loop start`, `loop stop`) require the server. All other commands — including the top-level `follow` (file-backed) — call `packages/core` functions directly in-process and work without the server running.
 
 `loop start` automatically starts the server daemon if it is not already running, so you rarely need to manage the server manually.

@@ -133,4 +133,35 @@ describe("handleFollow", () => {
     const code = await handleFollow(makeCtx([tmpDir]));
     expect(code).toBe(ExitCode.SUCCESS);
   });
+
+  it("does not stitch the archived log — replays the current run only (REQ-OBS-04, §3.2)", async () => {
+    // 07-testing-strategy.md §3.2(b): follow replays the CURRENT run's
+    // events.ndjson, never the rotated archive/{ts}-events.ndjson from prior runs.
+    const raufDir = createRaufDir(tmpDir);
+    createTerminalState(raufDir);
+    writeEvents(raufDir, tmpDir); // current run: loop_started seq0, iteration_start seq1
+
+    // A prior run's archived events sit alongside — they must NOT be replayed.
+    const archiveDir = path.join(raufDir, "archive");
+    fs.mkdirSync(archiveDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(archiveDir, "20260101-000000-events.ndjson"),
+      JSON.stringify({
+        type: "loop_started",
+        timestamp: new Date().toISOString(),
+        projectPath: "/ARCHIVED_SENTINEL",
+        maxIterations: 5,
+        seq: 0,
+        schemaVersion: "1",
+      }) + "\n",
+    );
+
+    const code = await handleFollow(makeCtx([tmpDir], true));
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    // The current run is replayed...
+    expect(written).toContain("iteration_start");
+    // ...but nothing from the archived run is stitched in.
+    expect(written).not.toContain("ARCHIVED_SENTINEL");
+  });
 });

@@ -429,6 +429,34 @@ describe("GET /:id/loop/events", () => {
     // The default root's seeded event must NOT have leaked through.
     expect(buf).not.toContain("event: loop_event");
   });
+
+  it("tolerates a torn trailing line in events.ndjson — replays complete records, no 500 (REQ-REL-01)", async () => {
+    // Concurrent-tail safety (07-testing-strategy.md §5): tailing while a writer
+    // appends only ever exposes a torn TRAILING line. readNdjson skips it, so the
+    // endpoint must stay 200 (never 500) and replay only the complete records.
+    const projectPath = createProject("test-project");
+    seedEvents(projectPath, [loopStarted(projectPath, 0), loopStarted(projectPath, 1)]);
+    // Simulate a writer caught mid-append: a partial trailing line, no newline.
+    fs.appendFileSync(
+      path.join(projectPath, ".rauf", EVENTS_LOG_FILENAME),
+      '{"type":"loop_started","projectPath":"x","maxIterations":5,"seq":2,"schemaVer',
+    );
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/events", {
+      method: "GET",
+    });
+    // The torn line must not turn into a 500 — the whole point of REQ-REL-01.
+    expect(res.status).toBe(200);
+
+    const buf = await readSSEUntil(res, (b) => (b.match(/event: loop_event/g) ?? []).length >= 2);
+    // Exactly the two complete records replay; the torn fragment is skipped.
+    expect((buf.match(/event: loop_event/g) ?? []).length).toBe(2);
+    expect(buf).toContain('"seq":0');
+    expect(buf).toContain('"seq":1');
+    expect(buf).not.toContain('"seq":2');
+    expect(buf).not.toContain("event: loop_error");
+  });
 });
 
 // ─── GET /api/loops ──────────────────────────────────────────────

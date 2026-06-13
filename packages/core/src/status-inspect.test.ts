@@ -22,7 +22,7 @@ vi.mock("./config.js", async (importOriginal) => {
   return { ...actual, TOOL_CONFIG_DIR: nodePath.join(TMP_HOME, ".rauf") };
 });
 
-import { deriveStatus, surfaceInspectedStatus } from "./status.js";
+import { deriveStatus, surfaceInspectedStatus, surfaceInspectedDir } from "./status.js";
 import { registerLoop } from "./loop-registry.js";
 import { STATE_FILENAME, LOCK_FILENAME, defaultBacklogPaths } from "./backlog-root.js";
 import type { BacklogPaths } from "./backlog-root.js";
@@ -163,5 +163,30 @@ describe("surfaceInspectedStatus", () => {
     const ctx = surfaceInspectedStatus(paths, status.value);
     expect(ctx.empty).toBe(false);
     expect(ctx.inspectedDir).toBe(paths.stateDir);
+  });
+});
+
+describe("surfaceInspectedDir (raw-dir entry point)", () => {
+  it("surfaces the inspected dir + cross-root liveness without resolved paths/status", () => {
+    // The not-installed/unresolvable branch has no BacklogPaths/DerivedStatus,
+    // only a raw state-dir path — but must still surface cross-root liveness via
+    // the same core data layer (REQ-DISC-01/02).
+    const other = registerLiveLoopElsewhere();
+    const rawDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "rauf-status-raw-")), ".rauf");
+
+    const ctx = surfaceInspectedDir(rawDir, true);
+    expect(ctx.inspectedDir).toBe(rawDir);
+    expect(ctx.empty).toBe(true);
+    expect(ctx.liveElsewhere).toHaveLength(1);
+    expect(ctx.liveElsewhere[0]!.stateDir).toBe(other.stateDir);
+  });
+
+  it("excludes the inspected dir itself from liveElsewhere", () => {
+    const other = registerLiveLoopElsewhere();
+
+    // Passing the live loop's own stateDir as the inspected dir → it is filtered out.
+    const ctx = surfaceInspectedDir(other.stateDir, false);
+    expect(ctx.empty).toBe(false);
+    expect(ctx.liveElsewhere).toEqual([]);
   });
 });

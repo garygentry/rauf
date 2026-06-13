@@ -2,9 +2,17 @@
   "feature": "ux-overhaul",
   "pipelineStatus": "active",
   "createdAt": "2026-06-12T00:00:00Z",
-  "updatedAt": "2026-06-13T00:07:36Z",
+  "updatedAt": "2026-06-13T00:20:00Z",
   "currentStage": "forge-6-docs",
   "stages": {
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul/.verification/VERIFY-impl-2026-06-13.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-13T00:20:00Z",
+      "fixedAt": "2026-06-13T00:45:00Z",
+      "result": "4-way parallel forge-verifier fan-out (req-coverage, integration, testing, code-quality). All gates PASS (typecheck/lint/format clean; 0 errors). 6 findings all applied: Step1 V-001/V-002 (stale loop-follow/status--watch refs in CLI hint + docs/SPEC-CLI.md), Step2 V-004/V-005/V-006 (added 7 spec-required tests), Step3 V-003 (option a: adopted core surfaceInspectedStatus/new surfaceInspectedDir data layer; CLI now pure presenter). Post-fix: typecheck/lint/format exit 0; tests 1818 green (core 910, loop 290, cli 419, web 199)."
+    },
     "forge-5-loop": {
       "status": "complete",
       "startedAt": "2026-06-12T22:50:49Z",

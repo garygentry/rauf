@@ -394,7 +394,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
       }
 
       if (!ctx.globalFlags.json) {
-        info(`Follow: ${c.cyan(`rauf loop follow ${ctx.args[0] ?? "."}`)}`);
+        info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
       }
       return ExitCode.SUCCESS;
     }

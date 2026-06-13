@@ -422,7 +422,20 @@ export function surfaceInspectedStatus(
   paths: BacklogPaths,
   status: DerivedStatus,
 ): InspectedStatusContext {
-  const inspectedDir = paths.stateDir;
+  return surfaceInspectedDir(paths.stateDir, status.stateSource === "none");
+}
+
+/**
+ * Surface the inspected directory + cross-root liveness from a raw state-dir
+ * path, for the case where no `DerivedStatus`/`BacklogPaths` could be resolved
+ * (e.g. an uninstalled or unresolvable root) but the read must still never go
+ * silent (REQ-DISC-01/02). `surfaceInspectedStatus` delegates here so the
+ * cross-root filtering lives in exactly one place.
+ *
+ * @param inspectedDir the state directory that was inspected
+ * @param empty        whether the inspected root has no usable state of its own
+ */
+export function surfaceInspectedDir(inspectedDir: string, empty: boolean): InspectedStatusContext {
   const inspectedResolved = path.resolve(inspectedDir);
 
   // Registry status is advisory; a registry read failure must not hide the
@@ -432,11 +445,7 @@ export function surfaceInspectedStatus(
     ? live.value.filter((e) => path.resolve(e.stateDir) !== inspectedResolved)
     : [];
 
-  return {
-    inspectedDir,
-    empty: status.stateSource === "none",
-    liveElsewhere,
-  };
+  return { inspectedDir, empty, liveElsewhere };
 }
 
 // ─── readLogTail ────────────────────────────────────────────────

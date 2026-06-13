@@ -18,11 +18,13 @@ import {
   scanActiveRoots,
   detectMigrationState,
   listActiveLoops,
+  surfaceInspectedStatus,
+  surfaceInspectedDir,
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
   type PersistedEvent,
-  type ActiveLoopEntry,
+  type InspectedStatusContext,
 } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
@@ -88,7 +90,10 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 
     printStatusSummary(result.value);
     if (result.value.stateSource === "none") {
-      surfaceEmptyNotSilent(pathsResult.value.stateDir, ctx.globalFlags.json);
+      renderInspectedStatus(
+        surfaceInspectedStatus(pathsResult.value, result.value),
+        ctx.globalFlags.json,
+      );
     }
     return statusExitCode(result.value.loopState);
   } else {
@@ -110,8 +115,9 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
       }
       // No installed/usable state at the default root and not a legacy project:
       // never go silent — name the inspected directory and surface any loop live
-      // elsewhere on the machine (REQ-DISC-01/02).
-      surfaceEmptyNotSilent(defaultRoot, ctx.globalFlags.json);
+      // elsewhere on the machine (REQ-DISC-01/02). No resolved paths/status here,
+      // so use the raw-dir entry point into the same core data layer.
+      renderInspectedStatus(surfaceInspectedDir(defaultRoot, true), ctx.globalFlags.json);
       return ExitCode.SUCCESS;
     }
 
@@ -135,7 +141,10 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 
       printStatusSummary(status);
       if (status.stateSource === "none") {
-        surfaceEmptyNotSilent(defaultPathsResult.value.stateDir, ctx.globalFlags.json);
+        renderInspectedStatus(
+          surfaceInspectedStatus(defaultPathsResult.value, status),
+          ctx.globalFlags.json,
+        );
       }
     }
 
@@ -165,24 +174,20 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
 // ─── Empty-is-never-silent surfacing ─────────────────────────────
 //
 // Render the empty-is-never-silent footer (REQ-DISC-01/02). Names the inspected
-// directory, then consults the reconciled active-loop registry and, if a loop is
-// live in a DIFFERENT root, names that root and its (advisory) state. The
-// registry read is reconciled + self-healed (a crashed loop never appears); a
-// registry-read failure still names the inspected directory and simply omits the
-// cross-root section (REQ-DISC-01 holds even when REQ-DISC-02 cannot).
+// directory, then, if a loop is live in a DIFFERENT root, names that root and its
+// (advisory) state. The cross-root DATA (registry read, reconciliation, self-heal,
+// and the exclude-self filter) is the core `surfaceInspectedStatus` /
+// `surfaceInspectedDir` data layer (item 008) — this is presentation only, so the
+// filtering lives in exactly one place (no CLI/core drift).
 
-function surfaceEmptyNotSilent(inspectedDir: string, json: boolean): void {
-  const inspectedResolved = path.resolve(inspectedDir);
-  const live = listActiveLoops();
-  const elsewhere: ActiveLoopEntry[] = live.ok
-    ? live.value.filter((e) => path.resolve(e.stateDir) !== inspectedResolved)
-    : [];
+function renderInspectedStatus(context: InspectedStatusContext, json: boolean): void {
+  const { inspectedDir, empty, liveElsewhere } = context;
 
   if (json) {
     outputJson({
       inspected: inspectedDir,
-      empty: true,
-      liveElsewhere: elsewhere.map((e) => ({
+      empty,
+      liveElsewhere: liveElsewhere.map((e) => ({
         backlogRoot: e.backlogRoot,
         stateDir: e.stateDir,
         status: e.status,
@@ -193,11 +198,11 @@ function surfaceEmptyNotSilent(inspectedDir: string, json: boolean): void {
   }
 
   info(`No loop activity in ${c.cyan(inspectedDir)}.`); // (a) name the inspected directory
-  if (elsewhere.length > 0) {
+  if (liveElsewhere.length > 0) {
     // (b) surface live loops in other roots
     print("");
     print(c.bold("A loop is live in another backlog root:"));
-    for (const e of elsewhere) {
+    for (const e of liveElsewhere) {
       print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid})`)}`);
     }
     info(

@@ -2,8 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
+import { EVENTS_SCHEMA_VERSION } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
 
@@ -1360,6 +1361,103 @@ fi`,
       } finally {
         process.env.HOME = origHome;
       }
+    });
+  });
+
+  // ── Event persistence: token coalescing + per-run seq density (REQ-EVT-02/03, SC-6) ──
+  // Spec: 07-testing-strategy.md §2.1. persistEvent() coalesces llm_token_update
+  // writes to ~1 per TOKEN_COALESCE_MS in the FILE while still emitting them
+  // in-memory, and assigns a dense per-run `seq` ONLY when a record is actually
+  // written (so coalesced/dropped token updates consume no seq). Driven with a
+  // fake clock since persistEvent reads Date.now() directly.
+  describe("event persistence: coalescing + seq density", () => {
+    function persist(runner: LoopRunner, event: LoopEvent): void {
+      (runner as unknown as { persistEvent(e: LoopEvent): void }).persistEvent(event);
+    }
+    function tokenUpdate(): LoopEvent {
+      return {
+        type: "llm_token_update",
+        timestamp: new Date().toISOString(),
+        projectPath: tmpDir,
+        itemId: "001",
+        inputTokens: 100,
+        outputTokens: 2,
+      } as LoopEvent;
+    }
+    function iterationStart(iteration: number): LoopEvent {
+      return {
+        type: "iteration_start",
+        timestamp: new Date().toISOString(),
+        projectPath: tmpDir,
+        iteration,
+        maxIterations: 10,
+      } as LoopEvent;
+    }
+    function readRecords(): Array<Record<string, unknown>> {
+      const file = path.join(tmpDir, ".rauf", "events.ndjson");
+      if (!fs.existsSync(file)) return [];
+      return fs
+        .readFileSync(file, "utf-8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("coalesces a token-update burst to one file record per window, always writes structural events, and keeps seq dense (coalesced updates consume no seq)", () => {
+      setupProject(tmpDir, [pendingItem("001", "X")]);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+
+      // First token update → written to file (seq 0).
+      persist(runner, tokenUpdate());
+      // Two more within the same TOKEN_COALESCE_MS window → dropped from file.
+      vi.setSystemTime(1_000_400);
+      persist(runner, tokenUpdate());
+      vi.setSystemTime(1_000_800);
+      persist(runner, tokenUpdate());
+      // A structural event interleaved in the same window → ALWAYS written (seq 1).
+      persist(runner, iterationStart(1));
+      // Advance past the window → the next token update is written (seq 2).
+      vi.setSystemTime(1_002_000);
+      persist(runner, tokenUpdate());
+
+      const records = readRecords();
+
+      // Only 2 token records (the first + the one after the window); 2 dropped.
+      expect(records.filter((r) => r.type === "llm_token_update")).toHaveLength(2);
+      // The interleaved structural event is never coalesced.
+      expect(records.filter((r) => r.type === "iteration_start")).toHaveLength(1);
+      // seq is dense (0,1,2) with no gaps — coalesced token updates consumed no seq.
+      expect(records.map((r) => r.seq)).toEqual([0, 1, 2]);
+      // Every persisted record carries the schemaVersion envelope.
+      expect(records.every((r) => r.schemaVersion === EVENTS_SCHEMA_VERSION)).toBe(true);
+      // File order reflects write order: token(0), iteration_start(1), token(2).
+      expect(records.map((r) => r.type)).toEqual([
+        "llm_token_update",
+        "iteration_start",
+        "llm_token_update",
+      ]);
+    });
+
+    it("assigns gapless seq across a run with no coalescing (value assigned only on write)", () => {
+      setupProject(tmpDir, [pendingItem("001", "X")]);
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+
+      vi.useFakeTimers();
+      // Structural events never coalesce, so each consumes the next seq.
+      for (let i = 1; i <= 4; i++) {
+        vi.setSystemTime(2_000_000 + i);
+        persist(runner, iterationStart(i));
+      }
+
+      expect(readRecords().map((r) => r.seq)).toEqual([0, 1, 2, 3]);
     });
   });
 });

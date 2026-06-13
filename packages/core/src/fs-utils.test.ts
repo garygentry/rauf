@@ -510,4 +510,30 @@ describe("readNdjson", () => {
       expect(result.value).toEqual([]);
     }
   });
+
+  it("tolerates unknown future fields (additive-only) — known fields still round-trip", () => {
+    // 07-testing-strategy.md §2.4 / REQ-EVT-06: a forward-compatible reader must
+    // accept records carrying fields it doesn't know about. A non-strict schema
+    // strips the extra field rather than rejecting the line, so a future producer
+    // can add fields without breaking an older reader. Guards against an
+    // accidental `.strict()` regression on the events schema.
+    const filePath = tmpFile("future-field.ndjson");
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({ id: 1, name: "a", futureField: 42, nested: { x: 1 } }) +
+        "\n" +
+        JSON.stringify({ id: 2, name: "b" }) +
+        "\n",
+    );
+
+    const result = readNdjson(filePath, NdjsonSchema);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // The record with the unknown field is kept; known fields are preserved.
+      expect(result.value).toEqual([
+        { id: 1, name: "a" },
+        { id: 2, name: "b" },
+      ]);
+    }
+  });
 });
