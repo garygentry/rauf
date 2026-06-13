@@ -56,8 +56,15 @@ ralph-style runner conforms by supplying its own implementation of this surface
 
 ## A.2 Signal protocol
 
-A work item's execution communicates its outcome by emitting a signal as the
-**final line** of its output:
+A work item's execution communicates its outcome by emitting a signal token
+**on a line by itself**. The runner scans the output **backwards from the end**
+and uses the **last** such signal line, so the signal should be the agent's
+final meaningful output — but **trailing text after it (commit messages,
+summaries, tool epilogues) does not break detection**. The token must be the
+entire trimmed content of its line (e.g. a bare `RAUF_DONE`, or
+`RAUF_BLOCKED:<reason>` / `RAUF_NEEDS_HUMAN:<reason>` / `RAUF_REVIEW:<json>` with
+no other text on that line). Blank lines are ignored. If multiple signal lines
+appear, the last one wins.
 
 | Signal                      | Meaning                                                              |
 | --------------------------- | -------------------------------------------------------------------- |
@@ -189,25 +196,26 @@ ignore any `type` they do not recognize, per the promise below):
 
 **Consumer-critical event payloads** (fields beyond the base three):
 
-| Event               | Payload fields                                                                 |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `item_completed`    | `itemId`, `title`                                                              |
-| `item_blocked`      | `itemId`, `reason`                                                             |
-| `needs_human`       | `itemId`, `reason`                                                             |
-| `loop_paused`       | `reason` (`needs_human`), `itemId`                                             |
-| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `none`), `reason?` |
-| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                           |
-| `loop_error`        | `error`                                                                        |
-| `loop_cancelled`    | _(base fields only)_                                                           |
-| `llm_stuck_warning` | `itemId`, `silentMs`                                                           |
+| Event               | Payload fields                                                                             |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| `item_completed`    | `itemId`, `title`                                                                          |
+| `item_blocked`      | `itemId`, `reason`                                                                         |
+| `needs_human`       | `itemId`, `reason`                                                                         |
+| `loop_paused`       | `reason` (`needs_human`), `itemId`                                                         |
+| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `review` \| `none`), `reason?` |
+| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                       |
+| `loop_error`        | `error`                                                                                    |
+| `loop_cancelled`    | _(base fields only)_                                                                       |
+| `llm_stuck_warning` | `itemId`, `silentMs`                                                                       |
 
 **Two gotchas a supervisor MUST account for:**
 
-1. **`signal_parsed.signal` collapses `review` → `done`.** The on-the-wire
-   `signal` enum is only `done | blocked | needs_human | none`. When an item's
-   output is a `RAUF_REVIEW` review-pass signal, it is reported as
-   `signal === "done"` on this stream (there is no `review` value in the event
-   enum). Do not expect a distinct review signal here.
+1. **`signal_parsed.signal` distinguishes `review`.** As of v0.5.0 the
+   on-the-wire `signal` enum is `done | blocked | needs_human | review | none`. A
+   `RAUF_REVIEW` review-pass signal is reported as `signal === "review"`
+   (previously it was collapsed to `"done"` — that collapse is removed). A
+   `review` value indicates the item emitted a review-pass payload; consult the
+   review-pass handling (not item completion) to interpret it.
 2. **A circuit-breaker halt is emitted as `loop_error`.** There is **no**
    distinct `circuit_breaker` event type. When the loop halts because
    consecutive infra-failure spawns trip the circuit breaker, it emits
@@ -283,6 +291,25 @@ runner version of §A.5:
 - Consumers MUST therefore **ignore unknown event types and unknown fields**
   rather than failing on them, and MUST gate on `rauf version` (§A.5) when they
   depend on a field or event added in a specific release.
+
+**`events.ndjson` versioning discipline.** The persisted `events.ndjson` log
+(the file-backed counterpart of the `--ndjson` stream — same `LoopEvent` shapes,
+plus a `seq` + `schemaVersion` envelope) follows an **additive-only-within-a-major**
+discipline, stamped with `EVENTS_SCHEMA_VERSION` (`packages/core/src/schemas.ts`):
+
+1. **Additive-only within a major.** No event `type` discriminator value is
+   renamed or removed, and no documented field is removed, within a major version.
+2. **New types/fields are additive.** Adding a new event `type` to the union, or a
+   new optional field to an existing event, requires **no** version bump.
+3. **Readers MUST tolerate the unknown.** Consumers ignore unknown `type` values
+   and unknown fields.
+4. **Bump only on a breaking change.** `EVENTS_SCHEMA_VERSION` is incremented
+   **only** when a `type` or documented field is renamed/removed.
+
+`EVENTS_SCHEMA_VERSION` stays **`"1"`** in v0.5.0: adding `"review"` to the
+`signal_parsed.signal` enum is an additive change to an existing field's value
+set (rule 2), so it triggers no bump. Logs written before and after this release
+remain version `"1"` and inter-readable.
 
 ### A.7.4 Machine vs human surfaces (do not cross them)
 

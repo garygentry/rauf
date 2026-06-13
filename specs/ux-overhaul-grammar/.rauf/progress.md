@@ -36,3 +36,17 @@
   files NOT touched by item 005: `packages/loop/src/runner.test.ts` (items 002/004) and four
   `docs/architecture/ux-overhaul/*.md`. They are Prettier violations baked into earlier commits — run
   `pnpm format` (write) during the final integration item to clear them.
+
+- **Item 011 (signal-placement docs + events versioning):** Reworded
+  SPEC-BACKLOG-TOOL-CONTRACT.md §A.2 to the scan-from-end wording (04 §2a verbatim),
+  widened the §A.7.1 `signal_parsed` enum row to include `review`, and replaced
+  gotcha #1 (no longer "collapses review→done"). Added the events.ndjson
+  additive-only versioning discipline (00 §4) to §A.7.3 (SPEC) and next to the
+  Event-log constants table (SCHEMAS.md), plus widened the `signal_parsed` enum in
+  SCHEMAS.md (table row + TS union) and the §LoopEvent gotcha note. Templates
+  (CLAUDE_ADDON.md, RAUF.md.tmpl) kept "signal as final line" as a habit but added a
+  note that trailing text doesn't break detection. Landmine confirmed: both templates
+  feed embedded-artifacts.ts (lines 362/421), so `pnpm --filter @rauf/core build`
+  regenerates it — don't hand-edit. NOTE: docs/ is NOT in .prettierignore (artifacts
+  IS), so markdown table edits must be re-run through `prettier --write` — widening a
+  table cell shifts column alignment and trips format:check.

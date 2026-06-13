@@ -40,10 +40,15 @@ If any command is not configured (empty), skip it.
 5. Implement the task
 6. Run verification: \`{{verifyCommand}}\`
 7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as \`[rauf] <id>: <title>\` after you signal \`RAUF_DONE\`).
-8. Output your exit signal:
+8. Output your exit signal on a line by itself, as your final line:
    - \`RAUF_DONE\` — all criteria met, verification passes
    - \`RAUF_BLOCKED:<reason>\` — cannot proceed, explain why
    - \`RAUF_NEEDS_HUMAN:<reason>\` — need human decision or input
+
+   Putting the signal last is the safest habit, but it does not have to be
+   strictly the final line: the runner scans backwards from the end and uses the
+   **last** signal line, so trailing text after it (a commit message, a summary)
+   does **not** break detection.
 
 ## Agent Delegation
 
@@ -363,6 +368,11 @@ When running as a rauf loop iteration, follow these operational rules:
 8. If blocked (missing dependency, unclear requirement): output \`RAUF_BLOCKED:<reason>\`
 9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
+
+> Output the signal on a line by itself, as your final line — that's the safest
+> habit. The runner scans backwards from the end and uses the **last** signal
+> line, so trailing text after it (a commit message, a summary) does **not** break
+> detection.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items

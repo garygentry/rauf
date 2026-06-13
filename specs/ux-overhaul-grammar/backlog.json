@@ -279,8 +279,8 @@
         "Agent templates (CLAUDE_ADDON.md, RAUF.md.tmpl) drop the strictly-last-line claim; embedded-artifacts regenerated if affected",
         "pnpm --filter @rauf/core build && pnpm --filter @rauf/core test passes (if embedded regenerated)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:55:30.680Z",
       "dependsOn": [
         "001",
         "002"
