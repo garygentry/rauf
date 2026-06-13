@@ -384,7 +384,7 @@ describe("handleServerStop", () => {
       const { code, output } = await captureStdout(() => handleServerStop(makeCtx()));
       configureOutput({ noColor: true, quiet: true, json: false });
 
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
       expect(output).toContain("/work/proj-a");
       expect(output).toContain("/work/proj-b");
       // We must NOT have signalled our own process.
@@ -407,7 +407,7 @@ describe("handleServerStop", () => {
       );
       configureOutput({ noColor: true, quiet: true, json: false });
 
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
       const parsed = JSON.parse(output) as { error: { code: string; loops: string[] } };
       expect(parsed.error.code).toBe("LOOPS_IN_FLIGHT");
       expect(parsed.error.loops).toEqual(["/work/proj-c"]);
@@ -591,7 +591,7 @@ describe("handleServerStart", () => {
     const code = await handleServerStart(ctx);
 
     // Should NOT return CONFLICT (health check failed, so not treated as running server)
-    expect(code).not.toBe(ExitCode.CONFLICT);
+    expect(code).not.toBe(ExitCode.USAGE);
 
     // Clean up (afterEach also handles this via SIGKILL)
     removeServerState();
@@ -613,7 +613,7 @@ describe("handleServerStart", () => {
     // After the stale state is cleaned, it should attempt to start and fail
     // because the entry point doesn't exist (in compiled/test context) or succeeds
     // in a dev context. Either way, CONFLICT is not the result.
-    expect(code).not.toBe(ExitCode.CONFLICT);
+    expect(code).not.toBe(ExitCode.USAGE);
   });
 });
 
@@ -639,7 +639,7 @@ describe("handleServerRestart", () => {
       const { code, output } = await captureStdout(() => handleServerRestart(makeCtx()));
       configureOutput({ noColor: true, quiet: true, json: false });
 
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
       expect(output).toContain("/work/proj-r");
       // The restart must refuse during its stop phase — process stays alive.
       expect(isProcessAlive(process.pid)).toBe(true);

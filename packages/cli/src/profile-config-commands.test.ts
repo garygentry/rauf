@@ -138,7 +138,7 @@ describe("handleProfileShow", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleProfileShow(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns NOT_FOUND when .rauf.json does not exist", async () => {
@@ -146,7 +146,7 @@ describe("handleProfileShow", () => {
     fs.mkdirSync(projectDir);
     const ctx = makeCtx([projectDir]);
     const code = await handleProfileShow(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("outputs JSON profile when --json flag is set", async () => {
@@ -201,7 +201,7 @@ describe("handleProfileDetect", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleProfileDetect(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("detects profile from filesystem (node-typescript project)", async () => {
@@ -256,7 +256,7 @@ describe("handleProfileSet", () => {
   it("returns INVALID_ARGS when arguments are missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleProfileSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS for unknown key", async () => {
@@ -265,7 +265,7 @@ describe("handleProfileSet", () => {
     createMarkerFile(projectDir);
     const ctx = makeCtx([projectDir, "unknownKey", "someValue"]);
     const code = await handleProfileSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("updates a command key in the profile", async () => {
@@ -328,7 +328,7 @@ describe("handleProfileSet", () => {
 
     const ctx = makeCtx([projectDir, "monorepo", "yes"]);
     const code = await handleProfileSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("outputs JSON with updated profile when --json flag is set", async () => {
@@ -372,7 +372,7 @@ describe("handleProfileSet", () => {
     fs.mkdirSync(projectDir);
     const ctx = makeCtx([projectDir, "stack", "go"]);
     const code = await handleProfileSet(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 });
 
@@ -443,13 +443,13 @@ describe("handleConfigGet", () => {
   it("returns INVALID_ARGS when key is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleConfigGet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS for unknown key", async () => {
     const ctx = makeCtx(["unknownKey"]);
     const code = await handleConfigGet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("gets an existing config value", async () => {
@@ -502,13 +502,13 @@ describe("handleConfigSet", () => {
   it("returns INVALID_ARGS when arguments are missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleConfigSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns INVALID_ARGS for unknown key", async () => {
     const ctx = makeCtx(["unknownKey", "value"]);
     const code = await handleConfigSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("sets the port (coerces string to number)", async () => {
@@ -526,7 +526,7 @@ describe("handleConfigSet", () => {
     writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
     const ctx = makeCtx(["port", "not-a-number"]);
     const code = await handleConfigSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("sets the theme", async () => {
@@ -544,7 +544,7 @@ describe("handleConfigSet", () => {
     writeTestToolConfig({ rootDirectory: "/home/test", port: ports.serverPort, theme: "system" });
     const ctx = makeCtx(["theme", "purple"]);
     const code = await handleConfigSet(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("sets rootDirectory (resolves to absolute path)", async () => {
@@ -657,7 +657,7 @@ describe("handleProjectsList", () => {
   it("returns NOT_FOUND when root directory does not exist", async () => {
     const ctx = makeCtx([], {}, { root: "/nonexistent/path/that/does/not/exist" });
     const code = await handleProjectsList(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 });
 
@@ -716,6 +716,6 @@ describe("handleProjectsStatus", () => {
   it("returns NOT_FOUND when root directory does not exist", async () => {
     const ctx = makeCtx([], {}, { root: "/nonexistent/path/that/does/not/exist" });
     const code = await handleProjectsStatus(ctx);
-    expect(code).toBe(ExitCode.NOT_FOUND);
+    expect(code).toBe(ExitCode.USAGE);
   });
 });

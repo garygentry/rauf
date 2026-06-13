@@ -403,7 +403,7 @@ export async function handleServerStart(ctx: CommandContext): Promise<number> {
         error(`Server is already running (PID ${state.pid}).`);
         info(`Use ${c.cyan("rauf server stop")} to stop it first.`);
       }
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
     // Health failed — PID reused by unrelated process. Clean up stale state.
     removeServerState();
@@ -627,7 +627,7 @@ export async function handleServerStop(ctx: CommandContext): Promise<number> {
         }
         print(`Re-run with ${c.cyan("--force")} to stop anyway.`);
       }
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
   }
 

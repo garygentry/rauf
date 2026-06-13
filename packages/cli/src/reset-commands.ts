@@ -41,7 +41,7 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -63,7 +63,7 @@ export async function handleReset(ctx: CommandContext): Promise<number> {
         error(msg);
         info(`Check with: ${c.cyan(`rauf status ${targetPath}`)}`);
       }
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
     error(acquired.error.message);
     return ExitCode.ERROR;

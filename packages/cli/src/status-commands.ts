@@ -42,7 +42,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--all] [--backlog <dir>]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const all = extractBoolFlag(ctx.flags, "all");
@@ -65,7 +65,7 @@ export async function handleStatus(ctx: CommandContext): Promise<number> {
     const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag);
     if (!backlogRootResult.ok) {
       error(backlogRootResult.error.message);
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
     const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
     if (!pathsResult.ok) {
@@ -253,7 +253,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf log <path> [--tail N] [--follow] [--json] [--backlog <dir>]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -264,7 +264,7 @@ export async function handleLog(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {
@@ -313,7 +313,7 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf progress <path>");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -322,7 +322,7 @@ export async function handleProgress(ctx: CommandContext): Promise<number> {
   const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!backlogRootResult.ok) {
     error(backlogRootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
   if (!pathsResult.ok) {

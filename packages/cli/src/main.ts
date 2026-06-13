@@ -79,7 +79,7 @@ export async function runCli(): Promise<number> {
       info(`Did you mean ${c.cyan(suggestion)}?`);
     }
 
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Re-parse with subcommand awareness if this command has subcommands
@@ -113,7 +113,7 @@ export async function runCli(): Promise<number> {
       }
       info("");
       info(`Run ${c.cyan(`rauf help ${commandName}`)} for details.`);
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
 
     const subcmd = findSubcommand(cmd, parsed.subcommand);
@@ -124,7 +124,7 @@ export async function runCli(): Promise<number> {
       for (const sc of cmd.subcommands) {
         info(`  ${c.cyan(sc.name)}  ${sc.description}`);
       }
-      return ExitCode.INVALID_ARGS;
+      return ExitCode.USAGE;
     }
 
     if (!subcmd.handler) {

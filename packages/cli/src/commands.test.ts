@@ -310,7 +310,7 @@ describe("help command", () => {
     const ctx = makeCtx({ args: ["nonexistent"] });
     const output = await captureOutput(async () => {
       const code = await cmd.handler!(ctx);
-      expect(code).toBe(ExitCode.INVALID_ARGS);
+      expect(code).toBe(ExitCode.USAGE);
     });
     expect(output.stdout).toContain("Unknown command");
   });
@@ -355,7 +355,7 @@ describe("help command", () => {
     });
     const output = await captureOutput(async () => {
       const code = await cmd.handler!(ctx);
-      expect(code).toBe(ExitCode.INVALID_ARGS);
+      expect(code).toBe(ExitCode.USAGE);
     });
     const parsed = JSON.parse(output.stdout);
     expect(parsed.error.code).toBe("UNKNOWN_COMMAND");
@@ -366,9 +366,10 @@ describe("ExitCode", () => {
   it("defines all expected exit codes", () => {
     expect(ExitCode.SUCCESS).toBe(0);
     expect(ExitCode.ERROR).toBe(1);
-    expect(ExitCode.INVALID_ARGS).toBe(2);
-    expect(ExitCode.NOT_FOUND).toBe(3);
-    expect(ExitCode.VALIDATION).toBe(4);
-    expect(ExitCode.CONFLICT).toBe(5);
+    expect(ExitCode.USAGE).toBe(2);
+    expect(ExitCode.NEEDS_HUMAN).toBe(3);
+    expect(ExitCode.LIMIT).toBe(4);
+    expect(ExitCode.BLOCKED).toBe(5);
+    expect(ExitCode.RUNNING).toBe(6);
   });
 });

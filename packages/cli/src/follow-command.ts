@@ -51,7 +51,7 @@ export async function handleFollow(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info("Usage: rauf follow [path] [--json] [--interval N] [--backlog <dir>]");
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -63,7 +63,7 @@ export async function handleFollow(ctx: CommandContext): Promise<number> {
   const rootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
   if (!rootResult.ok) {
     error(rootResult.error.message);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
   const pathsResult = resolveBacklogPaths(resolved, rootResult.value);
   if (!pathsResult.ok) {

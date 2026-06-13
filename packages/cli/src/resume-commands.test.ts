@@ -175,7 +175,7 @@ describe("handleResume — lock handling", () => {
     const { calls, runLoop } = captureRunLoop();
     const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
 
-    expect(code).toBe(ExitCode.CONFLICT);
+    expect(code).toBe(ExitCode.USAGE);
     expect(calls).toHaveLength(0);
     // state.json untouched (not cleared) when refusing.
     expect(fs.existsSync(path.join(projectDir, ".rauf", "state.json"))).toBe(true);

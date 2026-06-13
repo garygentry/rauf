@@ -302,7 +302,7 @@ export async function handleLoopStart(ctx: CommandContext): Promise<number> {
     const branchResult = await createLoopBranch(projectPath, createBranch);
     if (!branchResult.ok) {
       error(branchResult.error.message);
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
     if (branchResult.value.switched) {
       info(`Switched to new branch ${c.cyan(createBranch)}`);
@@ -669,7 +669,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     const branchResult = await createLoopBranch(projectPath, createBranch);
     if (!branchResult.ok) {
       error(branchResult.error.message);
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
     if (branchResult.value.switched) {
       info(`Switched to new branch ${c.cyan(createBranch)}`);
@@ -688,7 +688,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     const seedResult = await seedBacklog(projectPath, paths);
     if (!seedResult.ok) {
       error(seedResult.error.message);
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
     if (seedResult.value.committed) {
       info(`Seeded backlog: committed ${c.cyan(seedResult.value.commitHash || "(staged)")}`);
@@ -708,7 +708,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       for (const line of buildPreconditionRemediation(ctx.args[0] ?? ".")) {
         info(line);
       }
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     }
   }
 
@@ -979,7 +979,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
 
     // Distinct non-zero code when --pause-on-needs-human halted the loop, so a
     // supervising session can detect the pause (item 008).
-    return result.pausedReason === "needs_human" ? ExitCode.PAUSED_HUMAN : ExitCode.SUCCESS;
+    return result.pausedReason === "needs_human" ? ExitCode.NEEDS_HUMAN : ExitCode.SUCCESS;
   } catch (e) {
     error(`Loop failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;

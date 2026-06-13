@@ -87,18 +87,21 @@ export interface CommandDef {
 
 // ─── Exit Codes ──────────────────────────────────────────────────
 
+/**
+ * Unified process exit codes (v0.5.0). Used by `status` (current loop state) and
+ * `loop run` (terminal outcome). A MACHINE CONTRACT — downstream tools (feature-forge)
+ * depend on these values. `backlog validate` keeps its own 0/1/2 triad.
+ */
 export const ExitCode = {
-  SUCCESS: 0,
-  ERROR: 1,
-  INVALID_ARGS: 2,
-  NOT_FOUND: 3,
-  VALIDATION: 4,
-  CONFLICT: 5,
-  // `rauf loop run --pause-on-needs-human` halted because an item needs human
-  // input. Distinct non-zero code so a supervising session can detect the pause
-  // (item 008). Mirrors `status` exiting 2 for PAUSED_HUMAN.
-  PAUSED_HUMAN: 6,
+  SUCCESS: 0, // clean terminal: idle / complete
+  ERROR: 1, // generic failure
+  USAGE: 2, // bad args / IO / failed precondition (incl. loop-already-running 409)
+  NEEDS_HUMAN: 3, // PAUSED_HUMAN
+  LIMIT: 4, // limit reached / usage-paused / sleeping
+  BLOCKED: 5, // terminal with blocked items
+  RUNNING: 6, // running — QUERY-TIME ONLY (`status`); never a `loop run` terminal code
 } as const;
+export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 
 // ─── Command Definitions ─────────────────────────────────────────
 //
@@ -503,7 +506,7 @@ export function showCommandHelp(
         `${c.red("Unknown command:")} ${commandName}\n\nRun ${c.cyan("rauf help")} for available commands.`,
       );
     }
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Resolve a targeted subcommand, if one was named and exists.

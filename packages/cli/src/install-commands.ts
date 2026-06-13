@@ -33,7 +33,7 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info(`Usage: rauf install <path> [options]`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -56,7 +56,7 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
 
       // Map to specific exit code based on which check failed
       const dirCheck = preflightResult.checks.find((c) => c.name === "directory_exists");
-      if (dirCheck && !dirCheck.passed) return ExitCode.NOT_FOUND;
+      if (dirCheck && !dirCheck.passed) return ExitCode.USAGE;
       return ExitCode.ERROR;
     }
 
@@ -93,7 +93,7 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info(`Usage: rauf init <path> [options]`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -117,13 +117,13 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   if (stack && !validPresets.has(stack)) {
     error(`Invalid stack preset: "${stack}"`);
     info(`Valid presets: ${[...validPresets].join(", ")}`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   // Check target doesn't already exist as a rauf project
   if (fs.existsSync(path.join(resolved, ".rauf.json"))) {
     error(`Path "${resolved}" already has a .rauf.json. Use 'rauf install' for existing projects.`);
-    return ExitCode.CONFLICT;
+    return ExitCode.USAGE;
   }
 
   const result = initProject(resolved, {
@@ -157,7 +157,7 @@ export async function handleUpdate(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info(`Usage: rauf update <path> [--yes]`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -187,7 +187,7 @@ export async function handleUninstall(ctx: CommandContext): Promise<number> {
   if (!targetPath) {
     error("Missing required argument: <path>");
     info(`Usage: rauf uninstall <path> [--yes] [--keep-data]`);
-    return ExitCode.INVALID_ARGS;
+    return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
@@ -283,18 +283,18 @@ function handleCoreError(
 
   switch (err.code) {
     case ErrorCodes.FILE_NOT_FOUND:
-      return ExitCode.NOT_FOUND;
+      return ExitCode.USAGE;
     case ErrorCodes.NOT_INSTALLED:
-      return ExitCode.NOT_FOUND;
+      return ExitCode.USAGE;
     case ErrorCodes.INVALID_JSON:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     case ErrorCodes.VALIDATION_ERROR:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     case ErrorCodes.CONFLICT:
     case ErrorCodes.ALREADY_INSTALLED:
-      return ExitCode.CONFLICT;
+      return ExitCode.USAGE;
     case ErrorCodes.TRANSITION_INVALID:
-      return ExitCode.VALIDATION;
+      return ExitCode.USAGE;
     default:
       return ExitCode.ERROR;
   }

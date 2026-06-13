@@ -81,7 +81,7 @@ describe("handleStatus", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleStatus(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns 0 (idle/complete) when .rauf directory does not exist", async () => {
@@ -493,7 +493,7 @@ describe("handleLog", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleLog(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns SUCCESS with empty info when no log exists", async () => {
@@ -592,7 +592,7 @@ describe("handleProgress", () => {
   it("returns INVALID_ARGS when path is missing", async () => {
     const ctx = makeCtx([]);
     const code = await handleProgress(ctx);
-    expect(code).toBe(ExitCode.INVALID_ARGS);
+    expect(code).toBe(ExitCode.USAGE);
   });
 
   it("returns SUCCESS with info message when progress.md is missing", async () => {

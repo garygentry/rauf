@@ -594,7 +594,7 @@ describe("createLoopBranch & loop preconditions", () => {
 
     const out = await captureOutput(async () => {
       const code = await handleLoopRun(ctx);
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     const all = out.stdout + out.stderr;
@@ -730,7 +730,7 @@ describe("createLoopBranch & loop preconditions", () => {
     });
     const out = await captureOutput(async () => {
       const code = await handleLoopRun(ctx);
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     const all = out.stdout + out.stderr;
@@ -757,7 +757,7 @@ describe("createLoopBranch & loop preconditions", () => {
     });
     const out = await captureOutput(async () => {
       const code = await handleLoopRun(ctx);
-      expect(code).toBe(ExitCode.CONFLICT);
+      expect(code).toBe(ExitCode.USAGE);
     });
 
     const all = out.stdout + out.stderr;
@@ -862,7 +862,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
     };
   }
 
-  it("returns ExitCode.PAUSED_HUMAN and halts in paused_human", async () => {
+  it("returns ExitCode.NEEDS_HUMAN and halts in paused_human", async () => {
     const proj = makeRunnableProject([pendingItem("001"), pendingItem("002")]);
     writeMockClaude('echo "RAUF_NEEDS_HUMAN:Need API key"');
 
@@ -877,7 +877,7 @@ describe("loop run --pause-on-needs-human exit code", () => {
     });
 
     // Distinct non-zero exit code (not SUCCESS).
-    expect(code).toBe(ExitCode.PAUSED_HUMAN);
+    expect(code).toBe(ExitCode.NEEDS_HUMAN);
     expect(code).not.toBe(ExitCode.SUCCESS);
 
     const state = JSON.parse(fs.readFileSync(path.join(proj, ".rauf", "state.json"), "utf-8"));
