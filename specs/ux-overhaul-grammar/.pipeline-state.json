@@ -2,9 +2,18 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T05:00:00Z",
+  "updatedAt": "2026-06-13T05:30:00Z",
   "currentStage": "forge-5-loop",
   "stages": {
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-backlog-2026-06-13.md",
+      "findingsCount": 8,
+      "verifiedAt": "2026-06-13T05:15:00Z",
+      "validation": "passed (rauf-stable backlog validate exit 0, valid:true, 0 findings)",
+      "result": "4 parallel forge-verifiers + rauf-stable validate (exit 0). 8 findings, 0 errors. 3 gaps (V-001 item003 omits loop-commands.ts CONFLICT sites + migrate-commands.ts from file list/subtasks; V-002 loop stop USAGE(2)+hint:431 owned by no item; V-004 item012 missing 004/005 deps), 1 inconsistency (V-003 item013 version-bump under-gates v0.5.0 advertisement \u2014 add 001/002/009), 4 improvements (V-005 item014 vague AC, V-006 item005 AC disjunction, V-007 item010\u2192008 over-constrained, V-008 item012 specRefs missing 00/03). Schema/enum dim clean.",
+      "fixedAt": "2026-06-13T05:30:00Z"
+    },
     "forge-4-backlog": {
       "status": "complete",
       "version": 1,
