@@ -106,6 +106,7 @@ POST   /api/projects/:id/loop/start   → { data: { started: true, projectPath }
        Body (optional): { maxIterations?, maxRetries?, model?, sessionTimeoutMinutes?, review?, reviewOnly?, provider? }
        Defaults: maxIterations=20, maxRetries=3, sessionTimeoutMinutes=60
        409 Conflict: Loop already running for this project
+       Note (v0.5.0): This route is the backend for `rauf loop run --detached`. URL and contract unchanged.
 
 POST   /api/projects/:id/loop/stop    → { data: { stopped: true, projectPath } }
        404 Not Found: No active loop for this project

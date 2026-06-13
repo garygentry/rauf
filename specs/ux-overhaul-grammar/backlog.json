@@ -305,8 +305,8 @@
         "grep finds no stale `loop start` / `--watch` / old exit-code refs in those four docs",
         "No broken internal references introduced"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-13T05:59:07.117Z",
       "dependsOn": [
         "003",
         "004",
