@@ -28,7 +28,9 @@ v0.5.0 grammar + contract flip. No new packages or modules — this feature edit
 | `src/loop-commands.ts` | Add `--detached`/`-d` branch to `handleLoopRun` (~620) delegating to the server-POST flow; remove `handleLoopStart` (~290) as a dispatchable verb, fold its body into a shared helper; replace the terminal-exit ternary (~979-983) with the full `LoopResult` mapping (00 §2a); ensure `--follow` stays CLI-side (not in the POST body) | REQ-EXEC-01/02/03/04/06, REQ-EXIT-01 |
 | `src/status-commands.ts` | Rewrite `statusExitCode` (~492-504) to the unified state→code mapping (00 §2b) | REQ-EXIT-01 |
 | `src/parser.ts` | Add `-d`/`--detached` parsing; intercept `--watch` for remediation | REQ-FLAG-01, REQ-RMV-01 |
-| `src/server-commands.ts` / `ensureServerRunning` (in loop-commands ~258-286) | reused as-is, no change | REQ-EXEC-03 |
+| `ensureServerRunning` (in `loop-commands.ts` ~258-286) | reused as-is, no change | REQ-EXEC-03 |
+| `src/server-commands.ts` | Re-point `ExitCode.CONFLICT` (~:406/:630) → `USAGE` (see 03 §2) | REQ-EXIT-02 |
+| **ExitCode call-site sweep** — `src/backlog-commands.ts`, `src/install-commands.ts`, `src/profile-config-commands.ts`, `src/migrate-commands.ts`, `src/reset-commands.ts`, `src/resume-commands.ts`, `src/main.ts`, `src/follow-command.ts` | Re-point old `ExitCode` members (`INVALID_ARGS`/`NOT_FOUND`/`VALIDATION`/`CONFLICT`/`PAUSED_HUMAN`) → new per 00 §1 remap. **The redefinition (commands.ts) is a hard compile break across all these files — full per-file/per-line checklist in [`03-exit-codes.md`](./03-exit-codes.md) §2.** | REQ-EXIT-01, REQ-EXIT-02 |
 
 ### @rauf/loop
 
@@ -81,8 +83,10 @@ A safe implementation order (each step independently testable; respects the sing
    additive.)
 2. **Loop collapse removal (`@rauf/loop` runner):** remove the `review→done` downcast. Depends on (1) so the
    emitted value validates.
-3. **ExitCode redefinition (`@rauf/cli` commands.ts):** redefine the const + audit/re-point all call sites
-   (00 §1 remap). This is the highest-fan-in change; do it as one coherent commit.
+3. **ExitCode redefinition (`@rauf/cli` commands.ts):** redefine the const + re-point all call sites across
+   the CLI package (~8+ files / ~90 sites — full list in [`03-exit-codes.md`](./03-exit-codes.md) §2 and
+   the §1 "ExitCode call-site sweep" row above). This is the highest-fan-out change; land it (incl. test
+   re-points) as one coherent commit so the build is never red mid-sweep.
 4. **Exit-code mappings:** `loop run` terminal mapping (loop-commands) + `statusExitCode` rewrite
    (status-commands). Depends on (3).
 5. **Grammar:** `--detached` branch + remove `loop start` + remediation interceptor + `--help`/usage +

@@ -84,7 +84,7 @@ The parser (`parseSignal`, `packages/loop/src/signal-parser.ts:27-38`) splits st
 
 ### 2a. Canonical signal-placement wording (use verbatim)
 
-Replace the "final line" framing in `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §A.2 (~line 59-60: *"emitting a signal as the **final line** of its output"*) — and the equivalent wording in the agent templates (`artifacts/RAUF.md` / `CLAUDE_ADDON.md` and any `artifacts/variants/**` copies) — with:
+Replace the "final line" framing in `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §A.2 (~line 59-60: *"emitting a signal as the **final line** of its output"*) — and the equivalent wording in the agent templates `artifacts/variants/backlog-json/CLAUDE_ADDON.md` (the literal "output `RAUF_DONE` as your final line" at ~:18) and `artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl` (the `RAUF_DONE`-final-line directive at ~:32-34) — with:
 
 > A work item's execution communicates its outcome by emitting a signal token **on a line by itself**. The runner scans the output **backwards from the end** and uses the **last** such signal line, so the signal should be the agent's final meaningful output — but **trailing text after it (commit messages, summaries, tool epilogues) does not break detection**. The token must be the entire trimmed content of its line (e.g. a bare `RAUF_DONE`, or `RAUF_BLOCKED:<reason>` / `RAUF_NEEDS_HUMAN:<reason>` / `RAUF_REVIEW:<json>` with no other text on that line). Blank lines are ignored. If multiple signal lines appear, the last one wins.
 
@@ -112,7 +112,7 @@ Apply:
 |---|---|
 | `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §A.2 "final line" wording | → §2a canonical wording (scan-from-end) |
 | `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` `signal_parsed` row + gotcha #1 (~198, 206-210) | → add `review` to enum row; replace collapse note (§2b) |
-| `artifacts/` agent templates (`RAUF.md`, `CLAUDE_ADDON.md`, `variants/**`) | align "final line" → "line by itself / last one wins; trailing text OK" |
+| `artifacts/variants/backlog-json/CLAUDE_ADDON.md` (~:18) + `artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl` (~:32-34) | align "final line" → "line by itself / last one wins; trailing text OK". (Regenerate the embedded copy via `pnpm --filter @rauf/core build` if these templates feed `embedded-artifacts.ts`.) |
 | `docs/SCHEMAS.md` (signal enum) | reflected via §3 below |
 
 ## 3. events.ndjson versioning discipline (REQ-EVT-01)
@@ -123,7 +123,7 @@ The discipline (per 00 §4) to document in `docs/SCHEMAS.md` and `docs/SPEC-BACK
 
 1. **Additive-only within a major.** Within a major version, no event `type` discriminator value is renamed or removed, and no documented field is removed.
 2. **New types/fields are additive.** Adding a new event `type` to the union, or a new optional field to an existing event, requires **no** version bump.
-3. **Readers MUST tolerate the unknown.** Consumers ignore unknown `type` values and unknown fields. (This is already promised for the 24-member type list in `SPEC-BACKLOG-TOOL-CONTRACT.md` ~lines 180-188.)
+3. **Readers MUST tolerate the unknown.** Consumers ignore unknown `type` values and unknown fields. (The 24-member event-`type` list is at `SPEC-BACKLOG-TOOL-CONTRACT.md` ~:183; the explicit "consumers MUST ignore unknown event types and unknown fields" promise is at ~:283.)
 4. **Bump only on a breaking change.** `EVENTS_SCHEMA_VERSION` is incremented **only** when a `type` or documented field is renamed/removed.
 
 ### No bump this release

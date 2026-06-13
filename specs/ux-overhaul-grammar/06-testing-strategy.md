@@ -14,9 +14,12 @@ web frontend has no test harness — lean on backend/CLI tests (the `EventTimeli
 | REQ-EXEC-01/02/03 | §2 detached delegation |
 | REQ-EXEC-04/06, NFR-PARITY-01 | §3 follow lifecycle + parity |
 | REQ-RMV-01 | §4 remediation |
+| REQ-DOC-02 | §4a help/usage no-stale-token audit |
 | REQ-SIG-01 | §5 review signal |
-| REQ-FLAG-01/02/04 | §6 flag canon |
+| REQ-SIG-02 | §5 (doc-level signal-placement reconciliation) |
+| REQ-FLAG-01/02/03/04 | §6 flag canon |
 | REQ-EVT-01/02 | §7 events (mostly doc-level) |
+| NFR-SAFETY-01 | §8 (dogfood rauf-stable) |
 | NFR-PERF-01 | §8 (no new hot-path work) |
 | NFR-QUALITY-01 | §8 full gate |
 
@@ -29,9 +32,16 @@ to the exact `ExitCode` value in [`00-core-definitions.md`](./00-core-definition
   expected code — failure→`ERROR`(1); `pausedReason:"needs_human"` / `needsHumanCount>0`→`NEEDS_HUMAN`(3);
   limit/sleeping→`LIMIT`(4); `blockedCount>0`→`BLOCKED`(5); clean→`SUCCESS`(0). Assert `RUNNING`(6) never
   occurs as a terminal code.
-- **`statusExitCode`** (`packages/cli/src/status-commands.ts`): for each `LoopStateEnum` value → expected
-  code (RUNNING→6, PAUSED_HUMAN→3, LIMIT_REACHED/SLEEPING_LIMIT/WEEKLY_LIMIT→4, blocked→5, ERROR→1,
-  else→0). Use a parametrized `it.each` over all 10 states.
+- **`statusExitCode`** (`packages/cli/src/status-commands.ts`): split into two cases — (a) a parametrized
+  `it.each` over the **10 `LoopStateEnum` values** (RUNNING→6, PAUSED_HUMAN→3, LIMIT_REACHED/SLEEPING_LIMIT/
+  WEEKLY_LIMIT→4, ERROR→1, IDLE/COMPLETE/PAUSED/NOT_INSTALLED→0) — note `blocked` is **not** an enum value;
+  and (b) a separate **derived-BLOCKED** case: a clean terminal state (`IDLE`/`COMPLETE`/`PAUSED`) with
+  genuine-blocked > 0 → `BLOCKED`(5) via the widened `statusExitCode(state, derived)` signature (00 §2b,
+  03 §4). If the signature widening is deferred at impl, the test (and 03 §4) must record the known gap
+  (terminal-with-blocked maps to `SUCCESS`(0)) so `status`↔`loop run` BLOCKED parity is explicitly tracked.
+- **`loop stop` (REQ-EXEC-05, REQ-DOC-02):** assert the no-server / no-loop-to-stop paths exit `USAGE`(2)
+  (were `ERROR`/`NOT_FOUND`), and that its hint text names `rauf loop run --detached`, not `loop start`
+  (loop-commands.ts ~:422/:431).
 - **Call-site audit regression (REQ-EXIT-02):** a test (or a CI grep) asserting no source references the
   removed member names `INVALID_ARGS`/`NOT_FOUND`/`VALIDATION`/`CONFLICT`/`PAUSED_HUMAN` — they must not
   exist after the redefinition. Cover the 409/already-running path → `USAGE`(2).
@@ -66,20 +76,37 @@ to the exact `ExitCode` value in [`00-core-definitions.md`](./00-core-definition
 - The remediation fires **before** the generic unknown-subcommand/unknown-flag error (assert the specific
   message, not the generic one).
 
-## 5. `review` signal (REQ-SIG-01)
+### 4a. Help/usage no-stale-token audit (REQ-DOC-02)
+
+- Assert no `loop start` or `--watch` token survives in the `loop` subcommand `SubcommandDef` usage/help
+  strings, the top-level `--help`, or the `loop stop` hint — **except** the `REMOVED_TOKENS` remediation
+  messages (00 §5), which are the only allowed mentions. A snapshot of top-level + `loop --help`, or a grep
+  over the rendered help / registry, satisfies this (complements the §1 ExitCode-member grep, which does not
+  cover help strings).
+
+## 5. `review` signal (REQ-SIG-01) + signal-placement docs (REQ-SIG-02)
 
 - `SignalParsedSchema` now accepts `signal:"review"` (schema-validation test).
 - The runner emits `signal_parsed` with `signal:"review"` for a `RAUF_REVIEW` parse (no `done` collapse) —
   assert against the emitted/persisted event.
 - Regression for the latent bug: a **work** item emitting `RAUF_REVIEW` produces `signal_parsed:"review"`
   (not `"done"`). No change to review *handling* semantics is asserted (out of scope).
+- **Signal-placement reconciliation (REQ-SIG-02)** — verified at the **doc level** (like §7): confirm
+  `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §A.2 no longer says "final line", the `signal_parsed` row + gotcha
+  include `review`, and the agent templates drop the strictly-last-line claim (per 04 §2). Optionally anchor
+  the docs to behavior with a `parseSignal` characterization test asserting it scans from the end and
+  ignores trailing text after the signal line.
 
-## 6. Flag canon (REQ-FLAG-01/02/04)
+## 6. Flag canon (REQ-FLAG-01/02/03/04)
 
 - `--json` honored under `--follow` (NDJSON output) on `status` (and `loop run --detached --follow` where
   applicable).
 - `-d` parses to `--detached`; `-f` to `--follow` (the latter already from Phase 1 — keep green).
 - `--interval` accepted under `--follow`.
+- **`--backlog` (REQ-FLAG-03):** the sole non-default-root spelling is inherited from Phase 1 and exercised
+  by existing per-command tests; this feature introduces no second spelling. New assertion: the
+  `loop run --detached` POST body forwards `backlogRoot` from `--backlog` (02 §2.2) — i.e. detached runs
+  target the same root as the flag.
 
 ## 7. Events versioning (REQ-EVT-01/02)
 

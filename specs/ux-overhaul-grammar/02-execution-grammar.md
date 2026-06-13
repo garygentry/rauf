@@ -26,6 +26,7 @@ All file:line references were verified against source on 2026-06-13; re-confirm 
 | REQ-FLAG-03 | §6 `--backlog <dir>` sole non-default-root target |
 | REQ-FLAG-04 | §6 `--interval <seconds>` sole poll-cadence flag |
 | REQ-RMV-01 | §7 removed-command remediation interceptor |
+| NFR-PARITY-01 | §5 observation parity (both branches feed the same file substrate) |
 
 ---
 

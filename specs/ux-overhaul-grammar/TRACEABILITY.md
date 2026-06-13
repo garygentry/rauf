@@ -21,7 +21,7 @@ and NFR resolves to at least one doc).
 | REQ-EXIT-01 (unified scheme, status + loop run) | 03-exit-codes | 00 §1/§2, 01, 06 |
 | REQ-EXIT-02 (collision/disagreement removed) | 03-exit-codes | 00 §1 remap, 06 (audit grep) |
 | REQ-EXIT-03 (`backlog validate` untouched) | 03-exit-codes | 00 §1, 06 |
-| REQ-EXIT-04 (documented machine contract) | 03-exit-codes | 00 §1, 05 |
+| REQ-EXIT-04 (documented machine contract) | 03-exit-codes | 00 §1 |
 | REQ-SIG-01 (explicit `review`, no collapse) | 04-signals-and-events | 00 §3, 01, 06 |
 | REQ-SIG-02 (signal-placement docs ↔ parser) | 04-signals-and-events | 01, 05 |
 | REQ-EVT-01 (events.ndjson versioned, additive-only) | 04-signals-and-events | 00 §4, 01, 05 |

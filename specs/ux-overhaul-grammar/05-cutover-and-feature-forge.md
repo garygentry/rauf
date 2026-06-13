@@ -18,6 +18,7 @@ map + change ordering). Cross-cutting source of truth: [`../ux-overhaul/CANON.md
 | REQ-CONTRACT-05 | §5 out-of-loop execution (separate repo, gated as done) |
 | REQ-DOC-01 | §6 project spec docs (6 × `docs/SPEC-*.md`) |
 | REQ-DOC-02 | §6 CLI help/usage |
+| NFR-SAFETY-01 / NFR-CUTOVER-01 | §5/§7 dogfood rauf-stable + cutover sequencing |
 
 ## 1. Single v0.5.0 flip (REQ-CONTRACT-01)
 
@@ -126,7 +127,7 @@ defaults invoke `loop run … --ndjson`, `status … --json`, `backlog list … 
 
 - FF invokes the configurable `loopRunner.runCommand` — default
   **`{bin} loop run . --backlog {backlogDir} --iterations {iterations}`** (schema `:65`) and the
-  event-stream **`runCommandNdjson`** default `… --ndjson` (schema `:70`). **FF runs `loop run --ndjson`,
+  event-stream **`eventStreamCommand`** (schema field `:68`) default `… --ndjson` (`:70`). **FF runs `loop run --ndjson`,
   NOT `loop start`** — so there are **no `loop start` invocations to change** in FF; the breaking surface for
   FF is the version gate (4a) + the exit-code/status reads + the stale `watch` token (4b).
 - Re-validate FF's **`status --json`** read (default `{bin} status . --backlog {backlogDir} --json`, schema

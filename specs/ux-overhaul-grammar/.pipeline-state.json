@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-grammar",
   "pipelineStatus": "active",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T04:15:00Z",
+  "updatedAt": "2026-06-13T04:45:00Z",
   "currentStage": "forge-4-backlog",
   "stages": {
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-specs-2026-06-13.md",
+      "findingsCount": 13,
+      "verifiedAt": "2026-06-13T04:30:00Z",
+      "result": "5 parallel forge-verifiers + deterministic validator (26 reqs, 0 uncovered/0 orphaned). 13 findings: 3 errors (V-011 runCommandNdjson->eventStreamCommand, V-012 artifact template paths wrong, V-013 mis-cited line), 4 gaps (V-001 CLI change-map omits ~8 ExitCode-touched files, V-006 loop stop untested, V-007 help/usage audit untested, V-008 REQ-SIG-02 no verification), 3 inconsistencies (V-002 server-commands no-change, V-004 TRACEABILITY EXIT-04 attrib, V-009 statusExitCode BLOCKED-as-enum), 3 improvements (V-003, V-005, V-010). types/contracts dim clean. None blocking.",
+      "fixedAt": "2026-06-13T04:45:00Z"
+    },
     "forge-3-specs": {
       "status": "complete",
       "version": 1,
