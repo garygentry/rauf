@@ -2,7 +2,8 @@
 
 > **Scope note.** This PRD covers **Phase 2 (execution-command grammar & naming) and Phase 3
 > (contract & machine surfaces) together**, as defined in [`../ux-overhaul/CANON.md`](../ux-overhaul/CANON.md)
-> §5–§6. They are ratified to ship as a **single breaking release (proposed v0.5.0)** — exactly
+> §5–§6. They are ratified to ship as a **single breaking release at v0.5.0** (the version is ratified
+> for this feature; CANON.md's own `[PROPOSED]` wording is amended separately) — exactly
 > one moment of breakage. Phase 1 (the observation substrate) is already shipped and merged; this
 > feature builds on it. Phase 4 (web recovery actions + status vocabulary/badges + provider-agnostic
 > agent templates) is a **separate feature** (`ux-overhaul-web`) and is out of scope here. `CANON.md`
@@ -84,83 +85,85 @@ same consumer, so bundling them into one release minimizes total breakage and co
 
 ### Execution grammar (REQ-EXEC)
 
-- **REQ-EXEC-01** — A single loop-execution verb (`loop run [path]`) must support two modes: **attended**
+- **REQ-EXEC-01** *(P0)* — A single loop-execution verb (`loop run [path]`) must support two modes: **attended**
   (foreground, blocking, streams to the terminal, unattended-safe across a server bounce) and
   **detached** (returns immediately, continues running without the invoking terminal). Detached mode is
   selected by the flag `--detached` (short `-d`). *(CANON §4.1)*
-- **REQ-EXEC-02** — The `loop start` verb must be **removed entirely** — no alias, no shim. *(clean break)*
-- **REQ-EXEC-03** — A detached run must transparently provision whatever it needs to keep running after
+- **REQ-EXEC-02** *(P0)* — The `loop start` verb must be **removed entirely** — no alias, no shim. *(clean break; CANON §4.1)*
+- **REQ-EXEC-03** *(P1)* — A detached run must transparently provision whatever it needs to keep running after
   the command returns (the server daemon, auto-started). The operator must not have to separately start a
-  server.
-- **REQ-EXEC-04** — `loop run --detached --follow` must, after detaching, attach the canonical live view
-  (equivalent to the top-level `follow` command).
-- **REQ-EXEC-05** — `loop stop [path]` must stop a detached/server-owned loop. A foreground `loop run` is
-  stopped by interrupting it (Ctrl-C), as today.
-- **REQ-EXEC-06** — An attended run and a detached run of the same backlog must remain **observationally
+  server. *(CANON §4.1)*
+- **REQ-EXEC-04** *(P2)* — `loop run --detached --follow` must, after detaching, attach the canonical live view
+  (equivalent to the top-level `follow` command). **Detaching and following compose:** the loop continues
+  server-owned; interrupting the attached view (Ctrl-C) **detaches the view only and does NOT stop the
+  loop** — stopping a detached run requires `loop stop` (REQ-EXEC-05). *(CANON §4.1)*
+- **REQ-EXEC-05** *(P1)* — `loop stop [path]` must stop a detached/server-owned loop. A foreground `loop run` is
+  stopped by interrupting it (Ctrl-C), as today. *(CANON §4.1)*
+- **REQ-EXEC-06** *(P1)* — An attended run and a detached run of the same backlog must remain **observationally
   identical** across all observers (CLI, web, external tools) — naming the mode must not change what can
   be observed. *(inherited from the Phase 1 substrate; must not regress)*
 
 ### Flag canon (REQ-FLAG)
 
-- **REQ-FLAG-01** — `--follow` / `-f` must be the **one** streaming-follow flag, on every command that
-  streams (`status`, `log`, `follow`, and `loop run --detached`). `--watch` must be removed everywhere.
-- **REQ-FLAG-02** — `--json` must be honored on **every** read/monitor command, including streaming ones
-  (emitting NDJSON where streaming) — e.g. `status --follow --json`.
-- **REQ-FLAG-03** — `--backlog <dir>` must be the **single** way to target a non-default backlog root, on
-  every command that touches state. No command may introduce a second spelling.
-- **REQ-FLAG-04** — `--interval <seconds>` must be the **single** poll-cadence flag, applicable under
-  `--follow`.
+- **REQ-FLAG-01** *(P1)* — `--follow` / `-f` must be the **one** streaming-follow flag, on every command that
+  streams (`status`, `log`, `follow`, and `loop run --detached`). `--watch` must be removed everywhere. *(CANON §4.1)*
+- **REQ-FLAG-02** *(P1)* — `--json` must be honored on **every** read/monitor command, including streaming ones
+  (emitting NDJSON where streaming) — e.g. `status --follow --json`. *(CANON §4.1)*
+- **REQ-FLAG-03** *(P1)* — `--backlog <dir>` must be the **single** way to target a non-default backlog root, on
+  every command that touches state. No command may introduce a second spelling. *(CANON §4.1)*
+- **REQ-FLAG-04** *(P1)* — `--interval <seconds>` must be the **single** poll-cadence flag, applicable under
+  `--follow`. *(CANON §4.1)*
 
 ### Unified exit codes (REQ-EXIT)
 
-- **REQ-EXIT-01** — A single exit-code scheme must be used by **both** `status` (reflecting current state)
+- **REQ-EXIT-01** *(P0)* — A single exit-code scheme must be used by **both** `status` (reflecting current state)
   and `loop run` (reflecting terminal state): **0** success (clean terminal: idle/complete) · **1** error
   (generic failure) · **2** usage (bad args / IO) · **3** needs human (`PAUSED_HUMAN`) · **4** limit
   reached / usage-paused / sleeping · **5** blocked (terminal with blocked items) · **6** running
   (query-time only, `status`). *(CANON §4.4)*
-- **REQ-EXIT-02** — The current inconsistencies must be eliminated: the `status`(1/2/3) vs `loop run`(6)
-  disagreement, and the `1=running` / `1=error` collision.
-- **REQ-EXIT-03** — `backlog validate` must keep its existing, coherent codes (0 valid / 1 findings / 2
-  usage) unchanged.
-- **REQ-EXIT-04** — The exit-code scheme is a **documented machine contract**; its values must be
+- **REQ-EXIT-02** *(P0)* — The current inconsistencies must be eliminated: the `status`(1/2/3) vs `loop run`(6)
+  disagreement, and the `1=running` / `1=error` collision. *(CANON §4.4)*
+- **REQ-EXIT-03** *(P0)* — `backlog validate` must keep its existing, coherent codes (0 valid / 1 findings / 2
+  usage) unchanged. *(CANON §4.4)*
+- **REQ-EXIT-04** *(P0)* — The exit-code scheme is a **documented machine contract**; its values must be
   specified precisely enough for a downstream consumer (feature-forge) to depend on them.
 
 ### Signals (REQ-SIG)
 
-- **REQ-SIG-01** — The parsed-signal surface (`signal_parsed.signal`) must expose an explicit **`review`**
-  value rather than collapsing `review` into `done`. *(clean break)*
-- **REQ-SIG-02** — Signal-placement documentation (the backlog-tool contract and the agent templates)
+- **REQ-SIG-01** *(P0)* — The parsed-signal surface (`signal_parsed.signal`) must expose an explicit **`review`**
+  value rather than collapsing `review` into `done`. *(clean break; CANON §4.5)*
+- **REQ-SIG-02** *(P1)* — Signal-placement documentation (the backlog-tool contract and the agent templates)
   must be reconciled with the **actual** parser behavior: the signal is emitted on a line by itself, the
   runner scans from the **end** of output, and trailing summaries / commit messages do not break
-  detection.
+  detection. *(CANON §4.5)*
 
 ### Machine surfaces (REQ-EVT)
 
-- **REQ-EVT-01** — `events.ndjson` must be a **stable, versioned, additive-only-within-a-major** machine
+- **REQ-EVT-01** *(P0)* — `events.ndjson` must be a **stable, versioned, additive-only-within-a-major** machine
   surface, on equal footing with `--json` output and the `--ndjson` live stream. The versioning discipline
   (when and how `EVENTS_SCHEMA_VERSION` may change) must be documented. *(CANON §4.5; the version field
   already exists from Phase 1 — this formalizes the contract.)*
-- **REQ-EVT-02** — The persisted event log and the live `--ndjson` stream must carry the **same event
-  shapes**.
+- **REQ-EVT-02** *(P1)* — The persisted event log and the live `--ndjson` stream must carry the **same event
+  shapes**. *(CANON §4.5)*
 
 ### Removed-command remediation (REQ-RMV)
 
-- **REQ-RMV-01** — Invoking a removed verb or flag (`loop start`, `--watch`) must produce a **targeted,
+- **REQ-RMV-01** *(P0)* — Invoking a removed verb or flag (`loop start`, `--watch`) must produce a **targeted,
   non-zero error that names the replacement** (e.g. "`loop start` was removed in v0.5.0 — use `loop run
   --detached`"). This is an **error message, not an alias** — it must execute nothing and must not run the
   replacement. *(CANON §4.1 "error remediation polish", consistent with the no-aliases clean break.)*
 
 ### Cutover & contract (REQ-CONTRACT)
 
-- **REQ-CONTRACT-01** — All breaking changes in this feature (removed verbs/flags, the exit-code scheme,
+- **REQ-CONTRACT-01** *(P0)* — All breaking changes in this feature (removed verbs/flags, the exit-code scheme,
   the `review` signal value, the events versioning discipline) must land in a **single release** —
-  proposed **v0.5.0** — so there is exactly one moment of breakage.
-- **REQ-CONTRACT-02** — The runner must report a version (via `rauf version --json`) of **≥ 0.5.0**
+  **v0.5.0** — so there is exactly one moment of breakage.
+- **REQ-CONTRACT-02** *(P0)* — The runner must report a version (via `rauf version --json`) of **≥ 0.5.0**
   reflecting the flip, so a downstream version gate can require the whole new contract in one check.
-- **REQ-CONTRACT-03** — This feature must **document the new contract** (exit codes, signal vocabulary,
+- **REQ-CONTRACT-03** *(P0)* — This feature must **document the new contract** (exit codes, signal vocabulary,
   `events.ndjson` version and shapes, removed/renamed commands) precisely enough that feature-forge can be
   updated against it.
-- **REQ-CONTRACT-04** — **feature-forge must be updated to the new contract as part of this feature's
+- **REQ-CONTRACT-04** *(P0)* — **feature-forge must be updated to the new contract as part of this feature's
   definition of done** (in scope, ratified 2026-06-13). The concrete updates: bump
   `loopRunner.minRunnerVersion` from `0.2.0` to **`0.5.0`** in `references/forge-config-schema.json`
   (schema default) and `skills/forge-5-loop/SKILL.md`, and align the contract/compatibility docs
@@ -170,33 +173,37 @@ same consumer, so bundling them into one release minimizes total breakage and co
   (PR #2). *(Note: feature-forge invokes the configurable `loopRunner` `runCommand`, which already defaults
   to `loop run … --ndjson` — NOT `loop start` — so no `loop start` / `--watch` references exist in
   feature-forge to remove; the breaking surface for it is the version gate and the exit-code/status reads.)*
-- **REQ-CONTRACT-05** — Because feature-forge is a **separate git repository** outside the rauf loop's
+- **REQ-CONTRACT-05** *(P0)* — Because feature-forge is a **separate git repository** outside the rauf loop's
   write sandbox, the feature-forge edits (REQ-CONTRACT-04) are performed as an explicit **out-of-loop step
   at cutover** (not by the rauf autonomous loop), but are **gated as part of this feature's completion** —
   the flip is not "done" until both the rauf-side changes and the feature-forge update have landed together.
 
 ### Documentation (REQ-DOC)
 
-- **REQ-DOC-01** — The affected project specs must be updated to the new surface as part of "done":
+- **REQ-DOC-01** *(P0)* — The affected project specs must be updated to the new surface as part of "done":
   `docs/SPEC-CLI.md`, `docs/SPEC-WEB.md`, `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`, `docs/SCHEMAS.md`,
   `docs/ARCHITECTURE.md`, `docs/SPEC-ARTIFACTS.md`. *(CANON §5)*
+- **REQ-DOC-02** *(P1)* — The CLI **help / usage output** (top-level and per-command `--help`) must reflect
+  the new grammar — the single `loop run [--detached|-d]` verb, the removed `loop start` / `--watch`, and
+  the canonical `--follow`/`-f`, `--json`, `--backlog`, `--interval` flag set — with **no references to
+  removed verbs/flags** except the REQ-RMV-01 remediation messages. *(CANON §5 "help + error remediation")*
 
 ---
 
 ## 4. Non-Functional Requirements
 
-- **NFR-COMPAT-01** — **Clean break, no deprecation aliases** (ratified). The only backward-compatibility
+- **NFR-COMPAT-01** *(P0)* — **Clean break, no deprecation aliases** (ratified). The only backward-compatibility
   affordance is the REQ-RMV-01 remediation *message*. Justified by zero external users on old behavior.
-- **NFR-CUTOVER-01** — The flip must be coordinated so the project's own self-hosting loop continues to
+- **NFR-CUTOVER-01** *(P0)* — The flip must be coordinated so the project's own self-hosting loop continues to
   function across the version boundary, and the documented contract is sufficient for feature-forge to be
   brought to compatibility in the same change window.
-- **NFR-PARITY-01** — The observation parity established in Phase 1 must be **preserved**: the grammar
+- **NFR-PARITY-01** *(P1)* — The observation parity established in Phase 1 must be **preserved**: the grammar
   change must not reintroduce any mode-dependent difference in what observers can see.
-- **NFR-SAFETY-01** — Every implementing loop must be run with the **frozen `rauf-stable`** binary, never
+- **NFR-SAFETY-01** *(P0)* — Every implementing loop must be run with the **frozen `rauf-stable`** binary, never
   the dev binary whose command surface is being rewritten. (`forge.config.json` already pins
   `loopRunner.bin = "rauf-stable"`.)
-- **NFR-PERF-01** — No regression in command startup latency or file-based status derivation.
-- **NFR-QUALITY-01** — The full quality gate (typecheck, lint, format, tests) must pass; new behavior
+- **NFR-PERF-01** *(P1)* — No regression in command startup latency or file-based status derivation.
+- **NFR-QUALITY-01** *(P0)* — The full quality gate (typecheck, lint, format, tests) must pass; new behavior
   (new flag parsing, exit-code mapping, signal value, remediation errors) must be covered by tests.
 
 ---
@@ -240,6 +247,8 @@ same consumer, so bundling them into one release minimizes total breakage and co
 - `loop start` is gone; `loop run --detached` (`-d`) starts a detached run that auto-provisions the
   server and returns immediately; `loop run --detached --follow` attaches the live view; `loop stop`
   stops it.
+- `loop run --detached --follow` composes correctly: Ctrl-C on the attached view detaches the view only
+  and leaves the loop running (verified by a subsequent `status`/`loop stop`).
 - `--follow`/`-f`, `--json`, `--backlog`, `--interval` are consistent across every command they apply to;
   `--watch` is gone; `--json` works even under `--follow`.
 - One exit-code scheme is implemented in both `status` and `loop run`; `backlog validate` is untouched.
