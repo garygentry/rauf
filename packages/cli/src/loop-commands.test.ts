@@ -1101,6 +1101,38 @@ describe("loop run --detached", () => {
       await close();
     }
   });
+
+  it("forwards --backlog <dir> as backlogRoot in the POST body (REQ-FLAG-03)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj-backlog");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const customBacklog = "specs/my-backlog";
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["backlog", customBacklog],
+        ]),
+      });
+
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+      // --backlog must be forwarded as backlogRoot so the detached run targets the
+      // same root as the flag (02 §6, REQ-FLAG-03).
+      expect((startCalls[0]!.body as Record<string, unknown>).backlogRoot).toBe(customBacklog);
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
 });
 
 // ─── loop run --detached --follow lifecycle (item 007, 02 §3) ───────────
