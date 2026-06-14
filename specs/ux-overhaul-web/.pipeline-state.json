@@ -1,0 +1,18 @@
+{
+  "feature": "ux-overhaul-web",
+  "pipelineStatus": "in-progress",
+  "createdAt": "2026-06-14T20:11:00Z",
+  "updatedAt": "2026-06-14T20:11:00Z",
+  "currentStage": "forge-2-tech",
+  "stages": {
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-14T20:11:00Z",
+      "basedOnVersions": {},
+      "artifacts": ["specs/ux-overhaul-web/PRD.md"],
+      "result": "Phase 4 (final) of the UX/DX overhaul. Standalone feature (no epic). Three workstreams from CANON §5 row 4: (1) web recovery parity — all five actions reset/resume/review/unblock/validate as backend routes + frontend controls wrapping existing core/loop logic (REQ-WEB-01..08); (2) shared status label-map in core, single source for CLI + both web pages, total raw-status coverage, add REVIEWING + PAUSED_USAGE_LIMIT badges, PAUSED_HUMAN→'Needs Human' (REQ-VOCAB-01..07); (3) statusExitCode maps REVIEWING→6, PAUSED_USAGE_LIMIT→4 (REQ-EXIT-01); plus cheap agent-contract DOC items — signal spec, model cascade, progress.md stub (REQ-AGENT-01..03). Mostly additive: NO minRunnerVersion bump, NO feature-forge edit, NO breaking flip (C-1).",
+      "notes": "Four §3 decisions ratified with Gary (all recommended): (1) AGENT_ADDON.md rename + provider-neutral 'Task tool' wording DEFERRED to Part-B (CANON §4.6/§8 — couples there; only cheap doc items land here); (2) ALL FIVE recovery actions in scope; (3) exit-code mapping REVIEWING→RUNNING(6) [behavior-preserving] + PAUSED_USAGE_LIMIT→LIMIT(4) [fixes §2.5 silent-exit-0 footgun]; (4) testing = backend route tests + core label-map unit tests, NO new React frontend test harness. CODE-MAP findings (from Explore, file:line in PRD context): resetProject (core reset.ts:48), unblockItems (core backlog.ts:431), validateBacklog (core backlog-validate.ts:47), deriveStatus (core status.ts:359) are CORE — but RESUME is CLI-layer only (cli/resume-commands.ts) and REVIEW PASS lives in packages/loop (review-hooks.ts), NOT core — so 'thin core adapter' is inaccurate for those two; web already depends on packages/loop via loop-manager. OQ-1 (tech spec): decide where shared resume/review logic lands without violating rule #1. Status badge mapping is TRIPLICATED today (cli/status-commands.ts colorLoopState; web status.tsx STATE_BADGE; web index.tsx STATE_BADGE — slightly different colors); NO shared module exists. LoopStateEnum (core schemas.ts:228) has 10 members, REVIEWING + PAUSED_USAGE_LIMIT ABSENT; raw enum (schemas.ts:167) has 12; mapLoopStateStatus (status.ts:106) maps reviewing→RUNNING, paused_usage_limit→PAUSED today. statusExitCode at cli/status-commands.ts:512. CSRF middleware app-level at web app.ts:54-69 (X-Rauf-Request on all POST/PUT/DELETE) — new routes inherit it. NO web frontend tests exist (only backend route tests). Existing web has loop start/stop + events SSE + /api/loops + backlog CRUD/restore/sweep, but NO reset/resume/review/unblock/validate endpoints. Dogfood rauf-stable 0.5.0. Canon: specs/ux-overhaul/CANON.md; handoff: specs/ux-overhaul/PHASE-4-KICKOFF.md."
+    }
+  }
+}
