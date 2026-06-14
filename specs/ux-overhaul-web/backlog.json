@@ -198,8 +198,8 @@
         "Controls disable per the spec 04 §8.7 applicability table, using the derived loopState (incl. REVIEWING/PAUSED_USAGE_LIMIT).",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes; no *.test.tsx added"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:37:03.637Z",
       "dependsOn": [
         "002",
         "005",
