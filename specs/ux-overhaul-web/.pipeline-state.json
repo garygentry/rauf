@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T20:11:00Z",
+  "updatedAt": "2026-06-14T20:30:00Z",
   "currentStage": "forge-2-tech",
   "stages": {
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-prd-2026-06-14.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-14T20:30:00Z",
+      "fixedAt": "2026-06-14T20:40:00Z",
+      "result": "Single forge-verifier, 15/15 checks (11 pass, 3 fail, 1 n/a). 0 errors. Gap coverage vs all 4 ratified decisions + CANON §4.3/§4.4/§4.6 complete. 6 findings: 1 gap (V-006 concurrency/idempotency of recovery mutations — add REQ-WEB-09 P1), 1 inconsistency (V-004 REQ-VOCAB-07 P1 but badges are P0 via §8/REQ-VOCAB-03/04 → promote to P0), 3 impl-leaks (V-001 REQ-ARCH-01 names packages/core which OQ-1 parks for tech spec; V-002 REQ-WEB-01 enumerates reset flags; V-003 REQ-EXIT-01 names statusExitCode mechanism — restate behaviorally), 1 verifiability nit (V-005 'branch merges'/'completes overhaul' are process not feature criteria). Both user-decision findings resolved to verifier recommendations (V-004→promote P0, V-006→add REQ-WEB-09)."
+    },
     "forge-1-prd": {
       "status": "complete",
       "version": 1,

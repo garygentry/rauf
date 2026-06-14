@@ -53,8 +53,9 @@ These matter now because Phases 1–3 made the substrate and contract coherent; 
 ### 3.1 Web Recovery Parity
 
 - **REQ-WEB-01: Web reset action.** P0. The web must expose an action to reset a project's loop
-  state (equivalent to the CLI `reset`), with the same options the CLI exposes (e.g. clear-backlog,
-  keep-progress, keep-log). Backend route + frontend control.
+  state (equivalent to the CLI `reset`), with the same option surface the CLI `reset` exposes
+  (option parity — the tech spec enumerates the exact flags from the current `reset` command).
+  Backend route + frontend control.
 - **REQ-WEB-02: Web resume action.** P0. The web must expose an action to resume a paused/stopped
   loop (equivalent to the CLI `resume`), including the retry-blocked convenience.
 - **REQ-WEB-03: Web review action.** P0. The web must expose an action to run a standalone review
@@ -75,6 +76,12 @@ These matter now because Phases 1–3 made the substrate and contract coherent; 
   layer — `resume` — or in `packages/loop` — the review pass — relocating/exposing it so web and CLI
   share one implementation is a tech-spec concern; the PRD requires only that web not fork the
   logic.)
+- **REQ-WEB-09: Recovery mutations are safe under concurrency.** P1. A recovery action that would
+  corrupt or conflict with an actively-running loop must be rejected with an actionable error (not
+  silently applied), consistent with the existing loop-lock model (`.loop.lock` / the
+  `~/.rauf/active` registry); recovery endpoints inherit core's atomic-write guarantees (rule #2).
+  The precise locking mechanism is a tech-spec concern; the requirement is that concurrent recovery
+  never silently corrupts loop state and never leaves the user without feedback.
 
 ### 3.2 Status Vocabulary — Shared Label Map
 
@@ -95,16 +102,19 @@ These matter now because Phases 1–3 made the substrate and contract coherent; 
 - **REQ-VOCAB-06: Human vs machine casing.** P0. Display labels are **Title Case** on human surfaces;
   the SCREAMING_SNAKE form is the machine enum value only (`--json`, API responses). The label map
   governs human labels; it does not change the machine enum spelling.
-- **REQ-VOCAB-07: Badges for the full enum.** P1. Every derived enum value has a badge definition on
-  the web surfaces (no value renders unstyled / as a silent default).
+- **REQ-VOCAB-07: Badges for the full enum.** P0. Every derived enum value has a badge definition on
+  the web surfaces (no value renders unstyled / as a silent default). (P0 because CANON §4.3 rule 2
+  mandates badges for the new states, and §8's success criteria require the two new states to be
+  badged — so badge coverage cannot be a should-have.)
 
 ### 3.3 Exit-Code Alignment
 
-- **REQ-EXIT-01: Map the two new states in statusExitCode.** P0. Extend `statusExitCode` so the two
-  newly-distinct states map per CANON §4.4: `REVIEWING` → `RUNNING(6)` (preserves today's behavior,
-  since raw `reviewing` already derived to `RUNNING`→6); `PAUSED_USAGE_LIMIT` → `LIMIT(4)`, joining
-  the limit family. This corrects today's behavior where `paused_usage_limit` silently exits `0`
-  (looks idle). The unified v0.5.0 exit table (codes 0–6) is otherwise unchanged.
+- **REQ-EXIT-01: Status exit codes reflect the two new states.** P0. `rauf status` must exit `6`
+  (Running) for a `reviewing` loop and `4` (Limit) for a `paused_usage_limit` loop, per CANON §4.4 —
+  correcting today's behavior where `paused_usage_limit` silently exits `0` (looks idle). The
+  `reviewing` mapping preserves today's observable behavior (raw `reviewing` already derived to
+  `RUNNING`→6). The unified v0.5.0 exit table (codes 0–6) is otherwise unchanged. (Code-map note for
+  the tech spec: the mapping lives in `statusExitCode`.)
 
 ### 3.4 Agent Contract — Documentation Items
 
@@ -137,8 +147,9 @@ These matter now because Phases 1–3 made the substrate and contract coherent; 
 ### 4.3 Maintainability / Architecture
 
 - **REQ-ARCH-01: Core has zero imports from cli/web.** P0. The shared label-map module must be
-  placed so CLI and web both import it without violating rule #1 (i.e. in `packages/core`, with no
-  cli/web dependencies). Recovery endpoints wrap core/loop, never the reverse.
+  importable by both the CLI and the web without violating rule #1 — i.e. it must carry no cli/web
+  dependencies. Recovery endpoints wrap core/loop, never the reverse. (The concrete module location
+  is a tech-spec decision — see OQ-2; `packages/core` is the expected home given rule #1.)
 - **REQ-ARCH-02: Status derivation stays file-based.** P0. No recovery or status path may invoke a
   subprocess to derive status (rule #6); derivation continues to read files directly.
 
@@ -207,11 +218,13 @@ These matter now because Phases 1–3 made the substrate and contract coherent; 
   the derived enum covers **every** raw status (no silent IDLE); `REVIEWING` and
   `PAUSED_USAGE_LIMIT` are distinct, badged values; `PAUSED_HUMAN` shows **"Needs Human"** on every
   surface.
-- `statusExitCode` maps `REVIEWING`→`6` and `PAUSED_USAGE_LIMIT`→`4`; a usage-limited loop no longer
-  exits `0`.
+- `rauf status` exits `6` for a `reviewing` loop and `4` for a `paused_usage_limit` loop; a
+  usage-limited loop no longer exits `0`.
 - The cheap agent-contract doc items (signal spec, model cascade, `progress.md` stub) are landed; the
   AGENT_ADDON rename is explicitly deferred to Part-B.
 - New recovery routes have backend tests; the shared label map has core unit tests; the full gate
   (`pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`) is green.
-- Affected `docs/SPEC-*` docs are updated; the branch merges; **this completes the 4-phase UX/DX
-  overhaul.**
+- Affected `docs/SPEC-*` docs are updated.
+
+**Phase completion note (process, not a feature criterion):** merging this branch completes the
+4-phase UX/DX overhaul.
