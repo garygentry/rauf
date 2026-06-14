@@ -42,6 +42,8 @@ import {
   resetProject,
   unblockItems,
   validateBacklog,
+  selectNextItem,
+  LoopStartOptionsSchema,
   ErrorCodes,
   BacklogItemTypeSchema,
   BacklogItemStatusSchema,
@@ -56,11 +58,31 @@ import {
   type UpdateItemInput,
 } from "@rauf/core";
 
-import { acquireRecoveryLock, releaseRecoveryLock } from "@rauf/loop";
+import {
+  acquireRecoveryLock,
+  releaseRecoveryLock,
+  recoverInterruptedLoop,
+  type RecoverySummary,
+} from "@rauf/loop";
 
 import { errorResponse } from "../app.js";
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  resolveRequestMaxIterations,
+} from "../loop-defaults.js";
+import { getLoopManager } from "../loop-manager.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 import { assertNoLiveLoop } from "./recovery-guard.js";
+
+// ─── Web DTOs ────────────────────────────────────────────────────
+
+/** Success payload for POST /:id/resume (00 §6). */
+interface ResumeResult {
+  reconciled: RecoverySummary;
+  relaunched: boolean;
+  reason?: string;
+}
 
 // ─── Request body schemas ────────────────────────────────────────
 
@@ -82,6 +104,16 @@ const UnblockBodySchema = z
   .object({
     itemId: z.string().optional(),
     backlogRoot: z.string().optional(),
+  })
+  .strict();
+
+// ResumeBodySchema (00 §7): reconcile + relaunch body. `.strict()` rejects
+// unknown keys. OQ-T2: the answer field is `text`, written as humanAnswer.
+const ResumeBodySchema = z
+  .object({
+    backlogRoot: z.string().optional(),
+    retryBlocked: z.boolean().optional(),
+    answers: z.array(z.object({ itemId: z.string(), text: z.string() }).strict()).optional(),
   })
   .strict();
 
@@ -747,6 +779,143 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       );
     }
     return c.json({ data: result.value }); // ValidateBacklogResult { valid, findings }
+  });
+
+  // ── POST /:id/resume ──────────────────────────────────────────
+  //
+  // Reconcile + relaunch (web equivalent of CLI resume, minus --recover).
+  // Acquire-and-hold guarded (D3.4): the lock is held across answer
+  // injection, recoverInterruptedLoop, and the eligibility decision, then
+  // released in a finally BEFORE the relaunch so the loop's own lock
+  // acquisition succeeds. The --recover reverify+commit path is CLI-only.
+
+  router.post("/:id/resume", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = ResumeBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parsed.error.flatten()),
+        400,
+      );
+    }
+    const body = parsed.data;
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, body.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
+    // Resolve the absolute backlog root for the relaunch options (mirrors the
+    // start route). resolveBacklogPathsFromParam already validated it.
+    let resolvedBacklogRoot: string | undefined;
+    if (body.backlogRoot) {
+      const rootResult = resolveBacklogRoot(projectPath, body.backlogRoot);
+      if (rootResult.ok) resolvedBacklogRoot = rootResult.value;
+    }
+
+    // Guard: acquire-and-hold (D3.4). A live loop → 409; a stale lock is
+    // cleared; a missing backlog root → 404 (mapped via recoveryErrorStatus).
+    const acquired = acquireRecoveryLock(paths);
+    if (!acquired.ok) {
+      return c.json(
+        errorResponse(acquired.error.code, acquired.error.message, acquired.error.details),
+        recoveryErrorStatus(acquired.error.code),
+      );
+    }
+
+    let relaunch = false;
+    let relaunchOptions: ReturnType<typeof LoopStartOptionsSchema.parse> | null = null;
+    let reconciled: RecoverySummary | null = null;
+    let reason: string | undefined;
+
+    try {
+      // 3. Answer injection (OQ-T2: { itemId, text } → humanAnswer).
+      for (const { itemId, text } of body.answers ?? []) {
+        const upd = updateItem(paths, itemId, {
+          humanAnswer: text,
+          status: "pending",
+          needsHuman: false,
+          blockedReason: null,
+        });
+        if (!upd.ok) {
+          return c.json(
+            errorResponse(
+              upd.error.code,
+              `Could not inject answer into ${itemId}: ${upd.error.message}`,
+              upd.error.details,
+            ),
+            recoveryErrorStatus(upd.error.code),
+          );
+        }
+      }
+
+      // 3b. retry-blocked convenience: re-queue genuine blocks before reconciling.
+      if (body.retryBlocked) {
+        const ub = unblockItems(paths);
+        if (!ub.ok) {
+          return c.json(
+            errorResponse(ub.error.code, ub.error.message, ub.error.details),
+            recoveryErrorStatus(ub.error.code),
+          );
+        }
+      }
+
+      // 4. Reconcile (async). recoverInterruptedLoop does NOT touch the lock — we hold it.
+      const recovery = await recoverInterruptedLoop(paths);
+      if (!recovery.ok) {
+        return c.json(
+          errorResponse(recovery.error.code, recovery.error.message, recovery.error.details),
+          recoveryErrorStatus(recovery.error.code),
+        );
+      }
+      reconciled = recovery.value;
+
+      // 4b. Interrupted-but-uncommitted work is the CLI-only --recover path; surface it.
+      if (reconciled.interrupted.length > 0) {
+        reason = `${reconciled.interrupted.length} item(s) have uncommitted work — run \`rauf resume --recover\` from the CLI to re-verify and commit before resuming.`;
+        relaunch = false;
+      } else {
+        // 5. Relaunch decision.
+        const post = readBacklog(paths);
+        if (post.ok && selectNextItem(post.value) === null) {
+          reason = "no eligible items";
+          relaunch = false;
+        } else {
+          relaunch = true;
+          relaunchOptions = LoopStartOptionsSchema.parse({
+            maxIterations: resolveRequestMaxIterations(projectPath, null, resolvedBacklogRoot),
+            maxRetries: DEFAULT_MAX_RETRIES,
+            sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+            backlogRoot: resolvedBacklogRoot,
+          });
+        }
+      }
+    } finally {
+      // Release BEFORE relaunch so the loop's own lock acquisition succeeds.
+      releaseRecoveryLock(paths);
+    }
+
+    // 6. Relaunch after release.
+    let relaunched = false;
+    if (relaunch && relaunchOptions) {
+      const started = getLoopManager().startLoop(projectPath, relaunchOptions);
+      relaunched = started.ok;
+      if (!started.ok) reason = started.error; // e.g. "Loop already running…"
+    }
+
+    const result: ResumeResult = { reconciled: reconciled!, relaunched, reason };
+    return c.json({ data: result });
   });
 
   // ── GET /:id/archive ──────────────────────────────────────────

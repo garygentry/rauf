@@ -171,8 +171,8 @@
         "recovery.test.ts resume cases pass including the OQ-T2 answers test and the no-orphaned-lock regression.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:28:56.504Z",
       "dependsOn": [
         "003",
         "004",

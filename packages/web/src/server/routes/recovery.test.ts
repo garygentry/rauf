@@ -6,6 +6,7 @@
 // Uses real temp directories with mock claude scripts, mirroring the
 // loop.test.ts harness (HOME isolation, lock seeding, mock claude).
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -31,9 +32,16 @@ const { TMP_HOME } = vi.hoisted(() => {
 import { LOCK_FILENAME } from "@rauf/core";
 
 import { createApp } from "../app.js";
-import { resetLoopManager } from "../loop-manager.js";
+import { getLoopManager, resetLoopManager } from "../loop-manager.js";
 
 const ACTIVE_DIR = path.join(TMP_HOME, ".rauf", "active");
+
+/** Local mirror of the resume route's success DTO (00 §6). */
+interface ResumeResult {
+  reconciled: { treeClean: boolean; interrupted: unknown[] };
+  relaunched: boolean;
+  reason?: string;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
@@ -77,6 +85,27 @@ function writeRaufMd(dir: string): void {
   const raufDir = path.join(dir, ".rauf");
   fs.mkdirSync(raufDir, { recursive: true });
   fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test\nVerify: echo ok\n");
+}
+
+/** Init a clean git repo so recoverInterruptedLoop's `git status` succeeds
+ *  (resume reconciles committed work via git). */
+function initGitRepo(dir: string): void {
+  const opts = { cwd: dir, stdio: "ignore" as const };
+  execFileSync("git", ["init"], opts);
+  execFileSync("git", ["config", "user.email", "test@example.com"], opts);
+  execFileSync("git", ["config", "user.name", "Test"], opts);
+  execFileSync("git", ["add", "-A"], opts);
+  execFileSync("git", ["commit", "-m", "init"], opts);
+}
+
+/** A mock claude that blocks (sleep) so a relaunched loop stays live. */
+function setupLongRunningClaude(): void {
+  const mockBinDir = path.join(tmpDir, "mock-bin");
+  fs.mkdirSync(mockBinDir, { recursive: true });
+  const script = `#!/bin/bash\nexec sleep 999\n`;
+  fs.writeFileSync(path.join(mockBinDir, "claude"), script);
+  fs.chmodSync(path.join(mockBinDir, "claude"), 0o755);
+  process.env["PATH"] = `${mockBinDir}:${originalPath}`;
 }
 
 function createProject(name: string, items: unknown[] = []): string {
@@ -149,7 +178,8 @@ beforeEach(() => {
   resetLoopManager();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await getLoopManager().shutdownAll();
   process.env["PATH"] = originalPath;
   resetLoopManager();
   fs.rmSync(ACTIVE_DIR, { recursive: true, force: true });
@@ -339,12 +369,131 @@ describe("GET /:id/backlog/validate", () => {
   });
 });
 
+// ─── POST /:id/resume ────────────────────────────────────────────
+
+describe("POST /:id/resume", () => {
+  it("returns 200 relaunched:false when nothing is eligible (no items)", async () => {
+    createProject("p", []); // empty backlog → selectNextItem === null
+    initGitRepo(path.join(tmpDir, "p"));
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.relaunched).toBe(false);
+    expect(body.data.reason).toBe("no eligible items");
+    expect(body.data.reconciled).toHaveProperty("treeClean");
+  });
+
+  it("returns 200 relaunched:true with a pending item (relaunches the loop)", async () => {
+    createProject("p", [pendingItem]);
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.relaunched).toBe(true);
+  });
+
+  it("injects answers ({itemId,text}) → humanAnswer, unblocking to pending", async () => {
+    createProject("p", [blockedItem]); // id "001", status blocked
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({ answers: [{ itemId: "001", text: "do it this way" }] }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.relaunched).toBe(true);
+
+    await getLoopManager().shutdownAll();
+    const backlog = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, "p", ".rauf", "backlog.json"), "utf8"),
+    ) as { items: { id: string; humanAnswer?: string; needsHuman?: boolean }[] };
+    const item = backlog.items.find((i) => i.id === "001");
+    expect(item?.humanAnswer).toBe("do it this way");
+    expect(item?.needsHuman).toBe(false);
+  });
+
+  it("returns 403 without X-Rauf-Request", async () => {
+    createProject("p");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", { method: "POST" });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 409 when a loop is live (acquire-and-hold guard)", async () => {
+    createProject("p", [pendingItem]);
+    seedLiveLock("p");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", { method: "POST", headers: csrf });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("LOCK_CONFLICT");
+  });
+
+  it("returns 404 when the project/backlog is missing", async () => {
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/ghost/resume", { method: "POST", headers: csrf });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for malformed answers (missing text)", async () => {
+    createProject("p", [pendingItem]);
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({ answers: [{ itemId: "001" }] }), // text missing → .strict reject
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("leaves no orphaned recovery lock — a second resume is not 409'd", async () => {
+    createProject("p", [pendingItem]);
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const app = makeApp(tmpDir);
+
+    const res1 = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res1.status).toBe(200);
+    expect(((await res1.json()) as { data: ResumeResult }).data.relaunched).toBe(true);
+
+    // Stop the relaunched loop so its own lock is released.
+    await getLoopManager().shutdownAll();
+
+    // A second resume must acquire the recovery lock cleanly (no orphaned lock
+    // from the first resume's acquire-and-hold).
+    const res2 = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res2.status).toBe(200); // not 409
+  });
+});
+
 // ─── Route-mounting smoke ────────────────────────────────────────
 
 describe("recovery route mounting", () => {
-  it("reset/unblock are mounted (403 CSRF, not 404)", async () => {
+  it("reset/resume/unblock are mounted (403 CSRF, not 404)", async () => {
     const app = makeApp(tmpDir);
-    for (const p of ["reset", "backlog/unblock"]) {
+    for (const p of ["reset", "resume", "backlog/unblock"]) {
       const res = await app.request(`/api/projects/test/${p}`, { method: "POST" });
       expect(res.status).toBe(403); // reached the CSRF middleware → route exists
     }
