@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T21:00:00Z",
+  "updatedAt": "2026-06-14T21:20:00Z",
   "currentStage": "forge-3-specs",
   "stages": {
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-tech-2026-06-14.md",
+      "findingsCount": 7,
+      "verifiedAt": "2026-06-14T21:20:00Z",
+      "fixedAt": "2026-06-14T21:35:00Z",
+      "result": "Single forge-verifier, 17/17 checks (11 pass, 6 fail). All signatures checked against source. 7 findings, no user decisions: 3 errors (V-001 checkLock takes BacklogPaths not lockPath; V-002 recoverInterruptedLoop is async→Promise<Result<RecoverySummary>> not Result<ReconcileSummary>; V-003 §3.3 overstates TS exhaustiveness — colorLoopState has default:, web STATE_BADGE is Record<string> + ?? IDLE, neither compile-enforced, D3.5 refactor must make them total), 1 gap (V-004 review LoopStartOptions omits required sessionTimeoutMinutes), 1 inconsistency (V-005 real TOCTOU — CLI acquire-and-holds the recovery lock across reconcile→relaunch; §3.4's check-only guard leaves a window; resume/reset must acquire-and-hold, unblock can check-then-act), 2 improvements (V-006 D3.1 move list incomplete — must also move acquireRecoveryLock/releaseRecoveryLock/reconcileAndRequeue/detectInterruptedItems+types, keep reverifyAndCommitInterrupted CLI-only; V-007 §7 omits 403 FORBIDDEN path + PATH_VIOLATION code may differ). Verified clean: D3.1 dependency direction sound (loop exports git/tree primitives, web imports loop); CANON §4.3/§4.4/§4.6 alignment exact. OQ-T2 confirmed real: CLI --answer parses to {itemId, text}, §5 body uses {itemId, answer} — impl must reconcile. Verifier saved ground-truth facts to .claude/agent-memory/feature-forge-forge-verifier/ux_overhaul_phase4_web_tech_facts.md."
+    },
     "forge-2-tech": {
       "status": "complete",
       "version": 1,

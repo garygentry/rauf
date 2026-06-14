@@ -56,15 +56,23 @@ tone→palette mapping (terminal colors in CLI, CSS in web).
 primitives (`findItemCommit`, `isTreeClean`, `gitCommit`) — so it cannot move to core (would invert the
 dependency direction), but it **can** move down to `@rauf/loop`, which both CLI and web may import.
 
-- **Move** `recoverInterruptedLoop` and its types (`ReconcileSummary`, `KeptBlock`, `InterruptedItem`)
-  to `packages/loop/src/recovery.ts`, re-exported from the package index. Move its unit tests with it.
-- **CLI** `resume-commands.ts` updates its import path only — **no behavior change** to `rauf resume`.
-- **Web** `POST /:id/resume` (D5): resolve paths → optional `--answer` injection via `updateItem`
-  (`@rauf/core`) → `recoverInterruptedLoop(paths)` (`@rauf/loop`) → if `selectNextItem` finds an
-  eligible item, `loopManager.startReviewLoop`/`startLoop` to relaunch (detached, server-owned).
+- **Move** the reconcile/resume core that web shares to `packages/loop/src/recovery.ts` (re-exported
+  from the package index): functions `recoverInterruptedLoop`, `reconcileAndRequeue`,
+  `acquireRecoveryLock`, `releaseRecoveryLock`, `detectInterruptedItems`, and types `ReconcileSummary`,
+  `RecoverySummary`, `KeptBlock`, `InterruptedItem`, `AcquiredRecoveryLock`. Move their unit tests with
+  them. **Keep in `@rauf/cli`** the subprocess-bound, CLI-only `reverifyAndCommitInterrupted` and
+  `defaultVerifyRunner` (the `--recover` path — see Scope below).
+- **CLI** `resume-commands.ts` updates its import paths only (the moved symbols now come from
+  `@rauf/loop`) — **no behavior change** to `rauf resume`.
+- **Web** `POST /:id/resume` (D5): `acquireRecoveryLock(paths)` → (held) optional `--answer` injection
+  via `updateItem` (`@rauf/core`) → `await recoverInterruptedLoop(paths)` (async — see §6) → if
+  `selectNextItem` finds an eligible item, `loopManager.startLoop` to relaunch (detached,
+  server-owned) → `releaseRecoveryLock` in a `finally`. The lock is held across reconcile + the
+  relaunch handoff (D3.4) to close the TOCTOU.
 - **Scope (ratified):** the heavier `--recover` sub-path (`reverifyAndCommitInterrupted` — spawns the
-  project's verify command as a subprocess, then `gitCommit`) is **CLI-only** for Phase 4. The web
-  resume performs reconcile + relaunch, not reverify-and-commit. Documented as a known parity edge.
+  project's verify command as a subprocess, then `gitCommit`) is **CLI-only** for Phase 4 and stays in
+  `@rauf/cli`. The web resume performs reconcile + relaunch, not reverify-and-commit. Documented as a
+  known parity edge.
 - **Alternative considered:** extract a pure `resumeProject` into core — rejected (needs `@rauf/loop`
   git/tree primitives; no clean core home).
 
@@ -76,9 +84,12 @@ review pass; the CLI's `handleLoopReview` is the reference. The web reuses the e
 - Add `startReviewLoop(projectPath, options)` to `LoopManager` (`packages/web/src/server/loop-manager.ts`)
   — identical to `startLoop` but calls `runner.startReviewOnly()` instead of `runner.start()`, with the
   same map-key + promise tracking.
-- `POST /:id/loop/review` builds `LoopStartOptions` (`maxIterations:1, maxRetries:1, review:true,
-  reviewOnly:true, model?, backlogRoot?`) and calls `startReviewLoop`. Returns immediately (the review
-  runs server-side; observed via the existing events SSE — Phase 1 read path).
+- `POST /:id/loop/review` builds `LoopStartOptions` via `LoopStartOptionsSchema.parse` (the existing
+  start route's pattern) with `maxIterations:1, maxRetries:1, review:true, reviewOnly:true,
+  sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES, model?,
+  backlogRoot?` — `sessionTimeoutMinutes` is **required** by the schema (reuse the same default
+  constant as `routes/loop.ts:186`), then calls `startReviewLoop`. Returns immediately (the review runs
+  server-side; observed via the existing events SSE — Phase 1 read path).
 - No new review business logic; the runner is unchanged.
 
 ### 3.3 Derived enum extension + exit codes (REQ-VOCAB-02/03/04, REQ-EXIT-01)
@@ -90,26 +101,38 @@ review pass; the CLI's `handleLoopReview` is the reference. The web reuses the e
   `Record<LoopState["status"], LoopStateEnum>` enforces this at compile time.
 - `statusExitCode` (`packages/cli/src/status-commands.ts:512`) adds two cases: `REVIEWING →
   ExitCode.RUNNING (6)` (preserves prior observable behavior), `PAUSED_USAGE_LIMIT → ExitCode.LIMIT
-  (4)` (corrects today's silent `0`). The `switch` is exhaustive over `LoopStateEnum`, so the two new
-  values are a compile error until handled — guaranteeing no silent fallthrough.
-- **Ripple:** every exhaustive `switch`/`Record` over `LoopStateEnum` (CLI `colorLoopState`, web
-  `STATE_BADGE`) must handle the new values; the shared map (D3.5) makes the web sites total by
-  construction.
+  (4)` (corrects today's silent `0`).
+- **Compile-enforced sites (only two):** `mapLoopStateStatus` (`Record<LoopState["status"],
+  LoopStateEnum>`) and `statusExitCode` (a **default-less** `switch`) are total by construction — adding
+  the two enum values is a compile error there until handled.
+- **NOT compile-enforced (must be actively fixed):** `colorLoopState` has a `default:` branch (new
+  states would compile and silently dim), and both web `STATE_BADGE` maps are `Record<string, …>` with
+  a `?? STATE_BADGE["IDLE"]` fallback (new states would compile and silently mislabel as IDLE). These
+  do **not** error on a new enum value today. The D3.5 refactor must replace them with a **total
+  `Record<LoopStateEnum, …>`** (or a default-less switch) so REQ-VOCAB-07's "no silent default" becomes
+  structurally true — that refactor, not the compiler, is the enforcement mechanism for those sites.
 
 ### 3.4 Concurrency guard for recovery mutations (REQ-WEB-09, OQ-1)
 
 State-mutating recovery (`reset`, `resume`, `unblock`) must not run against a live loop on the same
 backlog root.
 
-- A route-layer helper `assertNoLiveLoop(paths): Result<void>` calls core's `checkLock(lockPath)` —
-  **cross-process** (detects any live PID via the lock file), not just loops this server started, so it
-  catches a detached/CLI loop too. (Preferred over `loopManager.isRunning`, which only knows
-  server-hosted loops.)
-- A live lock → reject `409 CONFLICT` with code `LOCK_CONFLICT` and an actionable message ("a loop is
-  running on this backlog root — stop it first"). A stale lock does not block.
+Two guard strengths, by action:
+- **`unblock` (single core call) — lightweight check-then-act.** A route-layer helper
+  `assertNoLiveLoop(paths): Result<void>` calls core's `checkLock(paths)` (§6) — **cross-process**
+  (detects any live PID via the lock file), not just loops this server started, so it catches a
+  detached/CLI loop too. "Live" = `locked === true && stale !== true`. Live → reject `409 CONFLICT`
+  (`LOCK_CONFLICT`, message "a loop is running on this backlog root — stop it first"). A single
+  `unblockItems` write is short enough that the residual check-then-act window is acceptable.
+- **`reset` and `resume` — acquire-and-hold.** A pre-check is NOT sufficient: these run
+  `recoverInterruptedLoop` (which by contract does not touch the lock — the caller must hold it), and a
+  bare check leaves a window where a CLI `loop run` acquires the lock and starts between the web check
+  and the web mutation. So reset/resume must `acquireRecoveryLock(paths)` and **hold it** across the
+  whole reconcile (+ relaunch handoff for resume), releasing in a `finally` via the owner-aware
+  `releaseRecoveryLock`. This is exactly what the CLI's `resume`/`reset` do (`resume-commands.ts`,
+  `recovery.ts:372-401`) — acquire-and-hold, not a pre-check. A failed acquire → `409 LOCK_CONFLICT`.
 - `validate` is read-only → never guarded, always allowed. `review` goes through the start path, which
   already guards loop-already-running (409).
-- This mirrors the CLI's `acquireRecoveryLock` semantics in `resume-commands.ts`.
 
 ### 3.5 Shared label-map: label + semantic tone (REQ-VOCAB-01/05/06/07, OQ-2)
 
@@ -152,7 +175,8 @@ No new persistent entities; `backlog.json`/`state.json` schemas are unchanged (C
 - **Static table** `STATE_LABELS` (D3.5) — compile-time constant, not persisted.
 - **Response DTOs** (transient): `ResetProjectResult` (exists), `{ unblockedCount, unblockedIds }`
   (exists), `ValidateBacklogResult` `{ valid, findings[] }` (exists), and a new `ResumeResult`
-  `{ reconciled: ReconcileSummary, relaunched: boolean, reason?: string }`.
+  `{ reconciled: RecoverySummary, relaunched: boolean, reason?: string }` (`reconciled` is the
+  `RecoverySummary` that `recoverInterruptedLoop` resolves — see §6).
 
 ## 5. API Design
 
@@ -199,14 +223,22 @@ Verified signatures (file:line):
 - `validateBacklog(paths: BacklogPaths, opts?: ValidateBacklogOptions): Result<ValidateBacklogResult>`
   — `packages/core/src/backlog-validate.ts:47`. `ValidateBacklogResult = { valid, findings[] }`.
 - `updateItem(paths, itemId, patch): Result<…>` — `@rauf/core` (used for `--answer` injection).
-- `recoverInterruptedLoop(paths)` — currently `packages/cli/src/recovery.ts`; **to be moved** to
-  `packages/loop/src/recovery.ts` (D3.1). Uses `findItemCommit`/`isTreeClean`/`gitCommit` (already in
-  `@rauf/loop`).
+- `recoverInterruptedLoop(paths: BacklogPaths): Promise<Result<RecoverySummary>>` — **async** (the
+  route must `await`); currently `packages/cli/src/recovery.ts:445`, **to be moved** to
+  `packages/loop/src/recovery.ts` (D3.1) with its lock companions. `RecoverySummary extends
+  ReconcileSummary` (+`stalledReset: number`, `stateCleared: boolean`). By contract it does **not**
+  touch the lock — the caller holds it (`acquireRecoveryLock`). Uses `findItemCommit`/`isTreeClean`/
+  `gitCommit` (already in `@rauf/loop`).
+- `acquireRecoveryLock(paths): Result<AcquiredRecoveryLock>` / `releaseRecoveryLock(lock)`
+  (owner-aware) — `packages/cli/src/recovery.ts:388/410`, **moved** to `@rauf/loop` (D3.1); held across
+  reset/resume reconcile (D3.4).
 - `LoopRunner.startReviewOnly(): Promise<LoopResult>` — `packages/loop/src/runner.ts:406`.
-- `LoopManager.startLoop(projectPath, options)` — `packages/web/src/server/loop-manager.ts`; **add**
+- `LoopManager.startLoop(projectPath, options)` — `packages/web/src/server/loop-manager.ts:86`; **add**
   `startReviewLoop(projectPath, options)` beside it.
-- `checkLock(lockPath): Result<LockStatus>` — `@rauf/core` (already imported by `LoopManager`); basis
-  for `assertNoLiveLoop` (D3.4).
+- `checkLock(paths: BacklogPaths): Result<LockStatus>` — `@rauf/core` (`lock.ts:243`; already imported
+  by `LoopManager`). `LockStatus = { locked, pid?, startedAt?, stale? }`; "live" = `locked && !stale`.
+  Basis for the lightweight `assertNoLiveLoop` guard on `unblock` (D3.4). (Distinct from
+  `checkLockFile(lockPath: string)`, `lock.ts:198` — the path-taking variant `checkLock` calls.)
 - `resolveProjectPath` (`resolve-project.ts:18`), `validateProjectPath` (`projects.ts:159`),
   `resolveBacklogPathsFromParam` (`projects.ts:169`), `errorResponse` (`app.ts`) — reused verbatim.
 - `LoopStateEnumSchema` (`schemas.ts:228`), `mapLoopStateStatus` (`status.ts:106`), `statusExitCode`
@@ -220,7 +252,13 @@ Verified signatures (file:line):
 ## 7. Error Handling
 
 - Core/loop functions return `Result<T, RaufError>` (`errors.ts:9`); routes map: `FILE_NOT_FOUND`→404,
-  `LOCK_CONFLICT`→409, `VALIDATION_ERROR`/`INVALID_JSON`/`PATH_VIOLATION`→400, `IO_ERROR`→500, else 400.
+  `LOCK_CONFLICT`→409, `VALIDATION_ERROR`/`INVALID_JSON`→400, `IO_ERROR`→500, else 400.
+- **403 `FORBIDDEN` (missing `X-Rauf-Request`) is NOT per-route** — it is enforced by the app-level CSRF
+  middleware (`app.ts:54-69`, code `"FORBIDDEN"`) and inherited by every POST route, so the §8 "403
+  missing header" test is covered without any per-route mapping code.
+- **Sandbox breach** is rejected by `validateProjectPath` (`projects.ts:159-162`), which returns the
+  underlying `validatePath` error code → 400. Use that real code in the impl (confirm whether it is
+  `PATH_VIOLATION` or another `ErrorCodes` member) rather than assuming `PATH_VIOLATION`.
 - `errorResponse(code, message, details?)` builds `{ error: { code, message, details? } }`.
 - The liveness guard returns `err({ code: LOCK_CONFLICT, … })` → 409 (D3.4).
 - Frontend maps known codes to friendly copy; unknown codes show `message` verbatim.
@@ -257,6 +295,9 @@ No new external dependencies. Internal: web → `@rauf/core` + `@rauf/loop` (exi
 - **OQ-T1 (implementation spec):** exact `tone`→palette tables — terminal colors (CLI) and the CSS
   color values (web) per tone. Functional behavior is fixed (D3.5); only the concrete color values
   remain, settled in the implementation spec / during impl.
-- **OQ-T2 (implementation spec):** resume `answers` request shape — confirm the `{itemId, answer}[]`
-  field names match the CLI `--answer` parsing so the contract reads consistently.
+- **OQ-T2 (implementation spec):** resume `answers` request shape — there is a **confirmed mismatch**:
+  §5's resume body uses `{ itemId, answer }[]`, but the CLI `--answer` parses to `AnswerInjection
+  { itemId, text }` (`resume-commands.ts:54`). The impl spec must pick one — either adopt the CLI's
+  `text` field on the web body for symmetry, or keep `answer` on the wire and adapt `answer → text`
+  when calling `updateItem`. (Recommend matching the CLI's `text` to keep one vocabulary.)
 - All PRD open questions (OQ-1, OQ-2) are **resolved** by D3.1 and D3.5 respectively.
