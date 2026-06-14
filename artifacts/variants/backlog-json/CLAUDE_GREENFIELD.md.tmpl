@@ -46,10 +46,23 @@ When running as a rauf loop iteration, follow these operational rules:
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
+> Emit the signal on a line by itself. The runner scans backwards from the end and
+> uses the **last** signal line, so trailing text (a commit message, a summary)
+> does **not** break detection.
+>
+> `RAUF_REVIEW:<json>` is emitted only by a review pass. If you emit no recognized
+> signal, the runner does **not** auto-block — it classifies by exit context and
+> reconciles committed work.
+
 ### Rules
 - ONE item per iteration — do not work on multiple items
 - Do not modify `backlog.json` — the loop runner manages status
 - Do not modify `state.json` — the loop runner manages state
 - Read `progress.md` for accumulated project learnings
 - Append new learnings to `progress.md` if you discover important patterns
+
+### Model Selection
+
+The runner picks the model by precedence (highest wins):
+`item.model` > `--model` / options > project default > provider default.
 <!-- rauf:end -->

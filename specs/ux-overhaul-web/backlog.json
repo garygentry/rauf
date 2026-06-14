@@ -226,8 +226,8 @@
         "CLAUDE_ADDON.md is NOT renamed and no \"Task tool\" wording changed (grep shows the same matches as before).",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:33:02.511Z",
       "dependsOn": [],
       "notes": "Embedded-artifacts landmine (Phase-1): editing templates requires the regen or the installed copies go stale. Two of three items are already partly present — add only the deltas (05 §3.3). Out of scope: AGENT_ADDON rename / Task-tool wording (deferred to Part-B).",
       "estimatedIterations": 1,

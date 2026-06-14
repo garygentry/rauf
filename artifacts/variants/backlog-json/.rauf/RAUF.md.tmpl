@@ -34,11 +34,32 @@ If any command is not configured (empty), skip it.
    - `RAUF_DONE` — all criteria met, verification passes
    - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
    - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
+   - `RAUF_REVIEW:<json>` — review pass only (a normal work iteration does not
+     emit this); JSON matching the `ReviewPayload` schema.
 
    Putting the signal last is the safest habit, but it does not have to be
    strictly the final line: the runner scans backwards from the end and uses the
    **last** signal line, so trailing text after it (a commit message, a summary)
    does **not** break detection.
+
+   If you emit **no** recognized signal, the runner does **not** auto-block the
+   item — it classifies the outcome by exit context (clean / non-zero / timeout /
+   usage-limit), logs the tail of your output, and reconciles any already-committed
+   work. (Emitting a signal is still strongly preferred.)
+
+## Model Selection
+
+The runner resolves which model drives an iteration by this precedence
+(highest wins):
+
+`item.model` > `--model` / run options > project default > provider default
+
+- `item.model` — the selected backlog item's `model` field (per-task override).
+- `--model` / run options — the per-run override (`rauf loop run --model …`, or
+  the project's configured run options).
+- project default — the project's configured default model.
+- provider default — if none of the above is set, no model is forced and the
+  provider/CLI uses its own configured default.
 
 ## Agent Delegation
 
