@@ -2,9 +2,27 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T21:20:00Z",
-  "currentStage": "forge-3-specs",
+  "updatedAt": "2026-06-14T22:00:00Z",
+  "currentStage": "forge-4-backlog",
   "stages": {
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-14T22:00:00Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
+      "artifacts": [
+        "specs/ux-overhaul-web/00-core-definitions.md",
+        "specs/ux-overhaul-web/01-architecture-layout.md",
+        "specs/ux-overhaul-web/02-status-vocabulary.md",
+        "specs/ux-overhaul-web/03-recovery-relocation.md",
+        "specs/ux-overhaul-web/04-web-recovery-routes.md",
+        "specs/ux-overhaul-web/05-agent-contract-docs.md",
+        "specs/ux-overhaul-web/06-testing-strategy.md",
+        "specs/ux-overhaul-web/TRACEABILITY.md"
+      ],
+      "result": "7-doc suite (00-06) + TRACEABILITY. Foundation 00/01 authored in-session; 02-06 via 5 parallel forge-spec-writers. deterministic validate-traceability.py: valid, 0 uncovered / 0 orphaned (28 REQs). Prettier clean. 00 core-definitions (extended LoopStateEnum +REVIEWING/+PAUSED_USAGE_LIMIT, StateTone/StateLabel/STATE_LABELS, relocated recovery types, ResumeResult, route Zod schemas — OQ-T2 resolved to {itemId,text}, error→HTTP table); 01 architecture (cli→loop recovery move table, dep graph, route placement, 0.6.0 bump); 02 status-vocabulary (full STATE_LABELS label+tone table all 12, mapLoopStateStatus remap, colorLoopState tone→terminal palette, web shared badge tone→CSS palette resolving OQ-T1, statusExitCode 6/4); 03 recovery-relocation (exact move partition to @rauf/loop, acquire-and-hold lock model, reverifyAndCommitInterrupted stays CLI-only); 04 web-recovery-routes (5 endpoints full handlers, guards, startReviewLoop, frontend controls); 05 agent-contract-docs (signal spec/model cascade/progress.md stub — DOC-only, rename deferred, embedded-artifacts regen); 06 testing-strategy (route tests + core unit tests, relocated recovery tests, no React harness).",
+      "notes": "Two implementer notes surfaced by writers (in TRACEABILITY 'Implementer notes' — carry to impl/verify): (1) deriveFromStateJson staleness branch must key on RAW status not derived, so REVIEWING isn't swept into stale-downgrade (02 §3.2); (2) mapLoopStateStatus is module-private today — 06 §4.2 wants it EXPORTED for the totality test (or test via deriveStatus) — 02/impl must reconcile. Writers verified all integration signatures against source. 05 found backward-scan rule ALREADY present in RAUF.md.tmpl:38-41 + CLAUDE_ADDON.md:23-26 — genuine deltas are RAUF_REVIEW token, no-signal-exit-context rule, model cascade, greenfield backward-scan, progress.md stub. embedded-artifacts.ts embeds all four edited templates → regen mandatory."
+    },
     "forge-verify-tech": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-tech-2026-06-14.md",
