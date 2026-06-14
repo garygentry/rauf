@@ -15,7 +15,7 @@
         "mapLoopStateStatus is exported and maps reviewing→REVIEWING, paused_usage_limit→PAUSED_USAGE_LIMIT, with all 12 raw statuses mapped.",
         "colorLoopState has no default: branch and routes through tone; statusExitCode maps REVIEWING→RUNNING(6) and PAUSED_USAGE_LIMIT→LIMIT(4) with no default:.",
         "state-labels.test.ts asserts totality by iterating the enum; status.test.ts covers the 12-raw map + 2 deriveStatus cases; status-commands.test.ts covers the 2 exit codes.",
-        "pnpm typecheck && pnpm test passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -40,7 +40,7 @@
         "packages/web/src/client/components/StateBadge.tsx exists; the state prop is typed LoopStateEnum; the palette is Record<StateTone,...>; there is no IDLE fallback.",
         "Both old STATE_BADGE tables + old badge components are removed; `grep -r \"STATE_BADGE\" packages/web/src/client` returns nothing.",
         "Both pages render the shared StateBadge; REVIEWING/PAUSED_USAGE_LIMIT display their CANON labels with the correct tone color.",
-        "pnpm typecheck && pnpm test && pnpm format:check passes; no *.test.tsx file is added"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes; no *.test.tsx file is added"
       ],
       "status": "pending",
       "completedAt": null,
@@ -65,7 +65,7 @@
         "resume-commands.ts/reset-commands.ts import the moved symbols from @rauf/loop; no logic inside handleResume/handleReset changed.",
         "`grep -rn 'from \"@rauf/cli\"' packages/web/src` returns nothing (rule #1 intact).",
         "The moved recovery tests pass in @rauf/loop including the 2 new recoverInterruptedLoop cases; packages/cli/src/recovery.test.ts is the reduced import-smoke.",
-        "pnpm typecheck && pnpm test passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -90,7 +90,7 @@
         "packages/web/src/server/routes/recovery-guard.ts exports assertNoLiveLoop with the live/stale/fail-open semantics above.",
         "packages/web/src/server/loop-defaults.ts holds the hoisted constants/helper and loop.ts imports them with no duplicated default values.",
         "loop-manager.test.ts covers startReviewLoop start + duplicate-rejection.",
-        "pnpm typecheck && pnpm test passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -113,7 +113,7 @@
         "POST /api/projects/:id/loop/review builds the review options (reviewOnly:true, required sessionTimeoutMinutes) and calls startReviewLoop, returning 200 {data:{started:true}}.",
         "Returns 409 CONFLICT when a loop is already running for the backlog root; 403 without X-Rauf-Request; 400 for bad id/body.",
         "loop.test.ts covers success/409/403/400 for the review route.",
-        "pnpm typecheck && pnpm test passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -137,7 +137,7 @@
         "reset is acquire-and-hold guarded (409 on live lock; lock released in finally); unblock uses assertNoLiveLoop (409 on live); validate is GET, read-only, ungated, needs no CSRF header.",
         "Result→HTTP mapping uses recoveryErrorStatus; success envelopes match spec 00 §5; validate findings return 200 with valid:false (not an HTTP error).",
         "recovery.test.ts covers the success/403/409/404/400 matrix for the three routes plus validate's read-only cases and the mounting smoke.",
-        "pnpm typecheck && pnpm test passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -162,7 +162,7 @@
         "Returns 200 {data: ResumeResult {reconciled, relaunched, reason?}}; 409 on live lock; 403/404/400 as specified; interrupted-uncommitted work surfaces in reason with relaunched:false (no --recover on web).",
         "A failed relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).",
         "recovery.test.ts resume cases pass including the OQ-T2 answers test and the no-orphaned-lock regression.",
-        "pnpm typecheck && pnpm test passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -185,7 +185,7 @@
         "status.tsx shows a Recovery group with Reset (confirm)/Resume/Review/Unblock/Validate wired to the 5 endpoints, sending X-Rauf-Request on the POSTs.",
         "Each action surfaces a result message; a 409 renders \"a loop is running — stop it first\"; validate renders the findings list / valid state.",
         "Controls disable per the spec 04 §8.7 applicability table, using the derived loopState (incl. REVIEWING/PAUSED_USAGE_LIMIT).",
-        "pnpm typecheck && pnpm test && pnpm format:check passes; no *.test.tsx added"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes; no *.test.tsx added"
       ],
       "status": "pending",
       "completedAt": null,
@@ -206,7 +206,7 @@
         "The model-cascade precedence line `item.model > --model/options > project default > provider default` appears in all four; progress.md ships the session-log stub.",
         "embedded-artifacts.ts is regenerated via `pnpm --filter @rauf/core build` (its \"Do not edit manually\" header intact; RAUF_REVIEW now appears in it).",
         "CLAUDE_ADDON.md is NOT renamed and no \"Task tool\" wording changed (grep shows the same matches as before).",
-        "pnpm typecheck && pnpm test && pnpm format:check passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,
@@ -225,7 +225,7 @@
       "acceptanceCriteria": [
         "packages/core/src/version.ts is \"0.6.0\"; minRunnerVersion is unchanged anywhere; no feature-forge files are edited.",
         "docs/SPEC-WEB.md documents all 5 recovery endpoints; docs/SCHEMAS.md documents the 2 new enum values + the label-map surface; docs/SPEC-CLI.md and docs/ARCHITECTURE.md status-vocabulary/exit-code mentions are updated.",
-        "pnpm typecheck && pnpm test && pnpm format:check passes"
+        "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
       "status": "pending",
       "completedAt": null,

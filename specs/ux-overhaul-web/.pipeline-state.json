@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T23:00:00Z",
+  "updatedAt": "2026-06-14T23:20:00Z",
   "currentStage": "forge-5-loop",
   "stages": {
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-backlog-2026-06-14.md",
+      "findingsCount": 1,
+      "verifiedAt": "2026-06-14T23:20:00Z",
+      "fixedAt": "2026-06-14T23:30:00Z",
+      "result": "4 parallel forge-verifiers (~25 checks). 3 of 4 dimensions clean: item-scoping/AC 5/5, dependency/ordering 8/8 (DAG acyclic, foundation-first coherent with item-001 atomic claim, no over/under-constraint), schema/enum 7/7 (runner re-validated valid:true/0/exit0; types/status/ids/dependsOn/models all conformant). 1 finding from spec-coverage: V-001 (gap) — AC gate omits `pnpm lint` (all 10) + `format:check` (6 items); canonical gate per PRD §8/tech-spec §8/06 §7.1 is `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`. No user decision. Verified clean: all 28 REQs mapped, all 5 routes + label-map + relocation + plumbing + agent-docs + version/docs covered, both TRACEABILITY implementer notes baked into item 001, all specReferences resolve. NOTE: dim-4 subagent reported rauf-stable version 0.6.0 but the authoritative forge-4 run + version.ts show 0.5.0 — treat as subagent error; rauf-stable is frozen at 0.5.0."
+    },
     "forge-4-backlog": {
       "status": "complete",
       "completedAt": "2026-06-14T23:00:00Z",
