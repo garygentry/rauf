@@ -42,8 +42,8 @@
         "Both pages render the shared StateBadge; REVIEWING/PAUSED_USAGE_LIMIT display their CANON labels with the correct tone color.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes; no *.test.tsx file is added"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:12:30.598Z",
       "dependsOn": [
         "001"
       ],

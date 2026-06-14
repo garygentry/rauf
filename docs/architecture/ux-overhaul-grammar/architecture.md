@@ -12,7 +12,7 @@ inconsistent:
 1. **Execution mode leaked into the verb names.** `loop run` (in-process) and `loop start` (server-owned)
    were synonyms to a human — nothing signalled the distinction that matters (survives a server bounce?
    runs without my terminal?). Phase 1 made the two modes observationally identical (everything reads from
-   files), so the surface can finally describe *intent* (foreground vs detached) instead of *mechanism*.
+   files), so the surface can finally describe _intent_ (foreground vs detached) instead of _mechanism_.
 2. **Exit codes disagreed.** `status` used `1=running, 2=paused_human, 3=limit_reached`; `loop run` used
    `6=paused_human`. `status`'s `1=running` even collided with the conventional `1=error`. A tool branching
    on rauf's exit status had to special-case which command produced the code.
@@ -36,7 +36,7 @@ with the same request body → return immediately. The server still runs the loo
 `handleLoopRun`'s `--detached` branch; bare `loop run` keeps the unchanged in-process
 `LoopRunner.create().start()` path.
 
-- **`--detached --follow`** attaches the top-level `follow` view *CLI-side, after* the POST returns —
+- **`--detached --follow`** attaches the top-level `follow` view _CLI-side, after_ the POST returns —
   `--follow` is never part of the server request body. Interrupting the attached view (Ctrl-C) detaches the
   view only; the loop keeps running server-side (stop it with `loop stop`).
 - **Rationale:** zero execution-semantics change; the engine is reused; the grammar just renames intent.
@@ -49,13 +49,13 @@ with the same request body → return immediately. The server still runs the loo
 re-pointed in one atomic commit** (a hard compile break — the old member keys are gone, so any missed site
 fails the build). The old→new remap folded the non-loop-state codes into `USAGE(2)`:
 
-| Old member (value) | New |
-|--------------------|-----|
-| `INVALID_ARGS` (2) | `USAGE` (2) — rename |
-| `NOT_FOUND` (3) | `USAGE` (2) |
-| `VALIDATION` (4) | `USAGE` (2) |
-| `CONFLICT` (5) — incl. loop-already-running 409 | `USAGE` (2) |
-| `PAUSED_HUMAN` (6) | `NEEDS_HUMAN` (3) |
+| Old member (value)                              | New                  |
+| ----------------------------------------------- | -------------------- |
+| `INVALID_ARGS` (2)                              | `USAGE` (2) — rename |
+| `NOT_FOUND` (3)                                 | `USAGE` (2)          |
+| `VALIDATION` (4)                                | `USAGE` (2)          |
+| `CONFLICT` (5) — incl. loop-already-running 409 | `USAGE` (2)          |
+| `PAUSED_HUMAN` (6)                              | `NEEDS_HUMAN` (3)    |
 
 `loop run`'s terminal mapping and `status`'s `statusExitCode` were both rewritten to the unified table (see
 [API Reference](./api-reference.md#exit-codes)). `RUNNING(6)` is query-time-only (`status`) — never a
@@ -69,17 +69,17 @@ fails the build). The old→new remap folded the non-loop-state codes into `USAG
 `"review"` was added to the `SignalParsedSchema.signal` enum (`packages/core/src/schemas.ts`), and the
 `review → done` downcast at the `signal_parsed` emit site (`packages/loop/src/runner.ts`) was removed, so the
 event reports `"review"` truthfully. The internal `SignalType` and `exit-classifier` already handled
-`review` — this only aligns the on-wire event. **Review *handling* semantics (review-pass routing, item
+`review` — this only aligns the on-wire event. **Review _handling_ semantics (review-pass routing, item
 status) are unchanged** — out of scope.
 
 ### D4 — `events.ndjson` versioning discipline (documentation, no bump)
 
 The shapes already aligned (Phase 1): the live `--ndjson` stream and the persisted log share the
 `LoopEvent` discriminated union; the persisted record is that ∩ `{seq, schemaVersion}`. v0.5.0 formalizes
-the *discipline* (in `docs/SCHEMAS.md` + `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`): additive-only within a major
+the _discipline_ (in `docs/SCHEMAS.md` + `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`): additive-only within a major
 version, readers ignore unknown types/fields, and `EVENTS_SCHEMA_VERSION` is bumped only on a breaking
 change. Adding `"review"` to `signal_parsed` is additive, so the version **stays `"1"`** — this is the first
-*formal* version, not a breaking change.
+_formal_ version, not a breaking change.
 
 - **Alternative considered:** bump to `"2"` to mark the formalization — rejected: no shape change, so a bump
   would force every consumer to re-gate for nothing.
@@ -88,7 +88,7 @@ change. Adding `"review"` to `signal_parsed` is additive, so the version **stays
 
 Invoking a removed verb/flag exits `USAGE(2)` with a targeted message naming the replacement, **executing
 nothing** — an error message, not an alias. A lookup table (`REMOVED_SUBCOMMAND_MESSAGES` in `commands.ts`,
-`REMOVED_FLAG_MESSAGES` in `parser.ts`) is intercepted in `main.ts` *before* the generic
+`REMOVED_FLAG_MESSAGES` in `parser.ts`) is intercepted in `main.ts` _before_ the generic
 unknown-subcommand/flag error, so the targeted message wins.
 
 ## Data flow (unchanged from Phase 1)
@@ -100,20 +100,20 @@ unknown-subcommand/flag error, so the targeted message wins.
    observers (CLI status/log/follow, web) ── read files ◀────────────┘
 ```
 
-The grammar change only affects *which CLI entry point* starts the loop; both feed the same engine and the
+The grammar change only affects _which CLI entry point_ starts the loop; both feed the same engine and the
 same file-backed substrate, so observation parity (Phase 1) is preserved by construction — the `--detached`
 branch adds no new observation path.
 
 ## What changed, by package
 
-| Package | Change |
-|---------|--------|
-| `@rauf/cli` | `ExitCode` redefined + all call sites re-pointed; `loop run --detached` + removal of `loop start`; shared `runDetached` / `applyCreateLoopBranch` / `unblockIfRequested` helpers; `statusExitCode` rewrite; removed-command remediation; flag-help + `--help`/usage |
-| `@rauf/core` | `SignalParsedSchema.signal` += `"review"`; `version.ts` → `0.5.0` |
-| `@rauf/loop` | removed the `review → done` collapse at the `signal_parsed` emit site; `loop run` terminal exit mapping |
-| `@rauf/web` | unchanged — `POST /loop/start` is retained as the detached-run backend (URL/contract unchanged) |
-| docs | all 6 `docs/SPEC-*.md` updated to the v0.5.0 surface |
-| feature-forge (separate repo) | **0.10.0** — `minRunnerVersion → 0.5.0`, `followCommand`/`watchCommand` defaults re-pointed (out-of-loop lockstep edit) |
+| Package                       | Change                                                                                                                                                                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@rauf/cli`                   | `ExitCode` redefined + all call sites re-pointed; `loop run --detached` + removal of `loop start`; shared `runDetached` / `applyCreateLoopBranch` / `unblockIfRequested` helpers; `statusExitCode` rewrite; removed-command remediation; flag-help + `--help`/usage |
+| `@rauf/core`                  | `SignalParsedSchema.signal` += `"review"`; `version.ts` → `0.5.0`                                                                                                                                                                                                   |
+| `@rauf/loop`                  | removed the `review → done` collapse at the `signal_parsed` emit site; `loop run` terminal exit mapping                                                                                                                                                             |
+| `@rauf/web`                   | unchanged — `POST /loop/start` is retained as the detached-run backend (URL/contract unchanged)                                                                                                                                                                     |
+| docs                          | all 6 `docs/SPEC-*.md` updated to the v0.5.0 surface                                                                                                                                                                                                                |
+| feature-forge (separate repo) | **0.10.0** — `minRunnerVersion → 0.5.0`, `followCommand`/`watchCommand` defaults re-pointed (out-of-loop lockstep edit)                                                                                                                                             |
 
 ## Cutover & dogfood
 

@@ -11,21 +11,21 @@ feature-forge and any tool driving rauf depend on them. Verified against the lan
 
 The single loop-execution verb.
 
-| Flag | Meaning |
-|------|---------|
-| `--detached`, `-d` | Run detached: auto-start the server daemon, hand the loop to it, return immediately. (Replaces `loop start`.) |
-| `--follow`, `-f` | With `--detached`: after the POST returns, attach the top-level `follow` view. Ctrl-C detaches the view only — the loop keeps running. |
-| `--ndjson` | Stream loop events to stdout as NDJSON (one JSON `PersistedEvent`-shaped object per line). The machine-readable event stream (this is what feature-forge's `eventStreamCommand` uses). |
-| `--json` | Emit the final result summary as JSON (distinct from `--ndjson`). |
-| `--iterations <N>` | Max iterations (default: backlog-derived). |
-| `--retries <N>` | Max retries per item before deferring (default: 3). |
-| `--timeout <N>` | Per-iteration session timeout, minutes (default: 60). |
-| `--model <name>` | Model override. |
-| `--backlog <dir>` | Target a non-default backlog root (forwarded into the detached POST body). |
-| `--review` / `--review-only` | Run a review pass after / instead of the iterations. |
-| `--retry-blocked` | Unblock previously-blocked items before running. |
-| `--create-branch <name>` | Create & switch to the branch first (CLI-side). |
-| `--force` / `--allow-dirty` | Skip git preconditions / allow a dirty tree. |
+| Flag                         | Meaning                                                                                                                                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--detached`, `-d`           | Run detached: auto-start the server daemon, hand the loop to it, return immediately. (Replaces `loop start`.)                                                                          |
+| `--follow`, `-f`             | With `--detached`: after the POST returns, attach the top-level `follow` view. Ctrl-C detaches the view only — the loop keeps running.                                                 |
+| `--ndjson`                   | Stream loop events to stdout as NDJSON (one JSON `PersistedEvent`-shaped object per line). The machine-readable event stream (this is what feature-forge's `eventStreamCommand` uses). |
+| `--json`                     | Emit the final result summary as JSON (distinct from `--ndjson`).                                                                                                                      |
+| `--iterations <N>`           | Max iterations (default: backlog-derived).                                                                                                                                             |
+| `--retries <N>`              | Max retries per item before deferring (default: 3).                                                                                                                                    |
+| `--timeout <N>`              | Per-iteration session timeout, minutes (default: 60).                                                                                                                                  |
+| `--model <name>`             | Model override.                                                                                                                                                                        |
+| `--backlog <dir>`            | Target a non-default backlog root (forwarded into the detached POST body).                                                                                                             |
+| `--review` / `--review-only` | Run a review pass after / instead of the iterations.                                                                                                                                   |
+| `--retry-blocked`            | Unblock previously-blocked items before running.                                                                                                                                       |
+| `--create-branch <name>`     | Create & switch to the branch first (CLI-side).                                                                                                                                        |
+| `--force` / `--allow-dirty`  | Skip git preconditions / allow a dirty tree.                                                                                                                                           |
 
 Bare `loop run` is foreground + in-process (blocks, streams to the terminal, unattended-safe across a server
 bounce). `loop run --detached` is server-owned and returns immediately.
@@ -39,10 +39,10 @@ bounce). `loop run --detached` is server-owned and returns immediately.
 
 ### Removed (no aliases)
 
-| Removed | Replacement | Behavior on use |
-|---------|-------------|-----------------|
-| `loop start` | `loop run --detached` (`-d`) | exits `USAGE(2)`: `` `loop start` was removed in v0.5.0 — use `loop run --detached` (`-d`). `` |
-| `--watch` (any command) | `--follow` (`-f`) | exits `USAGE(2)`: `` `--watch` was removed in v0.5.0 — use `--follow` (`-f`). `` |
+| Removed                 | Replacement                  | Behavior on use                                                                                |
+| ----------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `loop start`            | `loop run --detached` (`-d`) | exits `USAGE(2)`: `` `loop start` was removed in v0.5.0 — use `loop run --detached` (`-d`). `` |
+| `--watch` (any command) | `--follow` (`-f`)            | exits `USAGE(2)`: `` `--watch` was removed in v0.5.0 — use `--follow` (`-f`). ``               |
 
 The remediation is an **error message, not an alias** — it executes nothing, and fires before the generic
 unknown-subcommand/flag error.
@@ -51,15 +51,15 @@ unknown-subcommand/flag error.
 
 The unified scheme (`ExitCode` in `packages/cli/src/commands.ts`), used by **both** `status` and `loop run`:
 
-| Code | Name | Meaning |
-|------|------|---------|
-| 0 | `SUCCESS` | clean terminal: idle / complete |
-| 1 | `ERROR` | generic failure |
-| 2 | `USAGE` | bad args / IO / failed precondition (incl. loop-already-running 409, and removed-command remediation) |
-| 3 | `NEEDS_HUMAN` | `PAUSED_HUMAN` |
-| 4 | `LIMIT` | limit reached / usage-paused / sleeping |
-| 5 | `BLOCKED` | terminal with blocked items |
-| 6 | `RUNNING` | running — **query-time only (`status`)**; never a `loop run` terminal code |
+| Code | Name          | Meaning                                                                                               |
+| ---- | ------------- | ----------------------------------------------------------------------------------------------------- |
+| 0    | `SUCCESS`     | clean terminal: idle / complete                                                                       |
+| 1    | `ERROR`       | generic failure                                                                                       |
+| 2    | `USAGE`       | bad args / IO / failed precondition (incl. loop-already-running 409, and removed-command remediation) |
+| 3    | `NEEDS_HUMAN` | `PAUSED_HUMAN`                                                                                        |
+| 4    | `LIMIT`       | limit reached / usage-paused / sleeping                                                               |
+| 5    | `BLOCKED`     | terminal with blocked items                                                                           |
+| 6    | `RUNNING`     | running — **query-time only (`status`)**; never a `loop run` terminal code                            |
 
 ### `loop run` terminal mapping
 
@@ -95,7 +95,7 @@ signal: "done" | "blocked" | "needs_human" | "review" | "none"
 - One `PersistedEvent` per line: the full `LoopEvent` (24-member discriminated union) ∩ `{ seq, schemaVersion }`.
 - The live `--ndjson` stream and the persisted file carry the **same `LoopEvent` shapes**.
 - **`EVENTS_SCHEMA_VERSION = "1"`** (`packages/core/src/schemas.ts`) — unchanged this release (the first
-  *formal* version, not a breaking change).
+  _formal_ version, not a breaking change).
 - **Versioning discipline** (additive-only within a major version): no `type` discriminator value renamed or
   removed; no documented field removed; new event types / new optional fields are additive (no bump);
   **readers MUST ignore unknown `type`s and unknown fields**; `EVENTS_SCHEMA_VERSION` is bumped only on a

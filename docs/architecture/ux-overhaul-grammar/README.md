@@ -4,7 +4,7 @@ This is the **breaking release** of the rauf UX/DX overhaul. It builds on Phase 
 substrate (see [`../ux-overhaul/`](../ux-overhaul/)) and lands as **rauf v0.5.0** — the one coordinated
 moment of breakage, after which the command surface and machine contract are coherent.
 
-It changes the *surface and contract*, not the engine: the `LoopRunner`, the server daemon, and the
+It changes the _surface and contract_, not the engine: the `LoopRunner`, the server daemon, and the
 file-backed observation substrate are reused untouched. What changed:
 
 - **One loop verb.** `loop run [--detached]` replaces the `loop run` / `loop start` split. Bare `loop run`
@@ -46,9 +46,9 @@ implementation detail. `loop run` is the single verb; `--detached` selects the r
 detached run auto-starts the server daemon and returns immediately; you observe it with `rauf follow` (or
 the web) and stop it with `rauf loop stop`. (Canon principle P2 — hide the mode, don't change it.)
 
-**Two flag families, kept distinct.** `--follow`/`-f` is the *monitoring* follow (on `status`, `log`,
-`follow`, and `loop run --detached --follow`). `--ndjson` is the *event-stream* flag on `loop run` — the
-machine-readable per-event stream feature-forge consumes. `--json` is the *final-result* / status JSON. They
+**Two flag families, kept distinct.** `--follow`/`-f` is the _monitoring_ follow (on `status`, `log`,
+`follow`, and `loop run --detached --follow`). `--ndjson` is the _event-stream_ flag on `loop run` — the
+machine-readable per-event stream feature-forge consumes. `--json` is the _final-result_ / status JSON. They
 don't overlap.
 
 **One exit-code contract.** Both `status` (current state) and `loop run` (terminal outcome) map to the same
@@ -60,25 +60,25 @@ them exits non-zero with a targeted message naming the replacement; they execute
 
 ## Command surface at a glance
 
-| Command | What it does |
-|---------|--------------|
-| `loop run [path]` | Run a loop in-process (foreground, blocking) |
-| `loop run [path] --detached` / `-d` | Run detached (server-owned, returns immediately) |
-| `loop run … --detached --follow` | Detach, then attach the live view |
-| `loop run … --ndjson` | Stream events as NDJSON (machine-readable) |
-| `loop stop [path]` | Stop a detached/server-owned loop |
-| `loop review [path]` | Standalone review pass (unchanged) |
+| Command                                  | What it does                                                               |
+| ---------------------------------------- | -------------------------------------------------------------------------- |
+| `loop run [path]`                        | Run a loop in-process (foreground, blocking)                               |
+| `loop run [path] --detached` / `-d`      | Run detached (server-owned, returns immediately)                           |
+| `loop run … --detached --follow`         | Detach, then attach the live view                                          |
+| `loop run … --ndjson`                    | Stream events as NDJSON (machine-readable)                                 |
+| `loop stop [path]`                       | Stop a detached/server-owned loop                                          |
+| `loop review [path]`                     | Standalone review pass (unchanged)                                         |
 | `status` / `log` / `follow` / `progress` | Monitoring (Phase 1; `--follow`/`-f`, `--json`, `--backlog`, `--interval`) |
-| ~~`loop start`~~ | **removed** → `loop run --detached` |
-| ~~`--watch`~~ | **removed** → `--follow` |
+| ~~`loop start`~~                         | **removed** → `loop run --detached`                                        |
+| ~~`--watch`~~                            | **removed** → `--follow`                                                   |
 
 ## Configuration
 
 No new user configuration. The contract constants live in `@rauf/core`:
 
-| Constant | Value | Meaning |
-|----------|-------|---------|
-| `EVENTS_SCHEMA_VERSION` | `"1"` | events.ndjson record schema version (unchanged this release — first *formal* version) |
+| Constant                                      | Value   | Meaning                                                                               |
+| --------------------------------------------- | ------- | ------------------------------------------------------------------------------------- |
+| `EVENTS_SCHEMA_VERSION`                       | `"1"`   | events.ndjson record schema version (unchanged this release — first _formal_ version) |
 | rauf version (`packages/core/src/version.ts`) | `0.5.0` | reported by `rauf version --json`; feature-forge's `minRunnerVersion` gate keys on it |
 
 ## Further Reading

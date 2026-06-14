@@ -5,66 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { BacklogItem, DerivedStatus, PersistedEvent } from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
-
-// ─── Loop state badge config ──────────────────────────────────────
-
-interface StateBadgeConfig {
-  label: string;
-  bgColor: string;
-  textColor: string;
-  borderColor: string;
-}
-
-const STATE_BADGE: Record<string, StateBadgeConfig> = {
-  IDLE: {
-    label: "IDLE",
-    bgColor: "rgba(107, 114, 128, 0.10)",
-    textColor: "#6b7280",
-    borderColor: "rgba(107, 114, 128, 0.25)",
-  },
-  RUNNING: {
-    label: "RUNNING",
-    bgColor: "rgba(22, 163, 74, 0.12)",
-    textColor: "#16a34a",
-    borderColor: "rgba(22, 163, 74, 0.35)",
-  },
-  PAUSED: {
-    label: "PAUSED",
-    bgColor: "rgba(202, 138, 4, 0.12)",
-    textColor: "#ca8a04",
-    borderColor: "rgba(202, 138, 4, 0.35)",
-  },
-  COMPLETE: {
-    label: "COMPLETE",
-    bgColor: "rgba(37, 99, 235, 0.12)",
-    textColor: "#2563eb",
-    borderColor: "rgba(37, 99, 235, 0.35)",
-  },
-  PAUSED_HUMAN: {
-    label: "NEEDS HUMAN",
-    bgColor: "rgba(234, 88, 12, 0.12)",
-    textColor: "#ea580c",
-    borderColor: "rgba(234, 88, 12, 0.35)",
-  },
-  LIMIT_REACHED: {
-    label: "LIMIT REACHED",
-    bgColor: "rgba(220, 38, 38, 0.12)",
-    textColor: "#dc2626",
-    borderColor: "rgba(220, 38, 38, 0.35)",
-  },
-  ERROR: {
-    label: "ERROR",
-    bgColor: "rgba(220, 38, 38, 0.12)",
-    textColor: "#dc2626",
-    borderColor: "rgba(220, 38, 38, 0.35)",
-  },
-  NOT_INSTALLED: {
-    label: "NOT INSTALLED",
-    bgColor: "rgba(107, 114, 128, 0.08)",
-    textColor: "#9ca3af",
-    borderColor: "rgba(107, 114, 128, 0.2)",
-  },
-};
+import { StateBadge } from "../../components/StateBadge";
 
 // ─── Loop control state sets ──────────────────────────────────────
 
@@ -84,25 +25,6 @@ function formatElapsed(seconds: number): string {
 }
 
 // ─── Components ───────────────────────────────────────────────────
-
-function LoopStateBadge({ loopState }: { loopState: string }) {
-  const cfg = STATE_BADGE[loopState] ?? STATE_BADGE["IDLE"]!;
-  return (
-    <span
-      className="inline-flex items-center gap-2 rounded-lg border px-4 py-1.5 font-mono text-base font-bold tracking-wide"
-      style={{
-        backgroundColor: cfg.bgColor,
-        color: cfg.textColor,
-        borderColor: cfg.borderColor,
-      }}
-    >
-      {loopState === "RUNNING" && (
-        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
-      )}
-      {cfg.label}
-    </span>
-  );
-}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -925,7 +847,7 @@ export function StatusView() {
           <Card>
             <div className="flex flex-wrap items-center gap-4">
               {/* Prominent state badge */}
-              <LoopStateBadge loopState={status.loopState} />
+              <StateBadge state={status.loopState} size="block" />
 
               {/* Meta info column */}
               <div
