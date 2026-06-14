@@ -2,9 +2,18 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T20:30:00Z",
-  "currentStage": "forge-2-tech",
+  "updatedAt": "2026-06-14T21:00:00Z",
+  "currentStage": "forge-3-specs",
   "stages": {
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-14T21:00:00Z",
+      "basedOnVersions": { "forge-1-prd": 1 },
+      "artifacts": ["specs/ux-overhaul-web/tech-spec.md"],
+      "result": "10-section tech spec. Forge-researcher established exact integration signatures. Three crux decisions ratified (all recommended): D3.1 move recoverInterruptedLoop from packages/cli to @rauf/loop (CLI re-imports, no behavior change; web resume = reconcile+relaunch; --recover reverify+commit stays CLI-only); D3.5 shared label-map state-labels.ts exports {label,tone} (semantic tone, no CSS — CLI/web each map tone→palette); D3.4 concurrency guard via core checkLock (cross-process) → 409 on reset/resume/unblock when live, validate is GET/read-only/ungated. Also: D3.2 LoopManager.startReviewLoop()→runner.startReviewOnly() for POST /loop/review; D3.3 add REVIEWING+PAUSED_USAGE_LIMIT to LoopStateEnum + remap mapLoopStateStatus + statusExitCode 6/4 (TS exhaustiveness guards all sites); D3.6 agent doc items (signal spec/model cascade/progress.md stub) into templates, rename deferred to Part-B. 5 routes: POST reset/resume/loop·review/backlog·unblock + GET backlog·validate. Version→minor 0.6.0, additive, no minRunnerVersion/feature-forge change.",
+      "notes": "OQ-1 resolved by D3.1, OQ-2 resolved by D3.5. Two impl-spec OQs parked: OQ-T1 concrete tone→palette color tables (terminal + CSS); OQ-T2 resume `answers` field names must match CLI --answer parsing. Embedded-artifacts landmine: if agent templates included in embedded-artifacts.ts change, regen via `pnpm --filter @rauf/core build` (Phase 1 learning). recoverInterruptedLoop types to move: ReconcileSummary/KeptBlock/InterruptedItem. Web has NO React test harness — backend route + core unit tests only (REQ-TEST-03)."
+    },
     "forge-verify-prd": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-prd-2026-06-14.md",
