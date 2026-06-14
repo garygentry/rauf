@@ -2,9 +2,13 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T23:20:00Z",
+  "updatedAt": "2026-06-14T23:40:00Z",
   "currentStage": "forge-5-loop",
   "stages": {
+    "forge-5-loop": {
+      "status": "in-progress",
+      "startedAt": "2026-06-14T23:40:00Z"
+    },
     "forge-verify-backlog": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-backlog-2026-06-14.md",
