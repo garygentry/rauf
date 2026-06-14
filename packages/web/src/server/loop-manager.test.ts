@@ -129,6 +129,56 @@ describe("LoopManager", () => {
     });
   });
 
+  describe("startReviewLoop", () => {
+    it("starts a review pass and tracks it", () => {
+      const manager = new LoopManager();
+      writeMarker(projectPath);
+      writeBacklog(projectPath);
+      writeRaufMd(projectPath);
+      setupMockClaude();
+
+      const result = manager.startReviewLoop(projectPath, {
+        maxIterations: 1,
+        maxRetries: 1,
+        review: true,
+        reviewOnly: true,
+        sessionTimeoutMinutes: 1,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(manager.isRunning(projectPath)).toBe(true);
+    });
+
+    it("rejects a duplicate start on the same backlog root", () => {
+      const manager = new LoopManager();
+      writeMarker(projectPath);
+      writeBacklog(projectPath);
+      writeRaufMd(projectPath);
+      setupMockClaude();
+
+      manager.startReviewLoop(projectPath, {
+        maxIterations: 1,
+        maxRetries: 1,
+        review: true,
+        reviewOnly: true,
+        sessionTimeoutMinutes: 1,
+      });
+
+      const result = manager.startReviewLoop(projectPath, {
+        maxIterations: 1,
+        maxRetries: 1,
+        review: true,
+        reviewOnly: true,
+        sessionTimeoutMinutes: 1,
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain("already running");
+      }
+    });
+  });
+
   describe("stopLoop", () => {
     it("returns false when no loop is running", () => {
       const manager = new LoopManager();

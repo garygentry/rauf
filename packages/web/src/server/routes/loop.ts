@@ -14,12 +14,9 @@ import { z } from "zod";
 import {
   LoopStartOptionsSchema,
   readToolConfig,
-  readMarkerFile,
   resolveRootDirectory,
   resolveBacklogRoot,
   resolveBacklogPaths,
-  readBacklog,
-  resolveMaxIterations,
   validatePath,
   readEvents,
   watchEvents,
@@ -27,6 +24,11 @@ import {
 } from "@rauf/core";
 
 import { errorResponse } from "../app.js";
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  resolveRequestMaxIterations,
+} from "../loop-defaults.js";
 import { getLoopManager } from "../loop-manager.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 
@@ -48,43 +50,6 @@ const StopLoopBodySchema = z
     backlogRoot: z.string().optional(),
   })
   .optional();
-
-// ─── Default loop options ────────────────────────────────────────
-
-const DEFAULT_MAX_ITERATIONS = 20;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
-
-/**
- * Resolve maxIterations by the same precedence as the CLI:
- * request body (flag) > `.rauf.json` options.maxIterations > computed-from-backlog.
- * Falls back to the flat default when nothing resolves. No logging (server-side).
- */
-function resolveRequestMaxIterations(
-  projectPath: string,
-  flag: number | null,
-  backlogRoot?: string,
-): number {
-  const markerResult = readMarkerFile(projectPath);
-  const markerMaxIterations = markerResult.ok ? markerResult.value.options.maxIterations : null;
-
-  let backlog = null;
-  const rootResult = resolveBacklogRoot(projectPath, backlogRoot);
-  if (rootResult.ok) {
-    const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
-    if (pathsResult.ok) {
-      const backlogResult = readBacklog(pathsResult.value);
-      if (backlogResult.ok) backlog = backlogResult.value;
-    }
-  }
-
-  return resolveMaxIterations({
-    flag,
-    markerMaxIterations,
-    backlog,
-    fallback: DEFAULT_MAX_ITERATIONS,
-  }).value;
-}
 
 // ─── SSE constants ───────────────────────────────────────────────
 

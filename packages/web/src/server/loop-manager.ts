@@ -125,6 +125,52 @@ export class LoopManager {
   }
 
   /**
+   * Start a STANDALONE REVIEW pass for a project (D3.2). Mirrors startLoop but
+   * runs LoopRunner.startReviewOnly() instead of start(). Returns an error
+   * string if a loop is already running for the same backlog root.
+   */
+  startReviewLoop(
+    projectPath: string,
+    options: LoopStartOptions,
+  ): { ok: true } | { ok: false; error: string } {
+    const key = this.resolveKey(projectPath, options.backlogRoot);
+
+    if (this.activeLoops.has(key)) {
+      return { ok: false, error: "Loop already running for this backlog root" };
+    }
+
+    const runnerResult = LoopRunner.create(projectPath, options);
+    if (!runnerResult.ok) {
+      return { ok: false, error: runnerResult.error.message };
+    }
+    const runner = runnerResult.value;
+
+    // Subscribe to all event types and fan out to listeners
+    for (const eventType of LOOP_EVENT_TYPES) {
+      runner.on(eventType, (event: LoopEvent) => {
+        this.fanOut(key, event);
+      });
+    }
+
+    // Start the review pass and track the promise
+    const promise = runner.startReviewOnly().then(
+      (result) => {
+        this.activeLoops.delete(key);
+        this.deferBufferCleanup(key);
+        return result;
+      },
+      (error) => {
+        this.activeLoops.delete(key);
+        this.deferBufferCleanup(key);
+        throw error;
+      },
+    );
+
+    this.activeLoops.set(key, { runner, projectPath, promise });
+    return { ok: true };
+  }
+
+  /**
    * Stop a running loop for a project. Returns false if no loop is active.
    */
   stopLoop(projectPath: string, backlogRoot?: string): boolean {

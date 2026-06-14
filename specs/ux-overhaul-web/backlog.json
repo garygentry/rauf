@@ -94,8 +94,8 @@
         "loop-manager.test.ts covers startReviewLoop start + duplicate-rejection.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:03:23.832Z",
       "dependsOn": [],
       "notes": "Shared plumbing for the route items. startReviewLoop reuses the engine (REQ-WEB-08; runner unchanged). assertNoLiveLoop is the lightweight guard for unblock; reset/resume use acquire-and-hold from @rauf/loop (item 003) instead.",
       "estimatedIterations": 2,
