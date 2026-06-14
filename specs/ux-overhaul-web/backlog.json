@@ -117,8 +117,8 @@
         "loop.test.ts covers success/409/403/400 for the review route.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:15:32.762Z",
       "dependsOn": [
         "004"
       ],
