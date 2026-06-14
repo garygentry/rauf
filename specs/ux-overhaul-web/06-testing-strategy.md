@@ -743,7 +743,7 @@ total — TS errors if a new enum value is added without a case, and this table 
 
 ### 5.1 Move `packages/cli/src/recovery.test.ts` → `packages/loop/src/recovery.test.ts`
 
-The existing file (122 lines) tests **only** the relocated lock functions — `acquireRecoveryLock`
+The existing file (123 lines) tests **only** the relocated lock functions — `acquireRecoveryLock`
 (`recovery.test.ts:40-72`) and `releaseRecoveryLock` (`:76-121`). Move the file verbatim and change the
 import on `recovery.test.ts:9` from `./recovery.js` (now resolving to the `@rauf/loop` copy) — the
 import already reads `from "./recovery.js"`, so after the file lands in `packages/loop/src/` it resolves
@@ -755,9 +755,11 @@ Behavior assertions to preserve **unchanged** (proving the relocation is behavio
 - `releaseRecoveryLock`: releases an owned lock; no-op when absent; removes a stale (dead-PID) lock;
   **never** deletes a live different-PID lock (`:77,86,91,98`).
 
-If `03-recovery-relocation.md` additionally relocates `recoverInterruptedLoop` / `reconcileAndRequeue`
-unit tests (the current cli `recovery.test.ts` does not contain them; they may be elsewhere or implied),
-move those with the function too, into the same `packages/loop/src/recovery.test.ts`, and add at least:
+`03-recovery-relocation.md` §2 definitively relocates `recoverInterruptedLoop` / `reconcileAndRequeue`
+to `@rauf/loop`, and `04`'s resume route depends on `recoverInterruptedLoop`. The current cli
+`recovery.test.ts` does not contain unit cases for them, so **the following two async cases are required**
+in the relocated `packages/loop/src/recovery.test.ts` (guaranteeing REQ-WEB-08 relocation-behavior-neutral
+coverage for the reconcile path):
 - `recoverInterruptedLoop` resolves a `Result<RecoverySummary>` (async — `await` it) on a clean tree
   with no in-progress items (no-op summary: empty arrays, `treeClean:true`, `stalledReset:0`).
 - a stalled in-progress item (no commit) is reset to pending (`stalledReset` increments, item back to

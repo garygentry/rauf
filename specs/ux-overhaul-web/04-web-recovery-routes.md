@@ -15,17 +15,17 @@
 
 | REQ ID | Requirement | Section |
 |--------|-------------|---------|
-| REQ-WEB-01 | Web reset action (backend + frontend) | §3, §8.1 |
-| REQ-WEB-02 | Web resume action (reconcile + relaunch) | §4, §8.2 |
-| REQ-WEB-03 | Web review action (standalone review pass) | §5, §6, §8.3 |
-| REQ-WEB-04 | Web unblock action | §7.1, §8.4 |
-| REQ-WEB-05 | Web validate action (machine-readable) | §7.2, §8.5 |
-| REQ-WEB-06 | Recovery results are visible | §8 (result surfacing) |
-| REQ-WEB-07 | Controls reflect applicability | §8.6, §8.7 |
+| REQ-WEB-01 | Web reset action (backend + frontend) | §3, §8.2 |
+| REQ-WEB-02 | Web resume action (reconcile + relaunch) | §4, §8.3 |
+| REQ-WEB-03 | Web review action (standalone review pass) | §5, §6, §8.4 |
+| REQ-WEB-04 | Web unblock action | §7.1, §8.5 |
+| REQ-WEB-05 | Web validate action (machine-readable) | §7.2, §8.6 |
+| REQ-WEB-06 | Recovery results are visible | §8.1 (result surfacing) |
+| REQ-WEB-07 | Controls reflect applicability | §8.2, §8.7 |
 | REQ-WEB-09 | Mutations safe under concurrency | §2 (guards), §3, §4, §7.1 |
 | REQ-SEC-01 | Mutation auth (`X-Rauf-Request`) | §2.4 (inherited CSRF) |
 | REQ-SEC-02 | Path sandboxing | §2.1 (`validateProjectPath`) |
-| REQ-OBS-01 | Validation findings structured | §7.2, §8.5 |
+| REQ-OBS-01 | Validation findings structured | §7.2, §8.6 |
 
 ## Dependencies
 

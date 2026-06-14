@@ -111,6 +111,11 @@ via `resolveBacklogPathsFromParam`. Full handler shapes in `04-web-recovery-rout
 
 - `packages/web/src/server/loop-manager.ts` — add `startReviewLoop(projectPath, options)` beside
   `startLoop` (`:86`): same map-key + promise tracking, but calls `runner.startReviewOnly()` (D3.2).
+- **NEW (conditional) `packages/web/src/server/loop-defaults.ts`** — if the resume handler lands in
+  `projects.ts`, hoist the loop default constants/helpers (`DEFAULT_MAX_RETRIES`,
+  `DEFAULT_SESSION_TIMEOUT_MINUTES`, `resolveRequestMaxIterations` — today `loop.ts:54-87`) into this
+  shared module so the resume relaunch path reuses them without duplicating defaults (see `04`). Stays
+  in `@rauf/web` (no new dep edge).
 
 ### 6.3 Route-layer guard helper
 
@@ -124,8 +129,11 @@ via `resolveBacklogPathsFromParam`. Full handler shapes in `04-web-recovery-rout
   review/unblock/validate) as TanStack Query mutations (validate = query), each sending
   `X-Rauf-Request: true`, each surfacing its result (REQ-WEB-06) and disabling when not applicable
   (REQ-WEB-07). Detail in `04`.
-- **Shared badge:** both `STATE_BADGE` copies (`projects/status.tsx:18`, `projects/index.tsx:48`) are
-  replaced by one badge component reading `STATE_LABELS` + a single tone→CSS-palette table (`02` §5).
+- **Shared badge — NEW `packages/web/src/client/components/StateBadge.tsx`:** a single badge component
+  replacing both `STATE_BADGE` copies (`projects/status.tsx:18`, `projects/index.tsx:48`). It reads
+  `STATE_LABELS` from `@rauf/core` + a single web-only tone→CSS-palette table (`02` §5.3), and preserves
+  both call sites via a `size` prop + the `RUNNING` animated dot. Both pages import it; the old per-page
+  `STATE_BADGE` tables are deleted.
 
 ## 7. Docs & templates — REQ-AGENT-01..03, C-5
 

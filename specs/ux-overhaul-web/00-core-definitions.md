@@ -191,9 +191,11 @@ The other four actions return existing shapes directly: `reset → ResetProjectR
 
 ## 7. Route request/response schemas — REQ-WEB-01..05, REQ-SEC-01, REQ-OBS-01
 
-Request bodies are validated with Zod `safeParse` (parse failure → `400`), mirroring the existing
-`StartLoopBodySchema`/`StopLoopBodySchema` pattern. All bodies are optional-field objects (an empty
-`{}` is valid for reset/unblock/review). Response envelope is the established `{ data }` / `{ error }`.
+Request bodies are validated with Zod `safeParse` (parse failure → `400`), following the existing
+route-body convention (`StartLoopBodySchema`/`StopLoopBodySchema`, `loop.ts:35-50`). These schemas add
+`.strict()` (reject unknown keys) — a deliberate tightening over those existing non-strict schemas. All
+bodies are optional-field objects (an empty `{}` is valid for reset/unblock/review). Response envelope
+is the established `{ data }` / `{ error }`.
 
 ```ts
 // @rauf/web — recovery route body schemas (new)

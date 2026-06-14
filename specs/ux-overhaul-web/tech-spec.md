@@ -64,7 +64,7 @@ dependency direction), but it **can** move down to `@rauf/loop`, which both CLI 
   `defaultVerifyRunner` (the `--recover` path — see Scope below).
 - **CLI** `resume-commands.ts` updates its import paths only (the moved symbols now come from
   `@rauf/loop`) — **no behavior change** to `rauf resume`.
-- **Web** `POST /:id/resume` (D5): `acquireRecoveryLock(paths)` → (held) optional `--answer` injection
+- **Web** `POST /:id/resume` (D3.1): `acquireRecoveryLock(paths)` → (held) optional `--answer` injection
   via `updateItem` (`@rauf/core`) → `await recoverInterruptedLoop(paths)` (async — see §6) → if
   `selectNextItem` finds an eligible item, `loopManager.startLoop` to relaunch (detached,
   server-owned) → `releaseRecoveryLock` in a `finally`. The lock is held across reconcile + the
@@ -183,13 +183,13 @@ No new persistent entities; `backlog.json`/`state.json` schemas are unchanged (C
 All routes are under the projects router, inherit the global CSRF guard (POST requires
 `X-Rauf-Request: true`, `app.ts:54`) and the two path guards (`resolveProjectPath` null→400;
 `validateProjectPath` sandbox→400), and resolve `BacklogPaths` via `resolveBacklogPathsFromParam`. The
-`Result<T>`→HTTP mapping reuses the established convention (D7). Response envelope: success `{ data }`,
+`Result<T>`→HTTP mapping reuses the established convention (see `00` §8.1 / `04` §2.2). Response envelope: success `{ data }`,
 error `{ error: { code, message, details? } }`.
 
 | Method · Path | Body | Core/loop call | Success | Guarded? |
 |---|---|---|---|---|
 | `POST /api/projects/:id/reset` | `{ clearBacklog?, keepProgress?, keepLog?, backlogRoot? }` | `resetProject(paths, opts)` | `200 { data: ResetProjectResult }` | 409 if live (D3.4) |
-| `POST /api/projects/:id/resume` | `{ backlogRoot?, retryBlocked?, answers?: {itemId,answer}[] }` | `updateItem`→`recoverInterruptedLoop`→`startLoop` | `200 { data: ResumeResult }` | 409 if live |
+| `POST /api/projects/:id/resume` | `{ backlogRoot?, retryBlocked?, answers?: {itemId,text}[] }` | `updateItem`→`recoverInterruptedLoop`→`startLoop` | `200 { data: ResumeResult }` | 409 if live |
 | `POST /api/projects/:id/loop/review` | `{ model?, backlogRoot? }` | `loopManager.startReviewLoop` | `200 { data: { started: true } }` | 409 if a loop already running (start path) |
 | `POST /api/projects/:id/backlog/unblock` | `{ itemId?, backlogRoot? }` | `unblockItems(paths, itemId?)` | `200 { data: { unblockedCount, unblockedIds } }` | 409 if live |
 | `GET /api/projects/:id/backlog/validate` | — (query `?backlogRoot=`) | `validateBacklog(paths, {})` | `200 { data: ValidateBacklogResult }` | none (read-only) |
@@ -300,4 +300,5 @@ No new external dependencies. Internal: web → `@rauf/core` + `@rauf/loop` (exi
   { itemId, text }` (`resume-commands.ts:54`). The impl spec must pick one — either adopt the CLI's
   `text` field on the web body for symmetry, or keep `answer` on the wire and adapt `answer → text`
   when calling `updateItem`. (Recommend matching the CLI's `text` to keep one vocabulary.)
+  **Resolved in the implementation specs to `{ itemId, text }` (`00` §7, `04` §4).**
 - All PRD open questions (OQ-1, OQ-2) are **resolved** by D3.1 and D3.5 respectively.

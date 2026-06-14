@@ -42,15 +42,16 @@ requirement has at least one covering spec; no orphan specs. (28 requirements to
 | OQ-2 (badge styling ownership) | `02` §5 (core = label+tone; web/CLI own palettes) |
 | OQ-T1 (concrete tone→palette tables) | `02` §4.1 (terminal), §5.2 (CSS) |
 | OQ-T2 (resume `answers` field name) | `00` §7, `04` §4 (`{ itemId, text }` → `humanAnswer`) |
-| D3.1 acquire-and-hold lock model | `03` §4 (core), `04` §2.3/§3/§4 (web wiring) |
+| D3.1 resume relocation (recovery → `@rauf/loop`) | `03` §2/§3, `01` §3 |
+| D3.4 acquire-and-hold lock model | `03` §4 (core), `04` §2.3/§3/§4 (web wiring) |
 
 ## Implementer notes surfaced by the spec writers (carry into impl/verify)
 
 1. `deriveFromStateJson`'s staleness branch (`status.ts`) must continue to key on the **raw** status,
    not the derived value, so `REVIEWING` is not swept into a stale-downgrade path (`02` §3.2).
-2. `mapLoopStateStatus` is currently module-private in `status.ts`; `06` §4.2 requires it be **exported**
-   so the all-12-raw totality test can target the mapping boundary (else test via `deriveStatus`). `02`
-   must reflect whichever choice the impl takes.
+2. **RESOLVED → exported.** `mapLoopStateStatus` was module-private in `status.ts`; it is now specified
+   to be **exported** (`02` §3.2, from `packages/core/src/index.ts`) so the all-12-raw totality test
+   targets the mapping boundary directly (`06` §4.2).
 
 ## Verification
 

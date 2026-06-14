@@ -215,7 +215,9 @@ other rows are unchanged. The mapping stays **total over the 12 raw statuses** (
 
 ```ts
 // NEW — packages/core/src/status.ts:106
-function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
+// EXPORTED (was module-private) so the all-12 totality test can target the mapping
+// boundary directly (06 §4.2). Export it from packages/core/src/index.ts too.
+export function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
   const mapping: Record<LoopState["status"], LoopStateEnum> = {
     idle: "IDLE",
     starting: "RUNNING",
@@ -652,8 +654,9 @@ An implementation matches this spec when:
    returns a defined `StateLabel` for every enum value and is typed to never return `undefined`. A
    missing key is a `tsc` error (no test even compiles) — both the type check and the runtime iteration
    must pass.
-2. **Enum + remap.** `LoopStateEnumSchema` contains `REVIEWING` and `PAUSED_USAGE_LIMIT` (§3.1). A unit
-   test asserts `mapLoopStateStatus("reviewing") === "REVIEWING"`,
+2. **Enum + remap.** `LoopStateEnumSchema` contains `REVIEWING` and `PAUSED_USAGE_LIMIT` (§3.1).
+   `mapLoopStateStatus` is **exported** (§3.2) so the boundary test can import it directly (06 §4.2). A
+   unit test asserts `mapLoopStateStatus("reviewing") === "REVIEWING"`,
    `mapLoopStateStatus("paused_usage_limit") === "PAUSED_USAGE_LIMIT"`, and that all 12 raw statuses map
    (iterate `LoopStateStatusSchema.options`; no `undefined`). The `Record<LoopState["status"],
    LoopStateEnum>` annotation is present (compile-enforced totality, REQ-VOCAB-02).
