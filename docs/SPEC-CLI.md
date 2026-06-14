@@ -428,14 +428,14 @@ Show a status summary for the project at `[path]`.
 
 **Machine-friendly exit codes for `rauf status`:**
 
-| Code | Meaning     | Loop State(s)                                               |
-| ---- | ----------- | ----------------------------------------------------------- |
-| 0    | SUCCESS     | IDLE, COMPLETE, PAUSED, NOT_INSTALLED (clean terminal)      |
-| 1    | ERROR       | ERROR                                                       |
-| 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                |
-| 4    | LIMIT       | LIMIT_REACHED, SLEEPING_LIMIT, WEEKLY_LIMIT                 |
-| 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived) |
-| 6    | RUNNING     | RUNNING (query-time only)                                   |
+| Code | Meaning     | Loop State(s)                                                   |
+| ---- | ----------- | --------------------------------------------------------------- |
+| 0    | SUCCESS     | IDLE, COMPLETE, PAUSED, NOT_INSTALLED (clean terminal)          |
+| 1    | ERROR       | ERROR                                                           |
+| 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                    |
+| 4    | LIMIT       | LIMIT_REACHED, SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT |
+| 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived)     |
+| 6    | RUNNING     | RUNNING, REVIEWING (query-time only)                            |
 
 ### rauf log [path]
 

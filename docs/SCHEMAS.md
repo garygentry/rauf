@@ -219,7 +219,7 @@ interface LockSummary {
 
 ```typescript
 interface DerivedStatus {
-  loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | LIMIT_REACHED | ERROR | NOT_INSTALLED | SLEEPING_LIMIT | WEEKLY_LIMIT
+  loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | LIMIT_REACHED | ERROR | NOT_INSTALLED | SLEEPING_LIMIT | WEEKLY_LIMIT | REVIEWING | PAUSED_USAGE_LIMIT
   stateSource: "state.json" | "log-parsing" | "none";
   iteration: number | null;
   maxIterations: number | null;
@@ -252,8 +252,42 @@ type LoopStateEnum =
   | "ERROR"
   | "NOT_INSTALLED"
   | "SLEEPING_LIMIT" // Sleeping until 5-hour usage window resets
-  | "WEEKLY_LIMIT"; // 7-day weekly cap exhausted
+  | "WEEKLY_LIMIT" // 7-day weekly cap exhausted
+  | "REVIEWING" // A review-only pass is running (startReviewOnly)
+  | "PAUSED_USAGE_LIMIT"; // Loop paused because a usage limit was hit mid-run
 ```
+
+### State Labels
+
+The `state-labels` module in `@rauf/core` is the single source of truth for human-readable labels and UI tone for each `LoopStateEnum` value. Both the CLI (`colorLoopState`) and web (`StateBadge`) derive display from it — no parallel maps.
+
+```typescript
+type StateTone = "neutral" | "info" | "success" | "warning" | "danger";
+
+interface StateLabel {
+  label: string;
+  tone: StateTone;
+}
+
+// Exported from @rauf/core
+const STATE_LABELS: Record<LoopStateEnum, StateLabel>;
+function getStateLabel(state: LoopStateEnum): StateLabel;
+```
+
+| State              | Label                | Tone    |
+| ------------------ | -------------------- | ------- |
+| IDLE               | Idle                 | neutral |
+| RUNNING            | Running              | info    |
+| PAUSED             | Paused               | info    |
+| COMPLETE           | Complete             | success |
+| PAUSED_HUMAN       | Needs Human          | warning |
+| LIMIT_REACHED      | Limit Reached        | warning |
+| ERROR              | Error                | danger  |
+| NOT_INSTALLED      | Not Installed        | neutral |
+| SLEEPING_LIMIT     | Sleeping (Limit)     | warning |
+| WEEKLY_LIMIT       | Weekly Limit         | warning |
+| REVIEWING          | Reviewing            | info    |
+| PAUSED_USAGE_LIMIT | Usage Limit (Paused) | warning |
 
 ## DiscoveredProject
 

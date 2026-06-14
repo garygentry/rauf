@@ -247,8 +247,8 @@
         "docs/SPEC-WEB.md documents all 5 recovery endpoints; docs/SCHEMAS.md documents the 2 new enum values + the label-map surface; docs/SPEC-CLI.md and docs/ARCHITECTURE.md status-vocabulary/exit-code mentions are updated.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:40:31.583Z",
       "dependsOn": [
         "001",
         "002",
