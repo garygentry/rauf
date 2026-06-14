@@ -39,6 +39,9 @@ import {
   listArchiveMonths,
   readArchiveMonth,
   purgeArchive,
+  resetProject,
+  unblockItems,
+  validateBacklog,
   ErrorCodes,
   BacklogItemTypeSchema,
   BacklogItemStatusSchema,
@@ -53,8 +56,11 @@ import {
   type UpdateItemInput,
 } from "@rauf/core";
 
+import { acquireRecoveryLock, releaseRecoveryLock } from "@rauf/loop";
+
 import { errorResponse } from "../app.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
+import { assertNoLiveLoop } from "./recovery-guard.js";
 
 // ─── Request body schemas ────────────────────────────────────────
 
@@ -62,6 +68,22 @@ const SweepBodySchema = z.object({
   minAgeDays: z.number().int().nonnegative().optional(),
   backlogRoot: z.string().optional(),
 });
+
+const ResetBodySchema = z
+  .object({
+    clearBacklog: z.boolean().optional(),
+    keepProgress: z.boolean().optional(),
+    keepLog: z.boolean().optional(),
+    backlogRoot: z.string().optional(),
+  })
+  .strict();
+
+const UnblockBodySchema = z
+  .object({
+    itemId: z.string().optional(),
+    backlogRoot: z.string().optional(),
+  })
+  .strict();
 
 const CreateItemBodySchema = z.object({
   type: BacklogItemTypeSchema,
@@ -182,6 +204,26 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return { ok: false, code: pathsResult.error.code, message: pathsResult.error.message };
     }
     return { ok: true, paths: pathsResult.value };
+  }
+
+  /**
+   * Map a recovery `Result` error code to an HTTP status (00 §8.1).
+   * Local to the router so the recovery routes agree on the mapping.
+   */
+  function recoveryErrorStatus(code: string): 400 | 404 | 409 | 500 {
+    switch (code) {
+      case ErrorCodes.FILE_NOT_FOUND:
+        return 404;
+      case ErrorCodes.LOCK_CONFLICT:
+        return 409;
+      case ErrorCodes.IO_ERROR:
+        return 500;
+      case ErrorCodes.VALIDATION_ERROR:
+      case ErrorCodes.INVALID_JSON:
+        return 400;
+      default:
+        return 400;
+    }
   }
 
   // ── GET /api/projects ─────────────────────────────────────────
@@ -427,6 +469,67 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     return c.json({ data: null });
   });
 
+  // ── POST /:id/reset ───────────────────────────────────────────
+  //
+  // Reset loop state (web equivalent of CLI reset). Acquire-and-hold
+  // guarded (D3.4): a live loop → 409; lock released in a finally.
+
+  router.post("/:id/reset", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = ResetBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parsed.error.flatten()),
+        400,
+      );
+    }
+    const body = parsed.data;
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, body.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
+    // Guard: acquire-and-hold (D3.4). A live loop → 409; a stale lock is
+    // cleared; a missing backlog root → 404 (mapped via recoveryErrorStatus).
+    const acquired = acquireRecoveryLock(paths);
+    if (!acquired.ok) {
+      return c.json(
+        errorResponse(acquired.error.code, acquired.error.message, acquired.error.details),
+        recoveryErrorStatus(acquired.error.code),
+      );
+    }
+
+    try {
+      const result = resetProject(paths, {
+        clearBacklog: body.clearBacklog,
+        keepProgress: body.keepProgress,
+        keepLog: body.keepLog,
+      });
+      if (!result.ok) {
+        return c.json(
+          errorResponse(result.error.code, result.error.message, result.error.details),
+          recoveryErrorStatus(result.error.code),
+        );
+      }
+      return c.json({ data: result.value });
+    } finally {
+      // Always release — reset does not relaunch, so release unconditionally.
+      releaseRecoveryLock(paths);
+    }
+  });
+
   // ─────────────────────────────────────────────────────────────
   // Backlog CRUD routes
   // /api/projects/:id/backlog[/:itemId]
@@ -562,6 +665,88 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
 
     return c.json({ data: result.value });
+  });
+
+  // ── POST /:id/backlog/unblock ─────────────────────────────────
+  //
+  // Unblock all blocked items, or a specific item. Lightweight guard
+  // (assertNoLiveLoop). Registered before /:id/backlog/:itemId so
+  // "unblock" is never mismatched as an itemId.
+
+  router.post("/:id/backlog/unblock", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = UnblockBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parsed.error.flatten()),
+        400,
+      );
+    }
+    const body = parsed.data;
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, body.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
+    // Lightweight guard (D3.4): refuse if a loop is live on this root.
+    const live = assertNoLiveLoop(paths);
+    if (!live.ok) {
+      return c.json(errorResponse(live.error.code, live.error.message), 409);
+    }
+
+    const result = unblockItems(paths, body.itemId);
+    if (!result.ok) {
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        recoveryErrorStatus(result.error.code),
+      );
+    }
+    return c.json({ data: result.value }); // { unblockedCount, unblockedIds }
+  });
+
+  // ── GET /:id/backlog/validate ─────────────────────────────────
+  //
+  // Validate the backlog and return machine-readable findings. GET,
+  // read-only — no CSRF header and no lock guard (safe during a live
+  // run). Registered before /:id/backlog/:itemId so "validate" is
+  // never mismatched as an itemId.
+
+  router.get("/:id/backlog/validate", (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, c.req.query("backlogRoot"));
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = validateBacklog(resolved.paths, {});
+    if (!result.ok) {
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        recoveryErrorStatus(result.error.code),
+      );
+    }
+    return c.json({ data: result.value }); // ValidateBacklogResult { valid, findings }
   });
 
   // ── GET /:id/archive ──────────────────────────────────────────

@@ -143,8 +143,8 @@
         "recovery.test.ts covers the success/403/409/404/400 matrix for the three routes plus validate's read-only cases and the mounting smoke.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:23:03.729Z",
       "dependsOn": [
         "003",
         "004"
