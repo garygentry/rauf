@@ -43,10 +43,9 @@ import {
   releaseRecoveryLock,
   recoverInterruptedLoop,
   detectInterruptedItems,
-  reverifyAndCommitInterrupted,
   type InterruptedItem,
-  type VerifyRunner,
-} from "./recovery.js";
+} from "@rauf/loop";
+import { reverifyAndCommitInterrupted, type VerifyRunner } from "./recovery.js";
 import { handleLoopRun } from "./loop-commands.js";
 
 // ─── --answer parsing ────────────────────────────────────────────

@@ -69,8 +69,8 @@
         "The moved recovery tests pass in @rauf/loop including the 2 new recoverInterruptedLoop cases; packages/cli/src/recovery.test.ts is the reduced import-smoke.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T23:00:06.378Z",
       "dependsOn": [],
       "notes": "Down-the-graph move (cli→loop); web already imports @rauf/loop so this unblocks REQ-WEB-08 without web importing cli. Lock contract unchanged: acquireRecoveryLock acquire-and-holds; recoverInterruptedLoop does NOT touch the lock (caller holds it); releaseRecoveryLock is owner-aware/finally-safe. Keep the state.json unlink ENOENT handling + error code verbatim.",
       "estimatedIterations": 2,
