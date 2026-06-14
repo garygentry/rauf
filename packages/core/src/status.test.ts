@@ -5,6 +5,7 @@ import * as os from "node:os";
 
 import {
   deriveStatus,
+  mapLoopStateStatus,
   readLogTail,
   watchLog,
   writeLoopState,
@@ -25,6 +26,7 @@ import {
 } from "./backlog-root.js";
 import type { BacklogPaths } from "./backlog-root.js";
 import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
+import { LoopStateStatusSchema, LoopStateEnumSchema } from "./schemas.js";
 
 // ─── Constants (test-local) ────────────────────────────────────────
 
@@ -1531,5 +1533,61 @@ describe("scanActiveRoots", () => {
     // Since parent has backlog.json, backlog root is the parent dir
     expect(result.value[0]!.relativePath).toBe(path.join("specs", "auth"));
     expect(result.value[0]!.currentItem).toBe("002");
+  });
+});
+
+// ─── mapLoopStateStatus: raw → derived (REQ-VOCAB-02/03/04) ──────
+
+describe("mapLoopStateStatus", () => {
+  const EXPECTED: Record<LoopState["status"], string> = {
+    idle: "IDLE",
+    starting: "RUNNING",
+    running: "RUNNING",
+    paused: "PAUSED",
+    complete: "COMPLETE",
+    paused_human: "PAUSED_HUMAN",
+    limit_reached: "LIMIT_REACHED",
+    error: "ERROR",
+    sleeping_limit: "SLEEPING_LIMIT",
+    weekly_limit: "WEEKLY_LIMIT",
+    reviewing: "REVIEWING",
+    paused_usage_limit: "PAUSED_USAGE_LIMIT",
+  };
+
+  it("maps all 12 raw statuses with no undefined", () => {
+    for (const raw of LoopStateStatusSchema.options) {
+      const derived = mapLoopStateStatus(raw);
+      expect(derived, `unmapped raw status ${raw}`).toBeDefined();
+      expect(derived).toBe(EXPECTED[raw]);
+      // derived must be a real enum member
+      expect(LoopStateEnumSchema.options).toContain(derived);
+    }
+  });
+
+  it("routes the two new raw states to their distinct derived values", () => {
+    expect(mapLoopStateStatus("reviewing")).toBe("REVIEWING");
+    expect(mapLoopStateStatus("paused_usage_limit")).toBe("PAUSED_USAGE_LIMIT");
+  });
+});
+
+// ─── deriveStatus: new derived values (REQ-VOCAB-03/04) ──────────
+
+describe("deriveStatus — REVIEWING / PAUSED_USAGE_LIMIT", () => {
+  it("derives REVIEWING from state.json with status 'reviewing'", () => {
+    writeStateJson(makeLoopState({ status: "reviewing" }));
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("REVIEWING");
+    expect(result.value.stateSource).toBe("state.json");
+  });
+
+  it("derives PAUSED_USAGE_LIMIT from state.json with status 'paused_usage_limit'", () => {
+    writeStateJson(makeLoopState({ status: "paused_usage_limit" }));
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("PAUSED_USAGE_LIMIT");
+    expect(result.value.stateSource).toBe("state.json");
   });
 });

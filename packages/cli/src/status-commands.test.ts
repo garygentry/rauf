@@ -844,6 +844,8 @@ describe("statusExitCode (unified exit-code scheme)", () => {
     ["COMPLETE", ExitCode.SUCCESS], // 0
     ["PAUSED", ExitCode.SUCCESS], // 0
     ["NOT_INSTALLED", ExitCode.SUCCESS], // 0
+    ["REVIEWING", ExitCode.RUNNING], // 6 — a review pass is a running query-time state
+    ["PAUSED_USAGE_LIMIT", ExitCode.LIMIT], // 4 — usage-limit pause is a LIMIT state
   ])("maps %s → %d (no derived status)", (state, expected) => {
     expect(statusExitCode(state)).toBe(expected);
   });

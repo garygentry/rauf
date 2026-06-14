@@ -17,8 +17,8 @@
         "state-labels.test.ts asserts totality by iterating the enum; status.test.ts covers the 12-raw map + 2 deriveStatus cases; status-commands.test.ts covers the 2 exit codes.",
         "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-14T22:55:13.430Z",
       "dependsOn": [],
       "notes": "Atomic per spec 02 §10 — enum addition breaks cli statusExitCode (default-less) until its cases are added, so core+cli land together. Web badge (Record<string>) still compiles (item 002). Tone table + exact labels are normative (CANON §4.3) — copy verbatim from spec 02 §2/§2.1. Gotcha: keep deriveFromStateJson staleness keyed on raw status (TRACEABILITY note #1).",
       "estimatedIterations": 2,
@@ -44,7 +44,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Resolves OQ-T1 web palette (spec 02 §5.2 hex table). REQ-VOCAB-07 totality is structural (no Record<string>/?? IDLE). Mechanical migration — no component tests (REQ-TEST-03).",
       "estimatedIterations": 1,
       "model": "sonnet",
@@ -117,7 +119,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["004"],
+      "dependsOn": [
+        "004"
+      ],
       "notes": "Review runs server-side; observed via the existing events SSE (Phase 1 read path). Guard is the start-path dedupe, not a recovery lock. Handler lives in loop.ts (01 §6.1).",
       "estimatedIterations": 1,
       "model": "opus",
@@ -141,7 +145,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "004"],
+      "dependsOn": [
+        "003",
+        "004"
+      ],
       "notes": "Body schemas from spec 00 §7. 403 is inherited app-level CSRF (no per-route code). Live-lock fixture: write .loop.lock {pid: process.pid, startedAt, processStartTime: null} so checkLock/acquireRecoveryLock report live (spec 06 §3.0).",
       "estimatedIterations": 2,
       "model": "opus",
@@ -166,7 +173,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "004", "006"],
+      "dependsOn": [
+        "003",
+        "004",
+        "006"
+      ],
       "notes": "Mirrors CLI resume-commands.ts:268-424 minus --recover. Lock released before relaunch so the loop's own lock acquisition succeeds. Same projects.ts file as item 006 (ordering dependency).",
       "estimatedIterations": 2,
       "model": "opus",
@@ -189,11 +200,18 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002", "005", "006", "007"],
+      "dependsOn": [
+        "002",
+        "005",
+        "006",
+        "007"
+      ],
       "notes": "Disabling is UX only — the backend still enforces every guard. No component tests (REQ-TEST-03); the route tests + core unit tests are the coverage.",
       "estimatedIterations": 2,
       "model": "opus",
-      "specReferences": ["specs/ux-overhaul-web/04-web-recovery-routes.md"]
+      "specReferences": [
+        "specs/ux-overhaul-web/04-web-recovery-routes.md"
+      ]
     },
     {
       "id": "009",
@@ -214,7 +232,9 @@
       "notes": "Embedded-artifacts landmine (Phase-1): editing templates requires the regen or the installed copies go stale. Two of three items are already partly present — add only the deltas (05 §3.3). Out of scope: AGENT_ADDON rename / Task-tool wording (deferred to Part-B).",
       "estimatedIterations": 1,
       "model": "sonnet",
-      "specReferences": ["specs/ux-overhaul-web/05-agent-contract-docs.md"]
+      "specReferences": [
+        "specs/ux-overhaul-web/05-agent-contract-docs.md"
+      ]
     },
     {
       "id": "010",
@@ -229,11 +249,23 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "002", "003", "004", "005", "006", "007", "008", "009"],
+      "dependsOn": [
+        "001",
+        "002",
+        "003",
+        "004",
+        "005",
+        "006",
+        "007",
+        "008",
+        "009"
+      ],
       "notes": "Honest-advertisement gate (mirrors grammar-phase item 013). Additive minor bump — C-1: no minRunnerVersion change, no feature-forge lockstep edit.",
       "estimatedIterations": 1,
       "model": "sonnet",
-      "specReferences": ["specs/ux-overhaul-web/01-architecture-layout.md"]
+      "specReferences": [
+        "specs/ux-overhaul-web/01-architecture-layout.md"
+      ]
     }
   ]
 }

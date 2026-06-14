@@ -102,8 +102,14 @@ function computeLockSummary(paths: BacklogPaths): LockSummary {
 
 // ─── Tier 1: state.json ─────────────────────────────────────────
 
-/** Map LoopState.status → LoopStateEnum */
-function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
+/**
+ * Map LoopState.status → LoopStateEnum.
+ *
+ * Exported so the all-12 totality test can target the mapping boundary directly (06 §4.2).
+ * Total over the 12 raw statuses via Record<LoopState["status"], LoopStateEnum> — a missing
+ * raw key is a compile error (no `default`/fallthrough).
+ */
+export function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
   const mapping: Record<LoopState["status"], LoopStateEnum> = {
     idle: "IDLE",
     starting: "RUNNING",
@@ -115,9 +121,8 @@ function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",
-    reviewing: "RUNNING",
-    // Clean usage-limit halt — resumable, so surface as PAUSED (not a new enum value).
-    paused_usage_limit: "PAUSED",
+    reviewing: "REVIEWING", // CHANGED: distinct derived value (REQ-VOCAB-03)
+    paused_usage_limit: "PAUSED_USAGE_LIMIT", // CHANGED: distinct derived value (REQ-VOCAB-04)
   };
   return mapping[status];
 }

@@ -236,6 +236,8 @@ export const LoopStateEnumSchema = z.enum([
   "NOT_INSTALLED",
   "SLEEPING_LIMIT",
   "WEEKLY_LIMIT",
+  "REVIEWING",
+  "PAUSED_USAGE_LIMIT",
 ]);
 
 export const BacklogSummarySchema = z.object({

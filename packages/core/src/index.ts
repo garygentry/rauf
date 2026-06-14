@@ -17,6 +17,7 @@ export * from "./backlog.js";
 export * from "./backlog-validate.js";
 export * from "./archive.js";
 export * from "./status.js";
+export * from "./state-labels.js";
 export * from "./installer.js";
 export * from "./greenfield.js";
 export * from "./reset.js";
