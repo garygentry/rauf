@@ -1,10 +1,27 @@
 {
   "feature": "ux-overhaul-grammar",
-  "pipelineStatus": "active",
+  "pipelineStatus": "complete",
   "createdAt": "2026-06-13T02:51:57Z",
-  "updatedAt": "2026-06-13T12:40:00Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-06-14T00:00:00Z",
+  "currentStage": "complete",
   "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-14T00:00:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "docs/architecture/ux-overhaul-grammar/README.md",
+        "docs/architecture/ux-overhaul-grammar/architecture.md",
+        "docs/architecture/ux-overhaul-grammar/api-reference.md",
+        "docs/architecture/ux-overhaul-grammar/guides/migration.md"
+      ],
+      "result": "Standard 4-doc set (matches Phase 1 docs/architecture/ux-overhaul/ shape), grounded in landed v0.5.0 code: README (grammar/concepts), architecture (D1-D5 decisions), api-reference (the machine contract: grammar+flags, unified exit-code table verified from loopRunExitCode/statusExitCode, signal_parsed enum, events versioning), guides/migration (pre-0.5.0\u21920.5.0 breaking-change guide incl. exit-code gotchas + feature-forge lockstep)."
+    },
     "forge-verify-impl": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-grammar/.verification/VERIFY-impl-2026-06-13.md",
