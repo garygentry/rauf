@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T22:30:00Z",
-  "currentStage": "forge-4-backlog",
+  "updatedAt": "2026-06-14T23:00:00Z",
+  "currentStage": "forge-5-loop",
   "stages": {
+    "forge-4-backlog": {
+      "status": "complete",
+      "completedAt": "2026-06-14T23:00:00Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "artifacts": ["specs/ux-overhaul-web/backlog.json"],
+      "result": "10 items, validated clean by rauf-stable 0.5.0 (valid:true, 0 findings, exit 0). Foundation-first ordering, each item a green typecheck increment. 001 status-vocabulary core+cli (atomic: enum +REVIEWING/+PAUSED_USAGE_LIMIT + state-labels.ts + mapLoopStateStatus remap/export + colorLoopState tone refactor + statusExitCode 6/4); 002 web shared StateBadge; 003 relocate recovery cli→@rauf/loop (pure refactor); 004 web plumbing (startReviewLoop + assertNoLiveLoop + loop-defaults); 005 review route; 006 reset+unblock+validate routes (projects.ts); 007 resume route (reconcile+relaunch, OQ-T2 answers); 008 frontend Recovery group; 009 agent-contract docs + embedded regen; 010 version 0.6.0 + SPEC docs. Dep graph: 001→002; 003,004 independent foundations; 005→004; 006→003,004; 007→003,004,006; 008→002,005,006,007; 009 independent; 010→001-009. Tests folded per item (06); no React harness (REQ-TEST-03).",
+      "notes": "Models: opus for 001/003/004/005/006/007/008; sonnet for 002/009/010. estimatedIterations: 2 for 001/003/004/007/008, 1 for 002/005/009/010. Loop iteration budget ceil(10*1.5)=15. Dogfood with rauf-stable (forge.config loopRunner.bin). 003 must keep `grep 'from \"@rauf/cli\"' packages/web/src` empty (rule #1). 009 embedded-artifacts regen mandatory. Validate cmd: rauf-stable backlog validate . --backlog specs/ux-overhaul-web --specs-dir ./specs --json."
+    },
     "forge-verify-specs": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-specs-2026-06-14.md",

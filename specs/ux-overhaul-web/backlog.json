@@ -1,0 +1,239 @@
+{
+  "schemaVersion": "1",
+  "project": "ux-overhaul-web",
+  "description": "Phase 4 (final) of the rauf UX/DX overhaul: web recovery parity (reset/resume/review/unblock/validate routes + status-page controls), a shared status label-map with the REVIEWING/PAUSED_USAGE_LIMIT vocabulary, statusExitCode alignment, and the cheap agent-contract doc items. Mostly additive (minor bump to 0.6.0; no minRunnerVersion bump, no feature-forge change). Implements specs/ux-overhaul-web/ (00-06) per CANON.md.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Extend LoopStateEnum, add shared state-labels module, update CLI consumers",
+      "description": "Implement the status-vocabulary core+CLI change from spec 02 as ONE atomic increment (the enum addition compile-breaks the CLI's default-less statusExitCode, so core and CLI must land together to keep typecheck green). Steps:\n1. packages/core/src/schemas.ts (~:228): append \"REVIEWING\" and \"PAUSED_USAGE_LIMIT\" to LoopStateEnumSchema (z.enum). Raw LoopStateStatusSchema (~:167) is unchanged.\n2. NEW packages/core/src/state-labels.ts: export `type StateTone = \"neutral\"|\"info\"|\"success\"|\"warning\"|\"danger\"`; `interface StateLabel { label: string; tone: StateTone }`; `const STATE_LABELS: Record<LoopStateEnum, StateLabel>` with the exact label+tone table from spec 02 §2/§2.1 (PAUSED_HUMAN→{\"Needs Human\",warning}, REVIEWING→{\"Reviewing\",info}, PAUSED_USAGE_LIMIT→{\"Usage Limit (Paused)\",warning}, IDLE→{Idle,neutral}, RUNNING→{Running,info}, PAUSED→{Paused,info}, COMPLETE→{Complete,success}, LIMIT_REACHED→{\"Limit Reached\",warning}, ERROR→{Error,danger}, NOT_INSTALLED→{\"Not Installed\",neutral}, SLEEPING_LIMIT→{\"Sleeping (Limit)\",warning}, WEEKLY_LIMIT→{\"Weekly Limit\",warning}); `function getStateLabel(state): StateLabel`. Export the module from packages/core/src/index.ts.\n3. packages/core/src/status.ts (~:106): change mapLoopStateStatus so `reviewing`→\"REVIEWING\" and `paused_usage_limit`→\"PAUSED_USAGE_LIMIT\" (keep the Record<LoopState[\"status\"],LoopStateEnum> total over all 12 raw), and add `export` to the function; export it from index.ts too. Do NOT change deriveStatus/deriveFromStateJson logic — confirm the staleness branch keys on the RAW status, not the derived value, so REVIEWING is not swept into a downgrade.\n4. packages/cli/src/status-commands.ts: refactor colorLoopState (~:538) to a tone map — `const TONE_COLOR: Record<StateTone,(s:string)=>string> = {neutral:c.dim, info:c.cyan, success:c.green, warning:c.yellow, danger:c.red}`; return `TONE_COLOR[STATE_LABELS[state].tone](state)`; REMOVE the `default:` branch (must be total). Extend statusExitCode (~:512, default-less switch): add `case \"REVIEWING\"` → ExitCode.RUNNING and `case \"PAUSED_USAGE_LIMIT\"` → ExitCode.LIMIT.\nTests: NEW packages/core/src/state-labels.test.ts (iterate LoopStateEnumSchema.options; assert every value has an entry, pin labels for the new/renamed states, getStateLabel never undefined); extend packages/core/src/status.test.ts (mapLoopStateStatus all 12 raw incl. the 2 remaps; deriveStatus yields REVIEWING/PAUSED_USAGE_LIMIT); extend packages/cli/src/status-commands.test.ts (statusExitCode REVIEWING→6, PAUSED_USAGE_LIMIT→4). Do NOT touch the web STATE_BADGE tables (item 002).",
+      "acceptanceCriteria": [
+        "LoopStateEnumSchema includes REVIEWING and PAUSED_USAGE_LIMIT (12 derived values).",
+        "packages/core/src/state-labels.ts exports STATE_LABELS (total Record<LoopStateEnum,StateLabel>) + getStateLabel, both exported from the core index; labels/tones match spec 02 §2.1 (CANON §4.3).",
+        "mapLoopStateStatus is exported and maps reviewing→REVIEWING, paused_usage_limit→PAUSED_USAGE_LIMIT, with all 12 raw statuses mapped.",
+        "colorLoopState has no default: branch and routes through tone; statusExitCode maps REVIEWING→RUNNING(6) and PAUSED_USAGE_LIMIT→LIMIT(4) with no default:.",
+        "state-labels.test.ts asserts totality by iterating the enum; status.test.ts covers the 12-raw map + 2 deriveStatus cases; status-commands.test.ts covers the 2 exit codes.",
+        "pnpm typecheck && pnpm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Atomic per spec 02 §10 — enum addition breaks cli statusExitCode (default-less) until its cases are added, so core+cli land together. Web badge (Record<string>) still compiles (item 002). Tone table + exact labels are normative (CANON §4.3) — copy verbatim from spec 02 §2/§2.1. Gotcha: keep deriveFromStateJson staleness keyed on raw status (TRACEABILITY note #1).",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul-web/02-status-vocabulary.md",
+        "specs/ux-overhaul-web/00-core-definitions.md",
+        "specs/ux-overhaul-web/01-architecture-layout.md",
+        "specs/ux-overhaul/CANON.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "refactor",
+      "priority": 2,
+      "title": "Add shared web StateBadge component; collapse the two STATE_BADGE copies",
+      "description": "Per spec 02 §5 / 01 §6.4. Create NEW packages/web/src/client/components/StateBadge.tsx exporting `<StateBadge state={LoopStateEnum} size?: \"pill\"|\"block\">`: read STATE_LABELS from @rauf/core for the label, and map tone→a web-only CSS palette `const TONE_PALETTE: Record<StateTone,{bg,text,border}>` using the exact hex table from spec 02 §5.2. Render a small pill by default and a bordered monospace block for size=\"block\"; show the animated dot only when state===\"RUNNING\". Migrate both call sites: packages/web/src/client/routes/projects/status.tsx (delete local StateBadgeConfig + STATE_BADGE + LoopStateBadge ~:11-67/:88-105; render `<StateBadge state={status.loopState} size=\"block\" />`) and packages/web/src/client/routes/projects/index.tsx (delete local StateBadgeConfig + STATE_BADGE + StateBadge ~:42-84; import the shared component, render `<StateBadge state={...} />`). The `state` prop MUST be typed LoopStateEnum (not string) — narrow at the call site if it is currently string. No `?? STATE_BADGE[\"IDLE\"]` fallback and no Record<string,...>. The CSS palette lives only in the web client (core stays CSS-free). No React test harness (REQ-TEST-03).",
+      "acceptanceCriteria": [
+        "packages/web/src/client/components/StateBadge.tsx exists; the state prop is typed LoopStateEnum; the palette is Record<StateTone,...>; there is no IDLE fallback.",
+        "Both old STATE_BADGE tables + old badge components are removed; `grep -r \"STATE_BADGE\" packages/web/src/client` returns nothing.",
+        "Both pages render the shared StateBadge; REVIEWING/PAUSED_USAGE_LIMIT display their CANON labels with the correct tone color.",
+        "pnpm typecheck && pnpm test && pnpm format:check passes; no *.test.tsx file is added"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001"],
+      "notes": "Resolves OQ-T1 web palette (spec 02 §5.2 hex table). REQ-VOCAB-07 totality is structural (no Record<string>/?? IDLE). Mechanical migration — no component tests (REQ-TEST-03).",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/ux-overhaul-web/02-status-vocabulary.md",
+        "specs/ux-overhaul-web/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Relocate shared recovery core from @rauf/cli to @rauf/loop",
+      "description": "Pure refactor per spec 03 / 01 §3 — byte-for-byte the same logic, only the package home and import sites change. Create NEW packages/loop/src/recovery.ts and MOVE from packages/cli/src/recovery.ts (verbatim bodies): functions recoverInterruptedLoop, reconcileAndRequeue, detectInterruptedItems, acquireRecoveryLock, releaseRecoveryLock, the private findInterruptedItems, and types KeptBlock, InterruptedItem, ReconcileSummary, RecoverySummary, AcquiredRecoveryLock. In the moved file, change `import {findItemCommit,isTreeClean,gitCommit} from \"@rauf/loop\"` to relative imports `import {findItemCommit,isTreeClean} from \"./git-reconcile.js\"` and DROP gitCommit + the `node:child_process` spawn import (both only served the symbols that stay). Keep all @rauf/core imports as-is. Re-export the 5 functions + 5 types from packages/loop/src/index.ts. REDUCE packages/cli/src/recovery.ts to: keep the CLI-only --recover symbols (VerifyOutcome, VerifyRunner, defaultVerifyRunner, ItemRecoveryResult, reverifyAndCommitInterrupted — which imports gitCommit + type InterruptedItem from @rauf/loop), and re-export the moved symbols from @rauf/loop so existing ./recovery consumers keep compiling. Repoint packages/cli/src/resume-commands.ts and reset-commands.ts to import the moved symbols from @rauf/loop (keep reverifyAndCommitInterrupted/VerifyRunner from ./recovery.js). NO statement inside handleResume/handleReset changes. Trim unused @rauf/core imports in the reduced cli file. Move tests: packages/cli/src/recovery.test.ts → packages/loop/src/recovery.test.ts (its `from \"./recovery.js\"` import resolves to the loop copy after the move; no body change) and ADD two recoverInterruptedLoop unit cases (clean-tree no-op RecoverySummary: empty arrays/treeClean:true/stalledReset:0; a stalled in_progress item with no commit reset to pending with stalledReset incremented). Reduce packages/cli/src/recovery.test.ts to an import-smoke test (the re-exported moved symbols + the retained --recover symbols all resolve).",
+      "acceptanceCriteria": [
+        "packages/loop/src/recovery.ts holds the moved shared core; packages/loop/src/index.ts re-exports the 5 functions + 5 types.",
+        "packages/cli/src/recovery.ts keeps only the --recover symbols and re-exports the moved ones from @rauf/loop; no unused imports remain.",
+        "resume-commands.ts/reset-commands.ts import the moved symbols from @rauf/loop; no logic inside handleResume/handleReset changed.",
+        "`grep -rn 'from \"@rauf/cli\"' packages/web/src` returns nothing (rule #1 intact).",
+        "The moved recovery tests pass in @rauf/loop including the 2 new recoverInterruptedLoop cases; packages/cli/src/recovery.test.ts is the reduced import-smoke.",
+        "pnpm typecheck && pnpm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Down-the-graph move (cli→loop); web already imports @rauf/loop so this unblocks REQ-WEB-08 without web importing cli. Lock contract unchanged: acquireRecoveryLock acquire-and-holds; recoverInterruptedLoop does NOT touch the lock (caller holds it); releaseRecoveryLock is owner-aware/finally-safe. Keep the state.json unlink ENOENT handling + error code verbatim.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul-web/03-recovery-relocation.md",
+        "specs/ux-overhaul-web/00-core-definitions.md",
+        "specs/ux-overhaul-web/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "Web recovery plumbing: startReviewLoop, assertNoLiveLoop guard, loop-defaults",
+      "description": "Per spec 04 §6/§2.5 + 01 §6.2/§6.3. (1) Add `startReviewLoop(projectPath, options: LoopStartOptions)` to packages/web/src/server/loop-manager.ts beside startLoop (~:86): identical structure (resolveKey, the already-running dedupe guard, the LOOP_EVENT_TYPES subscription loop, promise tracking + map cleanup) but call `runner.startReviewOnly()` instead of `runner.start()`; return `{ok:true}|{ok:false,error:string}`. (2) NEW packages/web/src/server/routes/recovery-guard.ts exporting `assertNoLiveLoop(paths: BacklogPaths): Result<void>`: call core `checkLock(paths)` and return `err({code: ErrorCodes.LOCK_CONFLICT, message:\"a loop is running on this backlog root — stop it first\"})` when `lock.ok && lock.value.locked && lock.value.stale !== true`, else `ok(undefined)`; a checkLock IO error is fail-open (treated as not live). (3) NEW packages/web/src/server/loop-defaults.ts hoisting the loop default constants/helpers currently in packages/web/src/server/routes/loop.ts (~:54-87): DEFAULT_MAX_RETRIES, DEFAULT_SESSION_TIMEOUT_MINUTES, resolveRequestMaxIterations; update loop.ts to import them from loop-defaults (delete the in-file duplicates — single source). Tests: extend packages/web/src/server/loop-manager.test.ts with a startReviewLoop describe (starts + tracks a review pass via the mock claude; rejects a duplicate start on the same backlog root).",
+      "acceptanceCriteria": [
+        "LoopManager.startReviewLoop exists, mirrors startLoop, drives runner.startReviewOnly(), and dedupes on backlog root (second call returns {ok:false}).",
+        "packages/web/src/server/routes/recovery-guard.ts exports assertNoLiveLoop with the live/stale/fail-open semantics above.",
+        "packages/web/src/server/loop-defaults.ts holds the hoisted constants/helper and loop.ts imports them with no duplicated default values.",
+        "loop-manager.test.ts covers startReviewLoop start + duplicate-rejection.",
+        "pnpm typecheck && pnpm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Shared plumbing for the route items. startReviewLoop reuses the engine (REQ-WEB-08; runner unchanged). assertNoLiveLoop is the lightweight guard for unblock; reset/resume use acquire-and-hold from @rauf/loop (item 003) instead.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul-web/04-web-recovery-routes.md",
+        "specs/ux-overhaul-web/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web route: POST /:id/loop/review",
+      "description": "Per spec 04 §5. Add `router.post(\"/:id/loop/review\")` to packages/web/src/server/routes/loop.ts beside the loop-lifecycle routes. Preamble: `resolveProjectPath(id)` null→400 INVALID_ID; `validateProjectPath`→400 PATH_VIOLATION; parse ReviewBodySchema (spec 00 §7: `{model?, sessionTimeoutMinutes?, backlogRoot?}.strict()`) via safeParse→400 VALIDATION_ERROR; if body.backlogRoot, resolve via resolveBacklogRoot (→400 on !ok). Build `options = LoopStartOptionsSchema.parse({maxIterations:1, maxRetries:1, review:true, reviewOnly:true, sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES, model: body.model, backlogRoot})` — sessionTimeoutMinutes is REQUIRED by the schema; reuse DEFAULT_SESSION_TIMEOUT_MINUTES from loop-defaults (item 004). Call `getLoopManager().startReviewLoop(projectPath, options)`; on !ok return `errorResponse(\"CONFLICT\", result.error)` with status 409; else `c.json({data:{started:true}})`. The route inherits the app-level CSRF middleware (403 without X-Rauf-Request — no per-route code). Tests: extend packages/web/src/server/routes/loop.test.ts with review cases (200 {started:true} via mock claude; 409 CONFLICT when a loop is already running via setupLongRunningClaude + a prior loop/start; 403 missing header; 400 invalid id a%2Fb; 400 non-numeric sessionTimeoutMinutes).",
+      "acceptanceCriteria": [
+        "POST /api/projects/:id/loop/review builds the review options (reviewOnly:true, required sessionTimeoutMinutes) and calls startReviewLoop, returning 200 {data:{started:true}}.",
+        "Returns 409 CONFLICT when a loop is already running for the backlog root; 403 without X-Rauf-Request; 400 for bad id/body.",
+        "loop.test.ts covers success/409/403/400 for the review route.",
+        "pnpm typecheck && pnpm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["004"],
+      "notes": "Review runs server-side; observed via the existing events SSE (Phase 1 read path). Guard is the start-path dedupe, not a recovery lock. Handler lives in loop.ts (01 §6.1).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul-web/04-web-recovery-routes.md",
+        "specs/ux-overhaul-web/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web routes: reset, backlog/unblock, backlog/validate (projects.ts)",
+      "description": "Per spec 04 §3/§7 + 00 §7/§8. In packages/web/src/server/routes/projects.ts add a local `recoveryErrorStatus(code)` helper (FILE_NOT_FOUND→404, LOCK_CONFLICT→409, IO_ERROR→500, VALIDATION_ERROR/INVALID_JSON→400, else 400) and colocate the body schemas ResetBodySchema/UnblockBodySchema (spec 00 §7, both `.strict()`). Register the unblock + validate routes BEFORE the existing `/:id/backlog/:itemId` routes (so \"unblock\"/\"validate\" are not captured as item IDs — mirror the restore/sweep precedent). Routes:\n- `POST /:id/reset`: preamble (path/sandbox/ResetBodySchema/resolveBacklogPathsFromParam) → `acquireRecoveryLock(paths)` (from @rauf/loop, item 003); on !ok return 409 if LOCK_CONFLICT else 400 → `try { const r = resetProject(paths, {clearBacklog,keepProgress,keepLog}); if(!r.ok) return errorResponse(...) recoveryErrorStatus; c.json({data:r.value}) } finally { releaseRecoveryLock(paths) }`.\n- `POST /:id/backlog/unblock`: preamble (UnblockBodySchema) → `assertNoLiveLoop(paths)` (recovery-guard, item 004); !ok→409 → `unblockItems(paths, body.itemId)` → map via recoveryErrorStatus; `c.json({data:result.value})` ({unblockedCount,unblockedIds}).\n- `GET /:id/backlog/validate`: preamble (no body; `?backlogRoot` query via resolveBacklogPathsFromParam) → `validateBacklog(paths,{})` → map via recoveryErrorStatus; `c.json({data:result.value})` ({valid,findings}). NO CSRF/lock guard (read-only GET).\nTests: NEW packages/web/src/server/routes/recovery.test.ts copying the loop.test.ts harness (vi.hoisted HOME redirect, createProject, setupMockClaude, resetLoopManager, ACTIVE_DIR cleanup) plus the seedLiveLock + seedState helpers from spec 06 §3.0. Cover reset (200/403/409-live/404/400), unblock (200 all + by-id/403/409-live/404/400), validate (200 valid/200 findings DUPLICATE_ID/safe-during-live-run/no-CSRF-required/404/400 sandbox backlogRoot), plus a route-mounting smoke (POST reset/resume/unblock → 403 not 404).",
+      "acceptanceCriteria": [
+        "The three routes exist in projects.ts, with unblock/validate registered before /:id/backlog/:itemId, wrapping resetProject/unblockItems/validateBacklog.",
+        "reset is acquire-and-hold guarded (409 on live lock; lock released in finally); unblock uses assertNoLiveLoop (409 on live); validate is GET, read-only, ungated, needs no CSRF header.",
+        "Result→HTTP mapping uses recoveryErrorStatus; success envelopes match spec 00 §5; validate findings return 200 with valid:false (not an HTTP error).",
+        "recovery.test.ts covers the success/403/409/404/400 matrix for the three routes plus validate's read-only cases and the mounting smoke.",
+        "pnpm typecheck && pnpm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["003", "004"],
+      "notes": "Body schemas from spec 00 §7. 403 is inherited app-level CSRF (no per-route code). Live-lock fixture: write .loop.lock {pid: process.pid, startedAt, processStartTime: null} so checkLock/acquireRecoveryLock report live (spec 06 §3.0).",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul-web/04-web-recovery-routes.md",
+        "specs/ux-overhaul-web/00-core-definitions.md",
+        "specs/ux-overhaul-web/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "feature",
+      "priority": 2,
+      "title": "Web route: POST /:id/resume (reconcile + relaunch)",
+      "description": "Per spec 04 §4 + 00 §6/§7. Add `router.post(\"/:id/resume\")` to packages/web/src/server/routes/projects.ts (after item 006's routes; reuse its recoveryErrorStatus helper). Preamble with ResumeBodySchema (spec 00 §7: `{backlogRoot?, retryBlocked?, answers?: {itemId,text}[]}.strict()`). Then `acquireRecoveryLock(paths)` (from @rauf/loop); !ok→409 if LOCK_CONFLICT else 400. Inside `try`: (a) for each `{itemId,text}` in `body.answers ?? []`, `updateItem(paths, itemId, {humanAnswer: text, status:\"pending\", needsHuman:false, blockedReason:null})` (OQ-T2: the request field is `text`, written as humanAnswer); map errors via recoveryErrorStatus. (b) if `body.retryBlocked`, `unblockItems(paths)`. (c) `const recovery = await recoverInterruptedLoop(paths)` (async, from @rauf/loop); !ok→map error. (d) if `recovery.value.interrupted.length>0` → set reason=\"…run `rauf resume --recover` from the CLI…\", relaunch=false; else read backlog (readBacklog) and if `selectNextItem(...)===null` → reason=\"no eligible items\", relaunch=false; else relaunch=true + build `relaunchOptions = LoopStartOptionsSchema.parse({maxIterations: resolveRequestMaxIterations(...), maxRetries: DEFAULT_MAX_RETRIES, sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES, backlogRoot})` (from loop-defaults, item 004). `finally { releaseRecoveryLock(paths) }`. AFTER the try/finally (lock released), if relaunch && relaunchOptions: `const started = loopManager.startLoop(projectPath, relaunchOptions); relaunched = started.ok; if(!started.ok) reason = started.error`. Return `c.json({data: {reconciled, relaunched, reason} as ResumeResult})`. The --recover reverify+commit path is CLI-only and is NOT exposed here. Tests: add resume cases to packages/web/src/server/routes/recovery.test.ts (200 relaunched:false when nothing eligible; 200 relaunched:true with a pending item + setupLongRunningClaude; answers injection {itemId,text} unblocks the item to pending; 403; 409-live; 404; 400 malformed answers missing text; regression: a relaunched resume leaves no orphaned recovery lock so a second resume is not 409'd after stopLoop/shutdownAll).",
+      "acceptanceCriteria": [
+        "POST /:id/resume acquires-and-holds the lock, injects answers (text→humanAnswer), honors retryBlocked, awaits recoverInterruptedLoop, decides relaunch, releases the lock in finally BEFORE the relaunch, then calls loopManager.startLoop.",
+        "Returns 200 {data: ResumeResult {reconciled, relaunched, reason?}}; 409 on live lock; 403/404/400 as specified; interrupted-uncommitted work surfaces in reason with relaunched:false (no --recover on web).",
+        "A failed relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).",
+        "recovery.test.ts resume cases pass including the OQ-T2 answers test and the no-orphaned-lock regression.",
+        "pnpm typecheck && pnpm test passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["003", "004", "006"],
+      "notes": "Mirrors CLI resume-commands.ts:268-424 minus --recover. Lock released before relaunch so the loop's own lock acquisition succeeds. Same projects.ts file as item 006 (ordering dependency).",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/ux-overhaul-web/04-web-recovery-routes.md",
+        "specs/ux-overhaul-web/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 3,
+      "title": "Frontend: status-page Recovery control group",
+      "description": "Per spec 04 §8. In packages/web/src/client/routes/projects/status.tsx add a \"Recovery\" control group near the existing Start/Stop controls (~:997-1027), using the existing TanStack Query + raufFetch patterns (raufFetch injects X-Rauf-Request on mutations — verify; pass it explicitly if it does not for these POSTs). Five controls: Reset (POST /reset, behind a confirm dialog), Resume (POST /resume), Review (POST /loop/review), Unblock (POST /backlog/unblock), Validate (GET /backlog/validate as a useQuery with enabled:false + a refetch button). Add recoveryMessage + validationResult + confirmReset React state. Each mutation onSuccess sets a friendly recoveryMessage (e.g. `Unblocked ${data.unblockedCount} item(s)`, `Reset complete — …`, resume `relaunched ? \"Resumed — loop relaunched\" : reason`), clears loopError, and invalidates [\"projects\", projectId]; onError sets loopError. A shared `recoveryErrorMessage(res)` maps 409→\"a loop is running — stop it first\" else the body error message. Render recoveryMessage in a dismissible banner mirroring the existing loopError banner (~:1031-1048); render validationResult as \"Backlog is valid\" or a severity-toned findings list. Apply applicability-based disabling per spec 04 §8.7 (Resume enabled for PAUSED/PAUSED_HUMAN/PAUSED_USAGE_LIMIT/ERROR/IDLE with non-done work; Review disabled while RUNNING/REVIEWING/STARTING; Unblock enabled when backlogSummary.blocked>0; Validate always; Reset confirm-gated). No React test harness (REQ-TEST-03) — behavior is covered by the backend route tests + core unit tests.",
+      "acceptanceCriteria": [
+        "status.tsx shows a Recovery group with Reset (confirm)/Resume/Review/Unblock/Validate wired to the 5 endpoints, sending X-Rauf-Request on the POSTs.",
+        "Each action surfaces a result message; a 409 renders \"a loop is running — stop it first\"; validate renders the findings list / valid state.",
+        "Controls disable per the spec 04 §8.7 applicability table, using the derived loopState (incl. REVIEWING/PAUSED_USAGE_LIMIT).",
+        "pnpm typecheck && pnpm test && pnpm format:check passes; no *.test.tsx added"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002", "005", "006", "007"],
+      "notes": "Disabling is UX only — the backend still enforces every guard. No component tests (REQ-TEST-03); the route tests + core unit tests are the coverage.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": ["specs/ux-overhaul-web/04-web-recovery-routes.md"]
+    },
+    {
+      "id": "009",
+      "type": "chore",
+      "priority": 2,
+      "title": "Agent-contract doc items + embedded-artifacts regen",
+      "description": "DOC-ONLY per spec 05 — add only the missing deltas (05 §3.3), do not duplicate text already present. Edit the artifact templates: (1) artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl — confirm the existing token list + backward-scan paragraph are present; ADD the `RAUF_REVIEW:<json>` token (review-pass-only) + the no-signal/exit-context rule, and a new `## Model Selection` section with the precedence `item.model > --model/options > project default > provider default`. (2) artifacts/variants/backlog-json/CLAUDE_ADDON.md — inside the rauf:start/end sentinels: add the review token + no-signal rule + a `### Model Selection` subsection (precedence line). (3) artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl — inside the sentinels: add the backward-scan rule + review token + no-signal rule + Model Selection. (4) artifacts/variants/backlog-json/.rauf/progress.md — replace with the session-log format stub (a worked-example entry inside an HTML comment: `### <id> — <title>`, Outcome, What changed, Learnings, Follow-ups) per 05 §8. THEN run `pnpm --filter @rauf/core build` to regenerate packages/core/src/embedded-artifacts.ts (all four templates are embedded — do NOT hand-edit embedded-artifacts.ts). Finally update docs/SPEC-ARTIFACTS.md (not embedded) per 05 §7: add the backward-scan + \"no signal → exit context, never auto-blocked\" note, reconcile Model Resolution to the four-tier canon phrasing, and align the RAUF.md/CLAUDE_ADDON/GREENFIELD/progress mirror blocks. DO NOT rename CLAUDE_ADDON.md and DO NOT change any \"Task tool\" wording (Part-B, out of scope).",
+      "acceptanceCriteria": [
+        "All four signal tokens incl. RAUF_REVIEW + the backward-scan rule + the no-signal/exit-context rule appear in RAUF.md.tmpl, CLAUDE_ADDON.md, CLAUDE_GREENFIELD.md.tmpl, and docs/SPEC-ARTIFACTS.md.",
+        "The model-cascade precedence line `item.model > --model/options > project default > provider default` appears in all four; progress.md ships the session-log stub.",
+        "embedded-artifacts.ts is regenerated via `pnpm --filter @rauf/core build` (its \"Do not edit manually\" header intact; RAUF_REVIEW now appears in it).",
+        "CLAUDE_ADDON.md is NOT renamed and no \"Task tool\" wording changed (grep shows the same matches as before).",
+        "pnpm typecheck && pnpm test && pnpm format:check passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Embedded-artifacts landmine (Phase-1): editing templates requires the regen or the installed copies go stale. Two of three items are already partly present — add only the deltas (05 §3.3). Out of scope: AGENT_ADDON rename / Task-tool wording (deferred to Part-B).",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": ["specs/ux-overhaul-web/05-agent-contract-docs.md"]
+    },
+    {
+      "id": "010",
+      "type": "chore",
+      "priority": 2,
+      "title": "Bump version to 0.6.0 and update affected SPEC-*/SCHEMAS docs",
+      "description": "Per spec 01 §7/§8 (C-5), as the final honest-advertisement gate. (1) Bump packages/core/src/version.ts to \"0.6.0\" (the source `rauf version --json` reads). This is an additive minor bump — do NOT change minRunnerVersion anywhere, and do NOT touch the feature-forge repo. (2) Update the affected docs to describe the shipped surface: docs/SPEC-WEB.md (the 5 new recovery endpoints — POST reset, POST resume, POST loop/review, POST backlog/unblock, GET backlog/validate — with methods, request bodies, guards, and status codes); docs/SCHEMAS.md (the 2 new LoopStateEnum values REVIEWING/PAUSED_USAGE_LIMIT + the state-labels {label,tone} surface); and the status-vocabulary + exit-code mentions in docs/SPEC-CLI.md and docs/ARCHITECTURE.md (REVIEWING→6, PAUSED_USAGE_LIMIT→4; the shared label map as the single source). The agent-template doc edits are item 009 — do not duplicate them here. This item depends on 001-009 so the version and docs advertise the complete, landed feature.",
+      "acceptanceCriteria": [
+        "packages/core/src/version.ts is \"0.6.0\"; minRunnerVersion is unchanged anywhere; no feature-forge files are edited.",
+        "docs/SPEC-WEB.md documents all 5 recovery endpoints; docs/SCHEMAS.md documents the 2 new enum values + the label-map surface; docs/SPEC-CLI.md and docs/ARCHITECTURE.md status-vocabulary/exit-code mentions are updated.",
+        "pnpm typecheck && pnpm test && pnpm format:check passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001", "002", "003", "004", "005", "006", "007", "008", "009"],
+      "notes": "Honest-advertisement gate (mirrors grammar-phase item 013). Additive minor bump — C-1: no minRunnerVersion change, no feature-forge lockstep edit.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": ["specs/ux-overhaul-web/01-architecture-layout.md"]
+    }
+  ]
+}
