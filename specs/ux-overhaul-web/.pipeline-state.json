@@ -2,12 +2,16 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-14T23:40:00Z",
-  "currentStage": "forge-5-loop",
+  "updatedAt": "2026-06-15T00:30:00Z",
+  "currentStage": "forge-6-docs",
   "stages": {
     "forge-5-loop": {
-      "status": "in-progress",
-      "startedAt": "2026-06-14T23:40:00Z"
+      "status": "complete",
+      "startedAt": "2026-06-14T23:40:00Z",
+      "completedAt": "2026-06-15T00:30:00Z",
+      "basedOnVersions": { "forge-4-backlog": 1 },
+      "artifacts": ["specs/ux-overhaul-web/.rauf/state.json"],
+      "result": "rauf-stable 0.5.0 ran the 10-item backlog → 10/10 done in 10 iterations (under the 15 budget), 0 blocked/needsHuman/deferred; loopState COMPLETE. --review pass created no new items (nothing to fix). Commits [rauf] 001..010 (100cacb..7902e18) on branch forge/ux-overhaul-web. The v0.6.0 rauf-side change is BUILT on the branch (item 010 bumped version.ts→0.6.0, gated on 001-009). Dev rauf now executes the rewritten web-recovery + status-vocabulary surface; dogfood used frozen rauf-stable so the run was unaffected. Each item passed the full gate (pnpm typecheck && lint && format:check && test)."
     },
     "forge-verify-backlog": {
       "status": "findings-applied",
