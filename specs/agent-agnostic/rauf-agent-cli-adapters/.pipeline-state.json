@@ -3,8 +3,8 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-15T18:08:23Z",
-  "currentStage": "forge-2-tech",
+  "updatedAt": "2026-06-15T18:28:26Z",
+  "currentStage": "forge-3-specs",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
@@ -22,6 +22,15 @@
       "findingsCount": 4,
       "verifiedAt": "2026-06-15T18:08:23Z",
       "fixedAt": "2026-06-15T18:08:23Z"
+    },
+    "forge-2-tech": {
+      "status": "in-progress",
+      "version": 1,
+      "artifacts": ["tech-spec.md"],
+      "startedAt": "2026-06-15T18:28:26Z",
+      "completedAt": "2026-06-15T18:28:26Z",
+      "basedOnVersions": { "forge-1-prd": 2 },
+      "notes": "Reframe: provider seam already exists (packages/loop/src/providers: LLMProvider, registry, claude-cli adapter) and all schema fields committed; feature = wire runner to provider + add detection/selection/new adapters. Decisions: alias --agent over committed provider; config-driven CliAgent engine + presets; registry descriptors for detection; per-agent plain-text sandbox mocks. REQ-SEC-02 neutralization is partly net-new (current redactor is logging-only)."
     }
   }
 }
