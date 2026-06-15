@@ -177,8 +177,8 @@
         "agent-selection.test.ts covers the full precedence matrix (incl. row-5 keystone and row-8) and the four alias cases",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:16:58.113Z",
       "dependsOn": [
         "001"
       ],

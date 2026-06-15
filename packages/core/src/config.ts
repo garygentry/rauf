@@ -5,6 +5,7 @@ import * as os from "node:os";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, atomicWrite, ensureDir } from "./fs-utils.js";
 import { MarkerFileSchema, ToolConfigSchema, type MarkerFile, type ToolConfig } from "./schemas.js";
+import { foldMarkerProviderAlias, foldToolConfigProviderAlias } from "./agent-alias.js";
 import ports from "../../../config/ports.json";
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -26,7 +27,8 @@ const DEFAULT_TOOL_CONFIG: ToolConfig = {
 
 export function readMarkerFile(projectPath: string): Result<MarkerFile> {
   const markerPath = path.join(path.resolve(projectPath), MARKER_FILENAME);
-  return readJsonFile(markerPath, MarkerFileSchema);
+  // Fold `options.agent` → `options.provider` before validation (04 §3.3).
+  return readJsonFile(markerPath, MarkerFileSchema, foldMarkerProviderAlias);
 }
 
 // ─── writeMarkerFile ─────────────────────────────────────────────
@@ -44,7 +46,8 @@ export function writeMarkerFile(projectPath: string, marker: MarkerFile): Result
 // Read ~/.rauf/config.json. Return defaults if file doesn't exist.
 
 export function readToolConfig(): Result<ToolConfig> {
-  const result = readJsonFile(TOOL_CONFIG_PATH, ToolConfigSchema);
+  // Fold the global `defaultAgent` → `defaultProvider` alias before validation (04 §3.3).
+  const result = readJsonFile(TOOL_CONFIG_PATH, ToolConfigSchema, foldToolConfigProviderAlias);
 
   if (result.ok) {
     return result;

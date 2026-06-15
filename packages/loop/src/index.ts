@@ -7,6 +7,12 @@ export { execGit } from "./git-exec.js";
 export { findItemCommit, isTreeClean } from "./git-reconcile.js";
 export { checkLoopPreconditions } from "./git-status.js";
 export { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
+export {
+  resolveAgentId,
+  normalizeAgentAlias,
+  DEFAULT_AGENT_ID,
+  GENERIC_AGENT_ID,
+} from "./agent-selection.js";
 export { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 export type { UsageLimitResult } from "./usage-checker.js";
 export { spawnClaude } from "./claude-process.js";

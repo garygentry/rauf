@@ -16,6 +16,7 @@ import {
   type BacklogItemSource,
 } from "./schemas.js";
 import { readMarkerFile } from "./config.js";
+import { foldBacklogProviderAlias } from "./agent-alias.js";
 import type { BacklogPaths } from "./backlog-root.js";
 
 // ─── Input Types ─────────────────────────────────────────────────
@@ -60,7 +61,11 @@ export interface UpdateItemInput {
 // Read and validate backlog.json.
 
 export function readBacklog(paths: BacklogPaths): Result<Backlog> {
-  return readJsonFile(paths.backlog, BacklogSchema, normalizeBacklogItems);
+  // Fold the `agent` input-alias onto each item's canonical `provider` key
+  // BEFORE Zod validation (04 §3.3), then apply the existing item normalization.
+  return readJsonFile(paths.backlog, BacklogSchema, (data) =>
+    normalizeBacklogItems(foldBacklogProviderAlias(data)),
+  );
 }
 
 // ─── writeBacklog ────────────────────────────────────────────────
