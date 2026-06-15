@@ -73,8 +73,17 @@
       "artifacts": ["backlog.json"],
       "startedAt": "2026-06-15T21:30:00Z",
       "completedAt": "2026-06-15T21:30:00Z",
+      "commitHash": "cf15abff3bca46e5262b6eabdad76d674a6987a0",
       "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 2, "forge-3-specs": 1 },
       "notes": "13-item backlog authored via rauf author-backlog, foundation-first along the spec dependency graph 00->07. Validated clean by `rauf-stable backlog validate` (valid:true, 0 findings). Items: 001 types/constants, 002 process-group extraction, 003 registry+detection, 004 CliAgent engine, 005 presets, 006 generic-cli, 007 selection+alias, 008 signal neutralization, 009 runner routing/events/cache, 010 runner usage-gating+fail-fast, 011 CLI surface, 012 sandbox mocks, 013 verify.sh. Runner deliberately split 009/010 and providers/index.ts side-effect imports staged (003->005->006) so each item keeps `pnpm gate` green (SC-2). 009/010 flagged model opus, 2 iterations. No agentDelegation (no independent-parallel-files shape warranted it)."
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-15.md",
+      "findingsCount": 5,
+      "verifiedAt": "2026-06-15T21:45:00Z",
+      "fixedAt": "2026-06-15T21:55:00Z",
+      "notes": "25/25 checks via 4 parallel forge-verifiers (scoping/AC, dependency/ordering, spec-coverage, schema/enum) + deterministic `rauf-stable backlog validate` (valid:true). 5 findings (1 gap, 2 inconsistencies, 2 improvements, 0 errors): V-001 item 011 missing commands.test.ts target (gap, B14); V-002 item 011 conflates in-process/detached --agent read (B12); V-003 items 006/009 transitive-only dep on 001 (B18); V-004 009/010 estimatedIterations=2 advisory (improvement); V-005 TRACEABILITY 29 vs PRD ~32 REQ rows (improvement, specs-stage). Schema/enum, dependency-cycle, and P0 spec-coverage dimensions all clean. FIXES APPLIED: V-001 (item 011 +commands.test.ts step+AC, now 7 AC), V-002 (explicit non-coalesced detached read), V-003 (006/009 +001 edge) — backlog re-validated valid:true. V-004 advisory no-op; V-005 reconciled via validate-traceability.py (29 reqs, 0 uncovered — count authoritative, no edit)."
     }
   }
 }
