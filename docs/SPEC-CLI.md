@@ -454,6 +454,14 @@ rauf migrate --global                # migrate the home registry (~/.ralph → ~
 - `--global`: migrate the user-level state directory instead of a project (mutually exclusive with `[path]`)
 - Prints a migration report; `--json` emits it as structured output
 
+> **Legacy one-shot — follow with `rauf update`.** `migrate` only renames the
+> structure (`.ralph` → `.rauf`, `RALPH.md` → `RAUF.md`, marker rewrite); it does
+> **not** backfill current artifacts. Run `rauf update <path>` afterward to bring
+> RAUF.md/schema/.gitignore to the current version. The dry-run/report also flags
+> any **non-rauf** config or state files that still reference `.ralph` (e.g. a
+> `biome.json` ignore entry) — those are listed but **not** auto-rewritten, so fix
+> them by hand.
+
 ---
 
 ## monitoring
