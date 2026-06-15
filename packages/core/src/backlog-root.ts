@@ -248,3 +248,83 @@ export function defaultBacklogPaths(projectPath: string): BacklogPaths {
     eventsLog: path.join(stateDir, "events.ndjson"),
   };
 }
+
+// ─── scanBacklogRoots ────────────────────────────────────────────
+
+/**
+ * A backlog root discovered in a project, suitable for the `--backlog` flag and
+ * the web backlog-root selector (REM-8). Distinct from `ActiveRoot` (status.ts),
+ * which lists only roots with a *live* loop — this lists *every* root that has a
+ * `backlog.json`, regardless of loop state.
+ */
+export interface BacklogRootEntry {
+  /**
+   * `--backlog` flag value: the backlog-root directory path relative to the
+   * project root (e.g. `.rauf`, `specs/auth`). Always resolvable by
+   * `resolveBacklogPaths(projectPath, root)`. Uses `/` separators.
+   */
+  root: string;
+  /** True for the project's default root (`{projectPath}/.rauf`). */
+  isDefault: boolean;
+}
+
+function walkForBacklogs(
+  dir: string,
+  projectPath: string,
+  defaultRoot: string,
+  results: BacklogRootEntry[],
+): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // Permission denied or deleted — skip
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const name = entry.name;
+    if ((SCAN_SKIP_DIRS as readonly string[]).includes(name)) continue;
+
+    const fullPath = path.join(dir, name);
+
+    // A directory directly containing backlog.json is a backlog root. This
+    // covers both `<dir>/backlog.json` (non-default roots) and the default
+    // `.rauf/backlog.json` (where the .rauf dir itself is the root).
+    if (fileExists(path.join(fullPath, BACKLOG_FILENAME))) {
+      const rel = path.relative(projectPath, fullPath).split(path.sep).join("/");
+      if (!results.some((r) => r.root === rel)) {
+        results.push({ root: rel, isDefault: path.resolve(fullPath) === defaultRoot });
+      }
+    }
+
+    // Don't recurse into .rauf state dirs.
+    if (name === DEFAULT_ROOT_DIR) continue;
+
+    walkForBacklogs(fullPath, projectPath, defaultRoot, results);
+  }
+}
+
+/**
+ * Scan a project for every backlog root (any directory with a `backlog.json`,
+ * directly or as `.rauf/backlog.json`). Returns `--backlog`-ready relative paths,
+ * with the default `.rauf` root flagged. Skips: node_modules, .git, dist, build,
+ * coverage. Results are sorted with the default root first, then alphabetically.
+ *
+ * @param projectPath - Absolute path to the project root
+ */
+export function scanBacklogRoots(projectPath: string): Result<BacklogRootEntry[]> {
+  const resolved = path.resolve(projectPath);
+  const defaultRoot = path.join(resolved, DEFAULT_ROOT_DIR);
+  const results: BacklogRootEntry[] = [];
+
+  walkForBacklogs(resolved, resolved, defaultRoot, results);
+
+  results.sort((a, b) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+    return a.root.localeCompare(b.root);
+  });
+
+  return ok(results);
+}

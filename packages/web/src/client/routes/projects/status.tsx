@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
   BacklogItem,
+  BacklogRootEntry,
   DerivedStatus,
   PersistedEvent,
   ResetProjectResult,
@@ -291,7 +292,7 @@ function BacklogSummaryGrid({ summary }: { summary: DerivedStatus["backlogSummar
 // monospaced scrollable panel. Auto-scrolls to bottom; pauses when
 // the user scrolls up and shows a "Resume" button.
 
-function LogPanel({ projectId }: { projectId: string }) {
+function LogPanel({ projectId, backlogRoot }: { projectId: string; backlogRoot?: string }) {
   const [lines, setLines] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   // autoScroll drives the "Paused" UI; autoScrollRef is the sync value
@@ -304,7 +305,8 @@ function LogPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (!projectId) return;
 
-    const url = `/api/projects/${encodeURIComponent(projectId)}/log/stream`;
+    const base = `/api/projects/${encodeURIComponent(projectId)}/log/stream`;
+    const url = backlogRoot ? `${base}?backlog=${encodeURIComponent(backlogRoot)}` : base;
     const es = new EventSource(url);
 
     es.onopen = () => setConnected(true);
@@ -325,7 +327,7 @@ function LogPanel({ projectId }: { projectId: string }) {
       es.close();
       setConnected(false);
     };
-  }, [projectId]);
+  }, [projectId, backlogRoot]);
 
   // After lines state updates: scroll to bottom if autoScroll is active.
   useEffect(() => {
@@ -673,10 +675,14 @@ function EventTimeline({ projectId, backlogRoot }: { projectId: string; backlogR
 // Fetches .rauf/progress.md and renders it as formatted markdown.
 // Shows nothing when the file is missing (empty string response).
 
-function ProgressViewer({ projectId }: { projectId: string }) {
+function ProgressViewer({ projectId, backlogRoot }: { projectId: string; backlogRoot?: string }) {
   const { data: markdown, isLoading } = useQuery({
-    queryKey: ["projects", projectId, "progress"],
-    queryFn: () => raufFetchJson<string>(`/api/projects/${encodeURIComponent(projectId)}/progress`),
+    queryKey: ["projects", projectId, "progress", backlogRoot ?? null],
+    queryFn: () =>
+      raufFetchJson<string>(
+        `/api/projects/${encodeURIComponent(projectId)}/progress` +
+          (backlogRoot ? `?backlog=${encodeURIComponent(backlogRoot)}` : ""),
+      ),
     enabled: !!projectId,
     // Refresh every 60s — progress.md changes less frequently than status
     refetchInterval: 60_000,
@@ -717,28 +723,56 @@ export function StatusView() {
   const queryClient = useQueryClient();
   const projectId = id ?? "";
 
+  // Selected backlog root (REM-8). `undefined` = the project's default `.rauf`
+  // root (fully backward-compatible: no query/body params are added). When a
+  // non-default root is chosen, every read query, both live streams, and the
+  // loop-control mutations are scoped to it — the whole page reflects one root.
+  const [backlogRoot, setBacklogRoot] = useState<string | undefined>(undefined);
+  const rootToken = backlogRoot ?? null;
+  const backlogQs = backlogRoot ? `?backlog=${encodeURIComponent(backlogRoot)}` : "";
+  // Body for mutations: include backlogRoot only when non-default.
+  const mutationBody = backlogRoot ? { backlogRoot } : {};
+
+  const { data: backlogRoots } = useQuery({
+    queryKey: ["projects", projectId, "backlog-roots"],
+    queryFn: () =>
+      raufFetchJson<BacklogRootEntry[]>(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog-roots`,
+      ),
+    enabled: !!projectId,
+  });
+
   const {
     data: status,
     isLoading: statusLoading,
     isError: statusError,
     isFetching,
   } = useQuery({
-    queryKey: ["projects", projectId, "status"],
+    queryKey: ["projects", projectId, "status", rootToken],
     queryFn: () =>
-      raufFetchJson<DerivedStatus>(`/api/projects/${encodeURIComponent(projectId)}/status`),
+      raufFetchJson<DerivedStatus>(
+        `/api/projects/${encodeURIComponent(projectId)}/status${backlogQs}`,
+      ),
     enabled: !!projectId,
     // Refresh faster when the loop is actively running
     refetchInterval: (query) => (query.state.data?.loopState === "RUNNING" ? 10_000 : 30_000),
   });
 
   const { data: allItems } = useQuery({
-    queryKey: ["projects", projectId, "backlog"],
+    queryKey: ["projects", projectId, "backlog", rootToken],
     queryFn: () =>
-      raufFetchJson<BacklogItem[]>(`/api/projects/${encodeURIComponent(projectId)}/backlog`),
+      raufFetchJson<BacklogItem[]>(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog${backlogQs}`,
+      ),
     enabled: !!projectId,
     refetchInterval: () => {
       // Align with status refresh rate
-      const statusData = queryClient.getQueryData<DerivedStatus>(["projects", projectId, "status"]);
+      const statusData = queryClient.getQueryData<DerivedStatus>([
+        "projects",
+        projectId,
+        "status",
+        rootToken,
+      ]);
       return statusData?.loopState === "RUNNING" ? 10_000 : 30_000;
     },
   });
@@ -750,6 +784,7 @@ export function StatusView() {
     mutationFn: async () => {
       const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/start`, {
         method: "POST",
+        body: JSON.stringify(mutationBody),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -771,6 +806,7 @@ export function StatusView() {
     mutationFn: async () => {
       const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/stop`, {
         method: "POST",
+        body: JSON.stringify(mutationBody),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -797,7 +833,7 @@ export function StatusView() {
     mutationFn: async () => {
       const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/reset`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(mutationBody),
       });
       if (!res.ok) throw new Error(await recoveryErrorMessage(res));
       return ((await res.json()) as { data: ResetProjectResult }).data;
@@ -817,7 +853,7 @@ export function StatusView() {
     mutationFn: async () => {
       const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/resume`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(mutationBody),
       });
       if (!res.ok) throw new Error(await recoveryErrorMessage(res));
       return ((await res.json()) as { data: ResumeResultData }).data;
@@ -838,7 +874,7 @@ export function StatusView() {
     mutationFn: async () => {
       const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/review`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify(mutationBody),
       });
       if (!res.ok) throw new Error(await recoveryErrorMessage(res));
     },
@@ -854,7 +890,7 @@ export function StatusView() {
     mutationFn: async () => {
       const res = await raufFetch(
         `/api/projects/${encodeURIComponent(projectId)}/backlog/unblock`,
-        { method: "POST", body: JSON.stringify({}) },
+        { method: "POST", body: JSON.stringify(mutationBody) },
       );
       if (!res.ok) throw new Error(await recoveryErrorMessage(res));
       return ((await res.json()) as { data: { unblockedCount: number; unblockedIds: string[] } })
@@ -869,10 +905,10 @@ export function StatusView() {
   });
 
   const validateQuery = useQuery({
-    queryKey: ["projects", projectId, "validate"],
+    queryKey: ["projects", projectId, "validate", rootToken],
     queryFn: () =>
       raufFetchJson<ValidateBacklogResult>(
-        `/api/projects/${encodeURIComponent(projectId)}/backlog/validate`,
+        `/api/projects/${encodeURIComponent(projectId)}/backlog/validate${backlogQs}`,
       ),
     enabled: false, // fired by the "Validate" button via refetch()
   });
@@ -968,6 +1004,32 @@ export function StatusView() {
           <p className="mt-0.5 font-mono text-sm" style={{ color: "var(--color-text-muted)" }}>
             {projectId}
           </p>
+          {backlogRoots && backlogRoots.length > 1 && (
+            <label className="mt-2 flex items-center gap-2 text-xs">
+              <span style={{ color: "var(--color-text-muted)" }}>Backlog root</span>
+              <select
+                value={backlogRoot ?? backlogRoots.find((r) => r.isDefault)?.root ?? ".rauf"}
+                onChange={(e) => {
+                  const picked = backlogRoots.find((r) => r.root === e.target.value);
+                  // Default root → undefined (no params; fully backward-compatible).
+                  setBacklogRoot(picked?.isDefault ? undefined : e.target.value);
+                }}
+                className="rounded-md border px-2 py-1 font-mono text-xs"
+                style={{
+                  borderColor: "var(--color-border)",
+                  backgroundColor: "var(--color-surface-raised)",
+                  color: "var(--color-text)",
+                }}
+              >
+                {backlogRoots.map((r) => (
+                  <option key={r.root} value={r.root}>
+                    {r.root}
+                    {r.isDefault ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         <button
           onClick={handleRefresh}
@@ -1353,11 +1415,11 @@ export function StatusView() {
         <div className="w-full space-y-6 xl:w-96 xl:flex-shrink-0 2xl:w-[480px]">
           <div>
             <SectionHeading>Live Log</SectionHeading>
-            <LogPanel projectId={projectId} />
+            <LogPanel projectId={projectId} backlogRoot={backlogRoot} />
           </div>
           <div>
             <SectionHeading>Event Timeline</SectionHeading>
-            <EventTimeline projectId={projectId} />
+            <EventTimeline projectId={projectId} backlogRoot={backlogRoot} />
           </div>
         </div>
       </div>
@@ -1366,7 +1428,7 @@ export function StatusView() {
       {/* ── Progress notes (full-width below) ────────────────── */}
       {!!projectId && (
         <div className="mt-6">
-          <ProgressViewer projectId={projectId} />
+          <ProgressViewer projectId={projectId} backlogRoot={backlogRoot} />
         </div>
       )}
     </div>

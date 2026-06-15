@@ -193,6 +193,50 @@ describe("GET /api/projects/:id/status", () => {
   });
 });
 
+// ─── GET /api/projects/:id/backlog-roots ─────────────────────────
+
+describe("GET /api/projects/:id/backlog-roots", () => {
+  function writeBacklogAt(dir: string): void {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "test", description: "", items: [] }),
+    );
+  }
+
+  it("returns just the default .rauf root", async () => {
+    writeMarker(projectDir);
+    writeBacklogAt(path.join(projectDir, ".rauf"));
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog-roots");
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { root: string; isDefault: boolean }[] };
+    expect(body.data).toEqual([{ root: ".rauf", isDefault: true }]);
+  });
+
+  it("discovers non-default roots, default first", async () => {
+    writeMarker(projectDir);
+    writeBacklogAt(path.join(projectDir, ".rauf"));
+    writeBacklogAt(path.join(projectDir, "specs", "auth"));
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/my-project/backlog-roots");
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { root: string; isDefault: boolean }[] };
+    expect(body.data).toEqual([
+      { root: ".rauf", isDefault: true },
+      { root: "specs/auth", isDefault: false },
+    ]);
+  });
+
+  it("returns 400 for invalid project ID", async () => {
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/a%2Fb/backlog-roots");
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error.code).toBe("INVALID_ID");
+  });
+});
+
 // ─── GET /api/projects/:id/log ────────────────────────────────────
 
 describe("GET /api/projects/:id/log", () => {
