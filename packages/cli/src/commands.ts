@@ -246,7 +246,14 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "update",
     description: "Update rauf artifacts in a project",
-    usage: "rauf update <path> [--yes]",
+    usage: "rauf update <path> [--check]",
+    flags: [
+      {
+        name: "--check",
+        description:
+          "Report-only: print whether the project's artifacts are stale (tool-version lag or dead hash keys) and exit non-zero if so; writes nothing",
+      },
+    ],
     handler: handleUpdate,
   },
   {

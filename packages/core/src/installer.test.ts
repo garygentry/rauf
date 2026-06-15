@@ -6,6 +6,7 @@ import * as os from "node:os";
 import {
   install,
   update,
+  checkDrift,
   uninstall,
   preflight,
   buildTemplateVars,
@@ -15,7 +16,7 @@ import {
   RAUF_GITIGNORE_ENTRIES,
   type InstallOptions,
 } from "./installer.js";
-import { readMarkerFile, MARKER_FILENAME } from "./config.js";
+import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
 import { fileExists } from "./fs-utils.js";
 import type { ProjectProfile } from "./schemas.js";
@@ -484,6 +485,126 @@ describe("update", () => {
 
     expect(result.value.profile).toBeDefined();
     expect(result.value.projectPath).toBe(path.resolve(tmpDir));
+  });
+
+  it("prunes stale artifact-hash keys (e.g. legacy ralph.sh) from the marker", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    // Simulate a pre-rename install whose marker carried legacy script hashes.
+    const before = readMarkerFile(tmpDir);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    writeMarkerFile(tmpDir, {
+      ...before.value,
+      artifactHashes: {
+        ...before.value.artifactHashes,
+        "ralph.sh": "deadbeef",
+        "ralph-status.sh": "stalekey",
+      },
+    });
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+
+    const after = readMarkerFile(tmpDir);
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.artifactHashes["ralph.sh"]).toBeUndefined();
+    expect(after.value.artifactHashes["ralph-status.sh"]).toBeUndefined();
+    expect(after.value.artifactHashes["RAUF.md"]).toBeDefined();
+
+    // The marker action reports what was pruned.
+    if (!result.ok) return;
+    const markerAction = result.value.actions.find((a) => a.file === MARKER_FILENAME);
+    expect(markerAction?.detail).toContain("pruned 2 stale key(s)");
+  });
+});
+
+// ─── checkDrift ───────────────────────────────────────────────────
+
+describe("checkDrift", () => {
+  it("fails when not installed", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = checkDrift(tmpDir);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("NOT_INSTALLED");
+  });
+
+  it("reports not-stale immediately after install", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const result = checkDrift(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.stale).toBe(false);
+    expect(result.value.toolVersionStale).toBe(false);
+    expect(result.value.deadHashKeys).toEqual([]);
+  });
+
+  it("flags tool-version drift from an older installedBy", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const before = readMarkerFile(tmpDir);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    writeMarkerFile(tmpDir, { ...before.value, installedBy: "rauf-manager@0.1.0" });
+
+    const result = checkDrift(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.stale).toBe(true);
+    expect(result.value.toolVersionStale).toBe(true);
+    expect(result.value.installedBy).toBe("rauf-manager@0.1.0");
+    expect(result.value.currentInstalledBy.startsWith("rauf-manager@")).toBe(true);
+  });
+
+  it("flags dead artifact-hash keys", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const before = readMarkerFile(tmpDir);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    writeMarkerFile(tmpDir, {
+      ...before.value,
+      artifactHashes: { ...before.value.artifactHashes, "ralph.sh": "deadbeef" },
+    });
+
+    const result = checkDrift(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.stale).toBe(true);
+    expect(result.value.deadHashKeys).toContain("ralph.sh");
+  });
+
+  it("reports not-stale after update heals a drifted marker", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const before = readMarkerFile(tmpDir);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    writeMarkerFile(tmpDir, {
+      ...before.value,
+      installedBy: "rauf-manager@0.1.0",
+      artifactHashes: { ...before.value.artifactHashes, "ralph.sh": "deadbeef" },
+    });
+
+    update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+
+    const result = checkDrift(tmpDir);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stale).toBe(false);
   });
 });
 

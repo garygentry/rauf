@@ -125,6 +125,28 @@ export interface UpdateOptions {
   artifactsDir?: string;
 }
 
+/**
+ * Artifact-hash keys the current rauf model tracks in the `.rauf.json` marker.
+ * `install` only ever records `RAUF.md`; any other key (e.g. the legacy
+ * `ralph.sh`/`ralph-status.sh`/`ralph-add.sh` shell-script hashes carried over
+ * from a pre-rename install) is stale and is pruned by `update`.
+ */
+export const TRACKED_ARTIFACT_KEYS: readonly string[] = ["RAUF.md"];
+
+/** Report of whether a project's rauf artifacts have drifted from the current tool. */
+export interface DriftReport {
+  /** True when the project needs `rauf update` (tool-version lag or dead hash keys). */
+  stale: boolean;
+  /** The marker's recorded installer (`rauf-manager@<version>`). */
+  installedBy: string;
+  /** What the installer string would be after an update with this tool. */
+  currentInstalledBy: string;
+  /** True when `installedBy` lags the running tool version. */
+  toolVersionStale: boolean;
+  /** Stale artifact-hash keys present in the marker (outside {@link TRACKED_ARTIFACT_KEYS}). */
+  deadHashKeys: string[];
+}
+
 export interface UninstallOptions {
   /** Keep .rauf/backlog.json (default: true) */
   keepBacklog?: boolean;
@@ -425,7 +447,10 @@ export function update(
 
   const marker = markerResult.value;
   const storedHashes = marker.artifactHashes;
-  const newHashes: Record<string, string> = { ...storedHashes };
+  // Rebuild the hash map from scratch (do NOT carry stored keys forward), so
+  // keys for artifacts the rauf model no longer tracks — e.g. legacy
+  // ralph.sh/-status/-add — are pruned rather than preserved indefinitely.
+  const newHashes: Record<string, string> = {};
 
   // Re-render RAUF.md managed sections
   const profile = marker.profile;
@@ -494,10 +519,14 @@ export function update(
   const writeResult = writeMarkerFile(resolved, updatedMarker);
   if (!writeResult.ok) return writeResult;
 
+  const prunedKeys = Object.keys(storedHashes).filter((k) => !(k in newHashes));
   actions.push({
     file: MARKER_FILENAME,
     action: "updated",
-    detail: "Updated artifact hashes in .rauf.json",
+    detail:
+      prunedKeys.length > 0
+        ? `Updated artifact hashes in .rauf.json (pruned ${prunedKeys.length} stale key(s): ${prunedKeys.join(", ")})`
+        : "Updated artifact hashes in .rauf.json",
   });
 
   const projectName = path.basename(resolved);
@@ -508,6 +537,41 @@ export function update(
     actions,
     profile,
     warnings,
+  });
+}
+
+// ─── checkDrift ───────────────────────────────────────────────────
+//
+// Report-only staleness check (no writes). Answers "does this repo need
+// `rauf update`?" from the marker alone — tool-version lag and dead artifact
+// hash keys. Cheap (marker read only); does not detect template-content drift
+// at the same tool version (that requires a full re-render).
+
+export function checkDrift(projectPath: string): Result<DriftReport> {
+  const resolved = path.resolve(projectPath);
+
+  const markerResult = readMarkerFile(resolved);
+  if (!markerResult.ok) {
+    return err({
+      code: ErrorCodes.NOT_INSTALLED,
+      message: `Rauf is not installed in ${resolved}`,
+      details: { path: resolved },
+    });
+  }
+
+  const marker = markerResult.value;
+  const currentInstalledBy = `rauf-manager@${TOOL_VERSION}`;
+  const toolVersionStale = marker.installedBy !== currentInstalledBy;
+  const deadHashKeys = Object.keys(marker.artifactHashes).filter(
+    (k) => !TRACKED_ARTIFACT_KEYS.includes(k),
+  );
+
+  return ok({
+    stale: toolVersionStale || deadHashKeys.length > 0,
+    installedBy: marker.installedBy,
+    currentInstalledBy,
+    toolVersionStale,
+    deadHashKeys,
   });
 }
 
