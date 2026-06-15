@@ -23,6 +23,9 @@ class ClaudeCliProvider implements LLMProvider {
       signal: options.signal,
       outputFormat: options.outputFormat,
       onStreamEvent: options.onStreamEvent,
+      // Forward the runner's childEnv (review-hook suppression + child-session
+      // overrides) — without this, routing through execute would drop it (SC-2).
+      ...(options.env ? { env: options.env } : {}),
     });
 
     if (!result.ok) {

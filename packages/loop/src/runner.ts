@@ -6,6 +6,7 @@ import type {
   LoopEvent,
   LoopState,
   Backlog,
+  BacklogItem,
   IterationStatus,
   PersistedEvent,
 } from "@rauf/core";
@@ -22,6 +23,7 @@ import {
   updateItem,
   addItem,
   readMarkerFile,
+  readToolConfig,
   readClaudeOAuthToken,
   writeLoopState,
   appendLog,
@@ -41,10 +43,16 @@ import {
   type InstructionPaths,
   type Result,
   ok,
+  err,
+  ErrorCodes,
 } from "@rauf/core";
 
 import { TypedEventEmitter } from "./events.js";
-import { spawnClaude } from "./claude-process.js";
+// Import from the providers barrel (not registry.js directly) so the side-effect
+// registrations of claude-cli + presets + generic-cli run before createProvider is called.
+import { createProvider, getAgentDescriptors } from "./providers/index.js";
+import type { LLMProvider } from "./providers/types.js";
+import { resolveAgentId } from "./agent-selection.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
@@ -126,6 +134,12 @@ export class LoopRunner extends TypedEventEmitter {
   private eventSeq = 0;
   /** Last wall-clock ms an llm_token_update was persisted to FILE (coalescing window). */
   private lastTokenPersistMs = 0;
+  /** One provider instance per distinct resolved agent id, for the lifetime of one run (REQ-PERF-01). */
+  private readonly providerCache = new Map<string, LLMProvider>();
+  /** Project-level agent id, read once at loop start alongside projectModel (04 §5.1). */
+  private projectProvider?: string;
+  /** Global default agent id, read once at loop start (04 §5.1). */
+  private globalProvider?: string;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -237,7 +251,12 @@ export class LoopRunner extends TypedEventEmitter {
         autoSweep = opts.autoSweep ?? false;
         sweepMinAgeDays = opts.sweepMinAgeDays ?? 0;
         projectModel = opts.model;
+        this.projectProvider = opts.provider; // MarkerOptions.provider (schemas.ts:148)
       }
+      // Read the global default agent once (ToolConfig.defaultProvider, schemas.ts:222).
+      // Hoisted out of the iteration loop — it does not vary per item.
+      const toolConfig = readToolConfig();
+      this.globalProvider = toolConfig.ok ? toolConfig.value.defaultProvider : undefined;
 
       // (3) Auto-sweep if enabled
       if (autoSweep) {
@@ -396,6 +415,67 @@ export class LoopRunner extends TypedEventEmitter {
       // with releaseLock. A hard SIGKILL that skips this finally leaves a stale
       // entry that the next listActiveLoops() self-heals (dead pid).
       deregisterLoop(this.paths.stateDir);
+
+      // Dispose every cached provider (REQ-PERF-01 lifecycle). dispose? is optional
+      // (LLMProvider): claude-cli MAY implement it; CliAgent does NOT. Best-effort
+      // and awaited; a rejecting dispose must never mask the original run outcome.
+      for (const provider of this.providerCache.values()) {
+        try {
+          await provider.dispose?.();
+        } catch {
+          // best-effort: a failing dispose never changes the run's result or rethrows
+        }
+      }
+      this.providerCache.clear();
+    }
+  }
+
+  /**
+   * Resolve and construct the provider for one iteration. Per-item agent wins
+   * (REQ-SEL-04), then run-level, then project, then global, then DEFAULT_AGENT_ID
+   * (resolveAgentId, 04). Caches one instance per distinct agent id (REQ-PERF-01).
+   * Wraps createProvider's throw-on-unknown-id into a Result error listing the
+   * supported ids — never throws for an expected (mistyped/unknown) id.
+   */
+  private resolveProviderForItem(item: BacklogItem): Result<LLMProvider> {
+    return this.resolveProvider(item);
+  }
+
+  /**
+   * Resolve the run-level provider (no BacklogItem). Item-less sibling of
+   * resolveProviderForItem: same precedence (minus itemProvider), same per-id
+   * cache, same createProvider-throw → Result wrapping. Never throws.
+   */
+  private resolveRunLevelProvider(): Result<LLMProvider> {
+    return this.resolveProvider();
+  }
+
+  /** Shared body for the per-item and run-level resolves (the two differ only in itemProvider). */
+  private resolveProvider(item?: BacklogItem): Result<LLMProvider> {
+    const agentId = resolveAgentId({
+      itemProvider: item?.provider,
+      runProvider: this.options.provider,
+      projectProvider: this.projectProvider,
+      globalProvider: this.globalProvider,
+    });
+
+    const cached = this.providerCache.get(agentId);
+    if (cached) return ok(cached);
+
+    try {
+      const provider = createProvider(agentId); // may throw on unknown id
+      this.providerCache.set(agentId, provider);
+      return ok(provider);
+    } catch (e) {
+      const ids = getAgentDescriptors()
+        .map((d) => d.id)
+        .join(", ");
+      return err({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message:
+          `Unknown agent "${agentId}": ${e instanceof Error ? e.message : String(e)}. ` +
+          `Supported agents: ${ids || "(none)"}.`,
+      });
     }
   }
 
@@ -506,16 +586,27 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    // Spawn claude with streaming
+    // Resolve the provider for this iteration (per-item agent wins, REQ-SEL-04).
+    const providerResult = this.resolveProviderForItem(item);
+    if (!providerResult.ok) {
+      appendLog(this.paths, `Failed to resolve agent: ${providerResult.error.message}`);
+      updateItem(this.paths, item.id, { status: "pending" });
+      this.currentItemId = null;
+      this.emitEvent("loop_error", { error: providerResult.error.message });
+      return "continue";
+    }
+    const provider = providerResult.value;
+
+    // Spawn the agent with streaming
     this.emitEvent("llm_spawned", {
       itemId: item.id,
-      provider: "claude-cli",
+      provider: provider.id,
       model: resolvedModel,
       timeoutMinutes: this.options.sessionTimeoutMinutes,
     });
     appendLog(
       this.paths,
-      `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
+      `Spawning ${provider.id} for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
     );
 
     // Set up iteration status tracking
@@ -606,31 +697,30 @@ export class LoopRunner extends TypedEventEmitter {
       }
     };
 
-    const claudeResult = await spawnClaude(promptResult.value, {
-      sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
-      model: resolvedModel,
-      signal: this.abortController.signal,
+    const execResult = await provider.execute(promptResult.value, {
       outputFormat: "stream-json",
       onStreamEvent,
+      signal: this.abortController.signal,
+      model: resolvedModel,
+      timeoutMinutes: this.options.sessionTimeoutMinutes,
       ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
     clearInterval(stuckTimer);
     clearIterationStatus(this.paths);
 
-    if (!claudeResult.ok) {
-      appendLog(this.paths, `Failed to spawn claude: ${claudeResult.error.message}`);
+    if (!execResult.ok) {
+      appendLog(this.paths, `Failed to spawn ${provider.id}: ${execResult.error.message}`);
       updateItem(this.paths, item.id, { status: "pending" });
       this.currentItemId = null;
-      this.emitEvent("loop_error", { error: claudeResult.error.message });
+      this.emitEvent("loop_error", { error: execResult.error.message });
       return "break";
     }
 
-    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } =
-      claudeResult.value;
+    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } = execResult.value;
     this.emitEvent("llm_exited", {
       itemId: item.id,
-      provider: "claude-cli",
+      provider: provider.id,
       exitCode,
       timedOut,
       durationMs,
@@ -800,7 +890,7 @@ export class LoopRunner extends TypedEventEmitter {
         // item blocked — classify WHY the spawn produced no signal and route on
         // that. usage_limited/infra_error are environmental deaths (item stays
         // pending); only a clean genuine_retry exhaustion DEFERS the item.
-        const exitClass = classifyExit(claudeResult.value, parsed);
+        const exitClass = classifyExit(execResult.value, parsed);
         switch (exitClass) {
           case "usage_limited": {
             // Belt-and-suspenders with the pre-signal usage check (item 005):
@@ -963,24 +1053,35 @@ export class LoopRunner extends TypedEventEmitter {
     const projectModel = markerResult.ok ? markerResult.value.options.model : undefined;
     const resolvedModel = this.options.model ?? projectModel;
 
-    appendLog(this.paths, "Spawning claude for review pass");
+    // Resolve the run-level provider for the review pass (no per-item context).
+    const providerResult = this.resolveRunLevelProvider();
+    if (!providerResult.ok) {
+      const reason = `Failed to resolve agent for review: ${providerResult.error.message}`;
+      appendLog(this.paths, reason);
+      this.emitEvent("review_failed", { reason });
+      return "failed";
+    }
+    const provider = providerResult.value;
 
-    // Spawn Claude with review prompt
-    const claudeResult = await spawnClaude(promptResult.value, {
-      sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
-      model: resolvedModel,
+    appendLog(this.paths, `Spawning ${provider.id} for review pass`);
+
+    // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
+    // preserves today's text review behavior (tech-spec §3.2, SC-2).
+    const execResult = await provider.execute(promptResult.value, {
       signal: this.abortController.signal,
+      model: resolvedModel,
+      timeoutMinutes: this.options.sessionTimeoutMinutes,
       ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
-    if (!claudeResult.ok) {
-      const reason = `Failed to spawn claude for review: ${claudeResult.error.message}`;
+    if (!execResult.ok) {
+      const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
       appendLog(this.paths, reason);
       this.emitEvent("review_failed", { reason });
       return "failed";
     }
 
-    const { stdout } = claudeResult.value;
+    const { stdout } = execResult.value;
 
     // Parse signal from review output
     const parsed = parseSignal(stdout);

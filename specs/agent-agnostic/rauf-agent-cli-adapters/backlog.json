@@ -226,8 +226,8 @@
         "runner.ts:494 model precedence is unmodified and resolvedModel is handed to provider.execute",
         "runner.test.ts covers resolve/cache/dispose, real event id, childEnv forwarding, and the no-spawnClaude-call-site guard; pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:32:09.697Z",
       "dependsOn": [
         "001",
         "003",

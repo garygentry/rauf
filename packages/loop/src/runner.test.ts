@@ -1,12 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
-import { EVENTS_SCHEMA_VERSION } from "@rauf/core";
+import { EVENTS_SCHEMA_VERSION, ok } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
+import { registerAgent, getAgentDescriptors } from "./providers/registry.js";
+import type { LLMProvider, ExecuteOptions } from "./providers/types.js";
 
 // ─── Test Helpers ────────────────────────────────────────────────────
 
@@ -1344,6 +1347,183 @@ fi`,
       expect(fs.existsSync(capture)).toBe(true);
       // Var is unset → empty string captured.
       expect(fs.readFileSync(capture, "utf-8")).toBe("");
+    });
+  });
+
+  describe("agent routing (item 009)", () => {
+    interface FakeAgentState {
+      constructCount: number;
+      disposeCount: number;
+      execEnvs: Array<Record<string, string> | undefined>;
+      outputFormats: Array<ExecuteOptions["outputFormat"]>;
+    }
+
+    /**
+     * Register a fake agent whose factory returns a controllable LLMProvider, and return a state
+     * object instrumenting construction / dispose / execute options. Registered with last-write-wins
+     * so re-registering the same id in another test is safe (module-level registry persists).
+     */
+    function registerFakeAgent(id: string, stdout = "RAUF_DONE\n"): FakeAgentState {
+      const state: FakeAgentState = {
+        constructCount: 0,
+        disposeCount: 0,
+        execEnvs: [],
+        outputFormats: [],
+      };
+      registerAgent({
+        id,
+        displayName: id,
+        factory: (): LLMProvider => {
+          state.constructCount++;
+          return {
+            id,
+            displayName: id,
+            async execute(_prompt: string, options: ExecuteOptions) {
+              state.execEnvs.push(options.env);
+              state.outputFormats.push(options.outputFormat);
+              return ok({
+                stdout,
+                stderr: "",
+                exitCode: 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            },
+            validateCredentials() {
+              return ok(undefined);
+            },
+            async dispose() {
+              state.disposeCount++;
+            },
+          };
+        },
+      });
+      return state;
+    }
+
+    it("emits llm_spawned/llm_exited with the real provider.id (codex → 'codex')", async () => {
+      registerFakeAgent("codex");
+      setupProject(tmpDir, [pendingItem("001", "Codex run")]);
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "codex" });
+      runner.on("llm_spawned", (e) => events.push(e));
+      runner.on("llm_exited", (e) => events.push(e));
+
+      await runner.start();
+
+      const spawned = events.find((e) => e.type === "llm_spawned") as Extract<
+        LoopEvent,
+        { type: "llm_spawned" }
+      >;
+      const exited = events.find((e) => e.type === "llm_exited") as Extract<
+        LoopEvent,
+        { type: "llm_exited" }
+      >;
+      expect(spawned.provider).toBe("codex");
+      expect(exited.provider).toBe("codex");
+    });
+
+    it("emits provider 'claude-cli' for a default (claude) run", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Claude run")]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("llm_spawned", (e) => events.push(e));
+
+      await runner.start();
+
+      const spawned = events.find((e) => e.type === "llm_spawned") as Extract<
+        LoopEvent,
+        { type: "llm_spawned" }
+      >;
+      expect(spawned.provider).toBe("claude-cli");
+    });
+
+    it("caches one provider instance per distinct agent id across iterations, then disposes it", async () => {
+      const state = registerFakeAgent("cache-agent");
+      setupProject(tmpDir, [pendingItem("001", "First"), pendingItem("002", "Second")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "cache-agent" });
+      await runner.start();
+
+      // Two iterations, same resolved id → constructed exactly once and disposed once.
+      expect(state.constructCount).toBe(1);
+      expect(state.disposeCount).toBe(1);
+    });
+
+    it("constructs a second instance when a per-item override selects a different agent", async () => {
+      const runState = registerFakeAgent("run-agent");
+      const itemState = registerFakeAgent("item-agent");
+      setupProject(tmpDir, [
+        pendingItem("001", "Run-level"),
+        pendingItem("002", "Item override", { provider: "item-agent" }),
+      ]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "run-agent" });
+      await runner.start();
+
+      expect(runState.constructCount).toBe(1);
+      expect(itemState.constructCount).toBe(1);
+      // Both distinct ids disposed on exit.
+      expect(runState.disposeCount).toBe(1);
+      expect(itemState.disposeCount).toBe(1);
+    });
+
+    it("passes the runner childEnv via ExecuteOptions.env to the provider", async () => {
+      const state = registerFakeAgent("env-agent");
+      setupProject(tmpDir, [pendingItem("001", "Env")]);
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "env-agent",
+        suppressIterationReview: true,
+      });
+      await runner.start();
+
+      expect(state.execEnvs.length).toBeGreaterThan(0);
+      // suppressIterationReview resolves to a childEnv carrying the suppression var.
+      expect(state.execEnvs[0]).toMatchObject({ ENABLE_CODE_SECURITY_REVIEW: "0" });
+    });
+
+    it("uses outputFormat 'stream-json' for the work iteration", async () => {
+      const state = registerFakeAgent("fmt-agent");
+      setupProject(tmpDir, [pendingItem("001", "Fmt")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "fmt-agent" });
+      await runner.start();
+
+      expect(state.outputFormats[0]).toBe("stream-json");
+    });
+
+    it("turns an unknown agent id into a Result error listing supported ids (no throw)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Unknown")]);
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "no-such-agent" });
+      runner.on("loop_error", (e) => errors.push(e.error));
+
+      // Must not throw — the unknown id is surfaced as a Result error.
+      await runner.start();
+
+      const supportedIds = getAgentDescriptors().map((d) => d.id);
+      const errMsg = errors.find((m) => m.includes("no-such-agent"));
+      expect(errMsg).toBeDefined();
+      // The error enumerates the supported ids (claude-cli is always registered).
+      expect(errMsg).toContain("Supported agents:");
+      expect(supportedIds).toContain("claude-cli");
+      // The item is reset to pending (not left in_progress / blocked) by the per-item backstop.
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]!.status).toBe("pending");
+    });
+
+    it("runner.ts contains no direct spawnClaude( call site", () => {
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
+      expect(src).not.toMatch(/spawnClaude\(/);
     });
   });
 
