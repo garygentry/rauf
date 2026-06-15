@@ -93,8 +93,8 @@
         "cli-agent.test.ts covers prompt delivery × model flag × non-interactive × plain-text result × kill/timeout forwarding × error paths",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:07:01.117Z",
       "dependsOn": [
         "001",
         "002"

@@ -24,6 +24,9 @@ export {
 } from "./registry.js";
 export type { AgentAvailability } from "./registry.js";
 
+export { CliAgent } from "./cli-agent.js";
+export type { PromptDelivery, BuildArgsContext, CliAgentConfig } from "./cli-agent.js";
+
 export { createClaudeCliProvider } from "./claude-cli.js";
 
 // Side-effect import: registers claude-cli as the default provider
