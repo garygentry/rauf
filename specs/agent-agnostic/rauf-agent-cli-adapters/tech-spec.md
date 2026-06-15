@@ -399,7 +399,7 @@ installed CLI's actual version (OQ-2). They are config literals, correctable wit
 
 `Result<T,E>` everywhere (CLAUDE.md); no throwing for expected errors. Exceptions:
 
-- **Unknown agent id**: `createProvider` already throws listing available ids (`registry.ts:14`);
+- **Unknown agent id**: `createProvider` already throws listing available ids (`registry.ts:15`);
   the selection layer surfaces this as a `Result` error with `getAgentDescriptors()` ids
   (REQ-DISC-01).
 - **Agent CLI absent**: pre-loop `detectAgent` → fail-fast `Result` error naming the agent +
@@ -457,3 +457,27 @@ schemas), existing `packages/loop` modules (`claude-process`, `signal-parser`, `
 - **Shared spawn helper extraction**: whether `CliAgent` and `claude-process` share a single
   `spawnProcessGroup` helper or `CliAgent` re-implements the kill/timeout pattern — leaning shared
   to avoid duplication (REQ-PERF-01 / maintainability); finalize in specs.
+
+## 11. Resolved in specs (post-tech reconciliation)
+
+The forge-3-specs suite settled the §10 open questions and made three **additive** refinements that
+supersede the wording above where they conflict (recorded here so this tech-spec does not read as
+contradicting the implementation specs):
+
+1. **`ExecuteOptions.env?` added** (`00-core-definitions.md §3.4`, `05-runner-wiring.md`). §1/§6's
+   "all committed schema fields unchanged" / "`ExecuteOptions` … verbatim `types.ts:35-45`" holds for
+   every field **except** this one additive optional `env?: Record<string,string>`. It is required so
+   the runner's `childEnv` (review-hook suppression) survives routing through `provider.execute(...)`
+   instead of the former direct `spawnClaude(..., { env })` — an SC-2 behavior-preservation fix. The
+   claude adapter forwards it to `SpawnClaudeOptions.env`; `CliAgent` merges it over `CliAgentConfig.env`.
+2. **`process-group.ts` extraction adopted** (§10 "shared spawn helper" → resolved; `03 §5`,
+   `01-architecture-layout.md §2`). The SIGTERM→grace→SIGKILL/group/timeout machinery is extracted
+   from `claude-process.ts` into a reusable `process-group.ts` (`spawnProcessGroup`, `killTree`,
+   `GRACE_PERIOD_MS`); `claude-process.ts` delegates to it, behavior preserved (SC-2). It also gains a
+   `cwd?` option (default `ROOT_DIRECTORY`) as the explicit REQ-SEC-01 confinement boundary.
+3. **`normalizeAgentAlias` added** as a second `agent-selection.ts` export (`04-agent-selection.md
+   §3.2`) for the additive `agent`→`provider` input-alias, plus a small `constants.ts` as the physical
+   home of `DEFAULT_AGENT_ID`/`GENERIC_AGENT_ID` (re-exported via `agent-selection.ts`). The §2 module
+   structure tree omitted both; `01-architecture-layout.md §2` is the current authority.
+
+`rauf agents` placement is settled as top-level `rauf agents` (`06-cli-surface.md §3.3`).

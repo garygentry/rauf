@@ -47,11 +47,11 @@ remaining docs reference or test it.
 | SC | Verifies | Where proven (07 + impl docs) |
 |----|----------|-------------------------------|
 | SC-1 | mock codex/gemini/copilot/cursor + generic-cli reach `RAUF_DONE`, telemetry absent, no error | 07 §3.2–3.3 (sandbox), 03, 05 |
-| SC-2 | claude path behaviorally unchanged (incl. usage preflight, **childEnv/review-hooks**) | 07 §5 + §3.6, 00 §3.4, 05 §childEnv |
-| SC-3 | fail-fast on absent agent, no state written | 07 §3.2d/§6, 05 §pre-loop detection |
-| SC-4 | events carry real agent id; non-claude skips Anthropic preflight | 07 §3.2d/§4.3, 05 §usage gating + §events |
+| SC-2 | claude path behaviorally unchanged (incl. usage preflight, **childEnv/review-hooks**) | 07 §5 + §3.6, 00 §3.4, 05 §3.1 |
+| SC-3 | fail-fast on absent agent, no state written | 07 §3.2d/§6, 05 §4.5 |
+| SC-4 | events carry real agent id; non-claude skips Anthropic preflight | 07 §3.2d/§4.3, 05 §4.3 + §3.3 |
 | SC-5 | `--agent` precedence + discovery surface | 07 §3.1/§3.2e, 04, 06 |
-| SC-6 | quoted `RAUF_*` token neutralized | 07 §3.5, 05 §neutralization |
+| SC-6 | quoted `RAUF_*` token neutralized | 07 §3.5, 05 §4.4 |
 | SC-7 | `pnpm gate` green | 07 §2/§8 (gate is the acceptance command) |
 
 ## Open / deferred (tracked, not gaps)

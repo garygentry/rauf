@@ -21,6 +21,7 @@
 | REQ-OBS-02 | Token/tool telemetry gracefully absent (plain-text) | 3.1, 4.4, 8 |
 | REQ-SIG-02 | Signal detection on plain-text output path | 3.1, 4.4 |
 | REQ-SCALE-01 | Add an agent without changing runner code | 7 |
+| REQ-SEC-01 | Sandbox-confined spawn (cwd === ROOT_DIRECTORY) + temp prompt-file inside ROOT_DIRECTORY | 4.2, 4.3, 5.1, 8 |
 | OQ-3 | Engine + presets shape (config-driven core) | 1, 3.1 |
 
 ## 1. Purpose & scope
@@ -88,8 +89,8 @@ both `claude-process.ts` and `cli-agent.ts` build against it.
 `CliAgent` is the single config-driven engine. It `implements LLMProvider` (`types.ts:12-33`) but
 deliberately implements **only** `id`, `displayName`, `execute`, and `validateCredentials` — it does
 **not** implement `checkUsage`. Omitting `checkUsage` is load-bearing: the runner gates all
-Anthropic usage handling on `provider.checkUsage` being defined (`05-runner-wiring.md §usage
-gating`, tech-spec §3.6), so a `CliAgent` automatically skips every usage path with no crash and no
+Anthropic usage handling on `provider.checkUsage` being defined (`05-runner-wiring.md §4.3`,
+tech-spec §3.6), so a `CliAgent` automatically skips every usage path with no crash and no
 spurious limit detection (REQ-USAGE-02). It also does not implement the optional `dispose` (no
 persistent resource to release; temp prompt files are cleaned up inline per invocation, §4.3).
 
@@ -294,8 +295,9 @@ return ok({
 ```
 
 Leaving `reconstructedText` unset is what makes the runner's signal fallback
-`signalText = reconstructedText?.length ? reconstructedText : stdout` (`runner.ts:644`,
-`05-runner-wiring.md`) parse the **raw stdout** — the plain-text signal path (REQ-SIG-02). The
+`signalText = reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout`
+(`runner.ts:644-645`, `05-runner-wiring.md`) parse the **raw stdout** — the plain-text signal path
+(REQ-SIG-02). The
 absent `progressEvents`/`reconstructedText` are the "telemetry gracefully absent" guarantee: the
 runner emits only spawn+exit lifecycle for these agents and treats the absence as normal, never an
 error (REQ-OBS-02). `parsesStream` on the config is `false`/omitted (`00-core-definitions.md §3.2`),
@@ -333,7 +335,7 @@ async execute(prompt: string, options: ExecuteOptions): Promise<Result<Execution
       signal: options.signal,
       // Runner-supplied child env (options.env, e.g. REVIEW_HOOK_SUPPRESSION_ENV) is merged
       // OVER the adapter's static config.env so the runner's childEnv reaches every agent
-      // uniformly (see 00 §7 ExecuteOptions extension + 05-runner-wiring.md §childEnv).
+      // uniformly (see 00 §7 ExecuteOptions extension + 05-runner-wiring.md §3.1).
       env:
         this.config.env || options.env
           ? { ...this.config.env, ...options.env }
@@ -380,6 +382,15 @@ export interface SpawnProcessGroupOptions {
   timeoutMs: number;
   /** External cancellation. On abort the process group receives SIGTERM. */
   signal?: AbortSignal;
+  /**
+   * Working directory for the spawned agent process. Defaults to the runner's `ROOT_DIRECTORY`
+   * (the project root). This is the REQ-SEC-01 confinement boundary: the auto-approve agent
+   * runs with its cwd pinned to the loop's working directory and MUST NOT broaden rauf's
+   * path-sandboxing. Mirrors `spawnClaude`'s inherited-cwd behavior (`claude-process.ts:87` passes
+   * no `cwd`, so it inherits the runner process cwd === ROOT_DIRECTORY); passing it explicitly here
+   * makes the boundary auditable rather than implicit.
+   */
+  cwd?: string;
   /** Env overrides merged over `process.env`; when omitted the child inherits the parent env. */
   env?: Record<string, string>;
   /** When set, written to the child's stdin then closed (EPIPE ignored). Omit for no stdin input. */
@@ -581,7 +592,7 @@ export const createGenericCliProvider: ProviderFactory = (config) => {
   const parsed = configToCliAgentConfig(GENERIC_AGENT_ID, config ?? {});
   if (!parsed.ok) {
     // Misconfigured generic-cli is surfaced as an expected error by the caller; the factory
-    // itself throws here only as the inherited createProvider contract (registry.ts:14) — the
+    // itself throws here only as the inherited createProvider contract (registry.ts:15) — the
     // runner's per-iteration resolve wraps createProvider in try/catch (05-runner-wiring.md §8).
     throw new Error(parsed.error.message);
   }
@@ -701,6 +712,9 @@ No throwing for expected errors (CLAUDE.md, `00-core-definitions.md §5`). Per o
 - [ ] `stdin` delivery pipes the prompt to the child and closes it; `file` delivery writes a temp
   file **inside `ROOT_DIRECTORY`**, passes its path via `ctx.promptFile`, and unlinks it in
   `finally` on every exit path (REQ-SEC-01).
+- [ ] The agent subprocess is spawned with `cwd === ROOT_DIRECTORY` (via `SpawnProcessGroupOptions.cwd`,
+  defaulted to the runner's project root) — the REQ-SEC-01 confinement boundary; it does not broaden
+  rauf's path-sandboxing (§4.2, §5.1).
 - [ ] Returned `ExecutionResult` leaves `reconstructedText`, `parsedSignal`, and `progressEvents`
   **unset**; nonzero exit and timeout are returned as data, not errors (REQ-OBS-02, REQ-SIG-02,
   REQ-EXEC-03).

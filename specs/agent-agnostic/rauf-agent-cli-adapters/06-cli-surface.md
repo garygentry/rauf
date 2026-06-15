@@ -177,7 +177,7 @@ The `rauf loop run` subcommand's documented flags live in a static `FlagDef[]` a
 Because `FlagDef.description` is a plain `string` and the `COMMANDS` array is a module-level constant
 (`commands.ts:120`), the enumeration is computed **once at module load** — after the provider
 side-effect registration in `@rauf/loop` (`providers/index.ts` registers all built-ins;
-`02-agent-registry-and-detection.md §5.x`). Adding the `@rauf/loop` registry import to `commands.ts`
+`02-agent-registry-and-detection.md §6`). Adding the `@rauf/loop` registry import to `commands.ts`
 ensures the side-effect registration has run before `getAgentDescriptors()` is read.
 
 ```ts
@@ -402,8 +402,8 @@ export async function handleAgents(ctx: CommandContext): Promise<number> {
 - **Generic config agents (note):** `listAgents()` enumerates the **registered descriptors**
   (built-ins: claude-cli + presets + the reserved `generic-cli`). Named config agents from
   `ToolConfig.providers` become descriptors only when the selection layer builds them for a run
-  (`04-agent-selection.md`, `02 §4.4`), so a context-free `rauf agents` lists the built-ins plus the
-  reserved `generic-cli` row (reported `available: true` / "configurable", per `02 §4.4`). Surfacing
+  (`04-agent-selection.md`, `02 §5.4`), so a context-free `rauf agents` lists the built-ins plus the
+  reserved `generic-cli` row (reported `available: true` / "configurable", per `02 §5.4`). Surfacing
   configured generic agents from project/global config is a possible enhancement (read
   `ToolConfig.providers` via the existing `readToolConfig` loader and append synthesized rows); it is
   **not required** for REQ-DISC-02 and is left to the implementation if a project context is

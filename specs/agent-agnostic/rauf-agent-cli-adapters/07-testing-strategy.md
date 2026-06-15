@@ -20,7 +20,7 @@ inherited transitively (each SC lists the REQs it verifies, per the PRD); this t
 | SC | Verifies (REQ) | Test surface | Section |
 |----|----------------|--------------|---------|
 | SC-1 | REQ-ADP-01/02/03/04, REQ-EXEC-01/02/03, REQ-SIG-01/02, REQ-OBS-02 | `cli-agent.test.ts`, `generic-cli.test.ts` (unit) + sandbox mock `codex`/`gemini`/`copilot`/`cursor`/`mock-generic-agent.sh` reaching `RAUF_DONE`, telemetry absent, no error | 3.3, 3.4, 4 |
-| SC-2 | REQ-SEL-03, REQ-USAGE-01, REQ-PERF-01 | `claude-cli.test.ts` (UNCHANGED, green), existing claude sandbox scenarios pass exactly as before | 3.2, 5 |
+| SC-2 | REQ-SEL-03, REQ-USAGE-01, REQ-PERF-01 | `claude-cli.test.ts` (UNCHANGED, green), existing claude sandbox scenarios pass exactly as before, **+ new child-env forwarding case** (`ExecuteOptions.env` → `SpawnClaudeOptions.env`) in `claude-cli.test.ts`/`runner.test.ts` (§5) | 3.2, 5 |
 | SC-3 | REQ-DET-01, REQ-DET-02 | `runner.test.ts` fail-fast cases (no state written) + sandbox absent-agent assertion | 3.2 (`runner.test.ts`), 6 |
 | SC-4 | REQ-OBS-01, REQ-USAGE-02 | `runner.test.ts` (event provider id, usage gating skip) + sandbox per-agent event-id + no-preflight assertion | 3.2 (`runner.test.ts`), 4 |
 | SC-5 | REQ-SEL-01/02/04, REQ-DISC-01, REQ-DISC-02 | `agent-selection.test.ts` (precedence + alias), `registry.test.ts` (`getAgentDescriptors`/`listAgents`), `loop-commands.test.ts` (`--agent` flag, `rauf agents`) | 3.1, 3.2 (`registry.test.ts`, `loop-commands.test.ts`) |
@@ -153,7 +153,7 @@ Descriptor registration & enumeration:
   that binary and returns the real result.
 - **unknown id**: `detectAgent("nope")` resolves `{ available: false, detail: 'Unknown agent
   "nope". Supported agents: <ids>.' }` — resolves, does NOT throw (contrast `createProvider`, which
-  throws on unknown id, `registry.ts:14`).
+  throws on unknown id, `registry.ts:15`).
 
 `listAgents` (REQ-DISC-02):
 - Returns `Promise<AgentAvailability[]>` with `available` resolved per descriptor's `detect`, in
@@ -250,7 +250,7 @@ Tests `providers/generic-cli.ts` from `03-cli-agent-engine-and-presets.md §7`.
   `id === GENERIC_AGENT_ID` and whose `execute` invokes the configured binary. Drive it through a
   mocked `spawnProcessGroup` and assert the configured `binary`/`args`/`promptDelivery` are honored.
 - Misconfigured (no usable config) → the factory throws (inherited `createProvider` contract,
-  `registry.ts:14`); the runner's per-iteration resolve wraps it (`05`), so this test asserts only
+  `registry.ts:15`); the runner's per-iteration resolve wraps it (`05`), so this test asserts only
   the throw shape (an `Error` carrying the validation message).
 
 `configToCliAgentConfig` → `CliAgent` end-to-end (named-config path, case 1):
@@ -270,7 +270,7 @@ provider) so these are unit tests, not real spawns.
   distinct agent id** within a run (two iterations on the same id construct the provider once; a
   per-item override constructs a second). On loop end, `provider.dispose?.()` is called for each
   cached instance (assert dispose invoked on every cached id, on the normal-completion path and the
-  fail-fast/abort/error paths — `05 §error handling`).
+  fail-fast/abort/error paths — `05 §5`).
 - **Event provider id (REQ-OBS-01, SC-4):** `llm_spawned` and `llm_exited` events carry
   `provider: provider.id` (the **real** resolved id), never the hardcoded `"claude-cli"`. Assert a
   run resolved to `"codex"` emits events with `provider: "codex"`.
@@ -318,8 +318,8 @@ The **end-to-end** SC-1 proof (reaching `RAUF_DONE`, committing, real event id) 
 
 `parseSignal` (`signal-parser.ts:27`) is already agent-agnostic and unchanged; its tests
 (`signal-parser.test.ts`) stay green. The new coverage is that a `CliAgent` leaves
-`reconstructedText` unset so the runner's existing fallback `signalText = reconstructedText?.length
-? reconstructedText : stdout` (`runner.ts:644`) parses raw stdout — asserted in `runner.test.ts`
+`reconstructedText` unset so the runner's existing fallback `signalText = reconstructedText &&
+reconstructedText.length > 0 ? reconstructedText : stdout` (`runner.ts:644-645`) parses raw stdout — asserted in `runner.test.ts`
 (a non-claude provider whose `stdout` ends in `RAUF_DONE` resolves a `done` outcome) and end-to-end
 in the sandbox (§4).
 
@@ -366,7 +366,7 @@ pass, the change has regressed the claude path and must be reverted.
 The existing `test-sandbox/` harness drives a real loop iteration through a mock agent CLI placed
 first on `PATH`, with git redirected to a throwaway repo (`GIT_DIR=$SANDBOX_DIR/.sandbox-git`,
 `GIT_WORK_TREE=$SANDBOX_DIR`) so commits stay out of the parent repo. Today the mock is
-`test-sandbox/claude`, a 4-line dispatcher that `exec`s
+`test-sandbox/claude`, a tiny dispatcher that `exec`s
 `scenarios/${MOCK_CLAUDE_SCENARIO:-stream-done}.sh`; `run.sh` and `verify.sh` set
 `MOCK_CLAUDE_SCENARIO` and run `rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1`. Scenario
 scripts drain stdin (`cat > /dev/null` or `PROMPT="$(cat)"`) and emit Claude **stream-json** NDJSON,
@@ -440,7 +440,8 @@ For **each** non-claude agent (`codex`, `gemini`, `copilot`, `cursor`) and the `
    cleanly (item done, state `limit_reached`, no error in the loop log) and that the usage-limit
    detection log line (the one `verify.sh` already greps for in the `usage-limit-stdout` case) is
    **absent** for the non-claude run — proving the claude usage preflight/banner scan did not run.
-   A negative grep assertion (`! grep -q "<usage-limit detection marker>" "$LOG"`) suffices.
+   A negative grep assertion suffices, reusing the exact marker `verify.sh:380` already greps for in
+   the `usage-limit-stdout` case: `! grep -q "Usage limit detected" "$SANDBOX_DIR/.rauf/rauf.log"`.
 4. **Telemetry gracefully absent, no error (SC-1, REQ-OBS-02):** assert `events.ndjson` for the
    non-claude run contains the spawn+exit lifecycle and `item_completed`, but **no** token-count or
    `llm_tool_activity` events (a `jq` "none of type llm_tool_activity" check), and the run raised no
@@ -490,7 +491,7 @@ The claude path must be behaviorally unchanged. Regression is proven by two unch
   `SpawnClaudeOptions.env` — i.e. the runner's `childEnv` (review-hook suppression,
   `REVIEW_HOOK_SUPPRESSION_ENV`) still arrives at the claude process after routing through
   `provider.execute(...)` rather than the former direct `spawnClaude(..., { env })` call. Without
-  this, the env-plumbing regression (`00 §3.4`, `05 §childEnv`) would pass typecheck but silently
+  this, the env-plumbing regression (`00 §3.4`, `05 §3.1`) would pass typecheck but silently
   break review-hook suppression. Assert the same for `CliAgent.execute` merging `options.env` over
   `config.env` (`cli-agent.test.ts`).
 - **Sandbox:** **every existing claude scenario passes exactly as before** via `bash

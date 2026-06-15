@@ -230,9 +230,9 @@ shape carried by `Result`. The semantic error situations this feature adds:
 | Situation | Code (`@rauf/core` `ErrorCodes`) | Surfaced where | REQ |
 |---|---|---|---|
 | Selected agent's CLI unavailable (pre-loop fail-fast, before any state write) | `FILE_NOT_FOUND` (binary not on PATH) / validation code for credential failure | `05-runner-wiring.md` pre-loop detection; message names the agent + install/PATH remediation, lists `getAgentDescriptors()` ids | REQ-DET-02, SC-3 |
-| Unknown / mistyped agent id (per-item or run-level) | thrown by `createProvider` (`registry.ts:14`), wrapped into a `Result` error listing available ids | `04-agent-selection.md`, `05-runner-wiring.md §per-iteration resolve` | REQ-DISC-01 |
+| Unknown / mistyped agent id (per-item or run-level) | thrown by `createProvider` (`registry.ts:15`), wrapped into a `Result` error listing available ids | `04-agent-selection.md`, `05-runner-wiring.md §4.1` | REQ-DISC-01 |
 | Claude credentials missing (claude-cli `validateCredentials`) | `FILE_NOT_FOUND` (existing `ClaudeCliProvider.validateCredentials`, `claude-cli.ts:30-39`) | unchanged | REQ-USAGE-01 |
-| Usage check unsupported (non-claude) | not an error — `provider.checkUsage` undefined ⇒ usage paths skipped | `05-runner-wiring.md §usage gating` | REQ-USAGE-02 |
+| Usage check unsupported (non-claude) | not an error — `provider.checkUsage` undefined ⇒ usage paths skipped | `05-runner-wiring.md §4.3` | REQ-USAGE-02 |
 | Missing telemetry (plain-text agent) | not an error — `reconstructedText` unset, progress events absent | `03-cli-agent-engine-and-presets.md` | REQ-OBS-02 |
 
 > **`AgentUnavailableError` is a *semantic* label, not a new class.** Implementations construct a
@@ -252,7 +252,7 @@ export const GENERIC_AGENT_ID = "generic-cli";
 /**
  * Signal tokens neutralized inside agent output before detection (REQ-SEC-02). EXTENDS the
  * existing `signal-redactor.ts:1` set (which omits RAUF_REVIEW) — see
- * `05-runner-wiring.md §neutralization`. Authoritative list:
+ * `05-runner-wiring.md §4.4`. Authoritative list:
  */
 export const SIGNAL_TOKENS = ["RAUF_DONE", "RAUF_BLOCKED", "RAUF_NEEDS_HUMAN", "RAUF_REVIEW"] as const;
 ```
@@ -282,7 +282,7 @@ path; they must NOT be re-declared or duplicated (tech-spec §1, §6). Verified 
 | `spawnClaude` / `SpawnClaudeOptions` / `SpawnClaudeResult` | `claude-process.ts:` (opts `:11-23`, result `:25-32`, spawn `:87` `detached:true`, stdin `:217`, kill `:162-173`, `GRACE_PERIOD_MS :9`) | claude internals + the kill/timeout/group pattern reused by `CliAgent` | `claude-cli.ts`, `03-...` |
 | `createClaudeCliProvider` | `providers/claude-cli.ts:50` | `() => LLMProvider` (claude adapter) | re-registered via descriptor (`02-...`) |
 | Schema fields `BacklogItem.provider`/`.model`, `LoopStartOptions.provider`, `ToolConfig.defaultProvider`/`.providers`, `MarkerOptions.provider`/`.providerConfig` | `core/schemas.ts:72/69/377/222/223/148/149` | all `z.string().optional()` / record | selection + data model |
-| Events `llm_spawned` / `llm_exited` | `core/schemas.ts:449-463` | `{ type; provider: string; ... }` | REQ-OBS-01 |
+| Events `llm_spawned` / `llm_exited` | `core/schemas.ts:448-463` | `{ type; provider: string; ... }` | REQ-OBS-01 |
 
 ## Dependencies
 

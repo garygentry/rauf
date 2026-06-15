@@ -38,14 +38,15 @@ referenced. Tests are colocated as `*.test.ts`.
 ```
 packages/loop/src/
 ├── providers/
-│   ├── types.ts                 EDIT  + AgentAdapter alias, AgentDescriptor, DetectionResult,
-│   │                                    PromptDelivery, BuildArgsContext  (00 §2,3.2,3.3)
+│   ├── types.ts                 EDIT  + AgentAdapter alias, AgentDescriptor, DetectionResult
+│   │                                    (00 §2,3.3); + ExecuteOptions.env? extension (00 §3.4)
 │   ├── registry.ts              EDIT  + registerAgent / getAgentDescriptors / detectAgent,
 │   │                                    descriptor layer over the factory map  (02)
 │   ├── index.ts                 EDIT  register all built-in adapters; re-export new symbols
 │   ├── claude-cli.ts            EDIT  behavior UNCHANGED; registration migrates to a descriptor
 │   │                                    (binaryName:"claude" + credential detect)  (02)
-│   ├── cli-agent.ts             NEW   CliAgent engine (implements LLMProvider) + CliAgentConfig  (03)
+│   ├── cli-agent.ts             NEW   CliAgent engine + CliAgentConfig, PromptDelivery,
+│   │                                    BuildArgsContext  (00 §3.2; implements LLMProvider) (03)
 │   ├── presets.ts               NEW   codex / gemini / copilot / cursor CliAgentConfig literals  (03)
 │   ├── generic-cli.ts           NEW   reserved generic-cli descriptor (providerConfig-driven)    (03)
 │   ├── types.test.ts            (n/a — types only)
@@ -53,7 +54,8 @@ packages/loop/src/
 │   ├── claude-cli.test.ts       —     must stay green unchanged (SC-2)
 │   ├── cli-agent.test.ts        NEW   prompt delivery, model flag, non-interactive, kill/timeout (07)
 │   └── generic-cli.test.ts      NEW   config-driven invocation                                  (07)
-├── agent-selection.ts           NEW   resolveAgentId precedence resolver (loop-agent-selection)  (04)
+├── constants.ts                 NEW   DEFAULT_AGENT_ID / GENERIC_AGENT_ID (00 §6 home)            (04)
+├── agent-selection.ts           NEW   resolveAgentId + normalizeAgentAlias; re-exports constants (04)
 ├── agent-selection.test.ts      NEW   full precedence matrix                                     (07)
 ├── process-group.ts             NEW   shared spawn/kill/timeout/group helper (extracted)         (03)
 ├── runner.ts                    EDIT  route both exec paths + events + usage gating + neutralize (05)
@@ -82,10 +84,10 @@ test-sandbox/
 └── verify.sh                    EDIT  per-agent assertions (RAUF_DONE, real id, no preflight)    (07)
 ```
 
-> Whether the shared kill/timeout/group logic is extracted into a new `process-group.ts` or kept
-> inline and imported from `claude-process.ts` is finalized in `03-cli-agent-engine-and-presets.md`
-> (tech-spec §10 leans "shared, to avoid duplication"). The tree shows the extracted form; if kept
-> inline, `process-group.ts` is omitted and `claude-process.ts` exports the helper.
+> The shared kill/timeout/group logic **is extracted** into a new `process-group.ts` — resolved in
+> `03-cli-agent-engine-and-presets.md §5` (tech-spec §10's open "shared spawn helper" question,
+> settled in favor of extraction to avoid duplication, SC-2). `claude-process.ts` delegates to it.
+> The tree's `process-group.ts NEW` marking is therefore unconditional.
 
 ## 3. Affected packages
 
@@ -111,9 +113,11 @@ export type { AgentDescriptor, DetectionResult } from "./providers/index.js";
 // --- agent-cli-registry (charter: registry + detection) ---
 export {
   registerAgent,        // descriptor-form registration (wraps registerProvider)
-  getAgentDescriptors,  // () => AgentDescriptor[] enriched with live `available`
+  getAgentDescriptors,  // () => AgentDescriptor[] — static descriptors, synchronous, no I/O (02 §4)
+  listAgents,           // () => Promise<AgentAvailability[]> — live availability (awaits detect) (02 §4)
   detectAgent,          // (id: string) => Promise<DetectionResult>
 } from "./providers/index.js";
+export type { AgentAvailability } from "./providers/index.js";  // listAgents DTO (02 §4)
 
 // --- loop-agent-selection (charter: selection surface) ---
 export { resolveAgentId } from "./agent-selection.js";

@@ -81,7 +81,7 @@ constants `DEFAULT_AGENT_ID` / `GENERIC_AGENT_ID`.
 Exact signature (verbatim from tech-spec §3.3):
 
 ```ts
-import { DEFAULT_AGENT_ID } from "./agent-selection.js"; // re-exported from 00 §6 constants
+import { DEFAULT_AGENT_ID } from "./constants.js"; // 00 §6 constants live here; this module re-exports them (§4)
 
 /**
  * Resolve the single agent id that drives an iteration, collapsing the four optional
@@ -119,7 +119,7 @@ contract), a plain `??` chain suffices; an explicit empty-string guard is added 
 a stray `""` from a hand-edited config does not win over a real lower layer.
 
 ```ts
-import { DEFAULT_AGENT_ID } from "./agent-selection.js";
+import { DEFAULT_AGENT_ID } from "./constants.js"; // 00 §6 source (this module re-exports it, §4)
 
 export function resolveAgentId(input: {
   itemProvider?: string;
@@ -297,7 +297,7 @@ self-contained (`01-architecture-layout.md §4`):
 
 ```ts
 // packages/loop/src/agent-selection.ts
-export { DEFAULT_AGENT_ID, GENERIC_AGENT_ID } from "./<00-constants-module>.js"; // 00 §6 source
+export { DEFAULT_AGENT_ID, GENERIC_AGENT_ID } from "./constants.js"; // 00 §6 source
 export function resolveAgentId(input: { /* §3.1 */ }): string { /* §3.1 impl */ }
 export function normalizeAgentAlias<T extends { provider?: string; agent?: string }>(
   raw: T,
@@ -308,11 +308,12 @@ export function normalizeAgentAlias<T extends { provider?: string; agent?: strin
 - The module has **no runtime imports** from the runner, the registry, or `node:child_process`
   / `node:fs`. This is what makes the whole agent-selection node trivially unit-testable
   (`07-testing-strategy.md`) and free of dispatch latency on the claude path (REQ-PERF-01).
-- The `<00-constants-module>` is whichever module physically exports the
-  `00-core-definitions.md §6` constants. Per `01-architecture-layout.md §4`, `agent-selection.ts`
-  is the canonical re-export site for `DEFAULT_AGENT_ID` / `GENERIC_AGENT_ID`; if those constants
-  physically live elsewhere (e.g. a small `constants.ts`), this module re-exports from there.
-  They are defined **once** in the suite (`00 §6`), never duplicated.
+- The `00-core-definitions.md §6` constants physically live in a small `packages/loop/src/constants.ts`;
+  `agent-selection.ts` imports them from `./constants.js` and **re-exports** them, and the package
+  barrel (`01-architecture-layout.md §4`) re-exports them in turn from `./agent-selection.js`. The
+  chain is `constants.ts → agent-selection.ts → index.ts`. They are defined **once** in
+  `constants.ts` (per the `00 §6` catalog), never duplicated, and `agent-selection.ts` never imports
+  from itself.
 
 ## 5. Configuration — the layer → source map (REQ-SEL-01/02/04)
 
@@ -362,7 +363,7 @@ deliberate boundary:
   It does **not** know the registry, so it cannot and does not validate that the resolved id is a
   *registered* agent.
 - An **unknown / mistyped resolved id** becomes an error only when a *consumer* tries to use it:
-  - `createProvider(id)` **throws** listing available ids (`registry.ts:14`,
+  - `createProvider(id)` **throws** listing available ids (`registry.ts:15`,
     `00-core-definitions.md §7`); `05-runner-wiring.md` wraps this in a `Result` error enriched
     with `getAgentDescriptors()` ids (REQ-DISC-01) — an **expected error, not a crash**
     (tech-spec §7, `00-core-definitions.md §5`).

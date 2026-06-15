@@ -97,7 +97,7 @@ this document. Specifically it depends on:
   (`§6`), `SIGNAL_TOKENS` (`§6`, the authoritative neutralization list including `RAUF_REVIEW`), the
   error contracts (`§5`, incl. the `AgentUnavailableError` *semantic label* message template).
 - **`02-agent-registry-and-detection.md`** — `createProvider` (throws on unknown id,
-  `registry.ts:14`), `detectAgent(id): Promise<DetectionResult>`, `getAgentDescriptors():
+  `registry.ts:15`), `detectAgent(id): Promise<DetectionResult>`, `getAgentDescriptors():
   AgentDescriptor[]` (for the available-ids list in error messages).
 - **`03-cli-agent-engine-and-presets.md`** — the providers that `createProvider` constructs for
   non-claude ids; the load-bearing fact that `CliAgent` omits `checkUsage` (so §4.3 gating skips
@@ -254,7 +254,7 @@ this.emitEvent("llm_exited", {
 ```
 
 - **No event-shape change.** The `llm_spawned`/`llm_exited` schema already carries `provider: string`
-  (`core/schemas.ts:449-463`, `00 §7`); the CLI already renders `event.provider`
+  (`core/schemas.ts:448-463`, `00 §7`); the CLI already renders `event.provider`
   (`loop-commands.ts:1184`, tech-spec §3.2). Only the *value* changes from a hardcoded string to the
   real `provider.id` (e.g. `"codex"`). For a claude run `provider.id === "claude-cli"`, so claude
   events are unchanged (SC-2). This satisfies SC-4 ("a codex run emits codex, not `claude-cli`").
@@ -352,7 +352,7 @@ private globalProvider?: string;
  * Resolve and construct the provider for one iteration. Per-item agent wins (REQ-SEL-04), then
  * run-level, then project, then global, then DEFAULT_AGENT_ID (resolveAgentId, 04). Caches one
  * instance per distinct agent id (REQ-PERF-01). Wraps createProvider's throw-on-unknown-id
- * (registry.ts:14) into a Result error listing getAgentDescriptors() ids (REQ-DISC-01, 00 §5) —
+ * (registry.ts:15) into a Result error listing getAgentDescriptors() ids (REQ-DISC-01, 00 §5) —
  * never throws for an expected (mistyped/unknown) id.
  */
 private resolveProviderForItem(item: BacklogItem): Result<LLMProvider> {
@@ -367,13 +367,13 @@ private resolveProviderForItem(item: BacklogItem): Result<LLMProvider> {
   if (cached) return ok(cached);
 
   try {
-    const provider = createProvider(agentId); // may throw on unknown id (registry.ts:14)
+    const provider = createProvider(agentId); // may throw on unknown id (registry.ts:15)
     this.providerCache.set(agentId, provider);
     return ok(provider);
   } catch (e) {
     const ids = getAgentDescriptors().map((d) => d.id).join(", ");
     return err({
-      code: ErrorCodes.VALIDATION_ERROR, // or the project's validation member; see Warnings
+      code: ErrorCodes.VALIDATION_ERROR, // VALIDATION_ERROR for unknown/mistyped id (resolved, errors.ts:21-32)
       message:
         `Unknown agent "${agentId}": ${e instanceof Error ? e.message : String(e)}. ` +
         `Supported agents: ${ids || "(none)"}.`,
@@ -398,6 +398,70 @@ private resolveProviderForItem(item: BacklogItem): Result<LLMProvider> {
   (§4.2).
 - For a claude run every layer is unset ⇒ `agentId === "claude-cli"` ⇒ the cache constructs the
   committed `claude-cli` adapter once and reuses it for every iteration (SC-2, REQ-PERF-01).
+
+### 4.1.1 Run-level resolve + setup failure (`resolveRunLevelProvider` / `failRunSetup`)
+
+The review pass (§4.1 above) and the pre-loop usage gating (§4.3) need a **run-level** provider —
+the same resolution as `resolveProviderForItem` but with **no per-item context** (review and
+preflight are loop-level, not item-level). It is the item-less sibling, sharing the same cache and
+the same throw→`Result` wrapping:
+
+```ts
+/**
+ * Resolve the run-level provider (no BacklogItem). Item-less sibling of resolveProviderForItem:
+ * same precedence (minus itemProvider), same per-id cache, same createProvider-throw → Result
+ * wrapping. Used by the review pass (§4.1) and pre-loop usage gating (§4.3). Never throws for an
+ * expected (mistyped/unknown) id.
+ */
+private resolveRunLevelProvider(): Result<LLMProvider> {
+  const agentId = resolveAgentId({
+    runProvider: this.options.provider,     // LoopStartOptions.provider (schemas.ts:377)
+    projectProvider: this.projectProvider,  // MarkerOptions.provider (schemas.ts:148)
+    globalProvider: this.globalProvider,    // ToolConfig.defaultProvider (schemas.ts:222)
+  });
+  const cached = this.providerCache.get(agentId);
+  if (cached) return ok(cached);
+  try {
+    const provider = createProvider(agentId); // may throw on unknown id (registry.ts:15)
+    this.providerCache.set(agentId, provider);
+    return ok(provider);
+  } catch (e) {
+    const ids = getAgentDescriptors().map((d) => d.id).join(", ");
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR, // VALIDATION_ERROR for unknown/mistyped id (resolved, errors.ts:21-32)
+      message:
+        `Unknown agent "${agentId}": ${e instanceof Error ? e.message : String(e)}. ` +
+        `Supported agents: ${ids || "(none)"}.`,
+    });
+  }
+}
+```
+
+> The work-path `resolveProviderForItem(item)` and `resolveRunLevelProvider()` share one body
+> modulo `itemProvider`; an implementer MAY collapse them into a single
+> `resolveProvider(item?: BacklogItem)` — the two-name form here is for spec clarity.
+
+**`failRunSetup(error)` — the pre-iteration abort path.** Both the pre-loop fail-fast detection
+(§4.5) and a run-level resolve failure must terminate the run **before any state is written or any
+iteration runs** (REQ-DET-02). `failRunSetup` is that single early-return path:
+
+```ts
+/**
+ * Abort the run during setup, before iteration 1 and before any state write (REQ-DET-02, SC-3).
+ * Emits loop_error with the message, and returns the zero-iteration LoopResult. Writes NO state
+ * (no writeState, no backlog mutation), so a failed setup leaves the project untouched.
+ */
+private failRunSetup(error: RaufError): LoopResult {
+  this.emitEvent("loop_error", { error: error.message });
+  return { iterations: 0, stopReason: "error", error: error.message }; // shape per LoopResult (runner.ts)
+}
+```
+
+- Called from §4.3 (`this.failRunSetup(runProviderResult.error)`) and §4.5 (after a failed
+  `detectAllCandidateAgents`). It runs **before** the existing `writeState("starting", …)` at
+  `runner.ts:249`, so SC-3's "no state written" holds. The exact `LoopResult` field names/`stopReason`
+  value are taken from the committed `LoopResult` type in `runner.ts`; confirm them when implementing
+  (the contract is "zero iterations, error reason, no state write").
 
 ### 4.2 Reads at loop start; dispose in `finally` (REQ-PERF-01, lifecycle)
 
@@ -721,7 +785,7 @@ private async detectAllCandidateAgents(pendingItems: readonly BacklogItem[]): Pr
       // AgentUnavailableError is a SEMANTIC label, not a class (00 §5). Construct the Result error
       // with the existing ErrorCodes member and the 00 §5 message template.
       return err({
-        code: ErrorCodes.FILE_NOT_FOUND, // binary not on PATH; see Warnings re: exact member
+        code: ErrorCodes.FILE_NOT_FOUND, // FILE_NOT_FOUND for absent binary (resolved, errors.ts:21-32)
         message:
           `Agent "${id}" is not available: ${result.detail ?? "not detected"}. ` +
           `Install it or ensure "${binary}" is on PATH. Supported agents: ${ids || "(none)"}.`,

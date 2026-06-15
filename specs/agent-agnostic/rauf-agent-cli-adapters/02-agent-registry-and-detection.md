@@ -167,7 +167,7 @@ Notes on the synthesized `binaryName`:
   back-compat, not a guarantee that `id === binary`.
 
 `createProvider` (`registry.ts:11`) is **unchanged**: it reads `factories`, and still **throws** on
-an unknown id with the available-ids message (`registry.ts:14`). `getAvailableProviders`
+an unknown id with the available-ids message (`registry.ts:15`). `getAvailableProviders`
 (`registry.ts:23`) and `clearProviders` (`registry.ts:28`) are unchanged, except `clearProviders`
 MUST also clear `descriptors` (§3.4).
 
@@ -224,7 +224,7 @@ registerAgent({
 returns a `Result` (`claude-cli.ts:30`); wrapping it in an `async` function gives the uniform
 `Promise<DetectionResult>` detector signature. This keeps the claude path's "credentials present?"
 check as its availability definition, exactly as the pre-loop preflight expects (REQ-USAGE-01;
-the *usage banner / pause-resume* logic is unchanged and gated in `05-runner-wiring.md §usage`).
+the *usage banner / pause-resume* logic is unchanged and gated in `05-runner-wiring.md §4.3`).
 
 ### 3.4 `clearProviders` clears both maps (testability)
 
@@ -274,7 +274,7 @@ import type { LLMProvider, ProviderFactory } from "./types.js";
  *
  * @param d Full {@link AgentDescriptor} (00 §3.3). `d.detect` omitted ⇒ the default PATH probe
  *          of `d.binaryName` is used (§5). `d.binaryName` omitted is valid ONLY when `d.detect`
- *          is supplied (e.g. the reserved `generic-cli` descriptor, §3.6 of tech-spec / §4.4 here).
+ *          is supplied (e.g. the reserved `generic-cli` descriptor, §3.6 of tech-spec / §5.4 here).
  */
 export function registerAgent(d: AgentDescriptor): void;
 
@@ -472,7 +472,7 @@ export async function listAgents(): Promise<AgentAvailability[]> {
 > `Promise.all` while preserving registration order — behavior (the returned rows) is identical
 > either way; this is an implementation detail, not a contract.
 
-## 4.4 The reserved `generic-cli` descriptor (REQ-DET-01, cross-ref `03`)
+### 5.4 The reserved `generic-cli` descriptor (REQ-DET-01, cross-ref `03`)
 
 The reserved `generic-cli` id (`GENERIC_AGENT_ID`, `00 §6`) is registered by `generic-cli.ts`
 (specified in `03-cli-agent-engine-and-presets.md`) via `registerAgent` with **no `binaryName`** and
@@ -511,7 +511,7 @@ must always be able to report it):
 > detector (§5). The "omitted `binaryName`" rule from `00 §3.3` applies **only** to the single
 > reserved `generic-cli` descriptor.
 
-## 5.x `providers/index.ts` — register all built-ins (side-effect)
+## 6. `providers/index.ts` — register all built-ins (side-effect)
 
 `providers/index.ts` extends its side-effect registration to register **all** built-in adapters
 (claude-cli + the four presets + generic-cli) rather than claude-cli alone (tech-spec §2,
@@ -533,17 +533,22 @@ export type { AgentAvailability } from "./registry.js";                    // NE
 
 export { createClaudeCliProvider } from "./claude-cli.js";                 // EXISTING
 
+// CliAgent engine + its config types (defined in cli-agent.ts, 00 §3.2, 03 §3.1).
+// Re-exported here so the package barrel (01 §4) resolves them via ./providers/index.js.
+export { CliAgent } from "./cli-agent.js";                                 // NEW (03)
+export type { CliAgentConfig, PromptDelivery, BuildArgsContext } from "./cli-agent.js"; // NEW (00 §3.2)
+
 // Side-effect imports: register ALL built-in adapters
 import "./claude-cli.js";   // registers "claude-cli" via registerAgent (§3.3)
 import "./presets.js";      // registers codex/gemini/copilot/cursor (03)
-import "./generic-cli.js";  // registers reserved "generic-cli" descriptor (03, §4.4)
+import "./generic-cli.js";  // registers reserved "generic-cli" descriptor (§5.4; 03 §7)
 ```
 
 > The preset and `generic-cli` registration calls themselves are specified in
 > `03-cli-agent-engine-and-presets.md`; this document requires only that they register via
 > `registerAgent` so they appear in `descriptors`.
 
-## 6. Configuration
+## 7. Configuration
 
 This module is **stateless w.r.t. files** — it reads no config files itself. Its only environment
 input is `process.env.PATH` (read by the default detector, §5.1). No new config keys, no schema
@@ -556,7 +561,7 @@ write, does not invoke any binary, and stays within the OS PATH (no `ROOT_DIRECT
 sandbox concern, since it reads no project files; CLAUDE.md sandboxing applies to *writes* and
 *project reads*, neither of which occurs here).
 
-## 7. Error handling
+## 8. Error handling
 
 Per CLAUDE.md, core functions return `Result<T, E>` and never throw for expected errors. The
 detection surface deliberately models "not available" as **data, not an error**:
@@ -569,7 +574,7 @@ detection surface deliberately models "not available" as **data, not an error**:
 | `generic-cli` probed with no providerConfig | `{ available: true, detail: "configurable; binary resolved at run time" }` — enumeration never fails | REQ-DISC-02 |
 | Descriptor's `detect` throws/rejects | caught in `detectAgent`; reported as `{ available: false, detail: <message> }` | REQ-DET-02 |
 | Unknown / unregistered id passed to `detectAgent` | `{ available: false, detail: 'Unknown agent "<id>". Supported agents: <ids>.' }` — resolves, does NOT throw | REQ-DET-02, REQ-DISC-01 |
-| Unknown / mistyped id passed to `createProvider` | **THROWS** (existing behavior, `registry.ts:14`), listing available ids. The selection/runner layers wrap it into a `Result` error (`04-agent-selection.md`, `05-runner-wiring.md`; `00 §5`) | REQ-DISC-01 |
+| Unknown / mistyped id passed to `createProvider` | **THROWS** (existing behavior, `registry.ts:15`), listing available ids. The selection/runner layers wrap it into a `Result` error (`04-agent-selection.md`, `05-runner-wiring.md`; `00 §5`) | REQ-DISC-01 |
 
 Key distinctions:
 
@@ -579,7 +584,7 @@ Key distinctions:
   any iteration runs or any state is written** (REQ-DET-02, SC-3). This document provides the probe;
   `05` owns the fail-fast decision and message. There is **no silent fallback to claude** anywhere in
   this module.
-- **`createProvider` still throws** on an unknown id (unchanged, `registry.ts:14`). That throw is the
+- **`createProvider` still throws** on an unknown id (unchanged, `registry.ts:15`). That throw is the
   existing contract for *construction*; detection is a separate, non-throwing path. The two coexist:
   `detectAgent` answers "is it available?" without constructing; `createProvider` constructs and
   rejects unknown ids loudly. The per-iteration resolve in `05` wraps `createProvider` in try/catch
@@ -588,7 +593,7 @@ Key distinctions:
   credential check, generic-cli config probe) are written not to throw; the `try/catch` in `§5.2` is
   a backstop so a buggy third-party `detect` cannot crash discovery or pre-loop detection.
 
-## 8. Example usage
+## 9. Example usage
 
 ```ts
 import {
