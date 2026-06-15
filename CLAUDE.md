@@ -191,7 +191,7 @@ This project uses `.rauf/backlog.json` as the persistent task queue for the rauf
 
 ## Self-Hosting Note
 
-This repository IS a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into OTHER projects. Do not confuse them.
+This repository IS a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop run --detached` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into OTHER projects. Do not confuse them.
 
 ---
 
