@@ -40,8 +40,8 @@
         "claude-process.test.ts passes UNCHANGED (not edited)",
         "pnpm gate passes (all existing claude scenarios behaviorally preserved)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T22:59:26.054Z",
       "dependsOn": [],
       "notes": "SC-2 guardrail: if any assertion in claude-process.test.ts requires editing to pass, the refactor has regressed the claude path — revert and re-extract. The whole point of extraction (vs duplicating) is to keep the kill/timeout routine in lockstep across agents.",
       "estimatedIterations": 1,
