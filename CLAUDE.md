@@ -150,6 +150,36 @@ Alternatively, `pnpm rauf <args>` also works (routes through `node_modules/.bin/
 - JSON parsing: always wrap in try/catch, return structured errors
 - Tests: colocate with source as `*.test.ts`
 
+### Editor / TypeScript diagnostics — trust `pnpm gate`, not the editor
+
+The single source of truth for "does it type-check" is **`pnpm typecheck`** (and the full
+**`pnpm gate`**) — never the in-editor LSP. If the editor reports `@rauf/*` errors that
+`pnpm typecheck` does **not** ("Cannot find module `@rauf/core`", "has no exported member",
+stale enum members, a signature that "lacks a return"), those are **phantom** — your built
+`dist/*.d.ts` is stale or missing, not your code.
+
+Why this happens: the workspace is a TS **project-references** monorepo
+(`packages/loop` → `core`; `packages/cli`/`web` → `core` + `loop`, with `core`/`loop`
+`composite`). Cross-package types resolve through each dependency's **built** `dist/*.d.ts`
+(via package `exports`), so the editor's TS server shows errors whenever that `dist` lags the
+source. `pnpm typecheck` is reliable because the gate builds first (`pnpm build` is the
+deterministic first step — `dist`-co-located `tsbuildinfo` guarantees a real emit).
+
+Fix when you see phantom errors:
+
+```bash
+pnpm build            # refresh every package's dist/*.d.ts (deterministic)
+# then, in VS Code: "TypeScript: Restart TS Server" (or "Developer: Reload Window")
+```
+
+> A `paths`-to-source remap (`@rauf/* → packages/*/src`) was investigated to make the editor
+> resolve from source and side-step this entirely. It is **incompatible** with the current
+> `composite`/`references` setup (yields `TS6305` when `dist` is absent; dropping `composite`
+> to enable it yields `TS6059` — cross-package source outside each package's `rootDir` — on
+> both build and typecheck). Making it work would require splitting build vs. typecheck
+> tsconfigs across all four packages, which would jeopardize the deterministic build. Not
+> worth it: keep the references setup and `pnpm build` + restart the TS server.
+
 ## Claude Code Tasks vs Rauf Backlog
 
 This project uses `.rauf/backlog.json` as the persistent task queue for the rauf loop. Claude Code's native Tasks system (`~/.claude/tasks/`) is a separate, session-scoped mechanism. **Do not confuse them:**

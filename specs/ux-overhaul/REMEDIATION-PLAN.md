@@ -125,3 +125,26 @@ loop-able code items) when convenient.
 3. **REM-7..10** as a small rauf backlog (dogfood the loop on its own polish); **REM-11** in the FF
    repo.
 4. **Part B** when it's picked up as its own effort.
+
+## Status (updated 2026-06-15)
+
+- **REM-1/2/3 — DONE.** Shipped as the P1 "ship-reliability" merge (`pnpm gate` canonical, deterministic
+  build via `dist`-co-located `tsbuildinfo`, version-sync guard). Merged to `main`, CI green.
+- **REM-6 — DONE.** `main` is branch-protected: required status check `check` (strict), `enforce_admins`
+  on, force-push/deletion blocked. Changes to `main` now flow through a branch → PR that must pass CI
+  (self-merge once green).
+- **REM-5 — already resolved (verified, no change needed).** The docs site uses a single-source design —
+  `packages/docs/src/content/docs/*.md` are symlinks into the root `docs/`, with one `docsLoader()`
+  collection. A clean-checkout `pnpm --filter @rauf/docs build` (what CI runs) emits **zero** `Duplicate
+  id` warnings and builds all 10 pages + 404. The warnings in the review were from a stale/cached local
+  build state; the committed tree is clean.
+- **REM-4 — addressed via documentation (config fix not viable).** Root cause confirmed: the editor's TS
+  server resolves `@rauf/*` through each dependency's built `dist/*.d.ts` (project-references monorepo),
+  so it shows phantom errors when `dist` lags source while `pnpm typecheck` (run after a build) passes.
+  A `paths`-to-source remap was investigated and rejected — it is incompatible with the `composite`/
+  `references` setup (`TS6305` when `dist` absent; dropping `composite` yields `TS6059` cross-package
+  rootDir errors on build *and* typecheck), and making it work would require a build-vs-typecheck
+  tsconfig split across all four packages that jeopardizes the deterministic build (REM-2). Documented the
+  gotcha + the one-line remedy (`pnpm build` + restart TS server) in `CLAUDE.md` ("Editor / TypeScript
+  diagnostics"), per the plan's sanctioned fallback.
+- **REM-7..11 — pending** (P3 conformance-review notes; REM-11 in the feature-forge repo).
