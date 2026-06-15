@@ -7,8 +7,8 @@
     {
       "name": "rauf",
       "source": ".",
-      "description": "Authoring, review, and guidance skills for rauf autonomous coding loops (backlog authoring/validation/review + RAUF.md guidance review).",
-      "version": "0.2.0"
+      "description": "Authoring, review, guidance, and loop-operation skills for rauf autonomous coding loops (backlog authoring/validation/review, RAUF.md guidance review, and driving the rauf CLI loop lifecycle).",
+      "version": "0.3.0"
     }
   ]
 }
