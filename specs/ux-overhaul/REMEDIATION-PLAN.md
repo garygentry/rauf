@@ -147,4 +147,15 @@ loop-able code items) when convenient.
   tsconfig split across all four packages that jeopardizes the deterministic build (REM-2). Documented the
   gotcha + the one-line remedy (`pnpm build` + restart TS server) in `CLAUDE.md` ("Editor / TypeScript
   diagnostics"), per the plan's sanctioned fallback.
-- **REM-7..11 — pending** (P3 conformance-review notes; REM-11 in the feature-forge repo).
+- **REM-7/8/9/10 — DONE.** Hand-implemented (each gated by `pnpm gate`):
+  - **REM-7:** targeted removed-subcommand remediation for `loop watch` / `loop follow` → top-level
+    `follow` (and `status --json` for watch's tool/token detail). +2 tests.
+  - **REM-8:** web status-page backlog-root selector. New `scanBacklogRoots()` (core) + `GET
+    /api/projects/:id/backlog-roots` (web) + a selector that scopes the whole page (reads, both live
+    streams, and loop-control mutations) to the chosen root; default root → no params (backward-compatible).
+    +7 tests.
+  - **REM-9:** dashboard no longer defaults a missing/failed status fetch to IDLE — renders an "Unknown"
+    affordance for the settled-no-data case.
+  - **REM-10:** `--ndjson` live stream now emits the same `PersistedEvent` wire shape as `events.ndjson`
+    (per-run `seq` + `schemaVersion`) for file/wire parity.
+- **REM-11 — pending** (feature-forge repo: banner the historical removed-verb mentions in `plans/*.md`).
