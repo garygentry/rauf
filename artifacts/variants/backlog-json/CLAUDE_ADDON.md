@@ -24,6 +24,11 @@ When running as a rauf loop iteration, follow these operational rules:
 > habit. The runner scans backwards from the end and uses the **last** signal
 > line, so trailing text after it (a commit message, a summary) does **not** break
 > detection.
+>
+> `RAUF_REVIEW:<json>` is emitted only by a review pass, not a normal work
+> iteration. If you emit no recognized signal, the runner does **not** auto-block
+> the item — it classifies the outcome by exit context and reconciles committed
+> work.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
@@ -31,4 +36,9 @@ When running as a rauf loop iteration, follow these operational rules:
 - Do not modify `state.json` — the loop runner manages state
 - Read `progress.md` for accumulated project learnings
 - Append new learnings to `progress.md` if you discover important patterns
+
+### Model Selection
+
+The runner picks the model by precedence (highest wins):
+`item.model` > `--model` / options > project default > provider default.
 <!-- rauf:end -->

@@ -39,6 +39,11 @@ import {
   listArchiveMonths,
   readArchiveMonth,
   purgeArchive,
+  resetProject,
+  unblockItems,
+  validateBacklog,
+  selectNextItem,
+  LoopStartOptionsSchema,
   ErrorCodes,
   BacklogItemTypeSchema,
   BacklogItemStatusSchema,
@@ -53,8 +58,31 @@ import {
   type UpdateItemInput,
 } from "@rauf/core";
 
+import {
+  acquireRecoveryLock,
+  releaseRecoveryLock,
+  recoverInterruptedLoop,
+  type RecoverySummary,
+} from "@rauf/loop";
+
 import { errorResponse } from "../app.js";
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  resolveRequestMaxIterations,
+} from "../loop-defaults.js";
+import { getLoopManager } from "../loop-manager.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
+import { assertNoLiveLoop } from "./recovery-guard.js";
+
+// ─── Web DTOs ────────────────────────────────────────────────────
+
+/** Success payload for POST /:id/resume (00 §6). */
+interface ResumeResult {
+  reconciled: RecoverySummary;
+  relaunched: boolean;
+  reason?: string;
+}
 
 // ─── Request body schemas ────────────────────────────────────────
 
@@ -62,6 +90,32 @@ const SweepBodySchema = z.object({
   minAgeDays: z.number().int().nonnegative().optional(),
   backlogRoot: z.string().optional(),
 });
+
+const ResetBodySchema = z
+  .object({
+    clearBacklog: z.boolean().optional(),
+    keepProgress: z.boolean().optional(),
+    keepLog: z.boolean().optional(),
+    backlogRoot: z.string().optional(),
+  })
+  .strict();
+
+const UnblockBodySchema = z
+  .object({
+    itemId: z.string().optional(),
+    backlogRoot: z.string().optional(),
+  })
+  .strict();
+
+// ResumeBodySchema (00 §7): reconcile + relaunch body. `.strict()` rejects
+// unknown keys. OQ-T2: the answer field is `text`, written as humanAnswer.
+const ResumeBodySchema = z
+  .object({
+    backlogRoot: z.string().optional(),
+    retryBlocked: z.boolean().optional(),
+    answers: z.array(z.object({ itemId: z.string(), text: z.string() }).strict()).optional(),
+  })
+  .strict();
 
 const CreateItemBodySchema = z.object({
   type: BacklogItemTypeSchema,
@@ -182,6 +236,26 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       return { ok: false, code: pathsResult.error.code, message: pathsResult.error.message };
     }
     return { ok: true, paths: pathsResult.value };
+  }
+
+  /**
+   * Map a recovery `Result` error code to an HTTP status (00 §8.1).
+   * Local to the router so the recovery routes agree on the mapping.
+   */
+  function recoveryErrorStatus(code: string): 400 | 404 | 409 | 500 {
+    switch (code) {
+      case ErrorCodes.FILE_NOT_FOUND:
+        return 404;
+      case ErrorCodes.LOCK_CONFLICT:
+        return 409;
+      case ErrorCodes.IO_ERROR:
+        return 500;
+      case ErrorCodes.VALIDATION_ERROR:
+      case ErrorCodes.INVALID_JSON:
+        return 400;
+      default:
+        return 400;
+    }
   }
 
   // ── GET /api/projects ─────────────────────────────────────────
@@ -427,6 +501,67 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     return c.json({ data: null });
   });
 
+  // ── POST /:id/reset ───────────────────────────────────────────
+  //
+  // Reset loop state (web equivalent of CLI reset). Acquire-and-hold
+  // guarded (D3.4): a live loop → 409; lock released in a finally.
+
+  router.post("/:id/reset", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = ResetBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parsed.error.flatten()),
+        400,
+      );
+    }
+    const body = parsed.data;
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, body.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
+    // Guard: acquire-and-hold (D3.4). A live loop → 409; a stale lock is
+    // cleared; a missing backlog root → 404 (mapped via recoveryErrorStatus).
+    const acquired = acquireRecoveryLock(paths);
+    if (!acquired.ok) {
+      return c.json(
+        errorResponse(acquired.error.code, acquired.error.message, acquired.error.details),
+        recoveryErrorStatus(acquired.error.code),
+      );
+    }
+
+    try {
+      const result = resetProject(paths, {
+        clearBacklog: body.clearBacklog,
+        keepProgress: body.keepProgress,
+        keepLog: body.keepLog,
+      });
+      if (!result.ok) {
+        return c.json(
+          errorResponse(result.error.code, result.error.message, result.error.details),
+          recoveryErrorStatus(result.error.code),
+        );
+      }
+      return c.json({ data: result.value });
+    } finally {
+      // Always release — reset does not relaunch, so release unconditionally.
+      releaseRecoveryLock(paths);
+    }
+  });
+
   // ─────────────────────────────────────────────────────────────
   // Backlog CRUD routes
   // /api/projects/:id/backlog[/:itemId]
@@ -562,6 +697,234 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
 
     return c.json({ data: result.value });
+  });
+
+  // ── POST /:id/backlog/unblock ─────────────────────────────────
+  //
+  // Unblock all blocked items, or a specific item. Lightweight guard
+  // (assertNoLiveLoop). Registered before /:id/backlog/:itemId so
+  // "unblock" is never mismatched as an itemId.
+
+  router.post("/:id/backlog/unblock", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = UnblockBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parsed.error.flatten()),
+        400,
+      );
+    }
+    const body = parsed.data;
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, body.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
+    // Lightweight guard (D3.4): refuse if a loop is live on this root.
+    const live = assertNoLiveLoop(paths);
+    if (!live.ok) {
+      return c.json(errorResponse(live.error.code, live.error.message), 409);
+    }
+
+    const result = unblockItems(paths, body.itemId);
+    if (!result.ok) {
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        recoveryErrorStatus(result.error.code),
+      );
+    }
+    return c.json({ data: result.value }); // { unblockedCount, unblockedIds }
+  });
+
+  // ── GET /:id/backlog/validate ─────────────────────────────────
+  //
+  // Validate the backlog and return machine-readable findings. GET,
+  // read-only — no CSRF header and no lock guard (safe during a live
+  // run). Registered before /:id/backlog/:itemId so "validate" is
+  // never mismatched as an itemId.
+
+  router.get("/:id/backlog/validate", (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, c.req.query("backlogRoot"));
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+
+    const result = validateBacklog(resolved.paths, {});
+    if (!result.ok) {
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        recoveryErrorStatus(result.error.code),
+      );
+    }
+    return c.json({ data: result.value }); // ValidateBacklogResult { valid, findings }
+  });
+
+  // ── POST /:id/resume ──────────────────────────────────────────
+  //
+  // Reconcile + relaunch (web equivalent of CLI resume, minus --recover).
+  // Acquire-and-hold guarded (D3.4): the lock is held across answer
+  // injection, recoverInterruptedLoop, and the eligibility decision, then
+  // released in a finally BEFORE the relaunch so the loop's own lock
+  // acquisition succeeds. The --recover reverify+commit path is CLI-only.
+
+  router.post("/:id/resume", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = ResumeBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parsed.error.flatten()),
+        400,
+      );
+    }
+    const body = parsed.data;
+
+    const resolved = resolveBacklogPathsFromParam(projectPath, body.backlogRoot);
+    if (!resolved.ok) {
+      return c.json(errorResponse(resolved.code, resolved.message), 400);
+    }
+    const paths = resolved.paths;
+
+    // Resolve the absolute backlog root for the relaunch options (mirrors the
+    // start route). resolveBacklogPathsFromParam already validated it.
+    let resolvedBacklogRoot: string | undefined;
+    if (body.backlogRoot) {
+      const rootResult = resolveBacklogRoot(projectPath, body.backlogRoot);
+      if (rootResult.ok) resolvedBacklogRoot = rootResult.value;
+    }
+
+    // Guard: acquire-and-hold (D3.4). A live loop → 409; a stale lock is
+    // cleared; a missing backlog root → 404 (mapped via recoveryErrorStatus).
+    const acquired = acquireRecoveryLock(paths);
+    if (!acquired.ok) {
+      return c.json(
+        errorResponse(acquired.error.code, acquired.error.message, acquired.error.details),
+        recoveryErrorStatus(acquired.error.code),
+      );
+    }
+
+    let relaunch = false;
+    let relaunchOptions: ReturnType<typeof LoopStartOptionsSchema.parse> | null = null;
+    let reconciled: RecoverySummary | null = null;
+    let reason: string | undefined;
+
+    try {
+      // 3. Answer injection (OQ-T2: { itemId, text } → humanAnswer).
+      for (const { itemId, text } of body.answers ?? []) {
+        const upd = updateItem(paths, itemId, {
+          humanAnswer: text,
+          status: "pending",
+          needsHuman: false,
+          blockedReason: null,
+        });
+        if (!upd.ok) {
+          return c.json(
+            errorResponse(
+              upd.error.code,
+              `Could not inject answer into ${itemId}: ${upd.error.message}`,
+              upd.error.details,
+            ),
+            recoveryErrorStatus(upd.error.code),
+          );
+        }
+      }
+
+      // 3b. retry-blocked convenience: re-queue genuine blocks before reconciling.
+      if (body.retryBlocked) {
+        const ub = unblockItems(paths);
+        if (!ub.ok) {
+          return c.json(
+            errorResponse(ub.error.code, ub.error.message, ub.error.details),
+            recoveryErrorStatus(ub.error.code),
+          );
+        }
+      }
+
+      // 4. Reconcile (async). recoverInterruptedLoop does NOT touch the lock — we hold it.
+      const recovery = await recoverInterruptedLoop(paths);
+      if (!recovery.ok) {
+        return c.json(
+          errorResponse(recovery.error.code, recovery.error.message, recovery.error.details),
+          recoveryErrorStatus(recovery.error.code),
+        );
+      }
+      reconciled = recovery.value;
+
+      // 4b. Interrupted-but-uncommitted work is the CLI-only --recover path; surface it.
+      if (reconciled.interrupted.length > 0) {
+        reason = `${reconciled.interrupted.length} item(s) have uncommitted work — run \`rauf resume --recover\` from the CLI to re-verify and commit before resuming.`;
+        relaunch = false;
+      } else {
+        // 5. Relaunch decision.
+        const post = readBacklog(paths);
+        if (post.ok && selectNextItem(post.value) === null) {
+          reason = "no eligible items";
+          relaunch = false;
+        } else {
+          relaunch = true;
+          relaunchOptions = LoopStartOptionsSchema.parse({
+            maxIterations: resolveRequestMaxIterations(projectPath, null, resolvedBacklogRoot),
+            maxRetries: DEFAULT_MAX_RETRIES,
+            sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+            backlogRoot: resolvedBacklogRoot,
+          });
+        }
+      }
+    } finally {
+      // Release BEFORE relaunch so the loop's own lock acquisition succeeds.
+      releaseRecoveryLock(paths);
+    }
+
+    // 6. Relaunch after release.
+    let relaunched = false;
+    if (relaunch && relaunchOptions) {
+      const started = getLoopManager().startLoop(projectPath, relaunchOptions);
+      relaunched = started.ok;
+      if (!started.ok) reason = started.error; // e.g. "Loop already running…"
+    }
+
+    // `reconciled` is set on the only success path; every null-leaving path returns
+    // early inside the try. This explicit guard makes that invariant compiler-checked
+    // (no non-null assertion) and defends a future non-returning edit from sending null.
+    if (!reconciled) {
+      return c.json(
+        errorResponse(ErrorCodes.IO_ERROR, "resume produced no reconcile summary"),
+        500,
+      );
+    }
+    const result: ResumeResult = { reconciled, relaunched, reason };
+    return c.json({ data: result });
   });
 
   // ── GET /:id/archive ──────────────────────────────────────────

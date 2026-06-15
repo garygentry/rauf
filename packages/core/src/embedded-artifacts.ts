@@ -44,11 +44,32 @@ If any command is not configured (empty), skip it.
    - \`RAUF_DONE\` — all criteria met, verification passes
    - \`RAUF_BLOCKED:<reason>\` — cannot proceed, explain why
    - \`RAUF_NEEDS_HUMAN:<reason>\` — need human decision or input
+   - \`RAUF_REVIEW:<json>\` — review pass only (a normal work iteration does not
+     emit this); JSON matching the \`ReviewPayload\` schema.
 
    Putting the signal last is the safest habit, but it does not have to be
    strictly the final line: the runner scans backwards from the end and uses the
    **last** signal line, so trailing text after it (a commit message, a summary)
    does **not** break detection.
+
+   If you emit **no** recognized signal, the runner does **not** auto-block the
+   item — it classifies the outcome by exit context (clean / non-zero / timeout /
+   usage-limit), logs the tail of your output, and reconciles any already-committed
+   work. (Emitting a signal is still strongly preferred.)
+
+## Model Selection
+
+The runner resolves which model drives an iteration by this precedence
+(highest wins):
+
+\`item.model\` > \`--model\` / run options > project default > provider default
+
+- \`item.model\` — the selected backlog item's \`model\` field (per-task override).
+- \`--model\` / run options — the per-run override (\`rauf loop run --model …\`, or
+  the project's configured run options).
+- project default — the project's configured default model.
+- provider default — if none of the above is set, no model is forced and the
+  provider/CLI uses its own configured default.
 
 ## Agent Delegation
 
@@ -339,10 +360,19 @@ RAUF_DONE
     `# Progress & Learnings
 
 ## Codebase Patterns
-<!-- Patterns discovered during development will be logged here -->
+<!-- Durable, project-wide patterns worth remembering across iterations.
+     Append a bullet when you discover a convention, gotcha, or reusable approach. -->
 
 ## Session Log
-<!-- Each iteration appends its learnings here -->
+<!-- Append ONE entry per iteration, newest at the bottom. Use this format: -->
+
+<!--
+### <item-id> — <short title>
+- **Outcome:** done | blocked | needs-human
+- **What changed:** one or two lines on the files/areas touched.
+- **Learnings:** any gotcha, decision, or pattern a future iteration should know.
+- **Follow-ups:** anything intentionally left undone (or "none").
+-->
 `,
   ],
   [
@@ -373,6 +403,11 @@ When running as a rauf loop iteration, follow these operational rules:
 > habit. The runner scans backwards from the end and uses the **last** signal
 > line, so trailing text after it (a commit message, a summary) does **not** break
 > detection.
+>
+> \`RAUF_REVIEW:<json>\` is emitted only by a review pass, not a normal work
+> iteration. If you emit no recognized signal, the runner does **not** auto-block
+> the item — it classifies the outcome by exit context and reconciles committed
+> work.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
@@ -380,6 +415,11 @@ When running as a rauf loop iteration, follow these operational rules:
 - Do not modify \`state.json\` — the loop runner manages state
 - Read \`progress.md\` for accumulated project learnings
 - Append new learnings to \`progress.md\` if you discover important patterns
+
+### Model Selection
+
+The runner picks the model by precedence (highest wins):
+\`item.model\` > \`--model\` / options > project default > provider default.
 <!-- rauf:end -->
 `,
   ],
@@ -433,12 +473,25 @@ When running as a rauf loop iteration, follow these operational rules:
 9. If human input needed (API key, design decision): output \`RAUF_NEEDS_HUMAN:<reason>\`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
+> Emit the signal on a line by itself. The runner scans backwards from the end and
+> uses the **last** signal line, so trailing text (a commit message, a summary)
+> does **not** break detection.
+>
+> \`RAUF_REVIEW:<json>\` is emitted only by a review pass. If you emit no recognized
+> signal, the runner does **not** auto-block — it classifies by exit context and
+> reconciles committed work.
+
 ### Rules
 - ONE item per iteration — do not work on multiple items
 - Do not modify \`backlog.json\` — the loop runner manages status
 - Do not modify \`state.json\` — the loop runner manages state
 - Read \`progress.md\` for accumulated project learnings
 - Append new learnings to \`progress.md\` if you discover important patterns
+
+### Model Selection
+
+The runner picks the model by precedence (highest wins):
+\`item.model\` > \`--model\` / options > project default > provider default.
 <!-- rauf:end -->
 `,
   ],

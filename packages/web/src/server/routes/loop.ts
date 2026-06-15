@@ -14,12 +14,9 @@ import { z } from "zod";
 import {
   LoopStartOptionsSchema,
   readToolConfig,
-  readMarkerFile,
   resolveRootDirectory,
   resolveBacklogRoot,
   resolveBacklogPaths,
-  readBacklog,
-  resolveMaxIterations,
   validatePath,
   readEvents,
   watchEvents,
@@ -27,6 +24,11 @@ import {
 } from "@rauf/core";
 
 import { errorResponse } from "../app.js";
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_SESSION_TIMEOUT_MINUTES,
+  resolveRequestMaxIterations,
+} from "../loop-defaults.js";
 import { getLoopManager } from "../loop-manager.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
 
@@ -49,42 +51,15 @@ const StopLoopBodySchema = z
   })
   .optional();
 
-// ─── Default loop options ────────────────────────────────────────
-
-const DEFAULT_MAX_ITERATIONS = 20;
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
-
-/**
- * Resolve maxIterations by the same precedence as the CLI:
- * request body (flag) > `.rauf.json` options.maxIterations > computed-from-backlog.
- * Falls back to the flat default when nothing resolves. No logging (server-side).
- */
-function resolveRequestMaxIterations(
-  projectPath: string,
-  flag: number | null,
-  backlogRoot?: string,
-): number {
-  const markerResult = readMarkerFile(projectPath);
-  const markerMaxIterations = markerResult.ok ? markerResult.value.options.maxIterations : null;
-
-  let backlog = null;
-  const rootResult = resolveBacklogRoot(projectPath, backlogRoot);
-  if (rootResult.ok) {
-    const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
-    if (pathsResult.ok) {
-      const backlogResult = readBacklog(pathsResult.value);
-      if (backlogResult.ok) backlog = backlogResult.value;
-    }
-  }
-
-  return resolveMaxIterations({
-    flag,
-    markerMaxIterations,
-    backlog,
-    fallback: DEFAULT_MAX_ITERATIONS,
-  }).value;
-}
+// ReviewBodySchema (00 §7): standalone review-pass body. `.strict()` rejects
+// unknown keys. An empty {} body is valid.
+const ReviewBodySchema = z
+  .object({
+    model: z.string().optional(),
+    sessionTimeoutMinutes: z.number().int().positive().optional(),
+    backlogRoot: z.string().optional(),
+  })
+  .strict();
 
 // ─── SSE constants ───────────────────────────────────────────────
 
@@ -233,6 +208,66 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     }
 
     return c.json({ data: { stopped: true, projectPath } });
+  });
+
+  // ── POST /:id/loop/review ─────────────────────────────────────
+  //
+  // Run a standalone review pass (web equivalent of CLI `loop review`).
+  // Builds review LoopStartOptions (reviewOnly:true, maxIterations:1) and hands
+  // off to LoopManager.startReviewLoop; the review runs server-side and is
+  // observed via the events SSE. Guard is the start-path dedupe (409 when a loop
+  // is already running for the backlog root), not a recovery lock (04 §5).
+
+  router.post("/:id/loop/review", async (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const raw = await c.req.json().catch(() => ({}));
+    const parseResult = ReviewBodySchema.safeParse(raw);
+    if (!parseResult.success) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", "Invalid request body", parseResult.error.flatten()),
+        400,
+      );
+    }
+    const body = parseResult.data;
+
+    // Resolve backlog root (relative → absolute), same as the start route.
+    let backlogRoot: string | undefined;
+    if (body.backlogRoot) {
+      const rootResult = resolveBacklogRoot(projectPath, body.backlogRoot);
+      if (!rootResult.ok) {
+        return c.json(errorResponse(rootResult.error.code, rootResult.error.message), 400);
+      }
+      backlogRoot = rootResult.value;
+    }
+
+    const options = LoopStartOptionsSchema.parse({
+      maxIterations: 1,
+      maxRetries: 1,
+      review: true,
+      reviewOnly: true,
+      // sessionTimeoutMinutes is REQUIRED by the schema — reuse the start route's default.
+      sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,
+      model: body.model,
+      backlogRoot,
+    });
+
+    const manager = getLoopManager();
+    const result = manager.startReviewLoop(projectPath, options);
+    if (!result.ok) {
+      // Inherits the start path's loop-already-running 409.
+      return c.json(errorResponse("CONFLICT", result.error), 409);
+    }
+
+    return c.json({ data: { started: true } });
   });
 
   // ── GET /:id/loop/events ──────────────────────────────────────

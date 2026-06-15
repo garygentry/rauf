@@ -348,6 +348,84 @@ describe("POST /:id/loop/stop", () => {
   });
 });
 
+// ─── POST /:id/loop/review ───────────────────────────────────────
+
+describe("POST /:id/loop/review", () => {
+  it("starts a review pass and returns 200 {started:true}", async () => {
+    createProject("test-project", [pendingItem]);
+    setupMockClaude();
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/review", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { started: boolean } };
+    expect(body.data.started).toBe(true);
+  });
+
+  it("returns 409 CONFLICT when a loop is already running", async () => {
+    createProject("test-project", [pendingItem]);
+    setupLongRunningClaude();
+    const app = makeApp(tmpDir);
+
+    // Start a regular loop that holds the backlog root.
+    const res1 = await app.request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ maxIterations: 5 }),
+    });
+    expect(res1.status).toBe(200);
+
+    // A review pass on the same root is refused with the start-path 409.
+    const res2 = await app.request("/api/projects/test-project/loop/review", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(res2.status).toBe(409);
+    const body = (await json(res2)) as { error: { code: string } };
+    expect(body.error.code).toBe("CONFLICT");
+  });
+
+  it("requires CSRF header (403 without X-Rauf-Request)", async () => {
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/test-project/loop/review", {
+      method: "POST",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 400 for invalid project ID", async () => {
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/a%2Fb/loop/review", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for non-numeric sessionTimeoutMinutes", async () => {
+    createProject("test-project", [pendingItem]);
+    setupMockClaude();
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/review", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionTimeoutMinutes: "soon" }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as { error: { code: string } };
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+});
+
 // ─── GET /:id/loop/events ────────────────────────────────────────
 
 describe("GET /:id/loop/events", () => {

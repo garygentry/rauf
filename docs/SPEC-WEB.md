@@ -117,6 +117,47 @@ GET    /api/projects/:id/loop/events  → SSE stream of LoopEvent
        Streams until client disconnects
 ```
 
+### Recovery
+
+All mutation routes require `X-Rauf-Request: true` header (403 otherwise). An invalid `/:id` returns 400 INVALID_ID; a path-sandbox violation returns 400 PATH_VIOLATION.
+
+```
+POST   /api/projects/:id/reset
+       Body: { backlogRoot?: string, clearBacklog?: boolean, keepProgress?: boolean, keepLog?: boolean }
+       Guard: acquires recovery lock (409 LOCK_CONFLICT if a live loop holds the lock)
+       200: { data: { resetCount, resetIds, treeClean, stalledReset } }
+       404 if project not installed
+
+POST   /api/projects/:id/resume
+       Body: { backlogRoot?: string, retryBlocked?: boolean, answers?: { itemId: string, text: string }[] }
+       Guard: acquires recovery lock (409 LOCK_CONFLICT if a live loop holds the lock)
+       Injects each answer as humanAnswer on the item, optionally unblocks blocked items,
+       runs recoverInterruptedLoop, then relaunches the loop if there are eligible items.
+       200: { data: { reconciled: ReconcileSummary, relaunched: boolean, reason?: string } }
+       A failed relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).
+       404 if project not installed
+
+POST   /api/projects/:id/loop/review
+       Body: { model?: string, sessionTimeoutMinutes?: number, backlogRoot?: string }
+       Guard: loop-start dedupe (409 CONFLICT if a loop/review is already running for this backlog root)
+       Starts a review-only pass (maxIterations:1, reviewOnly:true).
+       200: { data: { started: true } }
+       Note: registered in loop.ts alongside loop/start and loop/stop
+
+POST   /api/projects/:id/backlog/unblock
+       Body: { itemId?: string }  — omit itemId to unblock all blocked items
+       Guard: assertNoLiveLoop (409 LOCK_CONFLICT if a live loop is running; fail-open on lock I/O error)
+       200: { data: { unblockedCount: number, unblockedIds: string[] } }
+       Note: registered BEFORE /:itemId routes
+
+GET    /api/projects/:id/backlog/validate
+       Query: ?backlogRoot=<path>  (optional; defaults to project's default backlog root)
+       Guard: none — read-only; no X-Rauf-Request required; safe to call during a live run
+       200: { data: { valid: boolean, findings: ValidationFinding[] } }
+       valid:false returns 200 (not an HTTP error); findings list structural issues (e.g. DUPLICATE_ID)
+       Note: registered BEFORE /:itemId routes
+```
+
 ### Error Response Format
 
 ```json

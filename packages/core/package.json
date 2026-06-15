@@ -1,10 +1,21 @@
 {
   "name": "@rauf/core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./state-labels": {
+      "import": "./dist/state-labels.js",
+      "types": "./dist/state-labels.d.ts"
+    }
+  },
+  "sideEffects": false,
   "scripts": {
     "build": "bun run ../../scripts/generate-json-schemas.ts && bun run ../../scripts/generate-embedded-artifacts.ts && prettier --write src/embedded-artifacts.ts && tsc",
     "test": "vitest run",

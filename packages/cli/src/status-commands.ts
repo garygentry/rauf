@@ -20,9 +20,11 @@ import {
   listActiveLoops,
   surfaceInspectedStatus,
   surfaceInspectedDir,
+  STATE_LABELS,
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
+  type StateTone,
   type PersistedEvent,
   type InspectedStatusContext,
 } from "@rauf/core";
@@ -515,9 +517,12 @@ export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): n
       return ExitCode.RUNNING; // 6
     case "PAUSED_HUMAN":
       return ExitCode.NEEDS_HUMAN; // 3
+    case "REVIEWING": // a review pass is a running query-time state (preserves prior behavior)
+      return ExitCode.RUNNING; // 6
     case "LIMIT_REACHED":
     case "SLEEPING_LIMIT":
     case "WEEKLY_LIMIT":
+    case "PAUSED_USAGE_LIMIT": // a usage-limit pause is a LIMIT state (corrects today's silent 0)
       return ExitCode.LIMIT; // 4
     case "ERROR":
       return ExitCode.ERROR; // 1
@@ -534,30 +539,23 @@ export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): n
   }
 }
 
-/** Color a loop state badge */
+/** Map a semantic tone to a terminal color wrapper (OQ-T1 terminal table, 02 §4.1). */
+const TONE_COLOR: Record<StateTone, (s: string) => string> = {
+  neutral: c.dim,
+  info: c.cyan,
+  success: c.green,
+  warning: c.yellow,
+  danger: c.red,
+};
+
+/**
+ * Color a loop-state badge for the terminal. Reads the shared label map for the tone, then maps
+ * tone → terminal color (02 §4.1). Total over LoopStateEnum via TONE_COLOR (Record<StateTone, …>);
+ * NO `default:` branch (REQ-VOCAB-07 — no silent fallback). Prints the SCREAMING_SNAKE machine value.
+ */
 function colorLoopState(state: LoopStateEnum): string {
-  switch (state) {
-    case "RUNNING":
-      return c.green(state);
-    case "PAUSED_HUMAN":
-      return c.magenta(state);
-    case "LIMIT_REACHED":
-      return c.yellow(state);
-    case "ERROR":
-      return c.red(state);
-    case "COMPLETE":
-      return c.cyan(state);
-    case "PAUSED":
-      return c.yellow(state);
-    case "NOT_INSTALLED":
-      return c.dim(state);
-    case "SLEEPING_LIMIT":
-      return c.blue(state);
-    case "WEEKLY_LIMIT":
-      return c.red(state);
-    default:
-      return c.dim(state);
-  }
+  const { tone } = STATE_LABELS[state];
+  return TONE_COLOR[tone](state);
 }
 
 /** Format state source indicator */

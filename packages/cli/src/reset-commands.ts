@@ -25,7 +25,7 @@ import {
   releaseRecoveryLock,
   recoverInterruptedLoop,
   type RecoverySummary,
-} from "./recovery.js";
+} from "@rauf/loop";
 
 // ─── handleReset ─────────────────────────────────────────────────
 

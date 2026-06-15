@@ -19,6 +19,22 @@ export { LoopRunner } from "./runner.js";
 export type { LoopResult } from "./runner.js";
 export type { LoopEvent, LoopStartOptions } from "@rauf/core";
 
+// Recovery core (shared by `rauf reset` / `rauf resume` and the web routes)
+export {
+  detectInterruptedItems,
+  reconcileAndRequeue,
+  acquireRecoveryLock,
+  releaseRecoveryLock,
+  recoverInterruptedLoop,
+} from "./recovery.js";
+export type {
+  KeptBlock,
+  InterruptedItem,
+  ReconcileSummary,
+  RecoverySummary,
+  AcquiredRecoveryLock,
+} from "./recovery.js";
+
 // Provider system
 export {
   registerProvider,

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { DiscoveredProject, DerivedStatus, ActiveLoopEntry } from "@rauf/core";
 import { raufFetchJson } from "../../lib/fetch";
+import { StateBadge } from "../../components/StateBadge";
 
 // ─── API shape ────────────────────────────────────────────────────
 
@@ -37,50 +38,6 @@ function parseRootDirError(error: unknown): string | null {
   if (!(error instanceof Error)) return null;
   const match = error.message.match(/^Root directory (?:does not exist|is not a directory): (.+)$/);
   return match ? match[1]! : null;
-}
-
-interface StateBadgeConfig {
-  label: string;
-  bgColor: string;
-  textColor: string;
-}
-
-const STATE_BADGE: Record<string, StateBadgeConfig> = {
-  IDLE: { label: "Idle", bgColor: "rgba(107, 114, 128, 0.12)", textColor: "#6b7280" },
-  RUNNING: { label: "Running", bgColor: "rgba(22, 163, 74, 0.15)", textColor: "#16a34a" },
-  PAUSED: { label: "Paused", bgColor: "rgba(202, 138, 4, 0.15)", textColor: "#ca8a04" },
-  COMPLETE: { label: "Complete", bgColor: "rgba(37, 99, 235, 0.15)", textColor: "#2563eb" },
-  PAUSED_HUMAN: {
-    label: "Needs Human",
-    bgColor: "rgba(234, 88, 12, 0.15)",
-    textColor: "#ea580c",
-  },
-  LIMIT_REACHED: {
-    label: "Limit Reached",
-    bgColor: "rgba(220, 38, 38, 0.15)",
-    textColor: "#dc2626",
-  },
-  ERROR: { label: "Error", bgColor: "rgba(220, 38, 38, 0.15)", textColor: "#dc2626" },
-  NOT_INSTALLED: {
-    label: "Not Installed",
-    bgColor: "rgba(107, 114, 128, 0.08)",
-    textColor: "#6b7280",
-  },
-};
-
-function StateBadge({ state }: { state: string }) {
-  const config = STATE_BADGE[state] ?? STATE_BADGE["IDLE"]!;
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-      style={{ backgroundColor: config.bgColor, color: config.textColor }}
-    >
-      {state === "RUNNING" && (
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
-      )}
-      {config.label}
-    </span>
-  );
 }
 
 function StackBadge({ stack, packageManager }: { stack: string; packageManager: string | null }) {

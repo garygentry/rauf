@@ -21,20 +21,21 @@ packages/core ──imports──►  (nothing — standalone)
 
 All filesystem operations and business logic. Zero UI or CLI concerns.
 
-| Module          | Responsibility                                                                      |
-| --------------- | ----------------------------------------------------------------------------------- |
-| `discovery.ts`  | Scan ROOT_DIRECTORY for .rauf.json files, return project list                       |
-| `config.ts`     | Read/write .rauf.json marker files, read/write ~/.rauf/config.json                  |
-| `profile.ts`    | Tech-stack detection heuristics, profile management                                 |
-| `template.ts`   | Render .tmpl files with {{variable}} interpolation, sentinel block handling         |
-| `installer.ts`  | Orchestrate artifact installation (existing projects)                               |
-| `greenfield.ts` | Orchestrate greenfield project initialization                                       |
-| `backlog.ts`    | CRUD operations on backlog.json, validation, atomic writes                          |
-| `status.ts`     | Derive loop state from state.json (primary) or rauf.log (fallback); lock liveness   |
-| `fs-utils.ts`   | Atomic write, JSON read with error handling, path validation, hash computation      |
-| `schemas.ts`    | Zod schemas + TypeScript types for all data structures                              |
-| `errors.ts`     | Result type, error codes, structured error types                                    |
-| `budget.ts`     | Derive right-sized iteration cap from backlog pending work (`computeMaxIterations`) |
+| Module            | Responsibility                                                                                                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `discovery.ts`    | Scan ROOT_DIRECTORY for .rauf.json files, return project list                                                                                                                  |
+| `config.ts`       | Read/write .rauf.json marker files, read/write ~/.rauf/config.json                                                                                                             |
+| `profile.ts`      | Tech-stack detection heuristics, profile management                                                                                                                            |
+| `template.ts`     | Render .tmpl files with {{variable}} interpolation, sentinel block handling                                                                                                    |
+| `installer.ts`    | Orchestrate artifact installation (existing projects)                                                                                                                          |
+| `greenfield.ts`   | Orchestrate greenfield project initialization                                                                                                                                  |
+| `backlog.ts`      | CRUD operations on backlog.json, validation, atomic writes                                                                                                                     |
+| `status.ts`       | Derive loop state from state.json (primary) or rauf.log (fallback); lock liveness                                                                                              |
+| `state-labels.ts` | Single source of truth for human-readable labels and UI tone per `LoopStateEnum` — consumed by CLI (`colorLoopState`) and web (`StateBadge`); no parallel label maps elsewhere |
+| `fs-utils.ts`     | Atomic write, JSON read with error handling, path validation, hash computation                                                                                                 |
+| `schemas.ts`      | Zod schemas + TypeScript types for all data structures                                                                                                                         |
+| `errors.ts`       | Result type, error codes, structured error types                                                                                                                               |
+| `budget.ts`       | Derive right-sized iteration cap from backlog pending work (`computeMaxIterations`)                                                                                            |
 
 ### packages/loop
 
@@ -66,7 +67,7 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 - `rauf loop run` is the **unattended-safe mode** — the loop runs in the CLI process, so `rauf server stop`/`restart` cannot kill it. `rauf loop run --detached` routes through the server daemon and is interruptible.
 - `maxIterations` bounds a **single process run** of `rauf loop run`, not the cumulative work across restarts. The iteration counter resets to zero each time the process starts. `rauf resume` applies a fresh budget for each continuation.
 - Outputs human-readable by default, `--json` for machine-readable
-- Exit codes: unified scheme — SUCCESS(0)/ERROR(1)/USAGE(2)/NEEDS_HUMAN(3)/LIMIT(4)/BLOCKED(5)/RUNNING(6)
+- Exit codes: unified scheme — SUCCESS(0)/ERROR(1)/USAGE(2)/NEEDS_HUMAN(3)/LIMIT(4)/BLOCKED(5)/RUNNING(6); REVIEWING maps to RUNNING(6), PAUSED_USAGE_LIMIT maps to LIMIT(4)
 
 ### packages/web
 
@@ -174,7 +175,7 @@ User → CLI `rauf loop run --detached ./project`
            → selectNextItem → buildPrompt → spawnClaude → parseSignal
            → Emits LoopEvents at each lifecycle point
          → LoopManager fans events to SSE listeners
-       → CLI `rauf loop follow` or web frontend
+       → CLI `rauf follow` or web frontend
          → GET /api/projects/:id/loop/events (SSE)
          → Receives LoopEvent stream, renders in terminal/UI
 ```
@@ -208,7 +209,7 @@ Loop completes → runReviewPass()
 LoopRunner ──emits──► LoopEvent
   │
   ├──► LoopManager ──fans out──► SSE clients
-  │                                ├── CLI `rauf loop follow`
+  │                                ├── CLI `rauf follow`
   │                                └── Web frontend EventSource
   │
   └──► Direct mode: CLI `rauf loop run` event handler

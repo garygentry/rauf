@@ -72,8 +72,15 @@ The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner
    - `RAUF_BLOCKED:reason` → mark item blocked, continue to next
    - `RAUF_NEEDS_HUMAN:reason` → pause loop, leave item in_progress
    - `RAUF_REVIEW:{"items":[...],"summary":"..."}` → review found issues, runner creates fix items
-   - No signal → reset item to pending, log warning, continue
+   - No signal → **not auto-blocked**; outcome classified by exit context (clean / non-zero / timeout / usage-limit), already-committed work reconciled (see the Signal placement note below)
    - Claude exits non-zero with usage limit message in stderr → see Usage Limit Handling below
+
+   > **Signal placement (canon §4.5):** the runner scans **backwards from the end**
+   > of Claude's stdout and uses the **last** signal line, so trailing summaries or
+   > commit text after the signal do not break detection (`signal-parser.ts:27-69`).
+   > A signal must be the whole trimmed line. **No signal is not auto-blocked** — the
+   > outcome is classified by exit context (clean / non-zero / timeout / usage-limit)
+   > and already-committed work is reconciled (`runner.ts:677-705`).
 
 6. **Crash cleanup:** `try/finally` resets any `in_progress` item back to `pending` so it's not left stranded.
 
@@ -83,14 +90,18 @@ The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner
 
 ### Model Resolution
 
-The loop runner resolves which Claude model to use at each iteration using a 3-tier priority cascade:
+The loop runner resolves which model to use at each iteration. Resolution priority (highest to lowest), per CANON §4.6:
 
 ```
-Resolution priority (highest to lowest):
-  1. BacklogItem.model  — per-task override (read from the selected backlog item's .model field)
-  2. options.model      — per-run override (from CLI --model flag or project MarkerOptions.model)
-  3. Claude default     — no --model flag passed; Claude CLI uses its configured default
+item.model  >  --model / run options  >  project default  >  provider default
+
+  1. item.model        — the selected backlog item's `model` field (per-task override)
+  2. --model / options — per-run override (CLI `--model`, or run options)
+  3. project default   — the project's configured default model (MarkerOptions.model)
+  4. provider default  — none set → no `--model` passed; provider/CLI uses its default
 ```
+
+Implementation: `item.model ?? options.model ?? projectModel` (`runner.ts:493-494`); the `--model` flag is only passed when set (`claude-process.ts:78-79`), so an unset cascade falls through to the provider default.
 
 Model IDs follow Anthropic conventions: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`.
 
@@ -235,6 +246,16 @@ When running as a rauf loop iteration, follow these operational rules:
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
 
+> Output the signal on a line by itself, as your final line — that's the safest
+> habit. The runner scans backwards from the end and uses the **last** signal
+> line, so trailing text after it (a commit message, a summary) does **not** break
+> detection.
+>
+> `RAUF_REVIEW:<json>` is emitted only by a review pass, not a normal work
+> iteration. If you emit no recognized signal, the runner does **not** auto-block
+> the item — it classifies the outcome by exit context and reconciles committed
+> work.
+
 ### Rules
 
 - ONE item per iteration — do not work on multiple items
@@ -242,6 +263,12 @@ When running as a rauf loop iteration, follow these operational rules:
 - Do not modify `.rauf/state.json` — the loop runner manages state
 - Read `.rauf/progress.md` for accumulated project learnings
 - Append new learnings to `.rauf/progress.md` if you discover important patterns
+
+### Model Selection
+
+The runner picks the model by precedence (highest wins):
+`item.model` > `--model` / options > project default > provider default.
+
 <!-- rauf:end -->
 ```
 
@@ -286,7 +313,47 @@ For greenfield projects where no CLAUDE.md exists:
 
 ## Autonomous Loop (Rauf)
 
-...same content as CLAUDE_ADDON.md...
+When running as a rauf loop iteration, follow these operational rules:
+
+### Reading Your Task
+
+1. Read `RAUF.md` for detailed per-iteration instructions
+2. Read the backlog — find the current `in_progress` item
+3. The item's `acceptanceCriteria` define "done" for this iteration
+
+### Working
+
+4. Implement the changes described in the item's description
+5. Follow acceptance criteria precisely — each one must pass
+6. Run the verification command before considering work complete
+
+### Completing
+
+7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
+8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
+9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
+10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.
+
+> Emit the signal on a line by itself. The runner scans backwards from the end and
+> uses the **last** signal line, so trailing text (a commit message, a summary)
+> does **not** break detection.
+>
+> `RAUF_REVIEW:<json>` is emitted only by a review pass. If you emit no recognized
+> signal, the runner does **not** auto-block — it classifies by exit context and
+> reconciles committed work.
+
+### Rules
+
+- ONE item per iteration — do not work on multiple items
+- Do not modify `backlog.json` — the loop runner manages status
+- Do not modify `state.json` — the loop runner manages state
+- Read `progress.md` for accumulated project learnings
+- Append new learnings to `progress.md` if you discover important patterns
+
+### Model Selection
+
+The runner picks the model by precedence (highest wins):
+`item.model` > `--model` / options > project default > provider default.
 
 <!-- rauf:end -->
 ```
@@ -322,16 +389,42 @@ If any command is not configured (empty), skip it.
 ## Workflow
 
 1. You are one iteration of an autonomous coding loop
-2. Read `.rauf/backlog.json` — your current task is the `in_progress` item
+2. Read the backlog — find the current `in_progress` item
 3. Read the item's `acceptanceCriteria` — each must pass
-4. Read `.rauf/progress.md` for context from previous iterations
+4. Read `progress.md` for context from previous iterations
 5. Implement the task
 6. Run verification: `{{verifyCommand}}`
 7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as `[rauf] <id>: <title>` after you signal `RAUF_DONE`).
-8. Output your exit signal:
-   - `RAUF_DONE` — all criteria met
-   - `RAUF_BLOCKED:<reason>` — cannot proceed
-   - `RAUF_NEEDS_HUMAN:<reason>` — need human input
+8. Output your exit signal on a line by itself, as your final line:
+   - `RAUF_DONE` — all criteria met, verification passes
+   - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
+   - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
+   - `RAUF_REVIEW:<json>` — review pass only (a normal work iteration does not
+     emit this); JSON matching the `ReviewPayload` schema.
+
+   Putting the signal last is the safest habit, but it does not have to be
+   strictly the final line: the runner scans backwards from the end and uses the
+   **last** signal line, so trailing text after it (a commit message, a summary)
+   does **not** break detection.
+
+   If you emit **no** recognized signal, the runner does **not** auto-block the
+   item — it classifies the outcome by exit context (clean / non-zero / timeout /
+   usage-limit), logs the tail of your output, and reconciles any already-committed
+   work. (Emitting a signal is still strongly preferred.)
+
+## Model Selection
+
+The runner resolves which model drives an iteration by this precedence
+(highest wins):
+
+`item.model` > `--model` / run options > project default > provider default
+
+- `item.model` — the selected backlog item's `model` field (per-task override).
+- `--model` / run options — the per-run override (`rauf loop run --model …`, or
+  the project's configured run options).
+- project default — the project's configured default model.
+- provider default — if none of the above is set, no model is forced and the
+  provider/CLI uses its own configured default.
 
 ## Project-Specific Instructions
 <!-- Add custom instructions below this line — they survive rauf update -->
@@ -354,9 +447,18 @@ If any command is not configured (empty), skip it.
 
 ## Codebase Patterns
 
-<!-- Patterns discovered during development will be logged here -->
+<!-- Durable, project-wide patterns worth remembering across iterations.
+     Append a bullet when you discover a convention, gotcha, or reusable approach. -->
 
 ## Session Log
 
-<!-- Each iteration appends its learnings here -->
+<!-- Append ONE entry per iteration, newest at the bottom. Use this format: -->
+
+<!--
+### <item-id> — <short title>
+- **Outcome:** done | blocked | needs-human
+- **What changed:** one or two lines on the files/areas touched.
+- **Learnings:** any gotcha, decision, or pattern a future iteration should know.
+- **Follow-ups:** anything intentionally left undone (or "none").
+-->
 ```

@@ -3,73 +3,40 @@ import { useParams } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { BacklogItem, DerivedStatus, PersistedEvent } from "@rauf/core";
+import type {
+  BacklogItem,
+  DerivedStatus,
+  PersistedEvent,
+  ResetProjectResult,
+  ValidateBacklogResult,
+} from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
-
-// ─── Loop state badge config ──────────────────────────────────────
-
-interface StateBadgeConfig {
-  label: string;
-  bgColor: string;
-  textColor: string;
-  borderColor: string;
-}
-
-const STATE_BADGE: Record<string, StateBadgeConfig> = {
-  IDLE: {
-    label: "IDLE",
-    bgColor: "rgba(107, 114, 128, 0.10)",
-    textColor: "#6b7280",
-    borderColor: "rgba(107, 114, 128, 0.25)",
-  },
-  RUNNING: {
-    label: "RUNNING",
-    bgColor: "rgba(22, 163, 74, 0.12)",
-    textColor: "#16a34a",
-    borderColor: "rgba(22, 163, 74, 0.35)",
-  },
-  PAUSED: {
-    label: "PAUSED",
-    bgColor: "rgba(202, 138, 4, 0.12)",
-    textColor: "#ca8a04",
-    borderColor: "rgba(202, 138, 4, 0.35)",
-  },
-  COMPLETE: {
-    label: "COMPLETE",
-    bgColor: "rgba(37, 99, 235, 0.12)",
-    textColor: "#2563eb",
-    borderColor: "rgba(37, 99, 235, 0.35)",
-  },
-  PAUSED_HUMAN: {
-    label: "NEEDS HUMAN",
-    bgColor: "rgba(234, 88, 12, 0.12)",
-    textColor: "#ea580c",
-    borderColor: "rgba(234, 88, 12, 0.35)",
-  },
-  LIMIT_REACHED: {
-    label: "LIMIT REACHED",
-    bgColor: "rgba(220, 38, 38, 0.12)",
-    textColor: "#dc2626",
-    borderColor: "rgba(220, 38, 38, 0.35)",
-  },
-  ERROR: {
-    label: "ERROR",
-    bgColor: "rgba(220, 38, 38, 0.12)",
-    textColor: "#dc2626",
-    borderColor: "rgba(220, 38, 38, 0.35)",
-  },
-  NOT_INSTALLED: {
-    label: "NOT INSTALLED",
-    bgColor: "rgba(107, 114, 128, 0.08)",
-    textColor: "#9ca3af",
-    borderColor: "rgba(107, 114, 128, 0.2)",
-  },
-};
+import { StateBadge } from "../../components/StateBadge";
 
 // ─── Loop control state sets ──────────────────────────────────────
 
 const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ERROR"]);
 const STOPPABLE_STATES = new Set(["RUNNING", "SLEEPING_LIMIT"]);
+
+// States from which a Resume action is meaningful (spec 04 §8.7).
+const RESUMABLE_STATES = new Set(["PAUSED", "PAUSED_HUMAN", "PAUSED_USAGE_LIMIT", "ERROR", "IDLE"]);
+// States in which a standalone Review pass would 409 (a loop is active).
+const REVIEW_BLOCKING_STATES = new Set(["RUNNING", "REVIEWING", "STARTING"]);
+
+// Web shape of the resume route's ResumeResult DTO (spec 04 §4 / 00 §6).
+interface ResumeResultData {
+  relaunched: boolean;
+  reason?: string;
+}
+
+/** Friendly copy for known codes; raw message otherwise (spec 04 §8.1). */
+async function recoveryErrorMessage(res: Response): Promise<string> {
+  if (res.status === 409) return "a loop is running — stop it first";
+  const body = (await res.json().catch(() => ({}))) as {
+    error?: { code?: string; message?: string };
+  };
+  return body.error?.message ?? `HTTP ${res.status}`;
+}
 
 // ─── Elapsed time formatter ───────────────────────────────────────
 
@@ -85,25 +52,6 @@ function formatElapsed(seconds: number): string {
 
 // ─── Components ───────────────────────────────────────────────────
 
-function LoopStateBadge({ loopState }: { loopState: string }) {
-  const cfg = STATE_BADGE[loopState] ?? STATE_BADGE["IDLE"]!;
-  return (
-    <span
-      className="inline-flex items-center gap-2 rounded-lg border px-4 py-1.5 font-mono text-base font-bold tracking-wide"
-      style={{
-        backgroundColor: cfg.bgColor,
-        color: cfg.textColor,
-        borderColor: cfg.borderColor,
-      }}
-    >
-      {loopState === "RUNNING" && (
-        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-current" aria-hidden="true" />
-      )}
-      {cfg.label}
-    </span>
-  );
-}
-
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <h2
@@ -112,6 +60,31 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
     >
       {children}
     </h2>
+  );
+}
+
+function RecoveryButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        borderColor: "var(--color-border)",
+        color: "var(--color-text)",
+        backgroundColor: "var(--color-surface)",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -815,6 +788,99 @@ export function StatusView() {
     },
   });
 
+  // ── Recovery control state ─────────────────────────────────────
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<ValidateBacklogResult | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/reset`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await recoveryErrorMessage(res));
+      return ((await res.json()) as { data: ResetProjectResult }).data;
+    },
+    onSuccess: (data) => {
+      setLoopError(null);
+      setRecoveryMessage(
+        `Reset complete — ${data.stalledResetCount} stalled reset` +
+          (data.stateCleared ? ", state cleared" : ""),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: (err: Error) => setLoopError(err.message),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/resume`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await recoveryErrorMessage(res));
+      return ((await res.json()) as { data: ResumeResultData }).data;
+    },
+    onSuccess: (data) => {
+      setLoopError(null);
+      setRecoveryMessage(
+        data.relaunched
+          ? "Resumed — loop relaunched"
+          : `Reconciled — ${data.reason ?? "nothing to relaunch"}`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: (err: Error) => setLoopError(err.message),
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async () => {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/loop/review`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await recoveryErrorMessage(res));
+    },
+    onSuccess: () => {
+      setLoopError(null);
+      setRecoveryMessage("Review pass started — watch the Event Timeline.");
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: (err: Error) => setLoopError(err.message),
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: async () => {
+      const res = await raufFetch(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog/unblock`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      if (!res.ok) throw new Error(await recoveryErrorMessage(res));
+      return ((await res.json()) as { data: { unblockedCount: number; unblockedIds: string[] } })
+        .data;
+    },
+    onSuccess: (data) => {
+      setLoopError(null);
+      setRecoveryMessage(`Unblocked ${data.unblockedCount} item(s)`);
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
+    },
+    onError: (err: Error) => setLoopError(err.message),
+  });
+
+  const validateQuery = useQuery({
+    queryKey: ["projects", projectId, "validate"],
+    queryFn: () =>
+      raufFetchJson<ValidateBacklogResult>(
+        `/api/projects/${encodeURIComponent(projectId)}/backlog/validate`,
+      ),
+    enabled: false, // fired by the "Validate" button via refetch()
+  });
+
+  useEffect(() => {
+    if (validateQuery.data) setValidationResult(validateQuery.data);
+  }, [validateQuery.data]);
+
   // Derive display data from backlog
   const currentItem = useMemo(() => {
     if (!allItems || !status?.currentItem) return null;
@@ -925,7 +991,7 @@ export function StatusView() {
           <Card>
             <div className="flex flex-wrap items-center gap-4">
               {/* Prominent state badge */}
-              <LoopStateBadge loopState={status.loopState} />
+              <StateBadge state={status.loopState} size="block" />
 
               {/* Meta info column */}
               <div
@@ -1046,6 +1112,146 @@ export function StatusView() {
                 </button>
               </div>
             )}
+
+            {/* Recovery message banner (mirrors loopError, info tone) */}
+            {recoveryMessage && (
+              <div
+                className="mt-3 flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: "rgba(37, 99, 235, 0.06)",
+                  borderColor: "rgba(37, 99, 235, 0.3)",
+                  color: "#2563eb",
+                }}
+              >
+                <span>{recoveryMessage}</span>
+                <button
+                  onClick={() => setRecoveryMessage(null)}
+                  className="ml-3 flex-shrink-0 text-xs font-medium underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* ── Recovery control group (spec 04 §8) ───────────── */}
+            <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
+              <p
+                className="mb-2 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Recovery
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {confirmReset ? (
+                  <span className="flex items-center gap-2 text-xs" style={{ color: "#dc2626" }}>
+                    This clears loop state. Continue?
+                    <button
+                      onClick={() => {
+                        setConfirmReset(false);
+                        resetMutation.mutate();
+                      }}
+                      disabled={resetMutation.isPending}
+                      className="rounded-md border px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{
+                        backgroundColor: "rgba(220, 38, 38, 0.12)",
+                        borderColor: "rgba(220, 38, 38, 0.35)",
+                        color: "#dc2626",
+                      }}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setConfirmReset(false)}
+                      className="rounded-md border px-2.5 py-1 text-xs font-medium"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text-muted)",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <RecoveryButton
+                    label={resetMutation.isPending ? "Resetting…" : "Reset"}
+                    onClick={() => setConfirmReset(true)}
+                    disabled={resetMutation.isPending}
+                  />
+                )}
+
+                <RecoveryButton
+                  label={resumeMutation.isPending ? "Resuming…" : "Resume"}
+                  onClick={() => resumeMutation.mutate()}
+                  disabled={
+                    resumeMutation.isPending ||
+                    !RESUMABLE_STATES.has(status.loopState) ||
+                    status.backlogSummary.total - status.backlogSummary.done <= 0
+                  }
+                />
+
+                <RecoveryButton
+                  label={reviewMutation.isPending ? "Starting…" : "Review"}
+                  onClick={() => reviewMutation.mutate()}
+                  disabled={
+                    reviewMutation.isPending || REVIEW_BLOCKING_STATES.has(status.loopState)
+                  }
+                />
+
+                <RecoveryButton
+                  label={unblockMutation.isPending ? "Unblocking…" : "Unblock"}
+                  onClick={() => unblockMutation.mutate()}
+                  disabled={unblockMutation.isPending || status.backlogSummary.blocked <= 0}
+                />
+
+                <RecoveryButton
+                  label={validateQuery.isFetching ? "Validating…" : "Validate"}
+                  onClick={() => void validateQuery.refetch()}
+                  disabled={validateQuery.isFetching}
+                />
+              </div>
+
+              {/* Validation result */}
+              {validationResult && (
+                <div className="mt-3">
+                  {validationResult.valid ? (
+                    <p
+                      className="rounded-md border px-3 py-2 text-sm"
+                      style={{
+                        backgroundColor: "rgba(22, 163, 74, 0.06)",
+                        borderColor: "rgba(22, 163, 74, 0.3)",
+                        color: "#16a34a",
+                      }}
+                    >
+                      Backlog is valid
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {validationResult.findings.map((f, i) => (
+                        <li
+                          key={i}
+                          className="rounded-md border px-3 py-1.5 text-xs"
+                          style={{
+                            backgroundColor:
+                              f.severity === "error"
+                                ? "rgba(239, 68, 68, 0.06)"
+                                : "rgba(202, 138, 4, 0.06)",
+                            borderColor:
+                              f.severity === "error"
+                                ? "rgba(239, 68, 68, 0.3)"
+                                : "rgba(202, 138, 4, 0.3)",
+                            color: f.severity === "error" ? "#ef4444" : "#ca8a04",
+                          }}
+                        >
+                          <span className="font-mono font-semibold">{f.code}</span>
+                          {f.itemId && <span className="ml-1.5">#{f.itemId}</span>}
+                          <span className="ml-1.5">— {f.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
           </Card>
 
           {/* Backlog summary */}

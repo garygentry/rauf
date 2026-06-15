@@ -1,7 +1,7 @@
 ---
 title: "UX/DX Overhaul — Canon & North Star"
 description: Single source of truth for the rauf interface overhaul — target-state command grammar, monitoring model, status vocabulary, exit codes, machine surfaces, and agent contract, plus the phased cutover/dogfood strategy. Every per-phase forge spec references this doc.
-status: DRAFT — pending ratification (target-state decisions are PROPOSALS until Gary signs off)
+status: Ratified — implemented across Phases 1–4 (rauf v0.6.0). All §7 decisions ratified; the §4.6 CLAUDE_ADDON→AGENT_ADDON rename remains deferred to Part-B (§8).
 ---
 
 # SPEC: UX/DX Overhaul — Canon & North Star
@@ -17,7 +17,7 @@ re-deciding. If a per-phase forge spec disagrees with this doc, this doc wins
 > Section 5 is the *plan* (phases + sequencing). Section 6 is the *safety net*
 > (how to change rauf with rauf without bricking it). Section 7 lists the
 > **open decisions** that need explicit ratification before forge specs are
-> written. Items marked **[PROPOSED]** are recommendations, not yet ratified.
+> written. Items marked **[RATIFIED]** are recommendations, not yet ratified.
 
 ---
 
@@ -111,7 +111,7 @@ Notation: ✂ = removed (clean break), ✦ = new, ⟳ = changed. "Current" refle
 | Current | Target | Notes |
 | --- | --- | --- |
 | `loop run [path]` (in-process) | `loop run [path]` | Foreground, blocks, streams to terminal. The default. Unattended-safe (survives a server bounce). |
-| `loop start [path]` (server) | ⟳ `loop run [path] --detached` (`-d`) **[PROPOSED]** | Detached run routes through the server daemon (auto-starts it), returns immediately. One verb, the flag names the intent. `loop start` is ✂ removed. |
+| `loop start [path]` (server) | ⟳ `loop run [path] --detached` (`-d`) **[RATIFIED]** | Detached run routes through the server daemon (auto-starts it), returns immediately. One verb, the flag names the intent. `loop start` is ✂ removed. |
 | `loop stop [path]` | `loop stop [path]` | Stops a detached/server-owned loop. (A foreground `loop run` is stopped with Ctrl-C, as today.) |
 | `loop review [path]` | `loop review [path]` | Unchanged. |
 | — | `loop run … --detached --follow` | After detaching, attach the live view (= `rauf follow`). |
@@ -126,7 +126,7 @@ Notation: ✂ = removed (clean break), ✦ = new, ⟳ = changed. "Current" refle
 | --- | --- | --- |
 | `status [path] [--watch] [--interval N]` | ⟳ `status [path] [--follow] [--json]` | `--watch`→`--follow`; `--follow` honors `--json` (NDJSON snapshots). `--interval` retained under `--follow`. |
 | `log [path] [--tail N] [--follow]` | `log [path] [--tail N] [--follow] [--json]` | `--follow` now reads the **persisted event log** + `rauf.log`, identical in any mode. |
-| `loop follow [path]` | ⟳ `follow [path]` **[PROPOSED]** | Promoted to a top-level monitoring verb beside `status`/`log`/`progress`. The canonical rich live view (status line + log + structured events). Source-agnostic (P1). `loop follow` is ✂ removed. |
+| `loop follow [path]` | ⟳ `follow [path]` **[RATIFIED]** | Promoted to a top-level monitoring verb beside `status`/`log`/`progress`. The canonical rich live view (status line + log + structured events). Source-agnostic (P1). `loop follow` is ✂ removed. |
 | `loop watch [path]` | ✂ removed | Its tool/token detail is part of `follow` and of `status --json` (from `iteration-status.json` + events). |
 | `progress [path]` | `progress [path]` | Unchanged. |
 | — | ✦ `status --all` (or ⟳ `projects status`) | Lists every backlog root with a live lock across the tree (P4 discoverability). |
@@ -194,7 +194,7 @@ to IDLE; (2) `REVIEWING` and `PAUSED_USAGE_LIMIT` are added to the derived enum
 and given badges; (3) `PAUSED_HUMAN` displays as **"Needs Human"** everywhere;
 (4) one shared label map module is the single source for CLI + both web pages.
 
-### 4.4 Exit codes (unified) **[PROPOSED]**
+### 4.4 Exit codes (unified) **[RATIFIED]**
 
 Today `status` (1=running, 2=paused_human, 3=limit_reached) and `loop run`
 (6=paused_human) disagree, and `status`'s `1=running` collides with the generic
@@ -222,7 +222,7 @@ usage) — that triad is already coherent and contract-stable; leave it.
   version (P5). The `--ndjson` live stream and the persisted file SHOULD carry
   the same event shapes.
 - **Fix `signal_parsed.signal` collapsing `review`→`done`** — add an explicit
-  `review` value rather than overloading `done`. **[PROPOSED]** (clean break).
+  `review` value rather than overloading `done`. **[RATIFIED]** (clean break).
 - **Reconcile signal-placement docs with the parser.** Contract §A.2 says "final
   line"; the parser scans backward from the end, skips blanks, matches exact
   tokens, and tolerates text *after* the signal. Canon wording: *"Emit the signal
@@ -287,7 +287,7 @@ Safeguards:
 2. **Additive-before-breaking.** Phase 1 changes nothing a caller relies on, so
    it lands and is dogfooded normally. Only Phases 2–3 need the coordinated flip.
 3. **Single breaking flip.** All command renames, removed flags, and exit-code /
-   contract changes land in **one release** — **[PROPOSED] v0.5.0** — so there is
+   contract changes land in **one release** — **[RATIFIED] v0.5.0** — so there is
    exactly one moment of breakage. In the same change:
    - bump feature-forge `minRunnerVersion` to `>= 0.5.0`;
    - update any feature-forge templates/scripts that invoke `loop start`,
@@ -301,21 +301,21 @@ Safeguards:
 
 ---
 
-## 7. Open decisions to ratify
+## 7. Open decisions — **all RATIFIED** (resolved as recommended; landed)
 
-These are the high-stakes calls baked into the canon as **[PROPOSED]**. Confirm
-or redirect before forge specs are written.
+These were the high-stakes calls; all five were ratified as recommended and have shipped.
 
-1. **Execution grammar.** `loop run --detached` (one verb + flag) **[recommended]**
-   vs keeping two verbs renamed for clarity (e.g. `loop run` + `loop serve`).
-2. **Monitoring placement.** Promote to top-level `follow` beside
-   `status`/`log`/`progress` **[recommended]** vs keep `loop follow` under `loop`.
-3. **Unified exit-code table** (§4.4 values) — confirm, since feature-forge
-   depends on them.
-4. **Cutover version** — v0.5.0 for the single breaking flip **[recommended]**.
-5. **Agent addon rename timing** — pull the commit-rule fix forward into Phase 1
-   (additive) **[recommended]**, but couple the `CLAUDE_ADDON.md → AGENT_ADDON.md`
-   rename + provider-neutral language to the Part-B provider refactor.
+1. **Execution grammar — [RATIFIED].** `loop run --detached` (one verb + flag). Landed Phase 2
+   (`packages/cli/src/loop-commands.ts`, `loop start` removed).
+2. **Monitoring placement — [RATIFIED].** Top-level `follow` beside `status`/`log`/`progress`.
+   Landed Phase 1/2 (`packages/cli/src/follow-command.ts`).
+3. **Unified exit-code table — [RATIFIED]** (§4.4 values). Landed Phase 3
+   (`packages/cli/src/commands.ts` `ExitCode`; `status`+`loop run` share it).
+4. **Cutover version — [RATIFIED].** v0.5.0 for the single breaking flip (Phases 2+3); Phase 4
+   shipped additively as v0.6.0.
+5. **Agent addon rename timing — [RATIFIED].** The commit-rule fix landed Phase 1; the
+   `CLAUDE_ADDON.md → AGENT_ADDON.md` rename + provider-neutral language remain **deferred to the
+   Part-B provider refactor** (§8) — intentionally not done this overhaul.
 
 ---
 

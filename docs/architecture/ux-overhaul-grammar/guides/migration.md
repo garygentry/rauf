@@ -6,16 +6,16 @@ contract are coherent.
 
 ## TL;DR
 
-| You used to… | Now… |
-|--------------|------|
-| `rauf loop start .` | `rauf loop run . --detached` (`-d`) |
-| `rauf loop start . --follow` | `rauf loop run . --detached --follow` |
-| `rauf status . --watch` | `rauf status . --follow` (`-f`) |
-| `rauf loop watch …` (machine telemetry) | `rauf status . --json` (or read `iteration-status.json`) |
-| `rauf loop follow …` | `rauf follow .` (top-level; since Phase 1) |
-| branch on `loop run` exit `6` (paused_human) | branch on exit `3` (NEEDS_HUMAN) |
-| branch on `status` exit `1` (running) | branch on exit `6` (RUNNING) |
-| `signal_parsed.signal === "done"` for a review | `signal_parsed.signal === "review"` |
+| You used to…                                   | Now…                                                     |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| `rauf loop start .`                            | `rauf loop run . --detached` (`-d`)                      |
+| `rauf loop start . --follow`                   | `rauf loop run . --detached --follow`                    |
+| `rauf status . --watch`                        | `rauf status . --follow` (`-f`)                          |
+| `rauf loop watch …` (machine telemetry)        | `rauf status . --json` (or read `iteration-status.json`) |
+| `rauf loop follow …`                           | `rauf follow .` (top-level; since Phase 1)               |
+| branch on `loop run` exit `6` (paused_human)   | branch on exit `3` (NEEDS_HUMAN)                         |
+| branch on `status` exit `1` (running)          | branch on exit `6` (RUNNING)                             |
+| `signal_parsed.signal === "done"` for a review | `signal_parsed.signal === "review"`                      |
 
 Invoking a removed verb/flag prints a one-line "use X instead" message and exits `USAGE(2)` — it won't
 silently do the wrong thing.
@@ -36,26 +36,28 @@ Observe it with `rauf follow .` or the web; stop it with `rauf loop stop .`. Ctr
 detaches the view only (the loop keeps running).
 
 **Flag canon.** One name per concept, everywhere:
+
 - `--follow` / `-f` — the monitoring follow (on `status`, `log`, `follow`). `--watch` is removed.
 - `--json` — machine output / final summary.
-- `--ndjson` — the `loop run` event stream (NDJSON, one event per line). *This is separate from `--json`.*
+- `--ndjson` — the `loop run` event stream (NDJSON, one event per line). _This is separate from `--json`._
 - `--backlog <dir>`, `--interval <seconds>` — unchanged names.
 
 ## Exit codes (machine consumers — read this)
 
 `status` and `loop run` now share one scheme:
 
-| Code | Meaning |
-|------|---------|
-| 0 | success (idle / complete) |
-| 1 | error |
-| 2 | usage (bad args / IO / failed precondition; also a removed-command remediation) |
-| 3 | needs human (paused_human) |
-| 4 | limit / usage-paused / sleeping |
-| 5 | blocked (terminal with blocked items) |
-| 6 | running (query-time only — `status`) |
+| Code | Meaning                                                                         |
+| ---- | ------------------------------------------------------------------------------- |
+| 0    | success (idle / complete)                                                       |
+| 1    | error                                                                           |
+| 2    | usage (bad args / IO / failed precondition; also a removed-command remediation) |
+| 3    | needs human (paused_human)                                                      |
+| 4    | limit / usage-paused / sleeping                                                 |
+| 5    | blocked (terminal with blocked items)                                           |
+| 6    | running (query-time only — `status`)                                            |
 
 **The two gotchas that bite existing integrations:**
+
 1. **paused-human moved from `6` to `3`.** A supervisor that detected a `loop run` pause via exit `6` must
    switch to `3`. (`6` now means RUNNING, which `loop run` never returns.)
 2. **`status` running moved from `1` to `6`.** Code branching on `status` exit `1` as "running" must switch
@@ -67,7 +69,7 @@ detaches the view only (the loop keeps running).
 
 `signal_parsed.signal` now includes `"review"`. A `RAUF_REVIEW` outcome is reported as `signal:"review"`
 instead of being collapsed to `"done"`. If you were inferring reviews some other way (or treating that
-`"done"` as completion), switch to the explicit value. (Loop-internal review *handling* is unchanged.)
+`"done"` as completion), switch to the explicit value. (Loop-internal review _handling_ is unchanged.)
 
 ## `events.ndjson` consumers
 
@@ -79,6 +81,7 @@ If your reader is strict (rejects unknown), relax it now so future additive chan
 
 feature-forge drives rauf and reads its exit codes / version, so it must be in lockstep. **feature-forge
 0.10.0** does this:
+
 - `loopRunner.minRunnerVersion` `0.2.0` → **`0.5.0`** (so `forge-5-loop` requires a 0.5.0 runner).
 - `followCommand`: `{bin} loop follow …` → `{bin} follow …`.
 - `watchCommand`: `{bin} loop watch … --json` → `{bin} status … --json`.

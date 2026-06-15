@@ -1,0 +1,119 @@
+{
+  "feature": "ux-overhaul-web",
+  "pipelineStatus": "complete",
+  "createdAt": "2026-06-14T20:11:00Z",
+  "updatedAt": "2026-06-15T01:45:00Z",
+  "currentStage": "complete",
+  "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-15T01:45:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/ux-overhaul-web/README.md",
+        "docs/architecture/ux-overhaul-web/architecture.md",
+        "docs/architecture/ux-overhaul-web/api-reference.md",
+        "docs/architecture/ux-overhaul-web/guides/recovery.md"
+      ],
+      "result": "Standard 4-doc set (matches docs/architecture/ux-overhaul + ux-overhaul-grammar), grounded in the landed v0.6.0 source: README (what shipped + quick start + export map), architecture (D1 recovery relocation cli→loop, D2 review via LoopManager, D3 two-strength lock guard, D4 label+tone map, D5 enum+exit codes, D6 agent docs; rule-#1 dependency story; data flow), api-reference (5 endpoints with bodies/envelopes/guards/codes verified from source, full STATE_LABELS table, mapLoopStateStatus, statusExitCode table, relocated @rauf/loop exports, ResumeResult), guides/recovery (operator usage per action + error table + CLI↔web parity table + status vocabulary). Prettier clean. pipelineStatus=complete."
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-impl-2026-06-14.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-15T01:00:00Z",
+      "fixedAt": "2026-06-15T01:20:00Z",
+      "result": "4 parallel forge-verifiers (~37 checks). FULL GATE GREEN (typecheck/lint/format/test: core 918, loop 300, web 232, cli 456, release 60; version 0.6.0). 0 errors/gaps/inconsistencies; 4 improvements only. Requirement-coverage (6/6) + integration-correctness (11/11) dimensions fully clean: all 28 REQs map to real code; rule #1 holds (no @rauf/cli in web); acquire-and-hold lock model + finally-release verified; OQ-T2 {itemId,text}→humanAnswer; deriveFromStateJson staleness on raw status; embedded-artifacts regenerated; AGENT_ADDON not renamed; minRunnerVersion unchanged; no feature-forge edits. Findings (all improvements, non-blocking): V-001/V-002 strengthen state-labels.test.ts (per-state tone pinning + label≠machine-form assertion); V-003 extract LoopManager.launch helper (startReviewLoop duplicates startLoop ~40 lines); V-004 remove reconciled! non-null assertion in resume route. No user decisions."
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-14T23:40:00Z",
+      "completedAt": "2026-06-15T00:30:00Z",
+      "basedOnVersions": { "forge-4-backlog": 1 },
+      "artifacts": ["specs/ux-overhaul-web/.rauf/state.json"],
+      "result": "rauf-stable 0.5.0 ran the 10-item backlog → 10/10 done in 10 iterations (under the 15 budget), 0 blocked/needsHuman/deferred; loopState COMPLETE. --review pass created no new items (nothing to fix). Commits [rauf] 001..010 (100cacb..7902e18) on branch forge/ux-overhaul-web. The v0.6.0 rauf-side change is BUILT on the branch (item 010 bumped version.ts→0.6.0, gated on 001-009). Dev rauf now executes the rewritten web-recovery + status-vocabulary surface; dogfood used frozen rauf-stable so the run was unaffected. Each item passed the full gate (pnpm typecheck && lint && format:check && test)."
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-backlog-2026-06-14.md",
+      "findingsCount": 1,
+      "verifiedAt": "2026-06-14T23:20:00Z",
+      "fixedAt": "2026-06-14T23:30:00Z",
+      "result": "4 parallel forge-verifiers (~25 checks). 3 of 4 dimensions clean: item-scoping/AC 5/5, dependency/ordering 8/8 (DAG acyclic, foundation-first coherent with item-001 atomic claim, no over/under-constraint), schema/enum 7/7 (runner re-validated valid:true/0/exit0; types/status/ids/dependsOn/models all conformant). 1 finding from spec-coverage: V-001 (gap) — AC gate omits `pnpm lint` (all 10) + `format:check` (6 items); canonical gate per PRD §8/tech-spec §8/06 §7.1 is `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`. No user decision. Verified clean: all 28 REQs mapped, all 5 routes + label-map + relocation + plumbing + agent-docs + version/docs covered, both TRACEABILITY implementer notes baked into item 001, all specReferences resolve. NOTE: dim-4 subagent reported rauf-stable version 0.6.0 but the authoritative forge-4 run + version.ts show 0.5.0 — treat as subagent error; rauf-stable is frozen at 0.5.0."
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "completedAt": "2026-06-14T23:00:00Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "artifacts": ["specs/ux-overhaul-web/backlog.json"],
+      "result": "10 items, validated clean by rauf-stable 0.5.0 (valid:true, 0 findings, exit 0). Foundation-first ordering, each item a green typecheck increment. 001 status-vocabulary core+cli (atomic: enum +REVIEWING/+PAUSED_USAGE_LIMIT + state-labels.ts + mapLoopStateStatus remap/export + colorLoopState tone refactor + statusExitCode 6/4); 002 web shared StateBadge; 003 relocate recovery cli→@rauf/loop (pure refactor); 004 web plumbing (startReviewLoop + assertNoLiveLoop + loop-defaults); 005 review route; 006 reset+unblock+validate routes (projects.ts); 007 resume route (reconcile+relaunch, OQ-T2 answers); 008 frontend Recovery group; 009 agent-contract docs + embedded regen; 010 version 0.6.0 + SPEC docs. Dep graph: 001→002; 003,004 independent foundations; 005→004; 006→003,004; 007→003,004,006; 008→002,005,006,007; 009 independent; 010→001-009. Tests folded per item (06); no React harness (REQ-TEST-03).",
+      "notes": "Models: opus for 001/003/004/005/006/007/008; sonnet for 002/009/010. estimatedIterations: 2 for 001/003/004/007/008, 1 for 002/005/009/010. Loop iteration budget ceil(10*1.5)=15. Dogfood with rauf-stable (forge.config loopRunner.bin). 003 must keep `grep 'from \"@rauf/cli\"' packages/web/src` empty (rule #1). 009 embedded-artifacts regen mandatory. Validate cmd: rauf-stable backlog validate . --backlog specs/ux-overhaul-web --specs-dir ./specs --json."
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-specs-2026-06-14.md",
+      "findingsCount": 8,
+      "verifiedAt": "2026-06-14T22:30:00Z",
+      "fixedAt": "2026-06-14T22:45:00Z",
+      "result": "5 parallel forge-verifiers (types/architecture/cross-ref/testing/integration), ~41 checks. INTEGRATION dimension 0 findings — all signatures/file:line re-confirmed against source. validate-traceability.py: valid, 28/28, 0 uncovered/orphaned. 8 findings, ALL documentation-layer (no code/design errors): 2 errors (V-001 04's coverage-table §8.x pointers off-by-one vs real subsections+TRACEABILITY; V-002 TRACEABILITY mislabels acquire-and-hold as D3.1 not D3.4), 1 gap (V-004 01 change-map omits new StateBadge.tsx + conditional loop-defaults.ts), 2 inconsistencies (V-003 tech-spec dangling (D5)/(D7) labels; V-005 mapLoopStateStatus export — 06 requires export, 02 keeps private — USER-DECISION, resolved→export), 3 improvements (V-006 00 .strict() precedent wording; V-007 tech-spec stage-drift {itemId,answer}→{itemId,text}; V-008 06 §5.1 line count + promote relocated recover cases to required). All fixes are spec-text edits."
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-14T22:00:00Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
+      "artifacts": [
+        "specs/ux-overhaul-web/00-core-definitions.md",
+        "specs/ux-overhaul-web/01-architecture-layout.md",
+        "specs/ux-overhaul-web/02-status-vocabulary.md",
+        "specs/ux-overhaul-web/03-recovery-relocation.md",
+        "specs/ux-overhaul-web/04-web-recovery-routes.md",
+        "specs/ux-overhaul-web/05-agent-contract-docs.md",
+        "specs/ux-overhaul-web/06-testing-strategy.md",
+        "specs/ux-overhaul-web/TRACEABILITY.md"
+      ],
+      "result": "7-doc suite (00-06) + TRACEABILITY. Foundation 00/01 authored in-session; 02-06 via 5 parallel forge-spec-writers. deterministic validate-traceability.py: valid, 0 uncovered / 0 orphaned (28 REQs). Prettier clean. 00 core-definitions (extended LoopStateEnum +REVIEWING/+PAUSED_USAGE_LIMIT, StateTone/StateLabel/STATE_LABELS, relocated recovery types, ResumeResult, route Zod schemas — OQ-T2 resolved to {itemId,text}, error→HTTP table); 01 architecture (cli→loop recovery move table, dep graph, route placement, 0.6.0 bump); 02 status-vocabulary (full STATE_LABELS label+tone table all 12, mapLoopStateStatus remap, colorLoopState tone→terminal palette, web shared badge tone→CSS palette resolving OQ-T1, statusExitCode 6/4); 03 recovery-relocation (exact move partition to @rauf/loop, acquire-and-hold lock model, reverifyAndCommitInterrupted stays CLI-only); 04 web-recovery-routes (5 endpoints full handlers, guards, startReviewLoop, frontend controls); 05 agent-contract-docs (signal spec/model cascade/progress.md stub — DOC-only, rename deferred, embedded-artifacts regen); 06 testing-strategy (route tests + core unit tests, relocated recovery tests, no React harness).",
+      "notes": "Two implementer notes surfaced by writers (in TRACEABILITY 'Implementer notes' — carry to impl/verify): (1) deriveFromStateJson staleness branch must key on RAW status not derived, so REVIEWING isn't swept into stale-downgrade (02 §3.2); (2) mapLoopStateStatus is module-private today — 06 §4.2 wants it EXPORTED for the totality test (or test via deriveStatus) — 02/impl must reconcile. Writers verified all integration signatures against source. 05 found backward-scan rule ALREADY present in RAUF.md.tmpl:38-41 + CLAUDE_ADDON.md:23-26 — genuine deltas are RAUF_REVIEW token, no-signal-exit-context rule, model cascade, greenfield backward-scan, progress.md stub. embedded-artifacts.ts embeds all four edited templates → regen mandatory."
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-tech-2026-06-14.md",
+      "findingsCount": 7,
+      "verifiedAt": "2026-06-14T21:20:00Z",
+      "fixedAt": "2026-06-14T21:35:00Z",
+      "result": "Single forge-verifier, 17/17 checks (11 pass, 6 fail). All signatures checked against source. 7 findings, no user decisions: 3 errors (V-001 checkLock takes BacklogPaths not lockPath; V-002 recoverInterruptedLoop is async→Promise<Result<RecoverySummary>> not Result<ReconcileSummary>; V-003 §3.3 overstates TS exhaustiveness — colorLoopState has default:, web STATE_BADGE is Record<string> + ?? IDLE, neither compile-enforced, D3.5 refactor must make them total), 1 gap (V-004 review LoopStartOptions omits required sessionTimeoutMinutes), 1 inconsistency (V-005 real TOCTOU — CLI acquire-and-holds the recovery lock across reconcile→relaunch; §3.4's check-only guard leaves a window; resume/reset must acquire-and-hold, unblock can check-then-act), 2 improvements (V-006 D3.1 move list incomplete — must also move acquireRecoveryLock/releaseRecoveryLock/reconcileAndRequeue/detectInterruptedItems+types, keep reverifyAndCommitInterrupted CLI-only; V-007 §7 omits 403 FORBIDDEN path + PATH_VIOLATION code may differ). Verified clean: D3.1 dependency direction sound (loop exports git/tree primitives, web imports loop); CANON §4.3/§4.4/§4.6 alignment exact. OQ-T2 confirmed real: CLI --answer parses to {itemId, text}, §5 body uses {itemId, answer} — impl must reconcile. Verifier saved ground-truth facts to .claude/agent-memory/feature-forge-forge-verifier/ux_overhaul_phase4_web_tech_facts.md."
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-14T21:00:00Z",
+      "basedOnVersions": { "forge-1-prd": 1 },
+      "artifacts": ["specs/ux-overhaul-web/tech-spec.md"],
+      "result": "10-section tech spec. Forge-researcher established exact integration signatures. Three crux decisions ratified (all recommended): D3.1 move recoverInterruptedLoop from packages/cli to @rauf/loop (CLI re-imports, no behavior change; web resume = reconcile+relaunch; --recover reverify+commit stays CLI-only); D3.5 shared label-map state-labels.ts exports {label,tone} (semantic tone, no CSS — CLI/web each map tone→palette); D3.4 concurrency guard via core checkLock (cross-process) → 409 on reset/resume/unblock when live, validate is GET/read-only/ungated. Also: D3.2 LoopManager.startReviewLoop()→runner.startReviewOnly() for POST /loop/review; D3.3 add REVIEWING+PAUSED_USAGE_LIMIT to LoopStateEnum + remap mapLoopStateStatus + statusExitCode 6/4 (TS exhaustiveness guards all sites); D3.6 agent doc items (signal spec/model cascade/progress.md stub) into templates, rename deferred to Part-B. 5 routes: POST reset/resume/loop·review/backlog·unblock + GET backlog·validate. Version→minor 0.6.0, additive, no minRunnerVersion/feature-forge change.",
+      "notes": "OQ-1 resolved by D3.1, OQ-2 resolved by D3.5. Two impl-spec OQs parked: OQ-T1 concrete tone→palette color tables (terminal + CSS); OQ-T2 resume `answers` field names must match CLI --answer parsing. Embedded-artifacts landmine: if agent templates included in embedded-artifacts.ts change, regen via `pnpm --filter @rauf/core build` (Phase 1 learning). recoverInterruptedLoop types to move: ReconcileSummary/KeptBlock/InterruptedItem. Web has NO React test harness — backend route + core unit tests only (REQ-TEST-03)."
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-prd-2026-06-14.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-14T20:30:00Z",
+      "fixedAt": "2026-06-14T20:40:00Z",
+      "result": "Single forge-verifier, 15/15 checks (11 pass, 3 fail, 1 n/a). 0 errors. Gap coverage vs all 4 ratified decisions + CANON §4.3/§4.4/§4.6 complete. 6 findings: 1 gap (V-006 concurrency/idempotency of recovery mutations — add REQ-WEB-09 P1), 1 inconsistency (V-004 REQ-VOCAB-07 P1 but badges are P0 via §8/REQ-VOCAB-03/04 → promote to P0), 3 impl-leaks (V-001 REQ-ARCH-01 names packages/core which OQ-1 parks for tech spec; V-002 REQ-WEB-01 enumerates reset flags; V-003 REQ-EXIT-01 names statusExitCode mechanism — restate behaviorally), 1 verifiability nit (V-005 'branch merges'/'completes overhaul' are process not feature criteria). Both user-decision findings resolved to verifier recommendations (V-004→promote P0, V-006→add REQ-WEB-09)."
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-14T20:11:00Z",
+      "basedOnVersions": {},
+      "artifacts": ["specs/ux-overhaul-web/PRD.md"],
+      "result": "Phase 4 (final) of the UX/DX overhaul. Standalone feature (no epic). Three workstreams from CANON §5 row 4: (1) web recovery parity — all five actions reset/resume/review/unblock/validate as backend routes + frontend controls wrapping existing core/loop logic (REQ-WEB-01..08); (2) shared status label-map in core, single source for CLI + both web pages, total raw-status coverage, add REVIEWING + PAUSED_USAGE_LIMIT badges, PAUSED_HUMAN→'Needs Human' (REQ-VOCAB-01..07); (3) statusExitCode maps REVIEWING→6, PAUSED_USAGE_LIMIT→4 (REQ-EXIT-01); plus cheap agent-contract DOC items — signal spec, model cascade, progress.md stub (REQ-AGENT-01..03). Mostly additive: NO minRunnerVersion bump, NO feature-forge edit, NO breaking flip (C-1).",
+      "notes": "Four §3 decisions ratified with Gary (all recommended): (1) AGENT_ADDON.md rename + provider-neutral 'Task tool' wording DEFERRED to Part-B (CANON §4.6/§8 — couples there; only cheap doc items land here); (2) ALL FIVE recovery actions in scope; (3) exit-code mapping REVIEWING→RUNNING(6) [behavior-preserving] + PAUSED_USAGE_LIMIT→LIMIT(4) [fixes §2.5 silent-exit-0 footgun]; (4) testing = backend route tests + core label-map unit tests, NO new React frontend test harness. CODE-MAP findings (from Explore, file:line in PRD context): resetProject (core reset.ts:48), unblockItems (core backlog.ts:431), validateBacklog (core backlog-validate.ts:47), deriveStatus (core status.ts:359) are CORE — but RESUME is CLI-layer only (cli/resume-commands.ts) and REVIEW PASS lives in packages/loop (review-hooks.ts), NOT core — so 'thin core adapter' is inaccurate for those two; web already depends on packages/loop via loop-manager. OQ-1 (tech spec): decide where shared resume/review logic lands without violating rule #1. Status badge mapping is TRIPLICATED today (cli/status-commands.ts colorLoopState; web status.tsx STATE_BADGE; web index.tsx STATE_BADGE — slightly different colors); NO shared module exists. LoopStateEnum (core schemas.ts:228) has 10 members, REVIEWING + PAUSED_USAGE_LIMIT ABSENT; raw enum (schemas.ts:167) has 12; mapLoopStateStatus (status.ts:106) maps reviewing→RUNNING, paused_usage_limit→PAUSED today. statusExitCode at cli/status-commands.ts:512. CSRF middleware app-level at web app.ts:54-69 (X-Rauf-Request on all POST/PUT/DELETE) — new routes inherit it. NO web frontend tests exist (only backend route tests). Existing web has loop start/stop + events SSE + /api/loops + backlog CRUD/restore/sweep, but NO reset/resume/review/unblock/validate endpoints. Dogfood rauf-stable 0.5.0. Canon: specs/ux-overhaul/CANON.md; handoff: specs/ux-overhaul/PHASE-4-KICKOFF.md."
+    }
+  }
+}
