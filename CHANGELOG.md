@@ -17,6 +17,9 @@ vocabulary, and a ratified agent contract. Additive minor bump (no
 - **Shared status label-map** across CLI and web — `REVIEWING` and
   `PAUSED_USAGE_LIMIT` badges and a "Needs Human" label render identically in
   both surfaces.
+- **`rauf update --check`** — report-only drift audit that prints whether a
+  project's artifacts are stale (tool-version lag or dead hash keys) and exits
+  non-zero if so, writing nothing. Makes fleet-wide staleness scriptable.
 
 ### Changed
 
@@ -25,6 +28,17 @@ vocabulary, and a ratified agent contract. Additive minor bump (no
   semantics.
 - Agent-contract documentation finalized and the UX-overhaul canon ratified
   (canon-conformance review: GO, 0 blockers).
+- **`rauf update` now prunes stale artifact-hash keys** from the marker (e.g. the
+  legacy `ralph.sh`/`ralph-status.sh`/`ralph-add.sh` hashes carried over from a
+  pre-rename install) instead of preserving them indefinitely.
+- `rauf migrate` documentation sharpened as a legacy one-shot (it renames
+  structure but does not backfill artifacts — follow with `rauf update`; non-rauf
+  config references to `.ralph` are reported but not auto-rewritten).
+
+### Removed
+
+- **`rauf update --yes`** retired from `--help` — `update` is non-destructive and
+  never prompts (the flag is still tolerated for back-compat).
 
 ## 0.5.0
 
