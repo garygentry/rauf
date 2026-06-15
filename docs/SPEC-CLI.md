@@ -38,6 +38,7 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | Command                                                       | Description                                    |
 | ------------------------------------------------------------- | ---------------------------------------------- |
 | [backlog list](#rauf-backlog-list-path)                       | List backlog items (filterable by status/type) |
+| [backlog validate](#rauf-backlog-validate-path)               | Validate a backlog against schema + checks     |
 | [backlog add](#rauf-backlog-add-path)                         | Add a new backlog item                         |
 | [backlog show](#rauf-backlog-show-path-id)                    | Show details for a single backlog item         |
 | [backlog edit](#rauf-backlog-edit-path-id)                    | Edit fields on an existing backlog item        |
@@ -45,6 +46,7 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | [backlog restore](#rauf-backlog-restore-path)                 | Restore backlog from the `.bak` backup file    |
 | [backlog sweep](#rauf-backlog-sweep-path)                     | Archive completed (`done`) items               |
 | [backlog reset](#rauf-backlog-reset-path)                     | Reset project state for a fresh backlog cycle  |
+| [backlog unblock](#rauf-backlog-unblock-path-id)              | Requeue blocked items for retry                |
 | [backlog archive list](#rauf-backlog-archive-list-path)       | List archive months with item counts           |
 | [backlog archive view](#rauf-backlog-archive-view-path-month) | View archived items for a given month          |
 | [backlog archive purge](#rauf-backlog-archive-purge-path)     | Delete archive files                           |
@@ -250,6 +252,15 @@ List backlog items for the project at `[path]`.
 - `--type <t>`: filter by type (`bug`, `refactor`, `feature`, `chore`)
 - `--json`: output the raw JSON array
 
+### rauf backlog validate [path]
+
+Validate a backlog against the schema and a set of semantic checks (duplicate IDs, dangling `dependsOn` references, enum correctness, acceptance-criteria sanity).
+
+- `--backlog <dir>`: validate a non-default backlog root
+- `--specs-dir <dir>`: cross-check items against a specs directory (feature-pipeline setups)
+- `--json`: output `{ valid, findings: [{ severity, code, message, ... }] }`
+- **Own exit-code triad** (distinct from the unified scheme): `0` valid · `1` findings present · `2` usage error. A backlog with findings still emits the findings as the payload.
+
 ### rauf backlog add [path]
 
 Add a new item to the backlog.
@@ -316,6 +327,15 @@ Orchestrate a full project reset for a fresh backlog cycle.
 
 - `--keep-progress`: (with `--clear`) preserve `progress.md` instead of archiving it
 - `--keep-log`: (with `--clear`) preserve `rauf.log` instead of archiving it
+
+### rauf backlog unblock [path] [id]
+
+Requeue blocked items so the loop retries them — the primitive behind `resume --retry-blocked` and `loop run --retry-blocked`.
+
+- `[id]`: unblock a single item; **omit it to unblock all** blocked items
+- Resets each target back to `pending` (clears `blockedReason`)
+- An empty/no-blocked backlog is a success (zero items unblocked), not an error
+- Pair with `rauf resume` / `rauf loop run` to actually re-run the requeued items
 
 ### rauf backlog archive list [path]
 
