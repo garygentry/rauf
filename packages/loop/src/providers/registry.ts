@@ -88,7 +88,7 @@ export function getAgentDescriptors(): AgentDescriptor[] {
  * Default availability probe: resolve `binaryName` on PATH without executing it (REQ-DET-01).
  * which-style stat probe using `fs.access(..., X_OK)`. Never throws, never spawns.
  */
-async function probeBinaryOnPath(binaryName: string): Promise<DetectionResult> {
+export async function probeBinaryOnPath(binaryName: string): Promise<DetectionResult> {
   if (isAbsolute(binaryName)) {
     try {
       await access(binaryName, constants.X_OK);

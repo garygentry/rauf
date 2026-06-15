@@ -31,7 +31,11 @@ export { createClaudeCliProvider } from "./claude-cli.js";
 
 export { PRESET_CONFIGS, getPresetConfig } from "./presets.js";
 
+export { createGenericCliProvider, configToCliAgentConfig } from "./generic-cli.js";
+
 // Side-effect import: registers claude-cli as the default provider
 import "./claude-cli.js";
 // Side-effect import: registers the shipped presets (codex/gemini/copilot/cursor)
 import "./presets.js";
+// Side-effect import: registers the reserved generic-cli adapter
+import "./generic-cli.js";

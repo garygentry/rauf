@@ -148,8 +148,8 @@
         "generic-cli.test.ts covers valid/missing-binary/invalid-promptDelivery/defaults + reserved-id factory + named-config path",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:12:02.507Z",
       "dependsOn": [
         "001",
         "003",
