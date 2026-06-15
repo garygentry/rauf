@@ -3,8 +3,8 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-15T21:05:00Z",
-  "currentStage": "forge-4-backlog",
+  "updatedAt": "2026-06-15T21:30:00Z",
+  "currentStage": "forge-5-loop",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
@@ -67,6 +67,14 @@
       "verifiedAt": "2026-06-15T21:05:00Z",
       "fixedAt": "2026-06-15T21:05:00Z",
       "notes": "Confirmation re-verify of the 17-finding fix batch (prior report VERIFY-specs-2026-06-15.md retained). 38/38 checks via 5 parallel verifiers; all 17 prior fixes confirmed landed; traceability still 29/0/0. Found + applied 7 new: 3 regressions from the fix batch (failRunSetup wrong LoopResult shape, missing RaufError import, 3 stale '02 §7'->'§8' cites), 1 incomplete fix (AgentAdapter not re-exported by 02 §6), 1 new tech-spec staleness (§11 bullet 4 on registry export surface), 2 pre-existing nits (IO_ERROR placeholder, verify.sh:380->:377). All deterministic, no user decisions."
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "artifacts": ["backlog.json"],
+      "startedAt": "2026-06-15T21:30:00Z",
+      "completedAt": "2026-06-15T21:30:00Z",
+      "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 2, "forge-3-specs": 1 },
+      "notes": "13-item backlog authored via rauf author-backlog, foundation-first along the spec dependency graph 00->07. Validated clean by `rauf-stable backlog validate` (valid:true, 0 findings). Items: 001 types/constants, 002 process-group extraction, 003 registry+detection, 004 CliAgent engine, 005 presets, 006 generic-cli, 007 selection+alias, 008 signal neutralization, 009 runner routing/events/cache, 010 runner usage-gating+fail-fast, 011 CLI surface, 012 sandbox mocks, 013 verify.sh. Runner deliberately split 009/010 and providers/index.ts side-effect imports staged (003->005->006) so each item keeps `pnpm gate` green (SC-2). 009/010 flagged model opus, 2 iterations. No agentDelegation (no independent-parallel-files shape warranted it)."
     }
   }
 }
