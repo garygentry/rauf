@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 480" width="720" height="480">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" width="760" height="400">
 
     <style>
       /* Dark mode (default — matches Starlight's default) */
@@ -70,36 +70,38 @@
       .arrow-head { fill: var(--arrow); }
       .arrow-label { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 11px; }
     </style>
-  <rect width="720" height="480" fill="var(--bg)" rx="4" />
-  <rect class="box-container" x="16" y="16" width="688" height="448" rx="12" stroke-width="1" stroke-dasharray="4,3" />
-  <text class="sublabel" x="36" y="36" font-size="11" font-weight="500">Developer Machine</text>
-  <rect class="box-primary" x="40" y="60" width="150" height="64" rx="8" stroke-width="1" />
-  <text class="label" x="115" y="88" font-size="14" font-weight="600" text-anchor="middle">rauf CLI</text>
-  <text class="sublabel" x="115" y="104" font-size="11" text-anchor="middle">(global binary)</text>
-  <rect class="box-primary" x="370" y="60" width="296" height="108" rx="8" stroke-width="1" />
-  <text class="label" x="518" y="82" font-size="14" font-weight="600" text-anchor="middle">rauf web server</text>
-  <text class="sublabel" x="518" y="96" font-size="11" text-anchor="middle">Hono + Bun @ 127.0.0.1:5173</text>
-  <rect class="box-nested" x="384" y="108" width="268" height="48" rx="8" stroke-width="1" />
-  <text class="label" x="518" y="128" font-size="14" font-weight="600" text-anchor="middle">React SPA</text>
-  <text class="sublabel" x="518" y="144" font-size="11" text-anchor="middle">TanStack Router + Query</text>
-  <rect class="box-primary" x="40" y="210" width="560" height="64" rx="8" stroke-width="1" />
-  <text class="label" x="320" y="238" font-size="14" font-weight="600" text-anchor="middle">packages/core</text>
-  <text class="sublabel" x="320" y="254" font-size="11" text-anchor="middle">discovery · installer · backlog · status · config · profile · template</text>
-  <rect class="box-secondary" x="40" y="310" width="560" height="64" rx="8" stroke-width="1" />
-  <text class="label" x="320" y="338" font-size="14" font-weight="600" text-anchor="middle">ROOT_DIRECTORY filesystem</text>
-  <text class="sublabel" x="320" y="354" font-size="11" text-anchor="middle">~/workspace/ — project-a/.rauf.json, .rauf/ …  project-b/.rauf.json, .rauf/ …</text>
-  <rect class="box-secondary" x="40" y="404" width="296" height="48" rx="8" stroke-width="1" />
-  <text class="label" x="188" y="424" font-size="14" font-weight="600" text-anchor="middle">~/.rauf/</text>
-  <text class="sublabel" x="188" y="440" font-size="11" text-anchor="middle">Tool config, server PID, logs</text>
-  <polygon class="arrow-head" points="190,92 196,89 196,95" />
-  <polygon class="arrow-head" points="370,92 364,89 364,95" />
-  <line class="arrow-line-dashed" x1="196" y1="92" x2="364" y2="92" />
-  <text class="arrow-label" x="280" y="82" text-anchor="middle">HTTP</text>
-  <polygon class="arrow-head" points="115,210 112,204 118,204" />
-  <line class="arrow-line" x1="115" y1="124" x2="115" y2="204" />
-  <text class="arrow-label" x="123" y="167" text-anchor="start">direct calls (headless)</text>
-  <polygon class="arrow-head" points="518,210 515,204 521,204" />
-  <line class="arrow-line" x1="518" y1="168" x2="518" y2="204" />
-  <polygon class="arrow-head" points="320,310 317,304 323,304" />
-  <line class="arrow-line" x1="320" y1="274" x2="320" y2="304" />
+  <rect width="760" height="400" fill="var(--bg)" rx="4" />
+  <rect class="box-neutral" x="70" y="30" width="280" height="46" rx="8" stroke-width="1" />
+  <text class="label" x="210" y="58" font-size="14" font-weight="600" text-anchor="middle">rauf loop run &lt;path&gt;</text>
+  <rect class="box-neutral" x="410" y="30" width="280" height="46" rx="8" stroke-width="1" />
+  <text class="label" x="550" y="58" font-size="14" font-weight="600" text-anchor="middle">rauf loop run &lt;path&gt; --detached</text>
+  <rect class="box-primary" x="100" y="110" width="220" height="64" rx="8" stroke-width="1" />
+  <text class="label" x="210" y="138" font-size="14" font-weight="600" text-anchor="middle">In-process (foreground)</text>
+  <text class="sublabel" x="210" y="154" font-size="11" text-anchor="middle">blocks terminal · unattended-safe</text>
+  <rect class="box-secondary" x="440" y="102" width="220" height="40" rx="8" stroke-width="1" />
+  <text class="label" x="550" y="118" font-size="14" font-weight="600" text-anchor="middle">Server daemon</text>
+  <text class="sublabel" x="550" y="134" font-size="11" text-anchor="middle">auto-starts</text>
+  <rect class="box-primary" x="440" y="162" width="220" height="52" rx="8" stroke-width="1" />
+  <text class="label" x="550" y="184" font-size="14" font-weight="600" text-anchor="middle">Runner (server-owned)</text>
+  <text class="sublabel" x="550" y="200" font-size="11" text-anchor="middle">returns immediately · loop stop</text>
+  <rect class="box-info" x="120" y="256" width="520" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="380" y="280" font-size="14" font-weight="600" text-anchor="middle">Same files</text>
+  <text class="sublabel" x="380" y="296" font-size="11" text-anchor="middle">events.ndjson · state.json · iteration-status.json · rauf.log</text>
+  <rect class="box-container" x="120" y="340" width="520" height="50" rx="12" stroke-width="1" stroke-dasharray="4,3" />
+  <text class="sublabel" x="140" y="360" font-size="11" font-weight="500">status · follow · log · web</text>
+  <polygon class="arrow-head" points="210,110 207.1,103.6 212.9,103.6" />
+  <polyline class="arrow-line" points="210,76 210,103" />
+  <polygon class="arrow-head" points="550,102 547.1,95.6 552.9,95.6" />
+  <polyline class="arrow-line" points="550,76 550,95" />
+  <polygon class="arrow-head" points="550,162 547.1,155.6 552.9,155.6" />
+  <polyline class="arrow-line" points="550,142 550,155" />
+  <polygon class="arrow-head" points="300,256 293.4,253.8 297.2,249.6" />
+  <polyline class="arrow-line" points="210,174 294.8,251.3" />
+  <text class="arrow-label" x="249" y="215" text-anchor="end">writes</text>
+  <polygon class="arrow-head" points="460,256 464.6,250.7 467,255.9" />
+  <polyline class="arrow-line" points="550,214 466.3,253" />
+  <text class="arrow-label" x="511" y="235" text-anchor="start">writes</text>
+  <polygon class="arrow-head" points="380,340 377.1,333.6 382.9,333.6" />
+  <polyline class="arrow-line" points="380,312 380,333" />
+  <text class="arrow-label" x="388" y="326" text-anchor="start">read from files</text>
 </svg>

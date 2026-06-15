@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" width="760" height="420">
+
+    <style>
+      /* Dark mode (default — matches Starlight's default) */
+      :root {
+        --bg: hsl(224, 10%, 10%);
+        --container-fill: hsl(224, 14%, 14%);
+        --container-stroke: hsl(224, 10%, 25%);
+        --primary-fill: hsl(217, 50%, 18%);
+        --primary-stroke: #3b82f6;
+        --secondary-fill: hsl(224, 14%, 16%);
+        --secondary-stroke: hsl(224, 6%, 40%);
+        --nested-fill: hsl(217, 50%, 14%);
+        --nested-stroke: hsl(217, 40%, 30%);
+        --info-fill: hsl(217, 50%, 18%);
+        --info-stroke: #3b82f6;
+        --success-fill: hsl(145, 38%, 16%);
+        --success-stroke: #22c55e;
+        --warning-fill: hsl(38, 48%, 18%);
+        --warning-stroke: #f59e0b;
+        --danger-fill: hsl(0, 45%, 18%);
+        --danger-stroke: #ef4444;
+        --neutral-fill: hsl(224, 14%, 16%);
+        --neutral-stroke: hsl(224, 6%, 42%);
+        --text: hsl(224, 6%, 82%);
+        --text-muted: hsl(224, 6%, 56%);
+        --arrow: hsl(224, 6%, 50%);
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --container-fill: hsl(224, 20%, 97%);
+          --container-stroke: hsl(224, 6%, 82%);
+          --primary-fill: #dbeafe;
+          --primary-stroke: #2563eb;
+          --secondary-fill: hsl(224, 20%, 96%);
+          --secondary-stroke: hsl(224, 7%, 60%);
+          --nested-fill: hsl(217, 60%, 94%);
+          --nested-stroke: hsl(217, 40%, 70%);
+          --info-fill: #dbeafe;
+          --info-stroke: #2563eb;
+          --success-fill: #dcfce7;
+          --success-stroke: #16a34a;
+          --warning-fill: #fef3c7;
+          --warning-stroke: #d97706;
+          --danger-fill: #fee2e2;
+          --danger-stroke: #dc2626;
+          --neutral-fill: hsl(224, 20%, 96%);
+          --neutral-stroke: hsl(224, 7%, 60%);
+          --text: hsl(224, 10%, 20%);
+          --text-muted: hsl(224, 7%, 40%);
+          --arrow: hsl(224, 7%, 45%);
+        }
+      }
+
+      .box-container { fill: var(--container-fill); stroke: var(--container-stroke); }
+      .box-primary { fill: var(--primary-fill); stroke: var(--primary-stroke); }
+      .box-secondary { fill: var(--secondary-fill); stroke: var(--secondary-stroke); }
+      .box-nested { fill: var(--nested-fill); stroke: var(--nested-stroke); }
+      .box-info { fill: var(--info-fill); stroke: var(--info-stroke); }
+      .box-success { fill: var(--success-fill); stroke: var(--success-stroke); }
+      .box-warning { fill: var(--warning-fill); stroke: var(--warning-stroke); }
+      .box-danger { fill: var(--danger-fill); stroke: var(--danger-stroke); }
+      .box-neutral { fill: var(--neutral-fill); stroke: var(--neutral-stroke); }
+      .label { fill: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      .sublabel { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      .arrow-line { stroke: var(--arrow); fill: none; stroke-width: 1.5; }
+      .arrow-line-dashed { stroke: var(--arrow); fill: none; stroke-width: 1.5; stroke-dasharray: 6,4; }
+      .arrow-head { fill: var(--arrow); }
+      .arrow-label { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 11px; }
+    </style>
+  <rect width="760" height="420" fill="var(--bg)" rx="4" />
+  <rect class="box-primary" x="280" y="24" width="200" height="54" rx="8" stroke-width="1" />
+  <text class="label" x="380" y="47" font-size="14" font-weight="600" text-anchor="middle">Loop runner</text>
+  <text class="sublabel" x="380" y="63" font-size="11" text-anchor="middle">loop run  ·  loop run --detached</text>
+  <rect class="box-container" x="40" y="120" width="680" height="112" rx="12" stroke-width="1" stroke-dasharray="4,3" />
+  <text class="sublabel" x="60" y="140" font-size="11" font-weight="500">&lt;backlog&gt;/.rauf/ — observation substrate (files on disk)</text>
+  <rect class="box-secondary" x="60" y="156" width="150" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="135" y="180" font-size="14" font-weight="600" text-anchor="middle">state.json</text>
+  <text class="sublabel" x="135" y="196" font-size="11" text-anchor="middle">loop state + iteration</text>
+  <rect class="box-info" x="225" y="156" width="150" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="300" y="180" font-size="14" font-weight="600" text-anchor="middle">events.ndjson</text>
+  <text class="sublabel" x="300" y="196" font-size="11" text-anchor="middle">versioned event log</text>
+  <rect class="box-secondary" x="390" y="156" width="160" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="470" y="180" font-size="14" font-weight="600" text-anchor="middle">iteration-status.json</text>
+  <text class="sublabel" x="470" y="196" font-size="11" text-anchor="middle">tokens · tools · stuck</text>
+  <rect class="box-secondary" x="565" y="156" width="135" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="632.5" y="180" font-size="14" font-weight="600" text-anchor="middle">rauf.log</text>
+  <text class="sublabel" x="632.5" y="196" font-size="11" text-anchor="middle">human log</text>
+  <rect class="box-primary" x="40" y="300" width="200" height="60" rx="8" stroke-width="1" />
+  <text class="label" x="140" y="326" font-size="14" font-weight="600" text-anchor="middle">CLI</text>
+  <text class="sublabel" x="140" y="342" font-size="11" text-anchor="middle">status · follow · log · progress</text>
+  <rect class="box-primary" x="280" y="300" width="200" height="60" rx="8" stroke-width="1" />
+  <text class="label" x="380" y="326" font-size="14" font-weight="600" text-anchor="middle">Web dashboard</text>
+  <text class="sublabel" x="380" y="342" font-size="11" text-anchor="middle">live status + recovery</text>
+  <rect class="box-primary" x="520" y="300" width="200" height="60" rx="8" stroke-width="1" />
+  <text class="label" x="620" y="326" font-size="14" font-weight="600" text-anchor="middle">External pipeline</text>
+  <text class="sublabel" x="620" y="342" font-size="11" text-anchor="middle">--json · --ndjson</text>
+  <polygon class="arrow-head" points="380,120 377.1,113.6 382.9,113.6" />
+  <polyline class="arrow-line" points="380,78 380,113" />
+  <text class="arrow-label" x="388" y="101" text-anchor="start">appends / writes</text>
+  <polygon class="arrow-head" points="140,300 137.1,293.6 142.9,293.6" />
+  <polyline class="arrow-line" points="140,232 140,293" />
+  <text class="arrow-label" x="148" y="266" text-anchor="start">reads</text>
+  <polygon class="arrow-head" points="380,300 377.1,293.6 382.9,293.6" />
+  <polyline class="arrow-line" points="380,232 380,293" />
+  <text class="arrow-label" x="388" y="266" text-anchor="start">reconstruct view from files</text>
+  <polygon class="arrow-head" points="620,300 617.1,293.6 622.9,293.6" />
+  <polyline class="arrow-line" points="620,232 620,293" />
+  <text class="arrow-label" x="628" y="266" text-anchor="start">reads</text>
+</svg>
