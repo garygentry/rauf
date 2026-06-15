@@ -120,8 +120,8 @@
         "providers/index.ts imports ./presets.js as a side effect",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:08:40.614Z",
       "dependsOn": [
         "003",
         "004"

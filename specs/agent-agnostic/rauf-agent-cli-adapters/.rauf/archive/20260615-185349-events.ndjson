@@ -162,3 +162,26 @@
 {"type":"llm_exited","timestamp":"2026-06-15T23:07:01.115Z","projectPath":"/home/gary/workspace/rauf","itemId":"004","provider":"claude-cli","exitCode":0,"timedOut":false,"durationMs":224316,"seq":161,"schemaVersion":"1"}
 {"type":"signal_parsed","timestamp":"2026-06-15T23:07:01.115Z","projectPath":"/home/gary/workspace/rauf","itemId":"004","signal":"done","seq":162,"schemaVersion":"1"}
 {"type":"item_completed","timestamp":"2026-06-15T23:07:01.117Z","projectPath":"/home/gary/workspace/rauf","itemId":"004","title":"CliAgent config-driven engine (providers/cli-agent.ts)","seq":163,"schemaVersion":"1"}
+{"type":"iteration_start","timestamp":"2026-06-15T23:07:01.137Z","projectPath":"/home/gary/workspace/rauf","iteration":5,"maxIterations":20,"seq":164,"schemaVersion":"1"}
+{"type":"item_selected","timestamp":"2026-06-15T23:07:01.137Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","title":"Preset adapters: codex / gemini / copilot / cursor","priority":1,"seq":165,"schemaVersion":"1"}
+{"type":"llm_spawned","timestamp":"2026-06-15T23:07:01.140Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","provider":"claude-cli","timeoutMinutes":60,"seq":166,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:07:07.100Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","inputTokens":16340,"outputTokens":5,"seq":167,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:07.980Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"Read","phase":"start","seq":168,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:07.980Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"unknown","phase":"end","seq":169,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:08.505Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"Read","phase":"start","seq":170,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:08.505Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"unknown","phase":"end","seq":171,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:08.680Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"Read","phase":"start","seq":172,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:08.680Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"unknown","phase":"end","seq":173,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:07:12.231Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","inputTokens":2,"outputTokens":7,"seq":174,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:07:22.838Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","inputTokens":2,"outputTokens":7,"seq":175,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:22.838Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"Write","phase":"start","seq":176,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:22.838Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"unknown","phase":"end","seq":177,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:07:29.133Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","inputTokens":2290,"outputTokens":3,"seq":178,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:29.133Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"Edit","phase":"start","seq":179,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:29.133Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"unknown","phase":"end","seq":180,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:33.217Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"Bash","phase":"start","seq":181,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:07:33.217Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","toolName":"unknown","phase":"end","seq":182,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:08:38.297Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","inputTokens":2,"outputTokens":7,"seq":183,"schemaVersion":"1"}
+{"type":"llm_exited","timestamp":"2026-06-15T23:08:40.612Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","provider":"claude-cli","exitCode":0,"timedOut":false,"durationMs":99471,"seq":184,"schemaVersion":"1"}
+{"type":"signal_parsed","timestamp":"2026-06-15T23:08:40.612Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","signal":"done","seq":185,"schemaVersion":"1"}
+{"type":"item_completed","timestamp":"2026-06-15T23:08:40.614Z","projectPath":"/home/gary/workspace/rauf","itemId":"005","title":"Preset adapters: codex / gemini / copilot / cursor","seq":186,"schemaVersion":"1"}
