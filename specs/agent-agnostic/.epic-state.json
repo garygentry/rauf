@@ -1,0 +1,11 @@
+{
+  "epic": "agent-agnostic",
+  "stages": {
+    "forge-verify-epic": {
+      "status": "findings-reported",
+      "findingsFile": ".verification/VERIFY-epic-2026-06-15.md",
+      "findingsCount": 1,
+      "verifiedAt": "2026-06-15T17:44:28Z"
+    }
+  }
+}
