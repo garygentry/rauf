@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1",
   "project": "rauf-agent-cli-adapters",
   "description": "Coding-agent CLI adapter layer for the rauf loop runner (epic agent-agnostic). Lets a single loop iteration be driven by any supported agent CLI — claude (default, first-class), codex, gemini, copilot, cursor, and a config-driven generic-cli — via the committed LLMProvider seam, with detection/fail-fast, agent selection precedence, and a CLI surface. Additive: the claude path stays behaviorally unchanged (SC-2). Implements PRD v2 / tech-spec v2 across spec docs 00-07; acceptance gate is `pnpm gate`.",
   "items": [
@@ -16,8 +17,8 @@
         "No type in 00 §7 (LLMProvider, ProviderFactory, etc.) is redeclared",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T22:55:50.241Z",
       "dependsOn": [],
       "notes": "AgentAdapter must be structurally assignable to/from LLMProvider (an alias, not a fork). The runner that consumes ExecuteOptions.env lands in item 009; this item only adds the field. Trust `pnpm gate`, not the editor (run pnpm build first — project-references monorepo).",
       "estimatedIterations": 1,
@@ -67,7 +68,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Do NOT add `import \"./presets.js\"` / `import \"./generic-cli.js\"` to providers/index.ts in this item — those files don't exist yet and would break the build. They are added in 005/006. AgentAvailability is a registry-local DTO (not a @rauf/core schema type). PATH probe is a stat, not an invocation (CLAUDE.md rule 6).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -92,7 +95,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "002"],
+      "dependsOn": [
+        "001",
+        "002"
+      ],
       "notes": "Reuse spawnProcessGroup from item 002 — do not re-implement spawning. Omitting checkUsage is intentional and is what makes the runner skip Anthropic usage paths for non-claude agents (REQ-USAGE-02). Temp file name e.g. .rauf-prompt-<pid-or-random>.txt; swallow unlink failures.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -116,7 +122,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["003", "004"],
+      "dependsOn": [
+        "003",
+        "004"
+      ],
       "notes": "Do not validate the real CLI flags here (OQ-2) — wrong flags are a one-line config fix, not an engine change. SC-1 exercises these via mock agents in the sandbox (items 012/013).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -141,7 +150,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "003", "004"],
+      "dependsOn": [
+        "001",
+        "003",
+        "004"
+      ],
       "notes": "ErrorCodes has VALIDATION_ERROR and IO_ERROR but NO INVALID_INPUT (confirmed packages/core/src/errors.ts). GENERIC_AGENT_ID comes from constants.ts (item 001 — direct dependsOn edge), re-exported via agent-selection in 007 but importable directly from ./constants.js here.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -166,7 +179,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "04 §3.3 WARNING: the exact backlog item-loading function in packages/core/src/backlog.ts was not line-verified in the spec — confirm the BacklogItemSchema.parse site before inserting the fold. The global file uses `defaultAgent`→`defaultProvider` (not provider), so apply the analogous one-line fold there. resolveAgentId must NOT know the registry (unknown ids are a consumer concern, item 009/010).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -213,7 +228,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "003", "004", "007"],
+      "dependsOn": [
+        "001",
+        "003",
+        "004",
+        "007"
+      ],
       "notes": "After this item only the claude path is exercised by the gate, so SC-2 (all existing claude scenarios green) is the regression check. Usage gating is NOT yet applied here — the existing claude usage touchpoints remain unconditional and correct for claude; item 010 gates them for non-claude. The spawnClaude grep guard must target runner.ts ONLY (not the package) to avoid flagging the retained index.ts re-export and claude-cli.ts caller.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -237,7 +257,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["008", "009"],
+      "dependsOn": [
+        "008",
+        "009"
+      ],
       "notes": "The cleaner alternative for the post-signal arm: `const exitClass = provider.checkUsage ? classifyExit(...) : downgradeUsageLimited(classifyExit(...))` where downgradeUsageLimited maps usage_limited→genuine_retry. failRunSetup must return the committed zero-iteration LoopResult shape (runner.ts) — the contract is 'zero iterations, no state write', error surfaced via the loop_error event. Detection must run after the item-009 project/global reads.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -262,7 +285,11 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005", "006", "009"],
+      "dependsOn": [
+        "005",
+        "006",
+        "009"
+      ],
       "notes": "06 §3.1.2 WARNING: confirm the web start route deserializes body.provider into LoopStartOptionsSchema before relying on the detached path (provider is a committed schema field, so it should). The CLI does NOT pre-validate the id against the registry — unknown/absent ids are surfaced by the runner's fail-fast/per-iteration resolve (items 009/010). getAgentDescriptors enumerates built-ins only (claude-cli + 4 presets + generic-cli) — depends on 005/006 having registered them.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -285,7 +312,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["010", "011"],
+      "dependsOn": [
+        "010",
+        "011"
+      ],
       "notes": "The sandbox redirects git to a throwaway repo (GIT_DIR/GIT_WORK_TREE) so commits stay out of the parent repo. verify.sh is NOT part of pnpm gate — this item's gate is just the unit suites; the sandbox is validated by item 013 via `bash test-sandbox/verify.sh`. Reuse over duplication: one signal source of truth per scenario across both formats.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -308,7 +338,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["012"],
+      "dependsOn": [
+        "012"
+      ],
       "notes": "Reuse the exact existing marker the usage-limit-stdout case greps for: `! grep -q \"Usage limit detected\" \"$SANDBOX_DIR/.rauf/rauf.log\"` as the no-preflight assertion. 'No state written' is concretely (a) no .rauf/state.json, (b) no backlog item status change, (c) no per-item commit. WARNING: pnpm gate does NOT invoke verify.sh today — confirm whether CI wires the cross-agent sandbox separately before assuming the rows run automatically.",
       "estimatedIterations": 1,
       "specReferences": [

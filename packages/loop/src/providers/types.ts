@@ -42,6 +42,14 @@ export interface ExecuteOptions {
   outputFormat?: "text" | "stream-json";
   /** Callback for real-time stream events (CLI providers with stream-json) */
   onStreamEvent?: (event: ClaudeStreamEvent) => void;
+  /**
+   * Environment overrides for the agent's child process, merged over `process.env`. The runner
+   * passes its resolved `childEnv` here so review-hook suppression and other child-session env
+   * reach every adapter uniformly. `ClaudeCliProvider.execute` forwards it to `spawnClaude`
+   * (`SpawnClaudeOptions.env`); `CliAgent.execute` merges it OVER `CliAgentConfig.env`
+   * (`03-cli-agent-engine-and-presets.md §4.5`). Omitted ⇒ child inherits the parent env unchanged.
+   */
+  env?: Record<string, string>;
 }
 
 export interface ExecutionResult {
@@ -80,3 +88,50 @@ export interface UsageLimitResult {
 
 /** Factory function that creates an LLMProvider instance */
 export type ProviderFactory = (config?: Record<string, unknown>) => LLMProvider;
+
+/**
+ * Charter contract name (epic `agent-agnostic`) for the abstraction that drives one
+ * coding-agent CLI through a single loop iteration: spawn the process, deliver the prompt,
+ * consume output, and report a resolved outcome. Structurally identical to {@link LLMProvider};
+ * the internal vocabulary stays `provider`/`LLMProvider`, the exported/contract vocabulary is
+ * `agent`/`AgentAdapter`. (REQ-ADP-01, REQ-SEL-01, tech-spec §3.1.)
+ */
+export type AgentAdapter = LLMProvider;
+
+/** Result of probing whether an agent's CLI is available on the current machine. */
+export interface DetectionResult {
+  /** True when the agent's CLI can be invoked (e.g. its binary resolves on PATH). */
+  available: boolean;
+  /**
+   * Human-readable detail for discovery output and fail-fast remediation messages
+   * (e.g. "found at /usr/local/bin/codex", or "binary 'codex' not found on PATH").
+   */
+  detail?: string;
+}
+
+/**
+ * Registry entry describing one selectable agent (REQ-ADP-05). Enumerable for help/discovery
+ * (REQ-DISC-01/02) and probeable for availability (REQ-DET-01) without constructing a provider
+ * or reading run config.
+ */
+export interface AgentDescriptor {
+  /** Stable agent id (registry key, equals the provider id, e.g. "claude-cli", "codex"). */
+  id: string;
+  /** Human-readable name for help/discovery (e.g. "Claude Code (CLI)"). */
+  displayName: string;
+  /**
+   * Executable resolved on PATH for the default detector. Omitted ONLY for the reserved
+   * `generic-cli` descriptor, whose binary is unknown until its `providerConfig` is read
+   * (tech-spec §3.4); such descriptors MUST supply a custom `detect` (tech-spec §3.5).
+   */
+  binaryName?: string;
+  /** Factory that constructs the provider instance (reused {@link ProviderFactory}). */
+  factory: ProviderFactory;
+  /**
+   * Availability probe. Defaults to a PATH resolution of `binaryName` (no agent subprocess —
+   * a stat-style `which`, consistent with CLAUDE.md "status reads files, not subprocesses").
+   * `claude-cli` overrides this with its credential check; `generic-cli` overrides it to
+   * resolve the binary from the supplied `providerConfig`.
+   */
+  detect?: () => Promise<DetectionResult>;
+}

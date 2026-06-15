@@ -7,6 +7,9 @@ export type {
   UsageLimitResult,
   ProviderFactory,
   ProgressCallback,
+  AgentAdapter,
+  AgentDescriptor,
+  DetectionResult,
 } from "./types.js";
 
 export {

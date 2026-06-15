@@ -51,4 +51,7 @@ export type {
   UsageLimitResult as ProviderUsageLimitResult,
   ProviderFactory,
   ProgressCallback,
+  AgentAdapter,
+  AgentDescriptor,
+  DetectionResult,
 } from "./providers/index.js";
