@@ -5,6 +5,8 @@ description: High-level system diagram, data flow, and architectural principles 
 
 ## Package Dependency Graph
 
+![Package dependency graph — cli and web depend on loop and core; loop depends on core; core is standalone](images/package-graph.svg)
+
 ```
 packages/web  ──imports──►  packages/loop  ──imports──►  packages/core
 packages/web  ──imports──►  packages/core

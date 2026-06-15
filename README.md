@@ -51,35 +51,43 @@ Each iteration produces one of three exit signals:
 
 ## Install
 
-Self-contained binaries are published with every release — no Bun or Node needed on the target machine. Downloads are verified against the release's `SHA256SUMS` before installing.
+**Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI and Git (rauf spawns a Claude Code session each iteration and commits the result). Building from source also needs [Bun](https://bun.sh/) 1.0+, [pnpm](https://pnpm.io/) 9+, and Node.js ≥ 22.
 
-**Linux / macOS:**
+### From source (recommended)
+
+Building from source gives you the current version and is the supported path today:
 
 ```bash
+git clone https://github.com/garygentry/rauf.git
+cd rauf
+pnpm install && pnpm build
+bash scripts/install-global.sh   # symlinks `rauf` into ~/.local/bin
+rauf version                     # verify (~/.local/bin must be on your PATH)
+```
+
+### Prebuilt binary (optional)
+
+Each tagged release also publishes self-contained binaries (no Bun/Node on the target machine), verified against the release's `SHA256SUMS`. This installs the **latest published release**, which may lag the source tree:
+
+```bash
+# Linux / macOS
 curl -fsSL https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.sh | bash
 ```
 
-**Windows (PowerShell):**
-
 ```powershell
+# Windows (PowerShell)
 irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.ps1 | iex
 ```
 
-Set `RAUF_VERSION=v0.6.0` (or any tag) to install a specific release instead of latest.
-
-> **macOS note:** the darwin binaries are unsigned in v1. Binaries installed via the `curl` one-liner are normally **not** quarantined, but if Gatekeeper blocks a binary downloaded through a browser or Finder, run `xattr -d com.apple.quarantine ./rauf` (or right-click → Open once). See [Releasing & Installing](docs/RELEASING.md) for details.
+Set `RAUF_VERSION=<tag>` to pin a specific release instead of latest. macOS binaries are unsigned; if Gatekeeper blocks one downloaded via a browser, run `xattr -d com.apple.quarantine ./rauf`. See [Releasing & Installing](docs/RELEASING.md) for details.
 
 ---
 
 ## Quick Start
 
-**Prerequisites:** [Bun](https://bun.sh/) 1.0+, [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI, Git
+Once `rauf` is on your `PATH` (see [Install](#install) above):
 
 ```bash
-# Clone and build
-git clone https://github.com/garygentry/rauf.git
-cd rauf && pnpm install && pnpm build
-
 # Install rauf into an existing project
 rauf install ~/workspace/my-project --yes
 
@@ -93,6 +101,8 @@ rauf backlog add ~/workspace/my-project \
 # Start the loop
 rauf loop run ~/workspace/my-project
 ```
+
+New to rauf? The [Your First Loop](https://garygentry.github.io/rauf/getting-started/your-first-loop/) tutorial walks through this end to end.
 
 ---
 
@@ -179,17 +189,28 @@ rauf/
 └── docs/              Architecture and specification documents
 ```
 
+<p align="center">
+  <img src="docs/images/package-graph.svg" alt="Package dependency graph — cli and web depend on loop and core; loop depends on core; core is standalone" width="640" />
+</p>
+
+`core` never imports from `loop`, `web`, or `cli`; `loop` never imports from `web` or `cli`. See [Architecture](docs/ARCHITECTURE.md) for the full design.
+
 ## Documentation
 
-| Document                                    | Description                                      |
-| ------------------------------------------- | ------------------------------------------------ |
-| [Architecture](docs/ARCHITECTURE.md)        | System design, data flow, component boundaries   |
-| [Schemas](docs/SCHEMAS.md)                  | All TypeScript types and JSON schemas            |
-| [Core Spec](docs/SPEC-CORE.md)              | Core package logic and algorithms                |
-| [CLI Spec](docs/SPEC-CLI.md)                | CLI commands, flags, and behavior                |
-| [Web Spec](docs/SPEC-WEB.md)                | API endpoints and frontend architecture          |
-| [Artifacts Spec](docs/SPEC-ARTIFACTS.md)    | Template files and installation process          |
-| [Releasing & Installing](docs/RELEASING.md) | Release pipeline, one-time setup, binary install |
+📚 **[Full documentation site →](https://garygentry.github.io/rauf/)**
+
+The site is the best starting point — a consumer-first journey from install to power use:
+
+| Section                                                                            | What's there                                                                                              |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Getting Started](https://garygentry.github.io/rauf/getting-started/installation/) | Installation, Your First Loop, and Core Concepts.                                                         |
+| [Guides](https://garygentry.github.io/rauf/guides/monitoring/)                     | Monitoring, recovery, multi-backlog, the web dashboard, scripting & CI, customizing the agent, migrating. |
+| [Reference](https://garygentry.github.io/rauf/spec-cli/)                           | CLI reference, machine surfaces & contract, and the backlog schema.                                       |
+
+The canonical specs live under **Internals** on the site and as Markdown in [`docs/`](docs/):
+[Architecture](docs/ARCHITECTURE.md) · [Schemas](docs/SCHEMAS.md) · [Core](docs/SPEC-CORE.md) ·
+[CLI](docs/SPEC-CLI.md) · [Web](docs/SPEC-WEB.md) · [Artifacts](docs/SPEC-ARTIFACTS.md) ·
+[Releasing](docs/RELEASING.md).
 
 ## Contributing
 
