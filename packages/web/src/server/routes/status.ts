@@ -22,6 +22,7 @@ import {
   resolveBacklogRoot,
   resolveBacklogPaths,
   defaultBacklogPaths,
+  scanBacklogRoots,
   type BacklogPaths,
 } from "@rauf/core";
 
@@ -110,6 +111,34 @@ export function createStatusRouter(rootDirectoryOverride?: string): Hono {
     }
 
     const result = deriveStatus(resolved.paths);
+    if (!result.ok) {
+      return c.json(
+        errorResponse(result.error.code, result.error.message, result.error.details),
+        500,
+      );
+    }
+    return c.json({ data: result.value });
+  });
+
+  // ── GET /:id/backlog-roots ────────────────────────────────────
+  //
+  // Lists every backlog root in the project (any dir with a backlog.json),
+  // as `--backlog`-ready relative paths with the default `.rauf` flagged.
+  // Powers the status page's backlog-root selector (REM-8). Read-only;
+  // scanning is confined to the project tree by scanBacklogRoots.
+
+  router.get("/:id/backlog-roots", (c) => {
+    const id = c.req.param("id");
+    const projectPath = resolveProjectPath(id);
+    if (!projectPath) {
+      return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
+    }
+    const violation = validateProjectPath(projectPath);
+    if (violation) {
+      return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
+    }
+
+    const result = scanBacklogRoots(projectPath);
     if (!result.ok) {
       return c.json(
         errorResponse(result.error.code, result.error.message, result.error.details),

@@ -7,6 +7,7 @@ import {
   resolveBacklogPaths,
   resolveInstructionPaths,
   ensureStateDir,
+  scanBacklogRoots,
 } from "./backlog-root.js";
 import { ErrorCodes } from "./errors.js";
 import { createMultiRootProject } from "./test-helpers.js";
@@ -245,5 +246,59 @@ describe("ensureStateDir", () => {
     // stateDir already exists from createMultiRootProject
     const result = ensureStateDir(pathsResult.value);
     expect(result.ok).toBe(true);
+  });
+});
+
+// ─── scanBacklogRoots ────────────────────────────────────────────
+
+describe("scanBacklogRoots", () => {
+  it("returns just the default .rauf root for a single-root project", () => {
+    const result = scanBacklogRoots(project.projectPath);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unexpected");
+    expect(result.value).toEqual([{ root: ".rauf", isDefault: true }]);
+  });
+
+  it("discovers every backlog root, default first then alphabetical", () => {
+    const p = createMultiRootProject({
+      roots: [{ path: "specs/zeta" }, { path: "specs/auth" }],
+    });
+    const result = scanBacklogRoots(p.projectPath);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unexpected");
+    expect(result.value).toEqual([
+      { root: ".rauf", isDefault: true },
+      { root: "specs/auth", isDefault: false },
+      { root: "specs/zeta", isDefault: false },
+    ]);
+    p.cleanup();
+  });
+
+  it("every discovered root resolves via resolveBacklogPaths", () => {
+    const p = createMultiRootProject({ roots: [{ path: "specs/auth" }] });
+    const result = scanBacklogRoots(p.projectPath);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unexpected");
+    for (const entry of result.value) {
+      const resolved = resolveBacklogPaths(p.projectPath, path.join(p.projectPath, entry.root));
+      expect(resolved.ok).toBe(true);
+    }
+    p.cleanup();
+  });
+
+  it("skips node_modules and other scan-skip dirs", () => {
+    const p = createMultiRootProject({ roots: [{ path: "specs/auth" }] });
+    // A backlog.json buried in node_modules must not be discovered.
+    const buried = path.join(p.projectPath, "node_modules", "pkg", ".rauf");
+    fs.mkdirSync(buried, { recursive: true });
+    fs.writeFileSync(
+      path.join(buried, "backlog.json"),
+      JSON.stringify({ schemaVersion: "1", project: "x", description: "", items: [] }),
+    );
+    const result = scanBacklogRoots(p.projectPath);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unexpected");
+    expect(result.value.map((r) => r.root)).toEqual([".rauf", "specs/auth"]);
+    p.cleanup();
   });
 });
