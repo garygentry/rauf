@@ -119,15 +119,35 @@ is one of several parallel instances and to treat `MEMORY.md` as read-only.
 | R6 | **Cross-phase coherence & drift** | §3, §5, all | Grep the WHOLE repo (code, `docs/**`, `artifacts/**`, help strings) for **stale references to removed surfaces**: `loop start`, `loop watch`, `loop follow`, `--watch`, old exit-code numbers, old status collapses. Version coherence (`packages/core/src/version.ts` = 0.6.0; no stray 0.5.0/0.4.0). All `docs/SPEC-*.md` + `docs/architecture/*` consistent with shipped. CANON `[PROPOSED]`/DRAFT status vs reality |
 | R7 | **Cutover, consumers & feature-forge lockstep** | §6, §7, §8 | `/home/gary/workspace/feature-forge` 0.10.0: `references/forge-config-schema.json` (minRunnerVersion 0.5.0, command templates), `skills/forge-5-loop`, `COMPATIBILITY.md`/`CHANGELOG.md`, `references/ralph-loop-contract.md`; rauf `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`. Verify §7's five decisions implemented as decided; §8 out-of-scope not violated; rauf-stable frozen note still accurate |
 
-**Each reviewer's prompt must include:** the branch is `forge/ux-overhaul-web` (check it out first); read
+**Each reviewer's prompt must include:** the parent has **already checked out the review target**
+(§6.0) — reviewers read the working tree **as-is** and must **NOT** run `git checkout`/`switch`/`stash`
+(they run in parallel and share one working tree; a checkout would corrupt the others); read
 `specs/ux-overhaul/CANON.md` for its owned sections; verify against **landed source** (file:line),
 treating specs/docs as claims to confirm; apply the §4 verdict rubric; return the conformance verdicts
-+ findings in the FINAL message only.
++ findings in the FINAL message only. (R7 also reads `/home/gary/workspace/feature-forge` — a separate
+repo/working tree, so it may read there freely.)
 
 ## 6. Synthesis (parent session)
 
-1. **Run the full gate on the branch tip** yourself first (ground truth): `pnpm typecheck && pnpm lint
-   && pnpm format:check && pnpm test`. Record the result. (Baseline from the Phase-4 build: core 930 /
+0. **Check out the review target — the parent does this once, before anything else** (the §5
+   reviewers must NOT). Make it safe and conditional:
+   ```bash
+   target=forge/ux-overhaul-web
+   if git rev-parse --verify --quiet "$target" >/dev/null; then
+     if [ "$(git branch --show-current)" != "$target" ]; then
+       git status --short            # MUST be clean before switching — if dirty, stop and
+                                     # commit/stash (ask the user) rather than risk losing work
+       git checkout "$target"
+     fi
+   else
+     # Branch gone → Phase 4 was already merged. Review main (it now contains all 4 phases).
+     git checkout main && git pull --ff-only 2>/dev/null || true
+   fi
+   git log --oneline -1            # confirm the tip you're reviewing
+   ```
+   Only proceed to the gate + fan-out once you are on the right tip with a clean tree.
+1. **Run the full gate on the branch tip** (ground truth): `pnpm typecheck && pnpm lint &&
+   pnpm format:check && pnpm test`. Record the result. (Baseline from the Phase-4 build: core 930 /
    loop 300 / web 232 / cli 456 / release 60, all green.)
 2. **Build the canon-conformance matrix** — one row per canon clause (§3 P1–P5, §4.1–§4.6, §5, §6, §7,
    §8) → verdict (Conforms/Partial/Deviates/Dropped/Deferred) → evidence (file:line) → severity.
@@ -145,22 +165,24 @@ treating specs/docs as claims to confirm; apply the §4 verdict rubric; return t
 
 ## 7. How to start (in the new session)
 
-```bash
-# From repo root
-git checkout forge/ux-overhaul-web      # the branch tip = all 4 phases composed
-git log --oneline e85e878~1..HEAD | head -40   # orient: the overhaul commits
-```
+The reviewing agent handles everything, including the checkout — **do not assume the branch is already
+checked out**. In order:
 
-Then: read this doc + `specs/ux-overhaul/CANON.md` (§3–§8). Run the §6.1 gate. Dispatch the seven §5
-reviewers in parallel. Synthesize per §6. Produce the conformance report + GO/NO-GO.
+1. Read this doc + `specs/ux-overhaul/CANON.md` (§3–§8).
+2. **Run §6.0** — the safe, conditional checkout of the review target (handles "already on it",
+   "branch gone → review main", and "dirty tree → stop"). Then `git log --oneline e85e878~1..HEAD |
+   head -40` to orient on the overhaul commits.
+3. Run the §6.1 gate. Dispatch the seven §5 reviewers in parallel (they read the tree you checked
+   out — they do not checkout). Synthesize per §6. Produce the conformance report + GO/NO-GO.
 
 ### Paste-able kickoff prompt
 
 > Run the full canon-conformance review of the rauf UX/DX overhaul. Read
 > `specs/ux-overhaul/REVIEW-KICKOFF.md` then `specs/ux-overhaul/CANON.md` (§3–§8). Review target is the
-> branch tip `forge/ux-overhaul-web` (it contains all four phases). Scope = rauf repo + the
-> feature-forge 0.10.0 lockstep. First run the full gate (`pnpm typecheck && lint && format:check &&
-> test`) on the branch tip. Then dispatch the seven parallel `forge-verifier` reviewers per §5
+> branch tip `forge/ux-overhaul-web` (it contains all four phases) — **check it out yourself per §6.0**
+> (don't assume it's already checked out; if the branch is gone it was merged, so review main). Scope =
+> rauf repo + the feature-forge 0.10.0 lockstep. First run the full gate (`pnpm typecheck && lint &&
+> format:check && test`) on that tip. Then dispatch the seven parallel `forge-verifier` reviewers per §5
 > (grammar, observation substrate, status-vocab+exit-codes, machine-surfaces/events, agent-contract,
 > cross-phase coherence/drift, cutover+FF-lockstep), each auditing landed source against its canon
 > clauses with the §4 verdict rubric. Synthesize a canon-conformance matrix + punch-list to
