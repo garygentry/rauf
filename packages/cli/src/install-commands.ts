@@ -13,11 +13,13 @@ import * as fs from "node:fs";
 import {
   install,
   update,
+  checkDrift,
   uninstall,
   preflight,
   initProject,
   ErrorCodes,
   type InstallationReport,
+  type DriftReport,
   type ProfileOverrides,
 } from "@rauf/core";
 
@@ -156,12 +158,31 @@ export async function handleUpdate(ctx: CommandContext): Promise<number> {
   const targetPath = ctx.args[0];
   if (!targetPath) {
     error("Missing required argument: <path>");
-    info(`Usage: rauf update <path> [--yes]`);
+    info(`Usage: rauf update <path> [--check]`);
     return ExitCode.USAGE;
   }
 
   const resolved = path.resolve(targetPath);
-  extractBoolFlag(ctx.flags, "yes"); // consume --yes flag (not yet used for confirmation)
+  // `--yes` is tolerated for back-compat but undocumented: `update` is
+  // non-destructive and never prompts, so there is nothing to confirm.
+  extractBoolFlag(ctx.flags, "yes");
+  const check = extractBoolFlag(ctx.flags, "check");
+
+  // Report-only drift check: never writes. Exits non-zero when stale so bulk
+  // audits can script `rauf update --check <repo>` like `format:check`.
+  if (check) {
+    const driftResult = checkDrift(resolved);
+    if (!driftResult.ok) {
+      return handleCoreError(driftResult.error, ctx, resolved);
+    }
+    const drift = driftResult.value;
+    if (ctx.globalFlags.json) {
+      outputJson(drift);
+    } else {
+      printDriftReport(drift, resolved);
+    }
+    return drift.stale ? ExitCode.ERROR : ExitCode.SUCCESS;
+  }
 
   const result = update(resolved);
 
@@ -360,6 +381,28 @@ function printUpdateReport(report: InstallationReport): void {
 
   printActions(report.actions);
   printWarnings(report.warnings);
+}
+
+/** Print a report-only drift check (from `rauf update --check`) */
+function printDriftReport(drift: DriftReport, projectPath: string): void {
+  const name = c.bold(path.basename(projectPath));
+  if (!drift.stale) {
+    success(`${name} is up to date (${c.dim(drift.installedBy)})`);
+    return;
+  }
+
+  warn(`${name} has stale rauf artifacts — run ${c.cyan(`rauf update ${projectPath}`)}`);
+  info("");
+  if (drift.toolVersionStale) {
+    info(
+      `  ${symbols.bullet} installed by ${c.yellow(drift.installedBy)}, current is ${c.green(drift.currentInstalledBy)}`,
+    );
+  }
+  if (drift.deadHashKeys.length > 0) {
+    info(
+      `  ${symbols.bullet} stale artifact hash key(s): ${c.yellow(drift.deadHashKeys.join(", "))}`,
+    );
+  }
 }
 
 /** Print a list of install actions */

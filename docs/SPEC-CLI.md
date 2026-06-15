@@ -402,9 +402,16 @@ Install rauf artifacts into an existing project at `[path]`.
 
 ### rauf update [path]
 
-Update rauf artifacts in an existing installation.
+Re-sync templated rauf artifacts in an existing installation. Non-destructive and
+idempotent: rewrites only the managed RAUF.md/CLAUDE.md blocks, overwrites
+`backlog.schema.json`, backfills `.gitignore` runtime entries, and refreshes the
+`.rauf.json` marker (`installedBy` → current version; prunes stale artifact-hash
+keys such as legacy `ralph.sh`). Never touches `backlog.json`, `progress.md`, or a
+customized `REVIEW.md`. Runs without prompting (there is nothing to confirm).
 
-- `--yes`: skip confirmation prompts
+- `--check`: report-only — print whether the project's artifacts are stale
+  (tool-version lag or dead hash keys) and exit non-zero if so; writes nothing.
+  Use it to audit whether a repo (or a fleet of repos) needs `rauf update`.
 
 ### rauf uninstall [path]
 
