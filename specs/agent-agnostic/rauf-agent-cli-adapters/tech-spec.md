@@ -284,7 +284,7 @@ banner-scan/pause/resume in `runner.ts`) currently lives partly in the runner an
   banner detection (`hasUsageLimitInText` over stderr + reconstructed stream), same pause/resume.
   The mid-iteration banner scan is conceptually claude-specific; gating it on `checkUsage`
   availability keeps it claude-only without a hard `id === "claude-cli"` check.
-- **`hasUsageLimitInText` substring risk (REQ-USAGE-02, SC-1):** this check (`exit-classifier.ts:4-10`)
+- **`hasUsageLimitInText` substring risk (REQ-USAGE-02, SC-1):** this check (`exit-classifier.ts:16`, matching the `USAGE_LIMIT_PATTERNS` at `:4-10`)
   substring-matches phrases like "rate limit" / "usage limit" in arbitrary output. The
   mid-iteration scan at `runner.ts:651` that calls it MUST sit **inside** the `checkUsage`-gated
   block, so a non-claude plain-text agent that merely prints such a phrase in normal output is
@@ -368,7 +368,7 @@ non-breaking convenience; the persisted/canonical key stays `provider`. New in-m
 | `runner.ts` | rewire | exec sites `:609`/`:969`; event provider `:512`/`:633`; model `:494`; usage `:252/:651/:1471/:1577`; signalText `:644` | route through provider; gate usage on `checkUsage` |
 | `signal-parser.ts` `parseSignal` | reuse | `parseSignal(stdout: string): ParsedSignal` (`:27`); `SignalType` (`:4`) | agent-agnostic already |
 | `signal-redactor.ts` | extend | add `neutralizeForDetection`; add `RAUF_REVIEW` to token set | applied pre-detection, all adapters, at **both** sites: `runner.ts:670` (work, on `signalText`) and `runner.ts:986` (review, on `stdout`) |
-| `exit-classifier.ts` `ExitClass` | reuse | `done/blocked/needs_human/usage_limited/timeout/infra_error/genuine_retry` (`:22-29`) | outcome vocabulary unchanged, agent-agnostic (REQ-EXEC-03); see PRD→ExitClass mapping below; `hasUsageLimitInText` (`:4-10`) gated claude-only per §3.6 |
+| `exit-classifier.ts` `ExitClass` | reuse | `done/blocked/needs_human/usage_limited/timeout/infra_error/genuine_retry` (`:22-29`) | outcome vocabulary unchanged, agent-agnostic (REQ-EXEC-03); see PRD→ExitClass mapping below; `hasUsageLimitInText` (`:16`, patterns at `:4-10`) gated claude-only per §3.6 |
 | `core/schemas.ts` | reuse + `agent` alias normalization | fields per §4 | no breaking change |
 | `cli/loop-commands.ts` | extend | `handleLoopRun` (`:688`), options assembly (`:813`), detached body (`:385`), new `rauf agents` | `--agent` flag + discovery |
 | `events.ts` / `LoopEvent` | reuse | `llm_spawned`/`llm_exited` (`schemas.ts:448-463`) | only the `provider` *value* changes |

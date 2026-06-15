@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-15T18:28:26Z",
+  "updatedAt": "2026-06-15T19:05:00Z",
   "currentStage": "forge-3-specs",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
@@ -34,10 +34,27 @@
     },
     "forge-verify-tech": {
       "status": "findings-applied",
-      "findingsFile": ".verification/VERIFY-tech-2026-06-15.md",
-      "findingsCount": 5,
-      "verifiedAt": "2026-06-15T18:32:00Z",
-      "fixedAt": "2026-06-15T18:35:00Z"
+      "findingsFile": ".verification/VERIFY-tech-2026-06-15-reverify.md",
+      "findingsCount": 1,
+      "verifiedAt": "2026-06-15T19:05:00Z",
+      "fixedAt": "2026-06-15T19:05:00Z",
+      "notes": "Confirmation re-verify of v2: 17/17 checks (16 pass, 1 n/a). All 5 prior findings (v1->v2) confirmed correctly applied; every v2-edited file:line citation re-verified against source. 1 new trivial citation fix (hasUsageLimitInText :4-10 -> :16) applied directly. Prior v1 report retained at .verification/VERIFY-tech-2026-06-15.md."
+    },
+    "forge-3-specs": {
+      "status": "in-progress",
+      "version": 1,
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-agent-registry-and-detection.md",
+        "03-cli-agent-engine-and-presets.md",
+        "04-agent-selection.md",
+        "05-runner-wiring.md",
+        "06-cli-surface.md",
+        "07-testing-strategy.md"
+      ],
+      "startedAt": "2026-06-15T19:20:00Z",
+      "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 2 }
     }
   }
 }
