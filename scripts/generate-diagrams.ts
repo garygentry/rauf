@@ -62,7 +62,7 @@ const boxes: Box[] = [
   // CLI
   {
     id: "cli",
-    label: "ralph CLI",
+    label: "rauf CLI",
     sublabel: "(global binary)",
     x: 40,
     y: 60,
@@ -74,7 +74,7 @@ const boxes: Box[] = [
   // Web server
   {
     id: "web",
-    label: "ralph web server",
+    label: "rauf web server",
     sublabel: "Hono + Bun @ 127.0.0.1:5173",
     x: 370,
     y: 60,

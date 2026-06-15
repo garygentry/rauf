@@ -118,7 +118,7 @@ npx vitest run packages/loop/src/git-status.test.ts
 rauf loop run . --backlog specs/<x>     # → CONFLICT, with the message
 
 # Runner snapshot is the expected version
-pnpm dogfood:runner && rauf-stable version --json   # → { "version": "0.2.0" }
+pnpm dogfood:runner && rauf-stable version --json   # → { "version": "0.6.0" }
 
 # plans/ is untracked + ignored
 git ls-files plans/                     # → empty
