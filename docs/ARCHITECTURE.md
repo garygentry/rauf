@@ -175,7 +175,7 @@ User → CLI `rauf loop run --detached ./project`
            → selectNextItem → buildPrompt → spawnClaude → parseSignal
            → Emits LoopEvents at each lifecycle point
          → LoopManager fans events to SSE listeners
-       → CLI `rauf loop follow` or web frontend
+       → CLI `rauf follow` or web frontend
          → GET /api/projects/:id/loop/events (SSE)
          → Receives LoopEvent stream, renders in terminal/UI
 ```
@@ -209,7 +209,7 @@ Loop completes → runReviewPass()
 LoopRunner ──emits──► LoopEvent
   │
   ├──► LoopManager ──fans out──► SSE clients
-  │                                ├── CLI `rauf loop follow`
+  │                                ├── CLI `rauf follow`
   │                                └── Web frontend EventSource
   │
   └──► Direct mode: CLI `rauf loop run` event handler

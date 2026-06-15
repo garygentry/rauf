@@ -116,7 +116,7 @@ selects machine-readable output where noted.
 | validate | `rauf backlog validate <path> [--backlog <dir>] [--specs-dir <dir>] [--json]` | Validate a backlog (schema + semantics).        |
 | status   | `rauf status <path> [--backlog <dir>] [--json]`                               | Derived loop status.                            |
 | list     | `rauf backlog list <path> [--backlog <dir>] [--json]`                         | List backlog items.                             |
-| follow   | `rauf loop follow <path> [--backlog <dir>]`                                   | Stream loop events.                             |
+| follow   | `rauf follow <path> [--backlog <dir>]`                                        | Stream loop events.                             |
 | log      | `rauf log <path> [--backlog <dir>] [--follow]`                                | Tail the event log.                             |
 | version  | `rauf version --json` → `{ "version": "<semver>" }`                           | Report runner version (for min-version gating). |
 
@@ -228,17 +228,16 @@ it aside (as always: status `blocked` + `needsHuman`) **and then halts** in the
 resumable `paused_human` state instead of continuing to other items. On this
 stream the order is: the `needs_human` event (`itemId`, `reason`), then a
 `loop_paused` event (`reason: "needs_human"`, `itemId`). `loop run` then exits
-with the distinct code **`6`** (`PAUSED_HUMAN`). Without the flag, the default
-is unchanged — the item is set aside and the loop keeps running, so no
-`loop_paused` is emitted. A supervisor resolves the pause with `rauf resume
---answer <id> "<text>"`, which re-queues the item with the answer and relaunches
-the loop.
+with code **`3`** (`NEEDS_HUMAN`). Without the flag, the default is unchanged —
+the item is set aside and the loop keeps running, so no `loop_paused` is emitted.
+A supervisor resolves the pause with `rauf resume --answer <id> "<text>"`, which
+re-queues the item with the answer and relaunches the loop.
 
-> **Note — two distinct exit-code spaces.** This `loop run` exit code (`6` for a
-> `--pause-on-needs-human` halt) is **not** the same as the `rauf status`
-> exit-code table in §A.7.2 (which maps `loopState`, e.g. `2` for
-> `PAUSED_HUMAN`). They are independent surfaces with independent codes; branch
-> on the right one for the command you ran.
+> **Note — one unified exit-code scheme (v0.5.0).** `rauf status` and `rauf loop
+run` share the single exit-code table (§A.7.2): a needs-human state is `3`
+> (NEEDS_HUMAN) on **both**. The only status-exclusive code is `6` (RUNNING), a
+> query-time state a `loop run` never terminates with. Branch on the same codes
+> regardless of which command you ran.
 
 **Supervisor pattern:** run `rauf loop run . --ndjson --pause-on-needs-human`;
 on a `loop_paused` (or `needs_human`) event — or on the exit code `3` (NEEDS_HUMAN) — gather
@@ -251,9 +250,9 @@ it and continue.
 file-derived snapshot of a backlog root's loop state (no subprocesses are
 invoked to derive it). Its fields:
 
-- **`loopState`** — one of `IDLE`, `RUNNING`, `PAUSED`, `COMPLETE`,
-  `PAUSED_HUMAN`, `LIMIT_REACHED`, `ERROR`, `NOT_INSTALLED`, `SLEEPING_LIMIT`,
-  `WEEKLY_LIMIT`.
+- **`loopState`** — one of `IDLE`, `RUNNING`, `REVIEWING`, `PAUSED`, `COMPLETE`,
+  `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `LIMIT_REACHED`, `ERROR`, `NOT_INSTALLED`,
+  `SLEEPING_LIMIT`, `WEEKLY_LIMIT`.
 - **`stateSource`** — `state.json` | `log-parsing` | `none`.
 - **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
   **`startedAt`**, **`elapsed`** — progress fields (nullable).
@@ -268,15 +267,20 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
 - **`sleepUntil?`** — ISO timestamp, present when `loopState` is
   `SLEEPING_LIMIT` or `WEEKLY_LIMIT`.
 
-**Exit-code table** (`rauf status` maps `loopState` to a process exit code so a
-supervisor can branch without parsing JSON):
+**Exit-code table** (the unified v0.5.0 scheme — `rauf status` and `rauf loop
+run` share it so a supervisor can branch without parsing JSON):
 
-| Exit code | `loopState`                                                                                                |
-| --------- | ---------------------------------------------------------------------------------------------------------- |
-| `1`       | `RUNNING`                                                                                                  |
-| `2`       | `PAUSED_HUMAN`                                                                                             |
-| `3`       | `LIMIT_REACHED`                                                                                            |
-| `0`       | everything else (`IDLE`, `COMPLETE`, `PAUSED`, `ERROR`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `NOT_INSTALLED`) |
+| Exit code | Meaning                                             | `loopState` (from `rauf status`)                                        |
+| --------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `0`       | Success — clean terminal                            | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
+| `1`       | Error                                               | `ERROR`                                                                 |
+| `2`       | Usage error (bad args / IO)                         | —                                                                       |
+| `3`       | Needs human                                         | `PAUSED_HUMAN`                                                          |
+| `4`       | Limit / usage-paused / sleeping                     | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
+| `5`       | Blocked (clean terminal with genuine blocked items) | `IDLE`/`COMPLETE`/`PAUSED` when `backlogSummary` has genuine blocks     |
+| `6`       | Running (query-time only)                           | `RUNNING`, `REVIEWING`                                                  |
+
+(`backlog validate` keeps its own triad: `0` valid · `1` findings · `2` usage/IO.)
 
 ### A.7.3 Compatibility promise (anchored to §A.5)
 
@@ -317,11 +321,11 @@ remain version `"1"` and inter-readable.
 | -------------------------------- | -------- | ----------------------------------------------------- |
 | `rauf loop run … --ndjson`       | machine  | **Yes** — stable contract                             |
 | `rauf status … --json`           | machine  | **Yes** — stable contract                             |
-| `rauf loop follow`               | human    | **No** — formatted for display                        |
+| `rauf follow`                    | human    | **No** — formatted for display                        |
 | `rauf log` / `rauf log --follow` | human    | **No** — formatted for display                        |
 | `rauf.log` (file)                | human    | **No** — append-only human log / status fallback only |
 
-`rauf loop follow`, `rauf log --follow`, and the `rauf.log` file are
+`rauf follow`, `rauf log --follow`, and the `rauf.log` file are
 **human-formatted** (colors, icons, prose) and carry **no** stability promise —
 a supervisor MUST NOT parse them. Use `--ndjson` for events and `status --json`
 for state.
@@ -877,7 +881,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `docs/ARCHITECTURE.md`      | Add provider adapter model diagram; update loop lifecycle to show provider interface; document provider resolution chain |
 | `docs/SCHEMAS.md`           | Update event types; add provider config schemas; add provider field to backlog item and marker options                   |
-| `docs/SPEC-CLI.md`          | Document `--provider` flag on `rauf loop run` and `rauf loop start`                                                      |
+| `docs/SPEC-CLI.md`          | Document `--provider` flag on `rauf loop run` (covers `--detached`)                                                      |
 | `docs/CLAUDE-CODE-TASKS.md` | Reframe as Claude-specific provider notes (not system-wide)                                                              |
 | `CLAUDE.md`                 | Update architectural references                                                                                          |
 

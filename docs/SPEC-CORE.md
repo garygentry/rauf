@@ -406,7 +406,7 @@ function computeMaxIterations(
 ```
 
 - When `pending === 0`, returns `cap: 0` (floor does not apply — nothing to budget for)
-- Used by CLI commands (`loop run`, `loop start`) and the web loop route when `--iterations` is omitted
+- Used by CLI commands (`loop run`, including `--detached`) and the web loop route when `--iterations` is omitted
 - An explicit `--iterations` flag always overrides the computed cap
 - `formatBudgetMath(estimate)` returns a human-readable budget line for the CLI
 

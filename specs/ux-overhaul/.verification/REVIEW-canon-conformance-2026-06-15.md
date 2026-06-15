@@ -1,5 +1,10 @@
 # Canon-Conformance Review — UX/DX Overhaul (all 4 phases)
 
+> **Resolution (2026-06-15):** all 9 should-fix findings APPLIED (doc verb/exit-code drift, package.json
+> 0.6.0 bump, canon ratified DRAFT→Ratified). Gate re-run green. Branch merged to `main` (no-ff) and
+> tagged `v0.6.0`. The 4-phase overhaul is complete. The 5 notes remain as optional follow-ups.
+
+
 Date: 2026-06-15
 Review target: branch tip `forge/ux-overhaul-web` (`21a2529`) — contains all four phases' code.
 Yardstick: `specs/ux-overhaul/CANON.md` §3–§8. Method: 7 parallel read-only `forge-verifier` reviewers

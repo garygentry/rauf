@@ -72,7 +72,7 @@ The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner
    - `RAUF_BLOCKED:reason` → mark item blocked, continue to next
    - `RAUF_NEEDS_HUMAN:reason` → pause loop, leave item in_progress
    - `RAUF_REVIEW:{"items":[...],"summary":"..."}` → review found issues, runner creates fix items
-   - No signal → reset item to pending, log warning, continue
+   - No signal → **not auto-blocked**; outcome classified by exit context (clean / non-zero / timeout / usage-limit), already-committed work reconciled (see the Signal placement note below)
    - Claude exits non-zero with usage limit message in stderr → see Usage Limit Handling below
 
    > **Signal placement (canon §4.5):** the runner scans **backwards from the end**

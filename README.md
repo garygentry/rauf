@@ -141,10 +141,10 @@ rauf backlog sweep <path> --yes          # Archive completed items
 ### Loop
 
 ```bash
-rauf loop run <path>                     # Run loop directly (no server)
-rauf loop start <path>                   # Start loop via server (auto-starts daemon)
-rauf loop stop <path>                    # Stop a running loop
-rauf loop follow <path>                  # Stream loop events in terminal
+rauf loop run <path>                     # Run loop directly (foreground, no server)
+rauf loop run <path> --detached          # Run loop detached (server-owned, auto-starts daemon)
+rauf loop stop <path>                    # Stop a detached/server-owned loop
+rauf follow <path>                       # Stream loop events in terminal (top-level verb)
 ```
 
 ### Monitoring
