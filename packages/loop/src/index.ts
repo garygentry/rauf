@@ -41,7 +41,12 @@ export {
   createProvider,
   getAvailableProviders,
   clearProviders,
+  registerAgent,
+  getAgentDescriptors,
+  listAgents,
+  detectAgent,
 } from "./providers/index.js";
+export type { AgentAvailability } from "./providers/index.js";
 export type {
   ProviderId,
   LLMProvider,

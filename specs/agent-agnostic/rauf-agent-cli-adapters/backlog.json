@@ -66,8 +66,8 @@
         "providers/index.ts re-exports registerAgent/getAgentDescriptors/listAgents/detectAgent/AgentAvailability and imports ONLY claude-cli as a side effect",
         "registry.test.ts covers the cases above and pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:03:16.767Z",
       "dependsOn": [
         "001"
       ],

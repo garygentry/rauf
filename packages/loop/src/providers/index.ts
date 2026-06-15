@@ -17,7 +17,12 @@ export {
   createProvider,
   getAvailableProviders,
   clearProviders,
+  registerAgent,
+  getAgentDescriptors,
+  listAgents,
+  detectAgent,
 } from "./registry.js";
+export type { AgentAvailability } from "./registry.js";
 
 export { createClaudeCliProvider } from "./claude-cli.js";
 

@@ -3,8 +3,14 @@ import type { Result } from "@rauf/core";
 
 import { spawnClaude } from "../claude-process.js";
 import { checkUsageLimit } from "../usage-checker.js";
-import { registerProvider } from "./registry.js";
-import type { LLMProvider, ExecuteOptions, ExecutionResult, UsageLimitResult } from "./types.js";
+import { registerAgent } from "./registry.js";
+import type {
+  LLMProvider,
+  ExecuteOptions,
+  ExecutionResult,
+  UsageLimitResult,
+  DetectionResult,
+} from "./types.js";
 
 class ClaudeCliProvider implements LLMProvider {
   readonly id = "claude-cli" as const;
@@ -51,5 +57,26 @@ export function createClaudeCliProvider(): LLMProvider {
   return new ClaudeCliProvider();
 }
 
-// Register as the default provider
-registerProvider("claude-cli", createClaudeCliProvider);
+/**
+ * Availability probe for claude-cli. Overrides the default PATH probe: claude availability is
+ * gated on its OAuth credential being readable, not on the `claude` binary being on PATH — this
+ * preserves today's pre-loop credential semantics (REQ-USAGE-01, SC-2). Reuses the exact
+ * credential check `createClaudeCliProvider().validateCredentials()`. Never throws.
+ */
+async function detectClaudeCli(): Promise<DetectionResult> {
+  const provider = createClaudeCliProvider();
+  const result = provider.validateCredentials();
+  if (result.ok) {
+    return { available: true, detail: "Claude OAuth credentials present" };
+  }
+  return { available: false, detail: result.error.message };
+}
+
+// Register as the default agent (migrated from registerProvider — behavior preserved).
+registerAgent({
+  id: "claude-cli",
+  displayName: "Claude Code (CLI)",
+  binaryName: "claude",
+  factory: createClaudeCliProvider,
+  detect: detectClaudeCli,
+});
