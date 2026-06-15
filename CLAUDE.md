@@ -56,12 +56,20 @@ Before implementing any feature, read the relevant spec:
 
 ```bash
 pnpm install          # Install all dependencies
+pnpm gate             # THE gate — build + schema:check + version:check + typecheck + lint + format:check + test
+                      #   This is exactly what CI runs (.github/actions/quality-gate). Run it before pushing.
 pnpm build            # Build all packages
 pnpm test             # Run all tests (vitest)
 pnpm typecheck        # TypeScript type checking
 pnpm lint             # ESLint
 pnpm format:check     # Prettier check
+pnpm version:check    # Assert all package.json versions match packages/core/src/version.ts
 ```
+
+> **`pnpm gate` is the single source of truth for "is it green?"** — CI runs the identical command, and
+> the forge pipeline's per-item acceptance gate uses it too (`forge.config.json`). Run `pnpm gate`
+> locally before pushing; don't rely on the narrower `typecheck && test` subset (it misses `build` and
+> `schema:check`).
 
 ## Test Sandbox
 

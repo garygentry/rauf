@@ -22,6 +22,8 @@
     "clean": "pnpm -r clean",
     "generate:schemas": "bun run scripts/generate-json-schemas.ts",
     "schema:check": "bun run scripts/generate-json-schemas.ts --check",
+    "version:check": "bun run scripts/check-versions.ts",
+    "gate": "pnpm build && pnpm schema:check && pnpm version:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
     "release:prepare": "bun run scripts/release/prepare.ts",
     "rauf": "rauf"
