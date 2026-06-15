@@ -1,10 +1,28 @@
 {
   "feature": "ux-overhaul-web",
-  "pipelineStatus": "in-progress",
+  "pipelineStatus": "complete",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-15T01:00:00Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-06-15T01:45:00Z",
+  "currentStage": "complete",
   "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-15T01:45:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/ux-overhaul-web/README.md",
+        "docs/architecture/ux-overhaul-web/architecture.md",
+        "docs/architecture/ux-overhaul-web/api-reference.md",
+        "docs/architecture/ux-overhaul-web/guides/recovery.md"
+      ],
+      "result": "Standard 4-doc set (matches docs/architecture/ux-overhaul + ux-overhaul-grammar), grounded in the landed v0.6.0 source: README (what shipped + quick start + export map), architecture (D1 recovery relocation cli→loop, D2 review via LoopManager, D3 two-strength lock guard, D4 label+tone map, D5 enum+exit codes, D6 agent docs; rule-#1 dependency story; data flow), api-reference (5 endpoints with bodies/envelopes/guards/codes verified from source, full STATE_LABELS table, mapLoopStateStatus, statusExitCode table, relocated @rauf/loop exports, ResumeResult), guides/recovery (operator usage per action + error table + CLI↔web parity table + status vocabulary). Prettier clean. pipelineStatus=complete."
+    },
     "forge-verify-impl": {
       "status": "findings-applied",
       "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-impl-2026-06-14.md",
