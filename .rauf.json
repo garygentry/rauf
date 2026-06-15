@@ -1,8 +1,9 @@
 {
+  "rauf": true,
   "version": "1",
   "variant": "backlog-json",
   "installedAt": "2026-02-21T23:20:19.145Z",
-  "installedBy": "rauf-manager@0.1.0",
+  "installedBy": "rauf-manager@0.6.0",
   "profile": {
     "stack": "node-typescript",
     "packageManager": "pnpm",
@@ -17,15 +18,11 @@
     "verify": "pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
   },
   "artifactHashes": {
-    "ralph.sh": "62c5064bf8cb3d1ef7a6837d28afdc9f439a8a3112b841b2999ef55aeb1facdb",
-    "ralph-status.sh": "e39a3f2a69e655a9a919fd5bef14fa7ab518fac642949cfd5ede692c33e88483",
-    "ralph-add.sh": "ad5b4e7bb5388993c291344eced743c99ad4d4f5ca161b4fe5bed598d9bf259f",
-    "RAUF.md": "453c8fbb9911d187707d6d473b8e61c3524155b4118e16b036249345ec256455"
+    "RAUF.md": "005deebef4bfdbad93841f34c6c83ebe780f29aa44077291fca5abe7933daa27"
   },
   "options": {
     "ignoreInTool": false,
     "gitignoreScripts": false,
     "maxIterations": 100
-  },
-  "rauf": true
+  }
 }
