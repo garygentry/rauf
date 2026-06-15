@@ -479,5 +479,13 @@ contradicting the implementation specs):
    §3.2`) for the additive `agent`→`provider` input-alias, plus a small `constants.ts` as the physical
    home of `DEFAULT_AGENT_ID`/`GENERIC_AGENT_ID` (re-exported via `agent-selection.ts`). The §2 module
    structure tree omitted both; `01-architecture-layout.md §2` is the current authority.
+4. **Registry export surface refined** — the §2 "Public API surface" block above shows the
+   superseded shape `getAgentDescriptors() // [{ id, displayName, available, binaryName }]`. The specs
+   settled (authoritative: `01-architecture-layout.md §4`, `02-agent-registry-and-detection.md §4`):
+   `getAgentDescriptors(): AgentDescriptor[]` is **static/synchronous, no `available`** (help hot
+   path, no I/O); a **separate** async `listAgents(): Promise<AgentAvailability[]>` + the
+   `AgentAvailability` type carry live availability (the `rauf agents` data source). The barrel also
+   exports `CliAgent` + `CliAgentConfig`/`PromptDelivery`/`BuildArgsContext`. The §2 block's comment
+   and its omission of these symbols are superseded by `01 §4`.
 
 `rauf agents` placement is settled as top-level `rauf agents` (`06-cli-surface.md §3.3`).

@@ -337,8 +337,9 @@ import type { LLMProvider } from "./providers/types.js";
 import { createProvider, getAgentDescriptors } from "./providers/registry.js"; // 02 (or barrel)
 import { resolveAgentId } from "./agent-selection.js";                          // 04
 import { err, ok, ErrorCodes } from "@rauf/core";
-import type { Result } from "@rauf/core";
+import type { Result, RaufError } from "@rauf/core";
 import type { BacklogItem } from "@rauf/core";
+// `LoopResult` is declared in this same runner.ts (`runner.ts:62`) — in scope, no import.
 
 /** One provider instance per distinct resolved agent id, for the lifetime of one run (REQ-PERF-01). */
 private readonly providerCache = new Map<string, LLMProvider>();
@@ -452,16 +453,18 @@ iteration runs** (REQ-DET-02). `failRunSetup` is that single early-return path:
  * (no writeState, no backlog mutation), so a failed setup leaves the project untouched.
  */
 private failRunSetup(error: RaufError): LoopResult {
-  this.emitEvent("loop_error", { error: error.message });
-  return { iterations: 0, stopReason: "error", error: error.message }; // shape per LoopResult (runner.ts)
+  this.emitEvent("loop_error", { error: error.message }); // error surfaced via the event
+  // Real LoopResult shape (runner.ts:62-79): zero-iteration terminal, no state written.
+  return { completedCount: 0, blockedCount: 0, cancelled: false };
 }
 ```
 
 - Called from §4.3 (`this.failRunSetup(runProviderResult.error)`) and §4.5 (after a failed
   `detectAllCandidateAgents`). It runs **before** the existing `writeState("starting", …)` at
-  `runner.ts:249`, so SC-3's "no state written" holds. The exact `LoopResult` field names/`stopReason`
-  value are taken from the committed `LoopResult` type in `runner.ts`; confirm them when implementing
-  (the contract is "zero iterations, error reason, no state write").
+  `runner.ts:249`, so SC-3's "no state written" holds. The `{ completedCount: 0, blockedCount: 0,
+  cancelled: false }` return is the committed `LoopResult` zero-iteration shape (`runner.ts:62-79`) —
+  identical to the §4.5 pre-state-write early return; the error text is surfaced via the `loop_error`
+  event (the contract is "zero iterations, no state write").
 
 ### 4.2 Reads at loop start; dispose in `finally` (REQ-PERF-01, lifecycle)
 

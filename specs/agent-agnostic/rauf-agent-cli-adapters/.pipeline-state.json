@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-15T20:40:00Z",
+  "updatedAt": "2026-06-15T21:05:00Z",
   "currentStage": "forge-4-backlog",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
@@ -62,11 +62,11 @@
     },
     "forge-verify-specs": {
       "status": "findings-applied",
-      "findingsFile": ".verification/VERIFY-specs-2026-06-15.md",
-      "findingsCount": 17,
-      "verifiedAt": "2026-06-15T20:10:00Z",
-      "fixedAt": "2026-06-15T20:40:00Z",
-      "notes": "38/38 checks via 5 parallel dimensioned verifiers + deterministic traceability (29 REQs, 0 uncovered/orphaned). 17 findings all applied via forge-fix 6-step plan. Substantive fixes: export-surface/type-location reconciliation (constants.ts introduced; CliAgent/config re-exported via providers/index.ts; getAgentDescriptors static + listAgents async), resolveRunLevelProvider/failRunSetup defined (05 §4.1.1), REQ-SEC-01 cwd added to SpawnProcessGroupOptions, self-import fixed, tech-spec §11 reconciliation note, 02 headings renumbered. Post-fix re-validation: traceability still clean, all cross-refs resolve."
+      "findingsFile": ".verification/VERIFY-specs-2026-06-15-reverify.md",
+      "findingsCount": 7,
+      "verifiedAt": "2026-06-15T21:05:00Z",
+      "fixedAt": "2026-06-15T21:05:00Z",
+      "notes": "Confirmation re-verify of the 17-finding fix batch (prior report VERIFY-specs-2026-06-15.md retained). 38/38 checks via 5 parallel verifiers; all 17 prior fixes confirmed landed; traceability still 29/0/0. Found + applied 7 new: 3 regressions from the fix batch (failRunSetup wrong LoopResult shape, missing RaufError import, 3 stale '02 §7'->'§8' cites), 1 incomplete fix (AgentAdapter not re-exported by 02 §6), 1 new tech-spec staleness (§11 bullet 4 on registry export surface), 2 pre-existing nits (IO_ERROR placeholder, verify.sh:380->:377). All deterministic, no user decisions."
     }
   }
 }

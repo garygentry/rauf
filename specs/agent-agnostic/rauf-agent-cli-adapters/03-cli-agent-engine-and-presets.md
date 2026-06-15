@@ -317,7 +317,7 @@ async execute(prompt: string, options: ExecuteOptions): Promise<Result<Execution
   let promptFile: string | undefined;
   if (delivery === "file") {
     const written = await writePromptToSandboxTempFile(prompt); // cwd === ROOT_DIRECTORY
-    if (!written.ok) return written;                            // spawn-side IO error -> Result err
+    if (!written.ok) return written;                            // temp-file write failure -> Result err(IO_ERROR)
     promptFile = written.value;
   }
 
@@ -691,7 +691,7 @@ No throwing for expected errors (CLAUDE.md, `00-core-definitions.md §5`). Per o
 | Abort/cancel (`options.signal`) | `spawnProcessGroup` | group receives SIGTERM; resolves with whatever was captured | REQ-EXEC-02 |
 | Missing telemetry (plain-text) | `CliAgent.execute` | `reconstructedText`/`progressEvents` simply unset — **not an error** | REQ-OBS-02 |
 | Usage check requested | n/a | `CliAgent` defines no `checkUsage`; runner skips usage paths cleanly | REQ-USAGE-02 |
-| Temp prompt-file write fails (file delivery) | `CliAgent.execute` | `err({ code: <IO/FILE code>, … })` before spawn | REQ-SEC-01 |
+| Temp prompt-file write fails (file delivery) | `CliAgent.execute` | `err({ code: ErrorCodes.IO_ERROR, message })` before spawn (`IO_ERROR` confirmed, errors.ts:21-32) | REQ-SEC-01 |
 | Temp prompt-file unlink fails (cleanup) | `CliAgent.execute` `finally` | swallowed (best-effort) — never fails the iteration | — |
 | Malformed generic/named config | `configToCliAgentConfig` | `err({ code: VALIDATION_ERROR, message })` naming the bad field | REQ-ADP-04 |
 | Unknown generic config at factory time | `createGenericCliProvider` | throws (inherited `createProvider` contract); runner's per-iteration resolve wraps it (`05`) | REQ-DISC-01 |

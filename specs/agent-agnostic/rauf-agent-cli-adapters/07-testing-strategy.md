@@ -440,7 +440,7 @@ For **each** non-claude agent (`codex`, `gemini`, `copilot`, `cursor`) and the `
    cleanly (item done, state `limit_reached`, no error in the loop log) and that the usage-limit
    detection log line (the one `verify.sh` already greps for in the `usage-limit-stdout` case) is
    **absent** for the non-claude run — proving the claude usage preflight/banner scan did not run.
-   A negative grep assertion suffices, reusing the exact marker `verify.sh:380` already greps for in
+   A negative grep assertion suffices, reusing the exact marker `verify.sh:377` already greps for in
    the `usage-limit-stdout` case: `! grep -q "Usage limit detected" "$SANDBOX_DIR/.rauf/rauf.log"`.
 4. **Telemetry gracefully absent, no error (SC-1, REQ-OBS-02):** assert `events.ndjson` for the
    non-claude run contains the spawn+exit lifecycle and `item_completed`, but **no** token-count or

@@ -523,7 +523,7 @@ export type {
   ProviderId, LLMProvider, ExecuteOptions, ExecutionResult,
   ProviderProgressEvent, UsageLimitResult, ProviderFactory, ProgressCallback,
 } from "./types.js";                                   // EXISTING
-export type { AgentDescriptor, DetectionResult } from "./types.js";   // NEW (00 §3.3)
+export type { AgentAdapter, AgentDescriptor, DetectionResult } from "./types.js";   // NEW (AgentAdapter = LLMProvider alias, 00 §2; descriptor types 00 §3.3)
 
 export {
   registerProvider, createProvider, getAvailableProviders, clearProviders, // EXISTING

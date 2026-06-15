@@ -353,14 +353,14 @@ import { renderTable, type TableColumn } from "./formatter.js"; // formatter.ts:
  *
  * @param ctx - CLI command context (honors `--json` via ctx.globalFlags.json).
  * @returns ExitCode.SUCCESS (0) on success; ExitCode.ERROR (1) only on an unexpected internal
- *          failure (listAgents never rejects per 02 §7, so this is a defensive backstop).
+ *          failure (listAgents never rejects per 02 §8, so this is a defensive backstop).
  */
 export async function handleAgents(ctx: CommandContext): Promise<number> {
   let rows: AgentAvailability[];
   try {
     rows = await listAgents(); // 02 §4 — never rejects; unavailable agents are data, not errors
   } catch (e) {
-    // Defensive only: listAgents is specified never to reject (02 §7). Surface as a generic error.
+    // Defensive only: listAgents is specified never to reject (02 §8). Surface as a generic error.
     error(`Failed to list agents: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
   }
@@ -393,7 +393,7 @@ export async function handleAgents(ctx: CommandContext): Promise<number> {
   probe — never an agent invocation (CLAUDE.md rule 6: "status reads files, not subprocesses"; PATH
   resolution is a stat). This handler therefore satisfies the "status reads files" constraint.
 - **Never fails on an unavailable agent.** `listAgents()` reports an absent CLI as
-  `{ available: false, detail }` and never rejects (`02 §7`); the handler always returns
+  `{ available: false, detail }` and never rejects (`02 §8`); the handler always returns
   `ExitCode.SUCCESS` (0) for a successful listing regardless of how many agents are available. The
   `try/catch` is a defensive backstop only.
 - **Exit code:** `0` on a successful listing (even if every agent is unavailable). `1`
