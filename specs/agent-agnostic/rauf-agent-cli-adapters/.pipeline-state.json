@@ -24,13 +24,20 @@
       "fixedAt": "2026-06-15T18:08:23Z"
     },
     "forge-2-tech": {
-      "status": "in-progress",
-      "version": 1,
+      "status": "complete",
+      "version": 2,
       "artifacts": ["tech-spec.md"],
       "startedAt": "2026-06-15T18:28:26Z",
       "completedAt": "2026-06-15T18:28:26Z",
       "basedOnVersions": { "forge-1-prd": 2 },
       "notes": "Reframe: provider seam already exists (packages/loop/src/providers: LLMProvider, registry, claude-cli adapter) and all schema fields committed; feature = wire runner to provider + add detection/selection/new adapters. Decisions: alias --agent over committed provider; config-driven CliAgent engine + presets; registry descriptors for detection; per-agent plain-text sandbox mocks. REQ-SEC-02 neutralization is partly net-new (current redactor is logging-only)."
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-tech-2026-06-15.md",
+      "findingsCount": 5,
+      "verifiedAt": "2026-06-15T18:32:00Z",
+      "fixedAt": "2026-06-15T18:35:00Z"
     }
   }
 }

@@ -140,9 +140,12 @@ Event emission: replace the hardcoded `provider: "claude-cli"` at `runner.ts:512
 and `:633` (`llm_exited`) with `provider: provider.id` (REQ-OBS-01). No event-shape change — the
 CLI already renders `event.provider` (`loop-commands.ts:1184`).
 
-> Neither path may bypass the abstraction (REQ-ADP-06). After this change the only `spawnClaude`
-> importer is `providers/claude-cli.ts`; `runner.ts:47` drops the `spawnClaude` import. A lint/grep
-> assertion in tests guards against re-introducing a direct spawn in the runner.
+> Neither path may bypass the abstraction (REQ-ADP-06). After this change the only *runtime caller*
+> of `spawnClaude` is `providers/claude-cli.ts`; `runner.ts:47` drops the `spawnClaude` import. The
+> public re-export at `packages/loop/src/index.ts:12` (`export { spawnClaude } from
+> "./claude-process.js"`) is **retained** — it is part of the package's external surface and is left
+> unchanged. The test guard therefore greps **`runner.ts` only** for a direct `spawnClaude(` call
+> site (not the whole package), so it does not false-positive on `index.ts:12` or `claude-process.ts`.
 
 ### 3.3 Agent-selection precedence — `loop-agent-selection` (REQ-SEL-02/03/04)
 
@@ -204,11 +207,28 @@ mechanism, not the literals, is what SC-1 proves):
 | copilot | `copilot`     | stdin      | `--allow-all-tools` (tbd)    | `--model <m>`   |
 | cursor  | `cursor-agent`| arg        | `--force` / non-interactive  | `--model <m>`   |
 
-`generic-cli.ts` is the same `CliAgent` engine whose `CliAgentConfig` is built from
-`MarkerOptions.providerConfig` / `ToolConfig.providers[id]` (binary, args, prompt delivery, output,
-env) — any other command-line agent is reachable with **no new code** (REQ-ADP-04, REQ-SCALE-01).
+`generic-cli.ts` is the same `CliAgent` engine driven by config — any other command-line agent is
+reachable with **no new code** (REQ-ADP-04, REQ-SCALE-01). **Two ways to reach a config-driven
+agent, with one resolution rule:**
 
-Adding an agent = a preset literal or runtime config; the runner orchestration never changes.
+1. **Arbitrary named agent** — `--agent <id>` where `<id>` matches a key in
+   `ToolConfig.providers[<id>]` (project/global config). The selection layer builds a `CliAgent`
+   from that config entry. Because the entry carries its own `binary`, the descriptor for such an
+   agent **does** have a `binaryName` (taken from the config), so `detectAgent` PATH-probes it
+   normally (this is the path that satisfies REQ-DET-01 for config-driven agents). This is the
+   primary "add an agent without code" path (REQ-SCALE-01).
+2. **Reserved `generic-cli` id** — the literal id `generic-cli` is a single built-in adapter whose
+   `CliAgentConfig` comes from `MarkerOptions.providerConfig` (the per-run marker). Because its
+   binary is not known until the marker config is read, its descriptor **omits** `binaryName` and
+   supplies a custom `detect` that resolves the binary from the supplied `providerConfig` at probe
+   time (falling back to "unknown/available" when no config is present rather than failing
+   enumeration).
+
+So §3.5's "omitted `binaryName`" applies **only** to the reserved `generic-cli` descriptor; named
+config agents (case 1) keep a `binaryName` from their config and probe via the default detector.
+
+Adding an agent = a preset literal, a `ToolConfig.providers` entry, or marker `providerConfig`; the
+runner orchestration never changes.
 
 ### 3.5 Detection & availability — registry descriptors (REQ-DET-01/02, REQ-DISC-01/02)
 
@@ -231,8 +251,11 @@ export function detectAgent(id: string): Promise<DetectionResult>;
 ```
 
 - Default `detect` is a PATH `which`-style probe of `binaryName` (no subprocess execution of the
-  agent itself — just resolution). claude-cli overrides with its credential check; generic-cli
-  probes its configured binary.
+  agent itself — just resolution). claude-cli overrides with its credential check. Named
+  config-driven agents (`ToolConfig.providers[id]`) carry a `binaryName` from their config and use
+  the default probe; only the reserved `generic-cli` descriptor omits `binaryName` and supplies a
+  custom `detect` resolving the binary from the supplied `providerConfig` (see §3.4 for the full
+  resolution rule).
 - **Pre-loop fail-fast** (REQ-DET-02): before any iteration runs or any state is written, the
   runner collects the **set of all agent ids that could run this loop** — the run-level resolved id
   plus every distinct per-item `provider` in the pending backlog — and calls `detectAgent` on each.
@@ -261,6 +284,13 @@ banner-scan/pause/resume in `runner.ts`) currently lives partly in the runner an
   banner detection (`hasUsageLimitInText` over stderr + reconstructed stream), same pause/resume.
   The mid-iteration banner scan is conceptually claude-specific; gating it on `checkUsage`
   availability keeps it claude-only without a hard `id === "claude-cli"` check.
+- **`hasUsageLimitInText` substring risk (REQ-USAGE-02, SC-1):** this check (`exit-classifier.ts:4-10`)
+  substring-matches phrases like "rate limit" / "usage limit" in arbitrary output. The
+  mid-iteration scan at `runner.ts:651` that calls it MUST sit **inside** the `checkUsage`-gated
+  block, so a non-claude plain-text agent that merely prints such a phrase in normal output is
+  **not** misclassified as `usage_limited` ("no spurious limit detection"; SC-1 "no error raised").
+  For non-claude adapters the scan is skipped entirely and exit classification proceeds via the
+  normal signal/exit-code path.
 - An adapter MAY provide its own `checkUsage`; none is required for codex/gemini/copilot/cursor here.
 
 ### 3.7 Signal contract & neutralization (REQ-SIG-01/02, REQ-SEC-02, SC-6)
@@ -278,6 +308,12 @@ banner-scan/pause/resume in `runner.ts`) currently lives partly in the runner an
   leaving a genuine final-line signal intact, and apply it uniformly to **every** adapter's output
   immediately before `parseSignal`, in **both** execution paths. Extend the token set to include
   `RAUF_REVIEW` (currently absent from the redactor). The existing log-preview redaction is kept.
+  - **Two distinct insertion sites** (the paths parse different variables): the **work iteration**
+    applies `neutralizeForDetection(signalText)` before `parseSignal` at `runner.ts:670` (where
+    `signalText` is the reconstructed-or-stdout value from `:644`); the **review pass** parses the
+    signal directly from raw `stdout` at `runner.ts:986` (no `reconstructedText` fallback), so apply
+    `neutralizeForDetection(stdout)` there before `parseSignal`. Both sites are required to satisfy
+    REQ-SEC-02 ("uniformly across all adapters") and REQ-ADP-06 ("both runner execution paths").
 
 ### 3.8 Model interplay (REQ-MODEL-01/02)
 
@@ -331,11 +367,24 @@ non-breaking convenience; the persisted/canonical key stays `provider`. New in-m
 | `claude-process.ts` | reuse/refactor | `spawnClaude(prompt, SpawnClaudeOptions): Promise<Result<SpawnClaudeResult>>` (`:11-32`, spawn `:87`, stdin `:217`, kill `:162-173`) | extract shared kill/timeout/group helper for `CliAgent` |
 | `runner.ts` | rewire | exec sites `:609`/`:969`; event provider `:512`/`:633`; model `:494`; usage `:252/:651/:1471/:1577`; signalText `:644` | route through provider; gate usage on `checkUsage` |
 | `signal-parser.ts` `parseSignal` | reuse | `parseSignal(stdout: string): ParsedSignal` (`:27`); `SignalType` (`:4`) | agent-agnostic already |
-| `signal-redactor.ts` | extend | add `neutralizeForDetection`; add `RAUF_REVIEW` to token set | applied pre-detection, all adapters |
-| `exit-classifier.ts` `ExitClass` | reuse | `done/blocked/needs_human/usage_limited/timeout/infra_error/genuine_retry` (`:22-29`) | outcome vocabulary unchanged (REQ-EXEC-03) |
+| `signal-redactor.ts` | extend | add `neutralizeForDetection`; add `RAUF_REVIEW` to token set | applied pre-detection, all adapters, at **both** sites: `runner.ts:670` (work, on `signalText`) and `runner.ts:986` (review, on `stdout`) |
+| `exit-classifier.ts` `ExitClass` | reuse | `done/blocked/needs_human/usage_limited/timeout/infra_error/genuine_retry` (`:22-29`) | outcome vocabulary unchanged, agent-agnostic (REQ-EXEC-03); see PRD→ExitClass mapping below; `hasUsageLimitInText` (`:4-10`) gated claude-only per §3.6 |
 | `core/schemas.ts` | reuse + `agent` alias normalization | fields per §4 | no breaking change |
 | `cli/loop-commands.ts` | extend | `handleLoopRun` (`:688`), options assembly (`:813`), detached body (`:385`), new `rauf agents` | `--agent` flag + discovery |
 | `events.ts` / `LoopEvent` | reuse | `llm_spawned`/`llm_exited` (`schemas.ts:448-463`) | only the `provider` *value* changes |
+
+**PRD outcome vocabulary → `ExitClass` mapping** (REQ-EXEC-03). The PRD names five outcomes; the
+implemented `ExitClass` is a richer superset (`exit-classifier.ts:22-29`). "Unchanged" means the
+runner keeps classifying every agent's exit through the existing `ExitClass` exactly as it does for
+claude today — the PRD terms map onto it as:
+
+| PRD term (REQ-EXEC-03) | `ExitClass` value(s) |
+|---|---|
+| done | `done` |
+| blocked | `blocked` |
+| needs-human | `needs_human` |
+| limit | `usage_limited` (claude-only; gated per §3.6) |
+| error | `timeout`, `infra_error`, `genuine_retry` |
 
 **No conflicts with in-progress features**: this feature is purely additive within `packages/loop`
 + `packages/cli`; sibling epic features live in `../feature-forge` and do not touch these files.
@@ -361,6 +410,14 @@ installed CLI's actual version (OQ-2). They are config literals, correctable wit
   token/tool events simply absent (REQ-OBS-02).
 - **Usage check unsupported**: `provider.checkUsage` undefined → usage paths skipped, no error
   (REQ-USAGE-02).
+- **Provider lifecycle on early exit**: the per-iteration resolve wraps `createProvider` in a
+  try/catch and returns a `Result` error (listing `getAgentDescriptors()` ids) rather than throwing,
+  so an unknown/mistyped per-item `provider` surfaced mid-run is an expected error, not a crash
+  (CLAUDE.md "no throw for expected errors"). The §3.5 pre-loop detection collects all candidate
+  ids up front, so this case is normally caught before iteration 1; the per-iteration guard is the
+  backstop. All cached provider instances are disposed via `provider.dispose?.()` in a `finally`
+  that runs on **every** loop-exit path — normal completion, fail-fast detection error (REQ-DET-02),
+  abort/cancel, and thrown error — so no instance leaks regardless of how the run ends.
 
 ## 8. Testing Approach
 
