@@ -81,11 +81,15 @@ export class LoopManager {
   }
 
   /**
-   * Start a loop for a project. Returns an error string if already running.
+   * Shared launch path for both a normal loop (startLoop) and a standalone review
+   * pass (startReviewLoop). Resolves the backlog-root key, refuses a duplicate,
+   * creates the runner, subscribes the event fan-out, and tracks the promise with
+   * map cleanup. The `run` thunk selects the runner entrypoint (start vs review).
    */
-  startLoop(
+  private launch(
     projectPath: string,
     options: LoopStartOptions,
+    run: (runner: LoopRunner) => Promise<LoopResult>,
   ): { ok: true } | { ok: false; error: string } {
     const key = this.resolveKey(projectPath, options.backlogRoot);
 
@@ -106,8 +110,8 @@ export class LoopManager {
       });
     }
 
-    // Start the loop and track the promise
-    const promise = runner.start().then(
+    // Run (loop or review) and track the promise
+    const promise = run(runner).then(
       (result) => {
         this.activeLoops.delete(key);
         this.deferBufferCleanup(key);
@@ -125,6 +129,16 @@ export class LoopManager {
   }
 
   /**
+   * Start a loop for a project. Returns an error string if already running.
+   */
+  startLoop(
+    projectPath: string,
+    options: LoopStartOptions,
+  ): { ok: true } | { ok: false; error: string } {
+    return this.launch(projectPath, options, (runner) => runner.start());
+  }
+
+  /**
    * Start a STANDALONE REVIEW pass for a project (D3.2). Mirrors startLoop but
    * runs LoopRunner.startReviewOnly() instead of start(). Returns an error
    * string if a loop is already running for the same backlog root.
@@ -133,41 +147,7 @@ export class LoopManager {
     projectPath: string,
     options: LoopStartOptions,
   ): { ok: true } | { ok: false; error: string } {
-    const key = this.resolveKey(projectPath, options.backlogRoot);
-
-    if (this.activeLoops.has(key)) {
-      return { ok: false, error: "Loop already running for this backlog root" };
-    }
-
-    const runnerResult = LoopRunner.create(projectPath, options);
-    if (!runnerResult.ok) {
-      return { ok: false, error: runnerResult.error.message };
-    }
-    const runner = runnerResult.value;
-
-    // Subscribe to all event types and fan out to listeners
-    for (const eventType of LOOP_EVENT_TYPES) {
-      runner.on(eventType, (event: LoopEvent) => {
-        this.fanOut(key, event);
-      });
-    }
-
-    // Start the review pass and track the promise
-    const promise = runner.startReviewOnly().then(
-      (result) => {
-        this.activeLoops.delete(key);
-        this.deferBufferCleanup(key);
-        return result;
-      },
-      (error) => {
-        this.activeLoops.delete(key);
-        this.deferBufferCleanup(key);
-        throw error;
-      },
-    );
-
-    this.activeLoops.set(key, { runner, projectPath, promise });
-    return { ok: true };
+    return this.launch(projectPath, options, (runner) => runner.startReviewOnly());
   }
 
   /**

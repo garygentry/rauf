@@ -914,7 +914,16 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       if (!started.ok) reason = started.error; // e.g. "Loop already running…"
     }
 
-    const result: ResumeResult = { reconciled: reconciled!, relaunched, reason };
+    // `reconciled` is set on the only success path; every null-leaving path returns
+    // early inside the try. This explicit guard makes that invariant compiler-checked
+    // (no non-null assertion) and defends a future non-returning edit from sending null.
+    if (!reconciled) {
+      return c.json(
+        errorResponse(ErrorCodes.IO_ERROR, "resume produced no reconcile summary"),
+        500,
+      );
+    }
+    const result: ResumeResult = { reconciled, relaunched, reason };
     return c.json({ data: result });
   });
 

@@ -2,9 +2,17 @@
   "feature": "ux-overhaul-web",
   "pipelineStatus": "in-progress",
   "createdAt": "2026-06-14T20:11:00Z",
-  "updatedAt": "2026-06-15T00:30:00Z",
+  "updatedAt": "2026-06-15T01:00:00Z",
   "currentStage": "forge-6-docs",
   "stages": {
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/ux-overhaul-web/.verification/VERIFY-impl-2026-06-14.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-15T01:00:00Z",
+      "fixedAt": "2026-06-15T01:20:00Z",
+      "result": "4 parallel forge-verifiers (~37 checks). FULL GATE GREEN (typecheck/lint/format/test: core 918, loop 300, web 232, cli 456, release 60; version 0.6.0). 0 errors/gaps/inconsistencies; 4 improvements only. Requirement-coverage (6/6) + integration-correctness (11/11) dimensions fully clean: all 28 REQs map to real code; rule #1 holds (no @rauf/cli in web); acquire-and-hold lock model + finally-release verified; OQ-T2 {itemId,text}→humanAnswer; deriveFromStateJson staleness on raw status; embedded-artifacts regenerated; AGENT_ADDON not renamed; minRunnerVersion unchanged; no feature-forge edits. Findings (all improvements, non-blocking): V-001/V-002 strengthen state-labels.test.ts (per-state tone pinning + label≠machine-form assertion); V-003 extract LoopManager.launch helper (startReviewLoop duplicates startLoop ~40 lines); V-004 remove reconciled! non-null assertion in resume route. No user decisions."
+    },
     "forge-5-loop": {
       "status": "complete",
       "startedAt": "2026-06-14T23:40:00Z",
