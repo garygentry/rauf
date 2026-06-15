@@ -255,8 +255,8 @@
         "neutralizeForDetection is applied immediately before parseSignal at both the work (signalText) and review (stdout) sites; the redactSignalTokens log-preview use is retained",
         "runner.test.ts covers usage-gating skip (no spurious usage_limited), claude usage paths preserved, fail-fast with no-state-written, and both neutralization sites; pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:45:27.667Z",
       "dependsOn": [
         "008",
         "009"

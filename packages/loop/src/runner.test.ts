@@ -1373,6 +1373,9 @@ fi`,
       registerAgent({
         id,
         displayName: id,
+        // A real adapter is detectable; without this, item 010's pre-loop fail-fast
+        // detection (no checkUsage on these fakes) would abort the run.
+        detect: async () => ({ available: true }),
         factory: (): LLMProvider => {
           state.constructCount++;
           return {
@@ -1524,6 +1527,183 @@ fi`,
       const here = path.dirname(fileURLToPath(import.meta.url));
       const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
       expect(src).not.toMatch(/spawnClaude\(/);
+    });
+  });
+
+  describe("usage gating + fail-fast + neutralization (item 010)", () => {
+    interface FakeState {
+      constructCount: number;
+      execCount: number;
+    }
+
+    /**
+     * Register a fake agent. `opts.checkUsage` adds a (no-op limited:false) usage
+     * capability so the runner treats it like claude for usage-gating. `opts.available`
+     * controls its pre-loop detection (default true). `opts.exitCode`/`opts.stdout`
+     * shape the single execute() result.
+     */
+    function registerFake(
+      id: string,
+      opts: {
+        stdout?: string;
+        exitCode?: number;
+        checkUsage?: boolean;
+        available?: boolean;
+      } = {},
+    ): FakeState {
+      const state: FakeState = { constructCount: 0, execCount: 0 };
+      registerAgent({
+        id,
+        displayName: id,
+        binaryName: id,
+        detect: async () => ({ available: opts.available ?? true }),
+        factory: (): LLMProvider => {
+          state.constructCount++;
+          const provider: LLMProvider = {
+            id,
+            displayName: id,
+            async execute() {
+              state.execCount++;
+              return ok({
+                stdout: opts.stdout ?? "RAUF_DONE\n",
+                stderr: "",
+                exitCode: opts.exitCode ?? 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            },
+            validateCredentials() {
+              return ok(undefined);
+            },
+          };
+          if (opts.checkUsage) {
+            provider.checkUsage = async () => ({ limited: false });
+          }
+          return provider;
+        },
+      });
+      return state;
+    }
+
+    it("does NOT classify a non-checkUsage agent printing 'rate limit' as usage_limited (no error)", async () => {
+      // exitCode 1 + 'rate limit' in output: with checkUsage this would trip the
+      // pre-signal banner scan. Without checkUsage the scan is skipped, so the
+      // RAUF_DONE signal is honored and the item completes — no spurious limit.
+      registerFake("rl-plain", {
+        stdout: "Note: hit a rate limit in the example docs\nRAUF_DONE\n",
+        exitCode: 1,
+      });
+      setupProject(tmpDir, [pendingItem("001", "Plain")]);
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "rl-plain" });
+      runner.on("loop_error", (e) => errors.push(e.error));
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+      expect(result.limitReached).toBeFalsy();
+      expect(errors).toHaveLength(0);
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).not.toContain("Usage limit detected");
+    });
+
+    it("skips the OAuth preflight for a non-claude run-level provider", async () => {
+      registerFake("no-preflight", { stdout: "RAUF_DONE\n" });
+      setupProject(tmpDir, [pendingItem("001", "NoPreflight")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "no-preflight" });
+      await runner.start();
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      // A claude run with no credentials would log this from runUsagePreflight;
+      // a non-claude (no checkUsage) run must skip the preflight entirely.
+      expect(log).not.toContain("OAuth token unavailable");
+    });
+
+    it("still runs the usage path for a checkUsage (claude-like) provider", async () => {
+      // checkUsage present → pre-signal banner scan fires on exitCode 1 + 'rate
+      // limit'; with sleepOnLimit:false the runner halts cleanly (limitReached).
+      registerFake("rl-usage", {
+        stdout: "hit a rate limit\nRAUF_DONE\n",
+        exitCode: 1,
+        checkUsage: true,
+      });
+      setupProject(tmpDir, [pendingItem("001", "Usage")]);
+
+      const origHome = process.env.HOME;
+      process.env.HOME = tmpDir; // no credentials → token-unavailable path
+      try {
+        const runner = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          provider: "rl-usage",
+          sleepOnLimit: false,
+        });
+        const result = await runner.start();
+
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).toContain("Usage limit detected in claude output");
+        expect(result.limitReached).toBe(true);
+      } finally {
+        process.env.HOME = origHome;
+      }
+    });
+
+    it("fails fast (before iteration 1) when a selected agent is unavailable — no state, no mutation, no fallback", async () => {
+      const state = registerFake("ff-missing", { available: false });
+      setupProject(tmpDir, [pendingItem("001", "FailFast")]);
+
+      const errors: string[] = [];
+      const spawned: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "ff-missing" });
+      runner.on("loop_error", (e) => errors.push(e.error));
+      runner.on("llm_spawned", (e) => spawned.push(e));
+      const result = await runner.start();
+
+      // Returned the zero-iteration LoopResult.
+      expect(result).toMatchObject({ completedCount: 0, blockedCount: 0, cancelled: false });
+      // The agent never ran (no spawn, no execute).
+      expect(spawned).toHaveLength(0);
+      expect(state.execCount).toBe(0);
+
+      // Error names the agent + remediation + supported ids.
+      const errMsg = errors.find((m) => m.includes("ff-missing"));
+      expect(errMsg).toBeDefined();
+      expect(errMsg).toContain("Install it or ensure");
+      expect(errMsg).toContain("Supported agents:");
+      // No silent fallback to claude.
+      expect(errMsg).not.toMatch(/fall(ing)? back to claude/i);
+
+      // No state.json written.
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "state.json"))).toBe(false);
+      // Backlog item status unchanged (still pending).
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]!.status).toBe("pending");
+    });
+
+    it("applies neutralizeForDetection before parseSignal at both work and review sites", () => {
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
+      // Work iteration (signalText) and review pass (stdout).
+      expect(src).toMatch(/parseSignal\(neutralizeForDetection\(signalText\)\)/);
+      expect(src).toMatch(/parseSignal\(neutralizeForDetection\(stdout\)\)/);
+      // The log-preview redactSignalTokens use is retained.
+      expect(src).toMatch(/redactSignalTokens\(/);
+    });
+
+    it("preserves a genuine standalone signal through neutralization (real RAUF_DONE still completes)", async () => {
+      // Output quotes the token inline (defused) but also emits a real final-line
+      // signal, which neutralization must leave intact.
+      registerFake("neutral-ok", {
+        stdout: 'Quoting the rule: "RAUF_DONE" is the done token.\nRAUF_DONE\n',
+      });
+      setupProject(tmpDir, [pendingItem("001", "Neutral")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "neutral-ok" });
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
     });
   });
 
