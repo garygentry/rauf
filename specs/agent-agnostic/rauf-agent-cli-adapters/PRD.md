@@ -148,8 +148,13 @@ answers). It delivers CLI adapters only.
   per agent as the current claude invocation; this elevated-permission execution MUST be confined to
   the loop's intended sandbox/working directory and MUST NOT broaden rauf's existing path-sandboxing
   guarantees. Priority: P0.
-- REQ-SEC-02: Any signal/credential redaction applied to agent output today MUST apply uniformly to
-  all agents' output. Priority: P1.
+- REQ-SEC-02: The existing `RAUF_*` signal-token neutralization (which rewrites literal signal
+  tokens that appear *inside* an agent's output so a merely-quoted token cannot be mis-parsed as a
+  real completion signal) MUST be applied to every agent's output before signal detection, uniformly
+  across all adapters. Priority: P1.
+  - Notes: This is signal-contract robustness (see §3.4 REQ-SIG), not credential redaction. rauf
+    performs no credential/secret redaction of agent output today; net-new credential redaction is
+    out of scope for this feature (see §6).
 
 ### 4.3 Observability
 - REQ-OBS-01: Lifecycle events (agent spawned / agent exited) MUST carry the **real** selected agent
@@ -158,6 +163,9 @@ answers). It delivers CLI adapters only.
   Token-count and tool-start/tool-end telemetry are **best-effort**: present for agents that emit a
   rich structured stream (claude today), and gracefully absent for plain-text agents — their absence
   MUST NOT be treated as an error. Priority: P0.
+
+### 4.4 Accessibility
+- Not applicable: rauf is a headless loop runner with no interactive UI surface in scope.
 
 ### 4.5 Scalability
 - REQ-SCALE-01: Adding a new agent MUST be possible either by configuring the generic-cli adapter
@@ -178,7 +186,8 @@ answers). It delivers CLI adapters only.
   files (no subprocess). The adapter layer lives in `packages/loop`.
 - The `RAUF_*` signal vocabulary is the fixed cross-agent completion contract and is not redefined
   here.
-- This feature targets the rauf repo only; cross-repo wiring lives in sibling epic features.
+- This feature MUST NOT modify files outside the rauf repo; cross-repo wiring is delivered by
+  sibling epic features (`forge-rauf-loop-default`, `cross-agent-installer`).
 
 ## 6. Out of Scope
 
@@ -189,6 +198,9 @@ answers). It delivers CLI adapters only.
   signal detection; parity telemetry is deferred.
 - **feature-forge default-to-rauf wiring and installer bundling of rauf** — delivered by the sibling
   features `forge-rauf-loop-default` and `cross-agent-installer`.
+- **Credential/secret redaction of agent output** — rauf performs no output credential redaction
+  today; adding it is deferred. (The existing `RAUF_*` signal-token neutralization is retained and
+  generalized to all agents per REQ-SEC-02 — that is signal robustness, not credential redaction.)
 - Any change to the backlog schema/contract beyond what agent selection requires.
 
 ## 7. Open Questions
@@ -207,15 +219,22 @@ answers). It delivers CLI adapters only.
 
 - SC-1: A rauf loop completes end-to-end driven by a **mock codex**, a **mock gemini**, a **mock
   copilot**, and a **mock cursor** agent in the test sandbox, AND by an arbitrary mock CLI through
-  the **generic-cli** adapter — each reaching `RAUF_DONE` and committing as today.
+  the **generic-cli** adapter — each reaching `RAUF_DONE` and committing as today. The plain-text
+  mock agents complete with token/tool telemetry **gracefully absent and no error raised**.
+  (Verifies REQ-ADP-01/02/03/04, REQ-EXEC-01/02/03, REQ-SIG-01/02, REQ-OBS-02.)
 - SC-2: The existing **claude** path is behaviorally unchanged: all current test-sandbox scenarios
   (stream-done, stream-blocked, usage-limit, review, etc.) pass exactly as before, including the
-  Anthropic usage preflight and pause/resume.
+  Anthropic usage preflight and pause/resume. (Verifies REQ-SEL-03, REQ-USAGE-01, REQ-PERF-01.)
 - SC-3: Selecting an agent whose CLI is absent produces a **fail-fast error before any iteration**,
   naming the agent and how to make it available; no state is written and no fallback occurs.
+  (Verifies REQ-DET-01, REQ-DET-02.)
 - SC-4: Lifecycle events carry the real selected agent id (verifiable: a codex run emits codex, not
-  `claude-cli`); non-claude runs skip the Anthropic usage preflight without error.
+  `claude-cli`); non-claude runs skip the Anthropic usage preflight without error. (Verifies
+  REQ-OBS-01, REQ-USAGE-02.)
 - SC-5: `--agent` selection and its config-layer precedence behave per REQ-SEL-02; supported agents
-  are listed from help and a discovery surface reports per-agent availability.
-- SC-6: `pnpm gate` (build + schema:check + version:check + typecheck + lint + format:check + test)
+  are listed from help and a discovery surface reports per-agent availability. (Verifies
+  REQ-SEL-01/02/04, REQ-DISC-01, REQ-DISC-02.)
+- SC-6: A quoted `RAUF_*` token appearing inside any agent's output is neutralized and does not
+  trigger a false signal. (Verifies REQ-SEC-02.)
+- SC-7: `pnpm gate` (build + schema:check + version:check + typecheck + lint + format:check + test)
   is green.

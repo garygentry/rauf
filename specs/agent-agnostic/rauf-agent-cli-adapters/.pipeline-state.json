@@ -9,12 +9,19 @@
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
       "status": "complete",
-      "version": 1,
+      "version": 2,
       "artifacts": ["PRD.md"],
       "startedAt": "2026-06-15T18:08:23Z",
       "completedAt": "2026-06-15T18:08:23Z",
       "commitHash": "e2f77f5d37a959b9622e734772d3a1f6f2904d8c",
       "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-15.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-15T18:08:23Z",
+      "fixedAt": "2026-06-15T18:08:23Z"
     }
   }
 }
