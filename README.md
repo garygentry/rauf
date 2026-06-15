@@ -65,7 +65,7 @@ curl -fsSL https://raw.githubusercontent.com/garygentry/rauf/main/scripts/instal
 irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.ps1 | iex
 ```
 
-Set `RAUF_VERSION=v0.3.0` (or any tag) to install a specific release instead of latest.
+Set `RAUF_VERSION=v0.6.0` (or any tag) to install a specific release instead of latest.
 
 > **macOS note:** the darwin binaries are unsigned in v1. Binaries installed via the `curl` one-liner are normally **not** quarantined, but if Gatekeeper blocks a binary downloaded through a browser or Finder, run `xattr -d com.apple.quarantine ./rauf` (or right-click → Open once). See [Releasing & Installing](docs/RELEASING.md) for details.
 
@@ -77,7 +77,7 @@ Set `RAUF_VERSION=v0.3.0` (or any tag) to install a specific release instead of 
 
 ```bash
 # Clone and build
-git clone https://github.com/your-org/rauf.git
+git clone https://github.com/garygentry/rauf.git
 cd rauf && pnpm install && pnpm build
 
 # Install rauf into an existing project

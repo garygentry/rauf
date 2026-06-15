@@ -16,7 +16,7 @@ If you have muscle memory or scripts using the old forms, update them:
 | `rauf status --watch`     | `rauf status --follow` (or `-f`)                     |
 
 `--follow` / `-f` is the **one** monitoring follow flag, shared by `status`, `log`, and `follow`.
-It is distinct from the unrelated `--follow` _execution_ convenience flag on `loop start` (which
+It is distinct from the unrelated `--follow` _execution_ convenience flag on `loop run --detached` (which
 streams SSE inline after starting a server-run loop).
 
 ## CLI commands
@@ -127,4 +127,4 @@ The web equivalent of `status --all` — returns `listActiveLoops()` (reconciled
   mid-run" is almost always a backlog-root mismatch, which the empty-is-never-silent footer now
   makes obvious.
 - **No server needed for reads.** `status`, `log`, `follow`, and `status --all` are all file-backed.
-  Only `loop start` / `loop stop` require the server daemon.
+  Only `loop run --detached` / `loop stop` require the server daemon.

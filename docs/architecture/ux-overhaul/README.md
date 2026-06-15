@@ -5,7 +5,7 @@ persists its event stream to `events.ndjson` inside the backlog root's state dir
 and registers itself in a machine-wide active-loop registry. Because all observers — the
 CLI, the web server, and any pipeline tool — reconstruct state by reading those files,
 they see the _same_ picture whether the loop runs in-process (`rauf loop run`) or under the
-server daemon (`rauf loop start`). This collapses the old asymmetry where the web UI showed
+server daemon (`rauf loop run --detached`). This collapses the old asymmetry where the web UI showed
 a degraded view of in-process runs and the four monitor commands behaved differently by
 execution mode.
 

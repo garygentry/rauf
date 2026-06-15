@@ -19,7 +19,7 @@ lines shown with a `$` prefix are shell commands.
 | -------------------------------------------------------- | ----------------------------------- | ----------------------------------------------- |
 | On a feature branch (not `main`)                         | `git branch --show-current`         | `feature/release-automation`                    |
 | Clean working tree (the loop guard refuses a dirty tree) | `git status --porcelain`            | empty                                           |
-| Runner installed + current                               | `rauf-stable version --json`        | `{ "version": "0.2.0" }` (≥ `minRunnerVersion`) |
+| Runner installed + current                               | `rauf-stable version --json`        | `{ "version": "0.6.0" }` (≥ `minRunnerVersion`) |
 | forge-5 setup gate                                       | `ls .rauf.json`                     | present                                         |
 | Runner wired in forge                                    | `grep loopRunner forge.config.json` | `"loopRunner": { "bin": "rauf-stable" }`        |
 | forge config exists                                      | `ls forge.config.json`              | present (`forge-init` already run)              |
@@ -95,7 +95,7 @@ verify after fix until clean.
 
 forge-5 automatically:
 
-- **Version gate** — `rauf-stable version --json` must be ≥ `0.2.0`.
+- **Version gate** — `rauf-stable version --json` must be ≥ `0.5.0` (the feature-forge `minRunnerVersion`).
 - **Setup gate** — `.rauf.json` must exist at the project root.
 - **Iteration budget** — `ceil(pending × 1.5)`.
 - **Renders the run command and asks you to confirm**, then runs it in the
@@ -148,7 +148,7 @@ $ git push                                  # push the loop's commits
 Open a PR for `feature/release-automation`, let GitHub Actions go green, review
 `release.yml`, then merge to `main`.
 
-## 8. Cut v0.2.0 — human-gated, NOT the loop
+## 8. Cut the release — human-gated, NOT the loop
 
 Publishing a release is outward-facing and irreversible, so it is a deliberate
 manual step. After the PR merges on green CI, push the tag (which is what
@@ -156,7 +156,7 @@ triggers `release.yml` to build and publish the binaries):
 
 ```
 $ git checkout main && git pull
-$ git tag v0.2.0 && git push origin v0.2.0
+$ git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 Restore any stashed local edits when done: `git stash pop`.
