@@ -2,6 +2,74 @@
 
 ## Unreleased
 
+## 0.6.0
+
+Phase 4 of the rauf UX/DX overhaul — web/CLI recovery parity, a shared status
+vocabulary, and a ratified agent contract. Additive minor bump (no
+`minRunnerVersion` change, no feature-forge lockstep).
+
+### Added
+
+- **Web recovery parity** with the CLI: `reset`, `resume`, `review`, `unblock`,
+  and `validate` are now exposed as web server routes with matching status-page
+  controls, so the dashboard can drive the same loop-recovery operations the CLI
+  offers.
+- **Shared status label-map** across CLI and web — `REVIEWING` and
+  `PAUSED_USAGE_LIMIT` badges and a "Needs Human" label render identically in
+  both surfaces.
+
+### Changed
+
+- `status` exit codes are aligned with the unified scheme via a shared
+  `statusExitCode` mapping, so the web `DerivedStatus` and CLI agree on outcome
+  semantics.
+- Agent-contract documentation finalized and the UX-overhaul canon ratified
+  (canon-conformance review: GO, 0 blockers).
+
+## 0.5.0
+
+The breaking v0.5.0 cutover of the rauf UX/DX overhaul: Phase 1 lays a
+file-backed observation substrate, and Phases 2+3 flip the command grammar and
+machine contract. feature-forge was updated in lockstep (0.10.0,
+`minRunnerVersion >= 0.5.0`).
+
+### Added
+
+- **`events.ndjson` per-run event log** — a single-writer, dense-sequence event
+  stream with a `schemaVersion` envelope, tolerant of torn trailing lines, that
+  rotates to archive at run start. Formalized as a **versioned, additive-only
+  machine surface** so every observer (CLI, web, pipeline) reconstructs
+  identical state from files.
+- **Machine-wide active-loop registry** (`~/.rauf/active/<hash>.json`) with
+  reconcile-on-read and self-heal via lock-file checking, so concurrent loops
+  across projects are discoverable.
+- **CLI monitor surface:** top-level `follow`, `status --follow`/`-f`, and
+  `status --all`, with an empty-is-never-silent guarantee.
+- **Web observation parity:** `GET /loop/events` (file-backed SSE),
+  `GET /api/loops`, and an `<EventTimeline>` component.
+
+### Changed
+
+- **`loop run --detached` (`-d`) replaces `loop start`** _(breaking)_ — the
+  old `loop start` command is removed; invoking it yields a targeted remediation
+  error rather than a silent alias.
+- **Unified exit codes** across `status` and `loop run`: `0` success, `1` error,
+  `2` usage, `3` needs-human, `4` limit, `5` blocked, `6` running.
+- **Explicit `review` signal** — a review pass no longer collapses into `done`;
+  `RAUF_REVIEW` is emitted only by a review pass.
+- **Flag canon** standardized: `--follow`/`-f`, `--json`, `--backlog`,
+  `--interval`.
+- Agent commit-rule guidance corrected across all template loci (the loop runner
+  owns the commit; the iteration agent never commits or stages) and the embedded
+  template source regenerated.
+- Version bumped to 0.5.0; all six `docs/SPEC-*.md` updated.
+
+### Removed
+
+- **`loop start`** — superseded by `loop run --detached` _(breaking)_.
+- **`loop follow`, `loop watch`, and `status --watch`** — superseded by the
+  top-level `follow` / `status --follow` monitor surface _(breaking)_.
+
 ## 0.4.0
 
 ### Added
