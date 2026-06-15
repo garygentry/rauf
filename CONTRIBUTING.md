@@ -114,4 +114,4 @@ Before implementing features, read the relevant spec in `docs/`:
 
 ## Self-Hosting
 
-This repository is itself a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop start` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into other projects. Do not confuse them.
+This repository is itself a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop run --detached` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into other projects. Do not confuse them.

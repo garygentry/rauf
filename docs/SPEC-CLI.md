@@ -58,7 +58,7 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | [projects list](#rauf-projects-list)     | Discover and list all rauf-enabled projects under root |
 | [projects status](#rauf-projects-status) | Show loop state and backlog summary for all projects   |
 
-### [install / update / uninstall / init](#installation) — Install and manage rauf in a project
+### [install / update / uninstall / init / migrate](#installation) — Install and manage rauf in a project
 
 | Command                           | Description                                            |
 | --------------------------------- | ------------------------------------------------------ |
@@ -66,6 +66,7 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | [update](#rauf-update-path)       | Update rauf artifacts in an existing installation      |
 | [uninstall](#rauf-uninstall-path) | Remove rauf from a project                             |
 | [init](#rauf-init-path)           | Scaffold a brand new rauf-managed project from scratch |
+| [migrate](#rauf-migrate-path)     | Migrate a legacy ralph project (or `~/.ralph`) to rauf |
 
 ### [status / log / progress](#monitoring) — Monitor a project
 
@@ -424,6 +425,27 @@ Scaffold a brand new rauf-managed project from scratch (greenfield).
 - `--seed <file>`: seed the backlog from a JSON or markdown file
 - Profile command overrides: `--test-cmd`, `--typecheck-cmd`, `--lint-cmd`, `--build-cmd`, `--format-cmd`
 - Prints a creation report with next steps
+
+### rauf migrate [path]
+
+Migrate a legacy **ralph** installation to rauf. Rauf was formerly named ralph; this command
+renames the in-project state directory and config (and, with `--global`, the home-directory
+registry) to their rauf equivalents. Run it once on a project that predates the rename — current
+rauf projects do not need it.
+
+```bash
+rauf migrate <path>                  # migrate a project in place
+rauf migrate <path> --dry-run        # print the migration plan, write nothing
+rauf migrate <path> --no-backup      # migrate without writing backup copies
+rauf migrate <path> --clean-backups  # remove backups left by a prior migrate
+rauf migrate --global                # migrate the home registry (~/.ralph → ~/.rauf)
+```
+
+- `--dry-run`: report exactly what would change without touching the filesystem
+- `--no-backup`: skip the `.bak` copies the migration normally leaves behind
+- `--clean-backups`: delete backups from an earlier migration of the same project
+- `--global`: migrate the user-level state directory instead of a project (mutually exclusive with `[path]`)
+- Prints a migration report; `--json` emits it as structured output
 
 ---
 
