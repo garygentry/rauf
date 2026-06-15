@@ -16,6 +16,7 @@ import {
   readToolConfig,
   LoopStartOptionsSchema,
   type LoopEvent,
+  EVENTS_SCHEMA_VERSION,
   unblockItems,
   resolveBacklogRoot,
   resolveBacklogPaths,
@@ -882,12 +883,20 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     "llm_token_update",
     "llm_stuck_warning",
   ];
+  // --ndjson parity (REM-10): the live stream emits the same wire shape as the
+  // persisted events.ndjson — each LoopEvent enriched to a PersistedEvent with a
+  // dense, monotonic per-run `seq` and the `schemaVersion` envelope (mirrors
+  // LoopRunner's file enrichment). A separate counter from the file's: the live
+  // stdout stream and the file are independent surfaces, but now carry identical
+  // record shapes so a consumer can treat them the same.
+  let ndjsonSeq = 0;
   for (const eventType of eventTypes) {
     runner.on(eventType, (event: LoopEvent) => {
       // Machine-readable mode: one JSON object per event, no human renderer
       // and no StatusLine — keeps stdout a clean NDJSON stream.
       if (ndjson) {
-        process.stdout.write(JSON.stringify(event) + "\n");
+        const record = { ...event, seq: ndjsonSeq++, schemaVersion: EVENTS_SCHEMA_VERSION };
+        process.stdout.write(JSON.stringify(record) + "\n");
         return;
       }
 

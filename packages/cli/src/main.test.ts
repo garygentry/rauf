@@ -94,6 +94,29 @@ describe("removed-command remediation (REQ-RMV-01 / 00 §5)", () => {
     expect(combined).not.toContain("Unknown subcommand");
   });
 
+  it("`loop follow` exits USAGE(2) with the targeted message pointing to top-level `follow`", async () => {
+    const output = await withArgv(["loop", "follow", "."], async () => {
+      const code = await runCli();
+      expect(code).toBe(2);
+    });
+    const combined = output.stdout + output.stderr;
+    expect(combined).toContain("`loop follow` was removed in v0.5.0");
+    expect(combined).toContain("use `follow`");
+    expect(combined).not.toContain("Unknown subcommand");
+  });
+
+  it("`loop watch` exits USAGE(2) with the targeted message pointing to `follow`/`status --json`", async () => {
+    const output = await withArgv(["loop", "watch", "."], async () => {
+      const code = await runCli();
+      expect(code).toBe(2);
+    });
+    const combined = output.stdout + output.stderr;
+    expect(combined).toContain("`loop watch` was removed in v0.5.0");
+    expect(combined).toContain("use `follow`");
+    expect(combined).toContain("status --json");
+    expect(combined).not.toContain("Unknown subcommand");
+  });
+
   it("`--watch` on a command exits USAGE(2) with the targeted message", async () => {
     const output = await withArgv(["status", "--watch", "."], async () => {
       const code = await runCli();

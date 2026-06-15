@@ -110,7 +110,10 @@ function ProjectCard({
     refetchInterval: 30_000,
   });
 
-  const loopState = status?.loopState ?? "IDLE";
+  // Do NOT default a missing/in-flight/failed status to IDLE — that misrepresents
+  // "we don't know yet" as a real terminal state (REM-9). `loopState` is undefined
+  // until the fetch resolves with data; the render distinguishes loading vs. unknown.
+  const loopState = status?.loopState;
   const backlogSummary = status?.backlogSummary;
 
   return (
@@ -148,8 +151,19 @@ function ProjectCard({
               className="mt-0.5 h-5 w-14 animate-pulse rounded-full"
               style={{ backgroundColor: "var(--color-border)" }}
             />
-          ) : (
+          ) : loopState ? (
             <StateBadge state={loopState} />
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{
+                backgroundColor: "rgba(107, 114, 128, 0.12)",
+                color: "var(--color-text-muted)",
+              }}
+              title="Status unavailable — the project status could not be loaded"
+            >
+              Unknown
+            </span>
           )}
         </div>
       </div>

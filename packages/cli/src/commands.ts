@@ -106,6 +106,9 @@ export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 export const REMOVED_SUBCOMMAND_MESSAGES: Record<string, Record<string, string>> = {
   loop: {
     start: "`loop start` was removed in v0.5.0 — use `loop run --detached` (`-d`).",
+    follow: "`loop follow` was removed in v0.5.0 — use `follow` (now a top-level command).",
+    watch:
+      "`loop watch` was removed in v0.5.0 — use `follow` (or `status --json` for tool/token detail).",
   },
 };
 
