@@ -5,11 +5,11 @@ template: splash
 hero:
   tagline: Install, manage, and monitor autonomous coding loops across local software projects. Rauf provides backlog management, status dashboards, and installation wizards — all powered by Claude Code.
   actions:
-    - text: Quick Start
-      link: contributing/
+    - text: Get Started
+      link: getting-started/your-first-loop/
       icon: right-arrow
-    - text: Architecture
-      link: architecture/
+    - text: Core Concepts
+      link: getting-started/core-concepts/
       variant: minimal
 ---
 
@@ -27,12 +27,12 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
     via CLI or web UI.
   </Card>
   <Card title="Status Monitoring" icon="approve-check-circle">
-    Real-time loop state derived from `state.json` with log-parsing fallback. Track iterations,
-    outcomes, and progress.
+    Every observer — `status`, `follow`, `log`, and the web — reconstructs loop activity from files
+    on disk (`state.json` + `events.ndjson`). Foreground and detached runs look identical.
   </Card>
   <Card title="Web Dashboard" icon="laptop">
-    React SPA with project cards, backlog management, live log streaming (SSE), and installation
-    wizards.
+    React SPA with project cards, backlog CRUD, a live status + event view, and recovery actions —
+    all reading the same on-disk substrate as the CLI.
   </Card>
 </CardGrid>
 
@@ -42,6 +42,8 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 2. The loop runner picks the next item, spawns a Claude Code session, and monitors the result
 3. Each iteration reads acceptance criteria, implements changes, runs verification, and commits
 4. The loop continues until the backlog is empty or a limit is reached
+
+![One rauf iteration: select an item, build the prompt, spawn the agent, parse its signal, verify and commit, then advance to the next item.](./images/loop-lifecycle.svg)
 
 ## Quick Install
 

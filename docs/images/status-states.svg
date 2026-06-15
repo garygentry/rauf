@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" width="880" height="360">
+
+    <style>
+      /* Dark mode (default — matches Starlight's default) */
+      :root {
+        --bg: hsl(224, 10%, 10%);
+        --container-fill: hsl(224, 14%, 14%);
+        --container-stroke: hsl(224, 10%, 25%);
+        --primary-fill: hsl(217, 50%, 18%);
+        --primary-stroke: #3b82f6;
+        --secondary-fill: hsl(224, 14%, 16%);
+        --secondary-stroke: hsl(224, 6%, 40%);
+        --nested-fill: hsl(217, 50%, 14%);
+        --nested-stroke: hsl(217, 40%, 30%);
+        --info-fill: hsl(217, 50%, 18%);
+        --info-stroke: #3b82f6;
+        --success-fill: hsl(145, 38%, 16%);
+        --success-stroke: #22c55e;
+        --warning-fill: hsl(38, 48%, 18%);
+        --warning-stroke: #f59e0b;
+        --danger-fill: hsl(0, 45%, 18%);
+        --danger-stroke: #ef4444;
+        --neutral-fill: hsl(224, 14%, 16%);
+        --neutral-stroke: hsl(224, 6%, 42%);
+        --text: hsl(224, 6%, 82%);
+        --text-muted: hsl(224, 6%, 56%);
+        --arrow: hsl(224, 6%, 50%);
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --container-fill: hsl(224, 20%, 97%);
+          --container-stroke: hsl(224, 6%, 82%);
+          --primary-fill: #dbeafe;
+          --primary-stroke: #2563eb;
+          --secondary-fill: hsl(224, 20%, 96%);
+          --secondary-stroke: hsl(224, 7%, 60%);
+          --nested-fill: hsl(217, 60%, 94%);
+          --nested-stroke: hsl(217, 40%, 70%);
+          --info-fill: #dbeafe;
+          --info-stroke: #2563eb;
+          --success-fill: #dcfce7;
+          --success-stroke: #16a34a;
+          --warning-fill: #fef3c7;
+          --warning-stroke: #d97706;
+          --danger-fill: #fee2e2;
+          --danger-stroke: #dc2626;
+          --neutral-fill: hsl(224, 20%, 96%);
+          --neutral-stroke: hsl(224, 7%, 60%);
+          --text: hsl(224, 10%, 20%);
+          --text-muted: hsl(224, 7%, 40%);
+          --arrow: hsl(224, 7%, 45%);
+        }
+      }
+
+      .box-container { fill: var(--container-fill); stroke: var(--container-stroke); }
+      .box-primary { fill: var(--primary-fill); stroke: var(--primary-stroke); }
+      .box-secondary { fill: var(--secondary-fill); stroke: var(--secondary-stroke); }
+      .box-nested { fill: var(--nested-fill); stroke: var(--nested-stroke); }
+      .box-info { fill: var(--info-fill); stroke: var(--info-stroke); }
+      .box-success { fill: var(--success-fill); stroke: var(--success-stroke); }
+      .box-warning { fill: var(--warning-fill); stroke: var(--warning-stroke); }
+      .box-danger { fill: var(--danger-fill); stroke: var(--danger-stroke); }
+      .box-neutral { fill: var(--neutral-fill); stroke: var(--neutral-stroke); }
+      .label { fill: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      .sublabel { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+      .arrow-line { stroke: var(--arrow); fill: none; stroke-width: 1.5; }
+      .arrow-line-dashed { stroke: var(--arrow); fill: none; stroke-width: 1.5; stroke-dasharray: 6,4; }
+      .arrow-head { fill: var(--arrow); }
+      .arrow-label { fill: var(--text-muted); font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; font-size: 11px; }
+    </style>
+  <rect width="880" height="360" fill="var(--bg)" rx="4" />
+  <rect class="box-info" x="350" y="150" width="160" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="430" y="174" font-size="14" font-weight="600" text-anchor="middle">Running</text>
+  <text class="sublabel" x="430" y="190" font-size="11" text-anchor="middle">RUNNING</text>
+  <rect class="box-neutral" x="40" y="150" width="150" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="115" y="174" font-size="14" font-weight="600" text-anchor="middle">Idle</text>
+  <text class="sublabel" x="115" y="190" font-size="11" text-anchor="middle">IDLE</text>
+  <rect class="box-success" x="700" y="150" width="150" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="775" y="174" font-size="14" font-weight="600" text-anchor="middle">Complete</text>
+  <text class="sublabel" x="775" y="190" font-size="11" text-anchor="middle">COMPLETE</text>
+  <rect class="box-info" x="355" y="40" width="150" height="50" rx="8" stroke-width="1" />
+  <text class="label" x="430" y="61" font-size="14" font-weight="600" text-anchor="middle">Reviewing</text>
+  <text class="sublabel" x="430" y="77" font-size="11" text-anchor="middle">REVIEWING</text>
+  <rect class="box-danger" x="690" y="40" width="160" height="50" rx="8" stroke-width="1" />
+  <text class="label" x="770" y="61" font-size="14" font-weight="600" text-anchor="middle">Error</text>
+  <text class="sublabel" x="770" y="77" font-size="11" text-anchor="middle">ERROR</text>
+  <rect class="box-info" x="60" y="274" width="150" height="54" rx="8" stroke-width="1" />
+  <text class="label" x="135" y="297" font-size="14" font-weight="600" text-anchor="middle">Paused</text>
+  <text class="sublabel" x="135" y="313" font-size="11" text-anchor="middle">PAUSED</text>
+  <rect class="box-warning" x="345" y="274" width="170" height="54" rx="8" stroke-width="1" />
+  <text class="label" x="430" y="297" font-size="14" font-weight="600" text-anchor="middle">Needs Human</text>
+  <text class="sublabel" x="430" y="313" font-size="11" text-anchor="middle">PAUSED_HUMAN</text>
+  <rect class="box-warning" x="620" y="274" width="230" height="54" rx="8" stroke-width="1" />
+  <text class="label" x="735" y="297" font-size="14" font-weight="600" text-anchor="middle">Limit / Sleeping</text>
+  <text class="sublabel" x="735" y="313" font-size="11" text-anchor="middle">LIMIT_REACHED · SLEEPING · WEEKLY · USAGE</text>
+  <polygon class="arrow-head" points="350,178 343.6,180.9 343.6,175.1" />
+  <polyline class="arrow-line" points="190,178 343,178" />
+  <text class="arrow-label" x="270" y="172" text-anchor="middle">loop run</text>
+  <polygon class="arrow-head" points="700,178 693.6,180.9 693.6,175.1" />
+  <polyline class="arrow-line" points="510,178 693,178" />
+  <text class="arrow-label" x="605" y="172" text-anchor="middle">complete</text>
+  <polygon class="arrow-head" points="425,150 422.1,143.6 427.9,143.6" />
+  <polygon class="arrow-head" points="425,90 427.9,96.4 422.1,96.4" />
+  <polyline class="arrow-line" points="425,143 425,97" />
+  <text class="arrow-label" x="433" y="124" text-anchor="start">--review / done</text>
+  <polygon class="arrow-head" points="505,158 510.1,153.2 512,158.6" />
+  <polygon class="arrow-head" points="710,88 704.9,92.8 703,87.4" />
+  <polyline class="arrow-line" points="511.6,155.7 703.4,90.3" />
+  <text class="arrow-label" x="607.5" y="119" text-anchor="middle">crash / reset</text>
+  <polygon class="arrow-head" points="430,206 432.9,212.4 427.1,212.4" />
+  <polygon class="arrow-head" points="430,274 427.1,267.6 432.9,267.6" />
+  <polyline class="arrow-line" points="430,213 430,267" />
+  <text class="arrow-label" x="438" y="230" text-anchor="start">needs-human / resume --answer</text>
+  <polygon class="arrow-head" points="380,206 375.2,211.1 373,205.9" />
+  <polygon class="arrow-head" points="220,274 224.8,268.9 227,274.1" />
+  <polyline class="arrow-line" points="373.6,208.7 226.4,271.3" />
+  <text class="arrow-label" x="294" y="240" text-anchor="end">stop / resume</text>
+  <polygon class="arrow-head" points="490,206 497,205.3 495.2,210.7" />
+  <polygon class="arrow-head" points="700,274 693,274.7 694.8,269.3" />
+  <polyline class="arrow-line" points="496.7,208.2 693.3,271.8" />
+  <text class="arrow-label" x="605" y="254" text-anchor="start">limit / resume</text>
+</svg>

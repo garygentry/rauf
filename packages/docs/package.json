@@ -3,7 +3,9 @@
   "version": "0.6.0",
   "private": true,
   "scripts": {
+    "predev": "bun run ../../scripts/generate-diagrams.ts && bash ../../scripts/setup-docs.sh",
     "dev": "astro dev",
+    "prebuild": "bun run ../../scripts/generate-diagrams.ts && bash ../../scripts/setup-docs.sh",
     "build": "astro build",
     "preview": "astro preview"
   },
