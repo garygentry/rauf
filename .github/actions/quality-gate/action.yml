@@ -1,17 +1,7 @@
 name: Quality Gate
-description: Build + schema check + typecheck + lint + format + tests (shared by ci.yml and release.yml).
+description: The canonical gate — `pnpm gate` (build + schema:check + version:check + typecheck + lint + format:check + test). Single source of truth shared by ci.yml, release.yml, the forge pipeline, and local dev so they can never drift.
 runs:
   using: composite
   steps:
-    - run: pnpm build
-      shell: bash
-    - run: pnpm schema:check
-      shell: bash
-    - run: pnpm typecheck
-      shell: bash
-    - run: pnpm lint
-      shell: bash
-    - run: pnpm format:check
-      shell: bash
-    - run: pnpm test
+    - run: pnpm gate
       shell: bash
