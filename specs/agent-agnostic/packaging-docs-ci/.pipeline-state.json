@@ -1,0 +1,11 @@
+{
+  "feature": "packaging-docs-ci",
+  "epic": "agent-agnostic",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-15T17:44:28Z",
+  "updatedAt": "2026-06-15T17:44:28Z",
+  "currentStage": "forge-1-prd",
+  "stages": {
+    "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" }
+  }
+}
