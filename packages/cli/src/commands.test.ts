@@ -6,6 +6,8 @@ import { VERSION } from "@rauf/core";
 import { COMMANDS, findCommand, getSubcommandNames, findSubcommand, ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
 import { configureOutput } from "./formatter.js";
+import { getAgentDescriptors } from "@rauf/loop";
+import { handleAgents } from "./loop-commands.js";
 
 // Helper to capture stdout/stderr
 function captureOutput(fn: () => void | Promise<void>) {
@@ -130,6 +132,29 @@ describe("COMMANDS registry", () => {
     const projects = findCommand("projects");
     const subNames = projects!.subcommands!.map((s) => s.name);
     expect(subNames).toEqual(["list", "status"]);
+  });
+});
+
+describe("agent CLI surface registration (06 §Verification)", () => {
+  it("registers a --agent FlagDef on `loop run` enumerating SUPPORTED_AGENT_IDS", () => {
+    const run = findCommand("loop")!.subcommands!.find((s) => s.name === "run")!;
+    const agentFlag = run.flags!.find((f) => f.name.startsWith("--agent"));
+    expect(agentFlag).toBeDefined();
+    const ids = getAgentDescriptors().map((d) => d.id);
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(agentFlag!.description).toContain(id);
+    }
+  });
+
+  it("registers a top-level `agents` command (handler, --json flag, no subcommands)", () => {
+    const agents = findCommand("agents");
+    expect(agents).toBeDefined();
+    expect(agents!.name).toBe("agents");
+    expect(agents!.handler).toBe(handleAgents);
+    expect(agents!.subcommands).toBeUndefined();
+    const jsonFlag = agents!.flags!.find((f) => f.name === "--json");
+    expect(jsonFlag).toBeDefined();
   });
 });
 

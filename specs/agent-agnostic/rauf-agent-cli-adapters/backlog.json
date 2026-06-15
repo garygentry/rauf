@@ -283,8 +283,8 @@
         "commands.test.ts covers the --agent FlagDef registration on `loop run` and the `agents` CommandDef registration (06 §Verification)",
         "loop-commands.test.ts covers --agent plumbing (both paths), --help enumeration, and the agents listing/--json; pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:55:37.544Z",
       "dependsOn": [
         "005",
         "006",
