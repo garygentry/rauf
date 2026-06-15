@@ -201,8 +201,8 @@
         "signal-redactor.test.ts covers inline/quoted neutralization, final-line preservation, RAUF_REVIEW (both forms), and multiple inline tokens; redactSignalTokens tests stay green",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-15T23:22:16.800Z",
       "dependsOn": [],
       "notes": "parseSignal matches whole-line signals scanning backward, so line-awareness is the correct discriminator: a token sharing its line with other text is never a real signal. Keep redactSignalTokens (log-preview) and neutralizeForDetection (pre-detection) as two distinct functions.",
       "estimatedIterations": 1,

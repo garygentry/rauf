@@ -300,3 +300,47 @@
 {"type":"llm_exited","timestamp":"2026-06-15T23:16:58.111Z","projectPath":"/home/gary/workspace/rauf","itemId":"007","provider":"claude-cli","exitCode":0,"timedOut":false,"durationMs":295563,"seq":299,"schemaVersion":"1"}
 {"type":"signal_parsed","timestamp":"2026-06-15T23:16:58.111Z","projectPath":"/home/gary/workspace/rauf","itemId":"007","signal":"done","seq":300,"schemaVersion":"1"}
 {"type":"item_completed","timestamp":"2026-06-15T23:16:58.113Z","projectPath":"/home/gary/workspace/rauf","itemId":"007","title":"Agent-selection resolver + `agent` alias normalization at load boundaries","seq":301,"schemaVersion":"1"}
+{"type":"iteration_start","timestamp":"2026-06-15T23:16:58.134Z","projectPath":"/home/gary/workspace/rauf","iteration":8,"maxIterations":20,"seq":302,"schemaVersion":"1"}
+{"type":"item_selected","timestamp":"2026-06-15T23:16:58.134Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","title":"Signal-token neutralization before detection (neutralizeForDetection)","priority":1,"seq":303,"schemaVersion":"1"}
+{"type":"llm_spawned","timestamp":"2026-06-15T23:16:58.136Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","provider":"claude-cli","timeoutMinutes":60,"seq":304,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:17:02.148Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":16944,"outputTokens":1,"seq":305,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:02.447Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Read","phase":"start","seq":306,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:02.448Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":307,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:04.959Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Read","phase":"start","seq":308,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:04.960Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":309,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:17:07.584Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":1364,"outputTokens":5,"seq":310,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:08.435Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Bash","phase":"start","seq":311,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:08.435Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":312,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:11.952Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Read","phase":"start","seq":313,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:11.952Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":314,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:17:14.630Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":2,"outputTokens":3,"seq":315,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:17:20.313Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":2,"outputTokens":3,"seq":316,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:20.313Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Write","phase":"start","seq":317,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:20.313Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":318,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:23.715Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Edit","phase":"start","seq":319,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:23.715Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":320,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:17:38.101Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":131,"outputTokens":63,"seq":321,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:38.101Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Edit","phase":"start","seq":322,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:38.101Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":323,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:41.278Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Bash","phase":"start","seq":324,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:17:41.278Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":325,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:18:38.821Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":2,"outputTokens":2,"seq":326,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:39.976Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Bash","phase":"start","seq":327,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:39.976Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":328,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:42.595Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Read","phase":"start","seq":329,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:42.595Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":330,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:18:45.776Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":2,"outputTokens":1,"seq":331,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:48.007Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Edit","phase":"start","seq":332,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:48.007Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":333,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:50.358Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Bash","phase":"start","seq":334,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:18:50.358Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":335,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:19:58.052Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":2,"outputTokens":55,"seq":336,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:19:58.053Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Bash","phase":"start","seq":337,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:19:58.053Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":338,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:21:04.782Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":2,"outputTokens":4,"seq":339,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:21:05.949Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"Bash","phase":"start","seq":340,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-15T23:21:05.949Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","toolName":"unknown","phase":"end","seq":341,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-15T23:22:12.902Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","inputTokens":131,"outputTokens":1,"seq":342,"schemaVersion":"1"}
+{"type":"llm_exited","timestamp":"2026-06-15T23:22:16.798Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","provider":"claude-cli","exitCode":0,"timedOut":false,"durationMs":318661,"seq":343,"schemaVersion":"1"}
+{"type":"signal_parsed","timestamp":"2026-06-15T23:22:16.798Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","signal":"done","seq":344,"schemaVersion":"1"}
+{"type":"item_completed","timestamp":"2026-06-15T23:22:16.801Z","projectPath":"/home/gary/workspace/rauf","itemId":"008","title":"Signal-token neutralization before detection (neutralizeForDetection)","seq":345,"schemaVersion":"1"}
