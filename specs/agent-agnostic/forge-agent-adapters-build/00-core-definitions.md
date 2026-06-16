@@ -133,8 +133,17 @@ class AgentRecord:
 | `forge-verifier` | `tools`, `model`, `maxTurns`, `memory`, `skills` |
 
 `SkillRecord.description` / `AgentRecord.description`: the **decoded scalar** is what must round-trip
-byte-for-byte; the YAML dumper is configured to preserve it (`02-generator-engine.md §3`), and a
+byte-for-byte; the YAML dumper is configured to preserve it (`03-per-agent-emitters.md §2.1`), and a
 test asserts decoded equality per target (`06-testing-strategy.md`).
+
+**Map-value typing contract.** `SkillRecord.metadata` and `AgentRecord.claude_keys` carry value type
+`object` — they are the `safe_load` of arbitrary canon frontmatter (unknown scalar/sequence/mapping),
+so the parse step (`02-generator-engine.md §3`) cannot know their shapes statically. Emitters
+deliberately re-widen these to `Any` when projecting them into a native `dict[str, Any]` frontmatter
+map (e.g. `native.update(agent.claude_keys)`, `03-per-agent-emitters.md §3.3`); the narrow fields
+(`name`, `description`, `argument-hint`) are validated via `isinstance` before use (`hint_value`,
+`03 §2.2`; `parse_*`, `02 §3`). This `object → Any` transition is an intentional, reviewed boundary,
+not an oversight — emitters never trust an `object` value as a string without an `isinstance` guard.
 
 ## 3. Frontmatter Parse Contract (REQ-GEN-01, REQ-ROB-01)
 
@@ -158,7 +167,7 @@ any parse failure here is a **real defect that MUST block** (REQ-ROB-01) — nev
 ## 4. Fixed Key-Emission Order (REQ-DET-01)
 
 Every emitter that writes YAML frontmatter MUST emit keys in a **fixed order** (the YAML dumper is
-invoked with `sort_keys=False`, `02-generator-engine.md §3`). The canonical order:
+invoked with `sort_keys=False`, `03-per-agent-emitters.md §2.1`). The canonical order:
 
 ```python
 # Fixed frontmatter key-emission order for determinism (REQ-DET-01). Emitters
@@ -200,8 +209,12 @@ class EmittedFile:
     Attributes:
         relpath: Path under `adapters/<agent>/` (POSIX). E.g.
             `skills/forge-1-prd/SKILL.md` or `gemini-extension.json`.
-        content: Full file bytes as text (provenance header already applied,
-            §7). The engine writes this verbatim.
+        content: Full file bytes as text, provenance header already applied (§7).
+            The engine writes this verbatim. Applies to emitter-produced native
+            artifacts (Form A/C, §7); the frontmatter-less report (Form B) and the
+            verbatim/EXEMPT copies (forge-root.sh, references/) are NOT `EmittedFile`s
+            — they are written by the engine's report / self-containment passes
+            (`04-provenance-selfcontainment-report.md §1.5`).
         mode: POSIX file mode; 0o644 default, 0o755 for copied scripts
             (forge-root.sh, REQ-GEN-05).
     """
@@ -212,19 +225,56 @@ class EmittedFile:
 
 
 @dataclass(frozen=True)
+class ManifestEntry:
+    """One per-record contribution to a target's whole-bundle manifest.
+
+    Two targets aggregate per-record data into a SINGLE bundle-level manifest
+    that is not 1:1 with any one record: Codex's `agents/openai.yaml` (one entry
+    per sub-agent) and Gemini's `gemini-extension.json` (one entry per skill).
+    An emitter cannot write these manifests itself — it does not see the other
+    records — so it returns a `ManifestEntry` per record and the ENGINE collects
+    all of them across the per-record loop, then writes the merged manifest once
+    after the loop (`02-generator-engine.md §4.1`, serialization in
+    `04-provenance-selfcontainment-report.md §1.3`). Emitters whose native format
+    has no whole-bundle manifest (claude, cursor) never populate this.
+
+    Attributes:
+        name: The record id (skill name or sub-agent name) the entry describes.
+        description: The record description, preserved byte-for-byte (REQ-FMT-04).
+        extra: Any additional target-specific manifest fields confirmed against the
+            agent's native manifest schema (TQ-1) — e.g. an invocation hint. Empty
+            for the minimal name+description manifest. Merged into the entry's
+            serialized object in `FRONTMATTER_KEY_ORDER`-stable order (§4).
+    """
+
+    name: str
+    description: str
+    extra: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class EmitResult:
     """Everything one emitter produces for one canonical record.
 
     Attributes:
-        files: The native artifact(s) for this record (skill body, manifest, etc.).
+        files: The native artifact(s) for this record (skill body, etc.).
             References + forge-root.sh copies are added by the engine's
             self-containment pass, not the emitter (`04-...-report.md §2`).
         drops: Constructs that had no native representation in this target
             (REQ-FMT-03), each recorded for the generation report (§6, REQ-OBS-01).
+        manifest_entries: Per-record contributions to a target's whole-bundle
+            manifest (Codex `agents/openai.yaml`, Gemini `gemini-extension.json`),
+            collected and merged by the engine after the per-record loop
+            (`02-generator-engine.md §4.1`). Non-empty ONLY for manifest-bearing
+            emitters (codex `emit_agent`, gemini `emit_skill`); `()` for everyone
+            else. A manifest-bearing emitter therefore returns its body file in
+            `files` AND its manifest contribution in `manifest_entries` — it never
+            writes the aggregate manifest as a file itself.
     """
 
     files: tuple[EmittedFile, ...]
     drops: tuple["DropRecord", ...]
+    manifest_entries: tuple[ManifestEntry, ...] = ()
 
 
 class Emitter(Protocol):
@@ -314,6 +364,13 @@ def provenance_json(source: str) -> dict[str, str]:
 
 PROVENANCE_JSON_KEY: str = "_generated"
 
+# The gemini-extension.json `version` value — a FIXED, canon-sourced constant, NOT
+# read from a package manifest (feature-forge ships no package.json; C-2). It pins
+# the manifest's required `version` key to a determinic value (REQ-DET-01) so two
+# builds are byte-identical. Bump deliberately if the gemini extension schema (TQ-1)
+# requires it; never derive it at runtime. Source of record: this constant.
+GEMINI_EXTENSION_VERSION: str = "0.0.0"
+
 # Exempt — `forge-root.sh`: copied BYTE-IDENTICAL (REQ-GEN-05), so NO header is
 # injected. Its provenance is documented in GENERATION-REPORT.md instead.
 ```
@@ -344,11 +401,16 @@ class CanonError(Exception):
 
 
 class MalformedFrontmatterError(CanonError):
-    """Frontmatter block missing/unbalanced `---`, or not a YAML mapping."""
+    """Frontmatter block missing/unbalanced `---`, not a YAML mapping, or a
+    required field has the wrong type (e.g. non-string `description`, non-mapping
+    `metadata`) — `02-generator-engine.md §3` raises it for both the block-structure
+    and the field-value-type cases."""
 
 
 class MissingNameError(CanonError):
-    """Required `name` absent, non-string, or (skills) != directory name."""
+    """Required `name` absent, non-string, or != its identity source (skills:
+    directory name; agents: file stem) — `02-generator-engine.md §3` `parse_agent`
+    raises it for the agent stem mismatch."""
 
 
 class UnreadableFileError(CanonError):
@@ -369,7 +431,7 @@ canon processing (a non-`CanonError` is a generator bug and propagates as a stac
 | 0 | `--check` | Committed `adapters/` is identical to a fresh generation (no drift). |
 | 1 | default | `CanonError` — bad canon; `source_path: reason` on stderr; **no** partial tree written. |
 | 1 | `--check` | Drift detected; the `diff` + remediation message printed; `adapters/` untouched. |
-| 2 | any | argparse usage error (bad flag) — a **caller** mistake, never a canon/drift verdict. |
+| 2 | any | **Caller / environment fault, never a canon-or-drift verdict:** argparse usage error (bad flag); or, in `--check`, the `diff` binary is missing or `diff -r` itself failed (returncode > 1) — a distinct stderr message is printed and `REMEDIATION_MESSAGE` is **not** (`02-generator-engine.md §4.3`). |
 
 ```python
 # Drift-guard remediation, single-sourced (REQ-CI-03). Printed after the diff on
@@ -381,6 +443,13 @@ REMEDIATION_MESSAGE: str = (
 
 Only `0` and `1` are **verdict** codes; a CI consumer (`packaging-docs-ci`) MUST NOT read `2` as
 "drift found".
+
+**Dependency-provisioning failure is upstream of these codes.** `validate.sh` step 6b provisions the
+pinned YAML dependency into `.venv-adapters/` **before** invoking `build-adapters.py` (REQ-CI-04). A
+provisioning failure (no network, PEP-668, pip error, corrupt `requirements-adapters.txt`) is an
+**environment/setup fault, not a `CanonError` and not a drift verdict** — it aborts the gate under
+`set -euo pipefail` with a clear remediation message and never reaches the exit codes above. Its
+contract is specified in `05-purity-exemption-and-drift-guard.md §2` (step 6b).
 
 ## Dependencies
 

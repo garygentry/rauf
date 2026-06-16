@@ -86,17 +86,19 @@ These four rules bind **every** emitter; the per-agent sections (§3–§7) stat
 
 `SkillRecord.description` and `AgentRecord.description` are copied **verbatim** into every target that
 has a description field — never reflowed, re-quoted lossily, or trimmed (`00 §2` field contract;
-REQ-FMT-04). The shared dumper is configured for byte-stability and scalar preservation per
-`02-generator-engine.md §3` (`sort_keys=False`, `default_flow_style=False`, `allow_unicode=True`,
-wide `width`). Emitters call **one** shared helper so the options can never drift between targets:
+REQ-FMT-04). **This subsection (§2.1) is the single source of the shared YAML dumper configuration**
+(`sort_keys=False`, `default_flow_style=False`, `allow_unicode=True`, wide `width`) for byte-stability
+and scalar preservation; every other doc that mentions the dumper config points here. Emitters call
+**one** shared helper so the options can never drift between targets:
 
 ```python
 from typing import Any
 import yaml  # the pinned dependency (00 §3, 02-generator-engine.md §3)
 
-from build_adapters_types import (  # the 00 §1–§9 definitions, imported as named in the engine
+from core_definitions import (  # the 00-core-definitions.md §1–§9 definitions (logical import; resolved in-file in scripts/build-adapters.py)
     FRONTMATTER_KEY_ORDER,
     PROVENANCE_FM_COMMENT,
+    ManifestEntry,  # 00 §5 — codex/gemini whole-bundle manifest contributions
 )
 
 
@@ -373,10 +375,13 @@ Codex is the one non-Claude target with a candidate native agent construct: a si
 **drop-records every `claude_keys` entry that the OpenAI agent schema does not define**, enumerated
 from `agent.claude_keys` (§2.3).
 
-- **Relpath:** `agents/openai.yaml` (one manifest for the sub-agent set; the engine merges per-agent
-  emissions — `02 §3`). **`TQ-1`** — confirm the exact `agents/openai.yaml` schema (field names for
-  name/description/model/tools, whether per-agent entries are a list or map) against OpenAI Codex's
-  official agents-config docs.
+- **Relpath:** `agents/openai.yaml` (one manifest for the sub-agent set). It is **not** written by
+  this emitter: `emit_agent` returns one `ManifestEntry` per sub-agent in
+  `EmitResult.manifest_entries` (`00 §5`), and the **engine** collects them across the per-record loop
+  and writes the single merged `agents/openai.yaml` after the loop (`02-generator-engine.md §4.1`,
+  serialized per `04-provenance-selfcontainment-report.md §1.3`). **`TQ-1`** — confirm the exact
+  `agents/openai.yaml` schema (field names for name/description/model/tools, whether per-agent entries
+  are a list or map) against OpenAI Codex's official agents-config docs.
 - **Mapping baseline (all `TQ-1` until confirmed):** `description` verbatim (REQ-FMT-04);
   `model` → mapped if the schema has a model field; `tools` → mapped if it has a tools field;
   `maxTurns`, `effort`, `memory`, `skills` → **drop-record** unless the schema defines an equivalent.
@@ -408,8 +413,10 @@ class CodexEmitter:
 
     def emit_agent(self, agent: AgentRecord) -> EmitResult:
         # Body+description preserved (REQ-FMT-04); structural keys not in
-        # _CODEX_AGENT_KEYS are drop-recorded (REQ-GEN-06). The openai.yaml manifest
-        # entry is assembled by the engine from the representable subset (02 §3).
+        # _CODEX_AGENT_KEYS are drop-recorded (REQ-GEN-06). The aggregate
+        # agents/openai.yaml is NOT written here: this emitter returns one
+        # ManifestEntry (representable subset only) and the engine merges all of
+        # them into the single manifest after the per-record loop (00 §5, 02 §4.1).
         dropped = tuple(
             DropRecord("codex", agent.source_path, f"sub-agent key '{k}'",
                        "not representable in agents/openai.yaml (TQ-1)")
@@ -420,7 +427,16 @@ class CodexEmitter:
             order_fields({"name": agent.name, "description": agent.description}),
             agent.source_path,
         ) + agent.body
-        return EmitResult(files=(EmittedFile(rel, content),), drops=dropped)
+        # Representable structural keys (none until TQ-1 expands _CODEX_AGENT_KEYS)
+        # carried in `extra`; serialization/key-order owned by 04 §1.3.
+        extra = {k: agent.claude_keys[k] for k in agent.claude_keys
+                 if k in self._CODEX_AGENT_KEYS}
+        entry = ManifestEntry(name=agent.name, description=agent.description, extra=extra)
+        return EmitResult(
+            files=(EmittedFile(rel, content),),
+            drops=dropped,
+            manifest_entries=(entry,),
+        )
 ```
 
 > With `_CODEX_AGENT_KEYS` empty (pre-TQ-1), **all** of `{tools, model, maxTurns, effort, memory,
@@ -604,9 +620,10 @@ and the body files, and cross-references `04` for the `_generated` injection.
   in body files or expects pure Markdown).
 - **Manifest:** `gemini-extension.json` at the bundle root carries `name`, `version`,
   `description`, and the skill/command registrations (manifest `name` / manifest `description`,
-  tech-spec §5). **`TQ-1`** — confirm the exact `gemini-extension.json` schema (top-level keys,
-  how skills/commands are registered, required `version`) against the official Gemini CLI extensions
-  docs.
+  tech-spec §5). The `version` value is the fixed constant `GEMINI_EXTENSION_VERSION` (`00 §7`) — a
+  canon-sourced literal, never derived at runtime (REQ-DET-01). **`TQ-1`** — confirm the exact
+  `gemini-extension.json` schema (top-level keys, how skills/commands are registered, whether
+  `version` is required) against the official Gemini CLI extensions docs.
 - **`description` (verbatim, REQ-FMT-04):** carried in the manifest's per-skill `description`.
 - **Mode:** `0o644`.
 
@@ -651,8 +668,8 @@ trailing newline) is the engine/provenance layer's job — `04-provenance-selfco
 }
 ```
 
-> The `version` value MUST be a **fixed, canon-sourced** constant (not a timestamp or build counter)
-> to satisfy determinism (REQ-DET-01); its source is `04`'s manifest-assembly contract. The
+> The `version` value is the fixed `GEMINI_EXTENSION_VERSION` constant (`00 §7`, currently `"0.0.0"`)
+> — not a timestamp or build counter — so the manifest is byte-stable across runs (REQ-DET-01). The
 > `description` is byte-identical to canon (REQ-FMT-04). The example schema is **`TQ-1`** pending
 > official confirmation.
 
@@ -665,9 +682,10 @@ class GeminiEmitter:
     agent_id = "gemini"
 
     def emit_skill(self, skill: SkillRecord) -> EmitResult:
-        # Body file (frontmatter convention TQ-1); the manifest ENTRY is returned as
-        # structured data the engine merges into gemini-extension.json (04 §1). Here
-        # we emit the body file + a sidecar the engine collects; the hint is dropped.
+        # Body file (frontmatter convention TQ-1) PLUS one ManifestEntry per skill in
+        # manifest_entries (00 §5). The aggregate gemini-extension.json is written by
+        # the engine, which collects every skill's entry across the per-record loop
+        # and serializes the merged manifest once (02 §4.1, 04 §1.3) — never here.
         rel = f"skills/{skill.name}/{skill.name}.md"
         content = render_frontmatter_block(
             order_fields({"name": skill.name, "description": skill.description}),
@@ -677,7 +695,12 @@ class GeminiEmitter:
         if hint_value(skill) is not None:
             drops = (DropRecord("gemini", skill.source_path, "argument-hint",
                                 "Gemini manifest hint field unconfirmed (TQ-1)"),)
-        return EmitResult(files=(EmittedFile(rel, content),), drops=drops)
+        entry = ManifestEntry(name=skill.name, description=skill.description)
+        return EmitResult(
+            files=(EmittedFile(rel, content),),
+            drops=drops,
+            manifest_entries=(entry,),
+        )
 
     def emit_agent(self, agent: AgentRecord) -> EmitResult:
         rel = f"agents/{agent.name}.md"
@@ -690,11 +713,12 @@ class GeminiEmitter:
 ```
 
 > The `gemini-extension.json` manifest is assembled **once per bundle** from all skills' manifest
-> entries by the engine, not per-`emit_skill` (a manifest is a whole-bundle artifact). The exact
-> hand-off (whether `emit_skill` returns a manifest-entry sidecar or the engine re-derives from the
-> records) is the engine/provenance contract — `02-generator-engine.md §3` and
-> `04-provenance-selfcontainment-report.md §1`. This emitter's REQ-FMT-04 obligation is that the
-> per-skill `description` reaching the manifest is byte-identical.
+> entries by the engine, not per-`emit_skill` (a manifest is a whole-bundle artifact). The hand-off
+> is fixed (V-001): `emit_skill` returns one `ManifestEntry` per skill in `EmitResult.manifest_entries`
+> (`00 §5`); the engine collects them across the per-record loop and serializes the merged manifest
+> once (`02-generator-engine.md §4.1` aggregation, `04-provenance-selfcontainment-report.md §1.3`
+> serialization + `_generated`/`version`). This emitter's REQ-FMT-04 obligation is that the per-skill
+> `description` reaching the manifest is byte-identical.
 
 ### 7.5 Claude-only artifacts
 
@@ -731,6 +755,21 @@ add to `_CODEX_AGENT_KEYS`; if it does not exist, keep the drop-with-record and 
 "confirmed-absent" note in `GENERATION-REPORT.md`. Either outcome is a localized one-method edit
 (§2.5), and the drift guard + `06-testing-strategy.md` byte-snapshots catch any mismatch.
 
+## Public API — exported vs internal
+
+The feature's only externally-stable contract is the three items in `01-architecture-layout.md §4`;
+nothing in this module is a public API. Within it:
+
+| Symbol | Visibility | Notes |
+|---|---|---|
+| `ClaudeEmitter`, `CodexEmitter`, `CopilotEmitter`, `CursorEmitter`, `GeminiEmitter` | **registry-facing** | The five classes the engine's registry literal (`02 §2`) instantiates and dispatches via the `Emitter` protocol (`00 §5`). This is the surface the engine binds — not a public/external API. |
+| `render_frontmatter_block`, `order_fields`, `hint_value`, `drop_all_claude_keys` | module-internal | Shared emitter helpers (§2.1–§2.3); callable across the in-file module, test-importable, not an external contract. |
+| `_CODEX_AGENT_KEYS` and other per-class constants | private | Class-internal; leading-underscore = private. |
+
+All factoring (single-file `scripts/build-adapters.py` vs a split package, `02 §2`) is implementer's
+discretion provided the five classes resolve as the registry's `Emitter`s and the three `01 §4`
+contracts hold.
+
 ## Dependencies
 
 Implement **after**:
@@ -738,16 +777,19 @@ Implement **after**:
 - **`00-core-definitions.md`** — provides every type and constant this document consumes and
   **references, never redefines**: `AGENT_TARGETS` (§1), `SkillRecord` / `AgentRecord` (the emitter
   inputs), `FRONTMATTER_KEY_ORDER` (the fixed projection order, §2.1), the `Emitter` / `EmittedFile` /
-  `EmitResult` protocol the five classes satisfy (§5), `DropRecord` (the drop-with-record model, §6),
-  the provenance constants `PROVENANCE_FM_COMMENT` / `provenance_json` / `PROVENANCE_JSON_KEY` /
-  `REGENERATE_CMD` (§7), and the `CanonError` hierarchy (raised by the parse step, not by emitters).
+  `EmitResult` protocol the five classes satisfy (§5), `ManifestEntry` (the codex/gemini whole-bundle
+  manifest contribution carried in `EmitResult.manifest_entries`, §5), `DropRecord` (the
+  drop-with-record model, §6), the provenance constants `PROVENANCE_FM_COMMENT` / `provenance_json` /
+  `PROVENANCE_JSON_KEY` / `GEMINI_EXTENSION_VERSION` / `REGENERATE_CMD` (§7), and the `CanonError`
+  hierarchy (raised by the parse step, not by emitters).
 - **`01-architecture-layout.md`** — the `adapters/<agent>/` bundle layout the `EmittedFile.relpath`s
   target (§3), the per-skill `references/` presence (`01 §7`, informing §2.4), and the confirmation
   that no skill has a `hooks/` dir today (§3.4 / §2.4).
 - **`02-generator-engine.md`** — the discovery/parse that produces the `SkillRecord`/`AgentRecord`
-  inputs, the emitter **registry literal** that instantiates these five classes, and the shared YAML
-  dumper configuration (`02 §3`) that `render_frontmatter_block` (§2.1) relies on. Emitters are pure
-  functions of records; the engine owns everything around them.
+  inputs, the emitter **registry literal** that instantiates these five classes, and the per-bundle
+  manifest aggregation (`02 §4.1`) that collects each emitter's `manifest_entries`. (The shared YAML
+  dumper configuration is defined **here** in §2.1, not in the engine.) Emitters are pure functions
+  of records; the engine owns everything around them.
 
 **Owned elsewhere (cross-referenced, not duplicated here):**
 

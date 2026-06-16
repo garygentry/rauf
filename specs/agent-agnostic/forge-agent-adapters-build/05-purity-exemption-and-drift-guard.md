@@ -234,6 +234,20 @@ and in CI). Exit verdict per `00-core-definitions.md §9`: `0` = identical (no d
 This document specifies only the **`validate.sh` wiring** of that mode; the `--check` implementation
 (temp build, `diff -r`, cleanup) is `02-generator-engine.md`'s scope (REQ-CI-01, D4).
 
+**Cross-OS validity of the drift verdict (V-018).** `--check` compares the committed tree against a
+fresh build, so its verdict is only meaningful if both are byte-identical across machines. Emitter
+output is `\n`-normalized (`02 §4.2`), but the verbatim `references/`/`forge-root.sh` copies are raw
+byte copies (`04 §2.4`) and inherit the canon checkout's line endings. The guard therefore assumes
+**canon is checked out LF-normalized** (via the `.gitattributes` `* text=auto eol=lf` policy owned by
+`packaging-docs-ci`, `04 §2.4`); without it, a CRLF checkout on another OS could report **false
+drift** that is purely a line-ending artifact. This is a declared cross-feature dependency, not a
+defect in the guard.
+
+**`diff`-tool / environment faults are not a drift verdict (V-009).** `--check` returns exit `2`
+(not `1`) if the `diff` binary is missing or `diff -r` itself errors (`00 §9`, `02 §4.3`); step 6b's
+`if … --check; then` wrapper treats any non-zero as a gate failure, but the distinct exit code and
+message keep a tool fault from being misread as real drift.
+
 ### 2.2 The exact `validate.sh` step 6b (the new bash)
 
 Insert a new **top-level** step **after** step 6a (which ends at `scripts/validate.sh:132`) and
@@ -274,9 +288,19 @@ if "$ADAPTERS_PY" -m pip install -q -r "$ADAPTERS_REQS"; then
   fi
 else
   echo "FAIL: could not provision .venv-adapters from scripts/requirements-adapters.txt"
+  echo "      (environment/setup fault, NOT a canon error or drift — check network access,"
+  echo "       PEP-668/externally-managed Python, or a corrupt requirements-adapters.txt)"
   ERRORS=$((ERRORS + 1))
 fi
 ```
+
+**Provisioning failure is an environment fault, not a `CanonError` or drift verdict (V-008).** A
+failed `pip install` / venv creation bumps `ERRORS` (→ `exit 1` via the final tally) with the
+distinct `FAIL: could not provision …` message above — it never reaches `build-adapters.py`, so it is
+neither a `CanonError` (`00 §8`) nor a drift verdict. The message names the likely recoverable causes
+(no network, PEP-668 externally-managed Python, corrupt requirements file) so the operator can fix the
+environment and re-run `bash scripts/validate.sh`. See `00-core-definitions.md §9` ("Dependency-provisioning
+failure is upstream of these codes").
 
 Notes on the bash, each traced:
 

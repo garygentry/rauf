@@ -26,6 +26,7 @@ This is the **testing archetype** document: the table maps each REQ to the concr
 | REQ ID | Requirement (verified here) | Section |
 |--------|------------------------------|---------|
 | REQ-DET-01 | Determinism: identical canon → byte-identical output | §3.1 (`test_build_is_deterministic`, `test_matches_committed_snapshot`) |
+| REQ-DET-01 | No-timestamp rule: no header/report carries a timestamp/host/PID (04 §1) | §3.1 (`test_no_timestamp_in_generated_headers`) |
 | REQ-DET-02 | Full regenerate: stale/orphan files removed | §3.2 (`test_orphan_file_is_purged`) |
 | REQ-DET-03 | Idempotency: re-run → no diff | §3.1 (`test_build_is_deterministic`), §3.10 (`--check` exit 0) |
 | REQ-GEN-04 / D5 | Self-contained bundle (own + shared `references/`, resolver) | §3.3 (`test_bundle_is_self_contained`) |
@@ -183,11 +184,23 @@ pytest** (Google-style docstrings), not pseudocode.
 
 Two complementary assertions. **(a) build-twice byte-equality** — machine-independent, catches any
 nondeterministic ordering / timestamp / RNG (`02-generator-engine.md §3`,
-`00-core-definitions.md §4` fixed key order). **(b) committed snapshot** — a small expected tree
-checked in under the fixture, catching an *intended-output* change (e.g. a YAML-dumper option flip,
-an emitter field rename) that build-twice alone cannot see.
+`00-core-definitions.md §4` fixed key order). This build-twice equality is **the guard for the
+no-timestamp rule (REQ-DET-01)** of `04-provenance-selfcontainment-report.md §1`: no provenance form
+(A/B/C) and not the `GENERATION-REPORT.md` body (Form B, the highest-risk place for an accidental
+timestamp/host/PID) may carry a non-deterministic value. **(b) committed snapshot** — a small
+expected tree checked in under the fixture, catching an *intended-output* change (e.g. a YAML-dumper
+option flip, an emitter field rename) that build-twice alone cannot see.
 
 ```python
+import re
+
+# A header carrying any of these would be non-deterministic across runs/hosts.
+_TIMESTAMP_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}|\b\d{10,}\b|generated (on|at)\b",
+    re.IGNORECASE,
+)
+
+
 def test_build_is_deterministic(fixture_copy):
     """Building the same canon twice yields byte-identical adapters/ trees (REQ-DET-01/03).
 
@@ -200,6 +213,22 @@ def test_build_is_deterministic(fixture_copy):
     assert run_build(root_a).returncode == 0
     assert run_build(root_b).returncode == 0
     assert hash_tree(root_a / "adapters") == hash_tree(root_b / "adapters")
+
+
+def test_no_timestamp_in_generated_headers(fixture_copy):
+    """No generated file carries a timestamp/host/PID (REQ-DET-01, 04 §1 no-timestamp rule).
+
+    Fails fast with a clear message naming the offending file, rather than only as
+    an opaque hash diff. Covers the GENERATION-REPORT.md Form B body-top line and
+    every Form A/C provenance header.
+    """
+    root = fixture_copy("minimal-canon")
+    assert run_build(root).returncode == 0
+    for path in sorted((root / "adapters").rglob("*")):
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        assert not _TIMESTAMP_RE.search(text), f"non-deterministic value in {path}"
 
 
 def test_matches_committed_snapshot(fixture_copy):
@@ -260,7 +289,9 @@ def test_bundle_is_self_contained(fixture_copy, agent):
     copied whole — a top-level file AND a nested stacks/ file both land under
     adapters/<agent>/references/; (2) the resolver mirror exists at
     adapters/<agent>/scripts/forge-root.sh; (3) the with-own-references skill
-    carries its own references/ subdir inside its skill dir.
+    carries its own references/ subdir inside its skill dir; (4) NEGATIVE — a
+    skill with no own references/ (own_refs is None) gets NO own references/ dir,
+    proving the copy is discovery-driven (04 §2.2 / REQ-SCALE-01), not hard-coded.
     """
     root = fixture_copy("minimal-canon")
     assert run_build(root).returncode == 0
@@ -270,6 +301,9 @@ def test_bundle_is_self_contained(fixture_copy, agent):
     assert (bundle / "scripts" / "forge-root.sh").is_file()
     # the fixture's `with-refs` skill has an own references/ subdir
     assert (bundle / "skills" / "with-refs" / "references" / "detail.md").is_file()
+    # NEGATIVE (V-017): the `noarg` skill has no own references/ — none must be
+    # copied. A generator that hard-codes or blanket-copies own-refs would fail here.
+    assert not (bundle / "skills" / "noarg" / "references").exists()
 ```
 
 ### 3.4 Verbatim resolver (REQ-GEN-05)
@@ -400,42 +434,64 @@ frontmatter, the Gemini manifest's `description`, etc.). The fixture's descripti
 contains a colon and trailing punctuation to catch lossy re-quoting.
 
 ```python
+def _decode_scalar(raw: str | None) -> str | None:
+    """Decode a raw frontmatter scalar to its VALUE, discarding on-disk quoting.
+
+    REQ-FMT-04's contract is that the *decoded* scalar round-trips byte-for-byte,
+    NOT the quoting style (00 §2, 03 §2.1) — the shared `safe_dump` may legally
+    re-quote (canon `"x"` → emitted `x` or `'x'`) while preserving the value. So we
+    must compare decoded values, never the raw lines `_frontmatter_value` returns.
+    Uses the pinned YAML lib (skip if absent, matching the §2 preamble rule).
+    """
+    if raw is None:
+        return None
+    yaml = pytest.importorskip("yaml")
+    return yaml.safe_load(raw)
+
+
 def test_description_byte_fidelity(fixture_copy):
     """Decoded `description` equals canon for every target with a description field (REQ-FMT-04).
 
-    Canon description is read from the fixture SKILL.md; each target's decoded
+    Canon description is read from the fixture SKILL.md; each target's DECODED
     description (frontmatter scalar for claude/codex/copilot/cursor, manifest
-    string for gemini) must equal it byte-for-byte. The fixture description
-    contains a colon and trailing period to expose lossy re-quoting/trimming.
+    string for gemini) must equal it. The fixture description contains a colon and
+    trailing period to expose lossy re-quoting/trimming. The comparison is on the
+    decoded value (per 00 §2 / 03 §2.1), not the raw on-disk quoting.
     """
     import json
 
     root = fixture_copy("minimal-canon")
     assert run_build(root).returncode == 0
-    canon_desc = _frontmatter_value(root / "skills" / "with-refs" / "SKILL.md", "description")
+    canon_desc = _decode_scalar(
+        _frontmatter_value(root / "skills" / "with-refs" / "SKILL.md", "description")
+    )
     assert canon_desc is not None
 
-    # frontmatter-bearing targets
+    # Frontmatter-bearing targets. Native skill filename differs per emitter
+    # (03 §3.1/§4.1/§5.1): claude → SKILL.md; codex/copilot → <name>.md.
     for agent, fname in [
         ("claude", "SKILL.md"),
-        ("codex", "SKILL.md"),
-        ("copilot", "SKILL.md"),
+        ("codex", "with-refs.md"),
+        ("copilot", "with-refs.md"),
     ]:
         md = root / "adapters" / agent / "skills" / "with-refs" / fname
-        assert _frontmatter_value(md, "description") == canon_desc, agent
+        assert _decode_scalar(_frontmatter_value(md, "description")) == canon_desc, agent
 
-    # gemini manifest description
+    # gemini manifest description (already a decoded JSON string)
     manifest = json.loads(
         (root / "adapters" / "gemini" / "gemini-extension.json").read_text("utf-8")
     )
-    assert canon_desc in json.dumps(manifest)  # decoded string preserved in the manifest
+    assert any(
+        s.get("description") == canon_desc for s in manifest.get("skills", [])
+    ), "gemini manifest description not byte-identical to canon"
 ```
 
-> **Note for implementers:** the exact native skill-file name and where `description` lands per agent
-> are fixed by `03-per-agent-emitters.md` (and the TQ-1 fields flagged there). If a target's native
-> file name differs from `SKILL.md` (e.g. cursor `.mdc`), the parametrization above is adjusted to
-> that emitter's `EmittedFile.relpath` — the **assertion** (decoded == canon) is invariant. Cursor's
-> `.mdc` description is decoded via the same `_frontmatter_value` scan.
+> **Note for implementers:** the per-agent native skill filename is resolved from each emitter's
+> `EmittedFile.relpath` (`03-per-agent-emitters.md §3.1/§4.1/§5.1/§6.1), and they differ:
+> **claude → `SKILL.md`**, **codex/copilot → `<name>.md`**, **cursor → `<name>.mdc`**. The
+> parametrization above uses each emitter's actual filename (not a blanket `SKILL.md`); a cursor row
+> would read its `.mdc` via the same `_frontmatter_value` scan. The **assertion** — decoded scalar ==
+> canon decoded scalar, never raw quoting (00 §2 / 03 §2.1) — is invariant across targets.
 
 ### 3.8 Drop-with-record — per-file enumeration (REQ-FMT-03, REQ-OBS-01)
 

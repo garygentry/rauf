@@ -132,21 +132,29 @@ Hand-authored `AGENTS.md` at the feature-forge repo root. **MUST** document (REQ
 
 ## 4. Data Model
 
-No persistent data store. Two in-memory record types the generator owns:
+No persistent data store. Two in-memory record types the generator owns. The
+**authoritative, fully-annotated definitions live in `00-core-definitions.md §2`**;
+the block below is an informal summary — defer to 00 on any discrepancy.
 
 ```
-SkillRecord:   name: str            # == skills/<dir>; emitters MUST NOT rename
-               description: str      # verbatim (REQ-FMT-04)
-               metadata: dict|None   # e.g. {argument-hint: str}
-               body: str             # markdown below frontmatter
-               own_refs: Path|None   # skills/<name>/references/ if present
+SkillRecord:   name: str                   # == skills/<dir>; emitters MUST NOT rename
+               description: str             # verbatim (REQ-FMT-04)
+               metadata: dict[str,object]|None  # e.g. {argument-hint: str}
+               body: str                    # markdown below frontmatter
+               own_refs: Path|None          # skills/<name>/references/ if present
+               source_path: str             # repo-relative POSIX path (provenance + errors)
 AgentRecord:   name, description, body
-               claude_keys: dict     # per-file: whatever non-{name,description} frontmatter keys
-                                     #   the agent file actually has — union across current 3 agents is
-                                     #   {tools, model, maxTurns, effort, memory, skills}; NOT a fixed schema
+               claude_keys: dict[str,object]  # per-file: whatever non-{name,description} frontmatter keys
+                                            #   the agent file actually has — union across current 3 agents is
+                                            #   {tools, model, maxTurns, effort, memory, skills}; NOT a fixed schema
+               source_path: str             # repo-relative POSIX path (provenance + errors)
 ```
 
-Fixed frontmatter key emission order per target (for determinism, §3.6). Canonical frontmatter schema is the one the upstream checker enforces (`{name, description, license, compatibility, metadata, allowed-tools}`); the generator reads it, never widens it on canon.
+Fixed frontmatter key emission order per target (for determinism, §3.6). Note: the
+**broader** skill frontmatter schema the upstream purity checker enforces
+(`{name, description, license, compatibility, metadata, allowed-tools}`) is what canon
+is validated against upstream — but this generator only **reads** `{name, description,
+metadata}` into `SkillRecord` (`00 §3`); it neither parses nor widens the other keys.
 
 ## 5. API Design
 
@@ -177,7 +185,7 @@ Every target also receives: the skill's own `references/` (verbatim), the whole 
 **Depends on (existing in feature-forge, read-only — C-3):**
 - **`skills/*/SKILL.md`** (11) + their `references/` subdirs (7 skills have one) — the `spec-pure-skills` contract. Frontmatter shape verified: `{name, description[, metadata.argument-hint]}`; `name == <dir>`.
 - **`agents/*.md`** (3) — Claude sub-agent defs; frontmatter is **per-file, not uniform**: `{name, description}` plus a per-file subset of the Claude-only union `{tools, model, maxTurns, effort, memory, skills}` (verified: `forge-researcher` carries `effort`; only `forge-verifier` carries `memory`+`skills`; `forge-spec-writer` carries neither). The generator discovers these keys from each file rather than assuming a fixed set.
-- **`references/`** (repo-root): `epic-manifest-schema.json`, `forge-config-schema.json`, `pipeline-state-schema.json`, `portable-root.md`, `process-overview.md`, `ralph-loop-contract.md`, `shared-conventions.md`, `stack-resolution.md`, `stacks/{_generic,go,python,rust,typescript}.md`, `vendor-construct-inventory.md` — all copied verbatim into each bundle.
+- **`references/`** (repo-root, **14 files: 9 root + `stacks/`×5**): `epic-manifest-schema.json`, `forge-config-schema.json`, `pipeline-state-schema.json`, `portable-root.md`, `process-overview.md`, `ralph-loop-contract.md`, `shared-conventions.md`, `stack-resolution.md`, `vendor-construct-inventory.md`, `stacks/{_generic,go,python,rust,typescript}.md` — all copied verbatim into each bundle. (This count is the same "14 files: 9 root + `stacks/`×5" pinned in `01-architecture-layout.md §7` and `04-provenance-selfcontainment-report.md §2.1/§3.3`.)
 - **`scripts/forge-root.sh`** (50 lines, 0755) — the `portable-skill-root-resolver` contract; copied **byte-identical** (REQ-GEN-05).
 - **`scripts/check-spec-purity.py`** — extended additively (§3.7): add `adapters/**` exemption. `CANONICAL_SURFACES` and `RESIDUAL_VAR_EXEMPT` shapes verified in source; `--root` default = parent of script dir.
 - **`scripts/validate.sh`** (171 lines, `set -euo pipefail`) — extended with the "6b" step after "6a. Spec-purity gate", outside the epic-manifest guard. Verified step structure.

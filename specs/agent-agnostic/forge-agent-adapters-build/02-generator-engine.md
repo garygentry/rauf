@@ -407,7 +407,7 @@ delivers three guarantees at once:
 import os
 import shutil
 
-from core_definitions import CanonError, EmitResult  # 00 §5, §8
+from core_definitions import CanonError, EmitResult, ManifestEntry  # 00 §5, §8
 
 ADAPTERS_DIRNAME: str = "adapters"
 
@@ -440,14 +440,29 @@ def build_tree(root: Path, dest: Path) -> tuple[EmitResult, ...]:
     results: list[EmitResult] = []
     # AGENT_TARGETS order (00 §1) — deterministic emit/write order (REQ-DET-01).
     for agent_id, emitter in emitters.items():
+        # Whole-bundle manifest aggregation (V-001): codex's agents/openai.yaml and
+        # gemini's gemini-extension.json are NOT 1:1 with any one record, so each
+        # emitter returns its per-record contribution in EmitResult.manifest_entries
+        # (00 §5) and the engine collects them ACROSS the per-record loop below, then
+        # writes the single merged manifest AFTER the loop. Order of accumulation is
+        # the deterministic emit order (skills then agents, each sorted), so the
+        # merged manifest is byte-stable (REQ-DET-01).
+        manifest_entries: list[ManifestEntry] = []
         for skill in skills:
             result = emitter.emit_skill(skill)
             _publish_emit_result(root, dest, agent_id, result)  # 04 §2 writes files
+            manifest_entries.extend(result.manifest_entries)
             results.append(result)
         for agent in agents:
             result = emitter.emit_agent(agent)
             _publish_emit_result(root, dest, agent_id, result)
+            manifest_entries.extend(result.manifest_entries)
             results.append(result)
+        # Merged whole-bundle manifest, if this target emits one (codex/gemini). The
+        # serialization (key order, `_generated` provenance first, gemini `version`)
+        # is owned by 04 §1.3; a target with no manifest_entries writes nothing here.
+        if manifest_entries:
+            _publish_manifest(root, dest, agent_id, tuple(manifest_entries))  # 04 §1.3
         # references closure + verbatim forge-root.sh copy for this bundle (04 §2)
         _copy_self_containment(root, dest, agent_id)
 
@@ -456,9 +471,13 @@ def build_tree(root: Path, dest: Path) -> tuple[EmitResult, ...]:
     return tuple(results)
 ```
 
-`_publish_emit_result`, `_copy_self_containment`, and the `GENERATION-REPORT.md` writer are
-specified in `04-provenance-selfcontainment-report.md §2–§3`; they are listed here only to show the
-engine's call sequence. The **path-safety guard** (§4.2) wraps every write they perform.
+`_publish_emit_result`, `_publish_manifest`, `_copy_self_containment`, and the `GENERATION-REPORT.md`
+writer are specified in `04-provenance-selfcontainment-report.md §1.3, §2–§3`; they are listed here
+only to show the engine's call sequence. `_publish_manifest` receives the accumulated
+`ManifestEntry` tuple and serializes the single whole-bundle manifest (codex `agents/openai.yaml`,
+gemini `gemini-extension.json`) with the `_generated` provenance object first and, for gemini, the
+fixed `GEMINI_EXTENSION_VERSION` (`00 §7`). The **path-safety guard** (§4.2) wraps every write they
+perform.
 
 ### 4.2 Path-safety sandbox (REQ-SEC-01)
 
@@ -586,23 +605,47 @@ def check(root: Path) -> int:
 
     committed = root / ADAPTERS_DIRNAME
     try:
-        # `diff -r` exit 0 == identical; 1 == differs; >1 == diff error.
+        # `diff -r` exit 0 == identical; 1 == differs; >1 == diff TOOL error.
         proc = subprocess.run(
             ["diff", "-r", str(committed), str(staging)],
             capture_output=True,
             text=True,
         )
+    except FileNotFoundError:
+        # `diff` is not installed — an environment fault, NOT a drift verdict.
+        shutil.rmtree(staging, ignore_errors=True)
+        print(
+            "adapters: `diff` executable not found — cannot run the drift guard; "
+            "this is an environment fault, not a drift verdict.",
+            file=sys.stderr,
+        )
+        return 2
     finally:
         shutil.rmtree(staging, ignore_errors=True)  # never leave a tmp tree
 
     if proc.returncode == 0:
-        return 0
-    # Drift (or missing committed tree): show the diff + remediation (REQ-CI-03).
-    sys.stdout.write(proc.stdout)
+        return 0  # identical — no drift
+    if proc.returncode == 1:
+        # Real drift: show the diff + remediation (REQ-CI-03). exit 1 is a verdict.
+        sys.stdout.write(proc.stdout)
+        sys.stderr.write(proc.stderr)
+        print(REMEDIATION_MESSAGE, file=sys.stderr)  # 00 §9, single-sourced
+        return 1
+    # returncode > 1: `diff` itself failed (e.g. an unreadable file). This is a TOOL
+    # error, never drift — do NOT print REMEDIATION_MESSAGE (it would be misleading).
     sys.stderr.write(proc.stderr)
-    print(REMEDIATION_MESSAGE, file=sys.stderr)  # 00 §9, single-sourced
-    return 1
+    print(
+        f"adapters: `diff -r` failed to compare trees (exit {proc.returncode}) — "
+        "this is a diff-tool error, not a drift verdict.",
+        file=sys.stderr,
+    )
+    return 2
 ```
+
+`diff` errors and a missing `diff` binary both return exit **2** — the same "neither a
+canon error nor a drift verdict" class as an argparse usage error (`00 §9`). A CI consumer
+(`packaging-docs-ci`) MUST treat only `1` as "drift found"; `2` is an environment/tool fault
+to surface, not a regenerate-and-commit prompt.
 
 **Why `os.replace`, not `shutil.move`.** `os.replace` is atomic on a single filesystem (POSIX
 `rename(2)`); `adapters/` and its sibling temp dir are always on the same filesystem (both under the
@@ -687,6 +730,8 @@ generator bug and propagates as a stack trace (`00-core-definitions.md §8`).
 | Output path escapes the sandbox | `_assert_within` (§4.2) | `AssertionError` (generator bug) | stack trace, non-zero (not a `CanonError`) |
 | Registry ≠ `AGENT_TARGETS` | `build_emitters` (§2) | `AssertionError` (generator bug) | stack trace, non-zero |
 | Drift detected (`--check`) | `check` (§4.3) | — (not an exception) | exit 1, diff + `REMEDIATION_MESSAGE` |
+| `diff` missing, or `diff -r` returncode > 1 (`--check`) | `check` (§4.3) | — (tool/env fault, not a `CanonError`) | exit **2**, distinct stderr message, **no** `REMEDIATION_MESSAGE` |
+| Pinned-dep provisioning fails (venv/pip) | `validate.sh` step 6b (`05 §2`) | — (env fault, not a `CanonError`) | gate aborts under `set -euo pipefail` with a remediation message (`05 §2`) |
 
 **Fail-fast, no partial tree (REQ-ROB-01).** All parse errors raise **before** any emit/write for
 the run completes, but even a `CanonError` raised mid-emit cannot corrupt `adapters/`: writes go to
@@ -720,6 +765,26 @@ completes in **well under a second** and is acceptable inside every `validate.sh
 
 There is no caching/incremental layer (it would jeopardize the full-regenerate guarantee, REQ-DET-02);
 the whole-tree rebuild is cheap enough not to need one.
+
+---
+
+## 8. Public API — exported vs internal
+
+The feature's only externally-stable contract is the three items in `01-architecture-layout.md §4`
+(the `build-adapters` CLI, the hand-authored `AGENTS.md`, and the `adapters-output` tree). Everything
+in this module is implementation detail an implementer MAY refactor (single-file `scripts/build-adapters.py`
+vs a split package, `01 §2`) **as long as those three contracts hold**. Within this engine:
+
+| Symbol | Visibility | Notes |
+|---|---|---|
+| `main` / the CLI | **public** | The one true entry point (REQ-GEN-02). The stable programmatic surface. |
+| `generate`, `check`, `build_tree`, `build_emitters` | module-internal | Importable by tests (subprocess-driven via the CLI, plus importlib unit access, `06 §1`); not a public API. |
+| `discover_skill_paths`, `discover_agent_paths`, `parse_skill`, `parse_agent`, `split_frontmatter`, `read_canon_text`, `safe_write` | module-internal | Test-importable helpers; callable across the in-file module but not an external contract. |
+| `AGENT_TARGETS_REGISTRY`, `SKILLS_GLOB`, `AGENTS_GLOB`, `REFERENCES_ROOT`, `ADAPTERS_DIRNAME` | module-internal | Module constants. |
+| `_new_staging_dir`, `_assert_within` | private | Leading-underscore = private; not for cross-module use. |
+
+(`_publish_emit_result`, `_publish_manifest`, `_copy_self_containment`, and the report writer are
+owned by `04-provenance-selfcontainment-report.md`; this engine only calls them.)
 
 ---
 

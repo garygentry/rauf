@@ -154,13 +154,53 @@ object is produced by `provenance_json(source)` from the foundation:
 #     return {"source": source, "regenerate": REGENERATE_CMD}
 ```
 
-The gemini emitter (`03-per-agent-emitters.md`) places `_generated` as the **first** key of the
-manifest mapping (a fixed key order — `_generated` first, then the manifest's own keys — for
-determinism, REQ-DET-01) and serializes with stable options (`json.dumps(..., indent=2,
-sort_keys=False, ensure_ascii=False)`; trailing newline normalized to `\n`). **Exact emitted bytes**
-(head of `adapters/gemini/gemini-extension.json`; `{source}` here is the manifest's logical canonical
-basis — the gemini emitter sets it, e.g. `skills/` or the specific skill the manifest entry derives
-from, per `03-per-agent-emitters.md`):
+**The merged manifest is written by the engine, not the emitter (V-001).** The gemini emitter returns
+one `ManifestEntry` per skill in `EmitResult.manifest_entries` (`00 §5`); the engine collects them
+across the per-record loop and writes the single `gemini-extension.json` via `_publish_manifest`
+(`02-generator-engine.md §4.1`). The same mechanism produces codex's `agents/openai.yaml` from its
+per-agent `ManifestEntry`s. `_publish_manifest` is the one place the whole-bundle manifest is
+serialized:
+
+```python
+import json
+
+from core_definitions import (  # 00 §7
+    GEMINI_EXTENSION_VERSION,
+    PROVENANCE_JSON_KEY,
+    provenance_json,
+)
+
+
+def _publish_manifest(
+    root: Path, dest: Path, agent_id: str, entries: tuple[ManifestEntry, ...]
+) -> None:
+    """Serialize the whole-bundle manifest from collected ManifestEntry-s (V-001).
+
+    Only `gemini` (gemini-extension.json) and `codex` (agents/openai.yaml) reach
+    here; other targets pass no entries (02 §4.1). The serialized object is FIXED-
+    ORDER for determinism (REQ-DET-01): `_generated` first, then the manifest's own
+    keys, then the per-record array built from `entries` in their (deterministic)
+    accumulation order. `version` is the fixed `GEMINI_EXTENSION_VERSION` constant
+    (00 §7) — never a timestamp.
+    """
+    if agent_id == "gemini":
+        manifest: dict[str, object] = {
+            PROVENANCE_JSON_KEY: provenance_json("skills/"),
+            "name": "feature-forge",
+            "version": GEMINI_EXTENSION_VERSION,  # fixed constant, 00 §7 (V-002)
+            "skills": [
+                {"name": e.name, "description": e.description, **e.extra}
+                for e in entries
+            ],
+        }
+        rel = "gemini-extension.json"
+        content = json.dumps(manifest, indent=2, sort_keys=False, ensure_ascii=False) + "\n"
+        safe_write(dest / agent_id, rel, content)  # 02 §4.2 sandbox guard
+    elif agent_id == "codex":
+        ...  # agents/openai.yaml; shape TQ-1 (03 §4.3), same _generated-first rule
+```
+
+**Exact emitted bytes** (head of `adapters/gemini/gemini-extension.json`):
 
 ```json
 {
@@ -169,6 +209,7 @@ from, per `03-per-agent-emitters.md`):
     "regenerate": "python3 scripts/build-adapters.py"
   },
   "name": "feature-forge",
+  "version": "0.0.0",
   "skills": [
     …
   ]
@@ -176,7 +217,8 @@ from, per `03-per-agent-emitters.md`):
 ```
 
 Because `_generated` is a real JSON member (not a comment), it survives a strict parse, is greppable,
-and is diffable by the drift guard — satisfying REQ-OUT-01 for a comment-less format.
+and is diffable by the drift guard — satisfying REQ-OUT-01 for a comment-less format. `version` is the
+fixed `GEMINI_EXTENSION_VERSION` (`00 §7`), so two builds produce byte-identical manifests (REQ-DET-01).
 
 ### 1.4 Exempt case — `forge-root.sh` carries NO header (REQ-GEN-05)
 
@@ -201,8 +243,10 @@ To keep responsibility unambiguous and match the engine/emitter split in `00-cor
   `PROVENANCE_FM_COMMENT.format(source=record.source_path)` as the first line *inside* the `---`
   block and returns the file in `EmitResult.files` already stamped (`00-core-definitions.md §5`).
   `03-per-agent-emitters.md` shows this per agent.
-- **Form C** is injected by the **gemini emitter** (it owns the JSON manifest), placing the
-  `_generated` member first.
+- **Form C** is injected by the **engine's `_publish_manifest`** (§1.3, `02-generator-engine.md §4.1`),
+  which owns the merged whole-bundle JSON/YAML manifest and places the `_generated` member first. The
+  emitter only contributes per-record `ManifestEntry`s (`00 §5`); it does not serialize the manifest
+  (V-001).
 - **Form B** is injected by the **report builder** in the **engine** (§3), because the report is not
   an emitter artifact — it is assembled by the engine from the aggregated `DropRecord`s
   (`02-generator-engine.md`).
@@ -210,8 +254,9 @@ To keep responsibility unambiguous and match the engine/emitter split in `00-cor
   header injection occurs anywhere in that path.
 
 This matches `00-core-definitions.md §5`'s note that "References + forge-root.sh copies are added by
-the engine's self-containment pass, not the emitter" — the *emitter* stamps Form A/C onto its own
-native artifacts; the *engine* handles Form B (report) and the EXEMPT copies.
+the engine's self-containment pass, not the emitter" — the *emitter* stamps **Form A** onto its own
+native frontmatter artifacts; the *engine* handles **Form C** (the merged manifest via
+`_publish_manifest`, §1.3), **Form B** (report), and the EXEMPT copies.
 
 ### 1.6 Note on verbatim-copied reference files
 
@@ -305,6 +350,21 @@ more.
 The self-containment pass is implemented as a pure copy routine. It uses the **already-read** record
 data where available and reads canon read-only otherwise (C-3); it asserts every output path resolves
 within the bundle (REQ-SEC-01) and asserts byte-identity for `forge-root.sh`:
+
+> **Cross-OS byte-identity depends on an LF-normalized canon checkout (V-018).** `_copytree_verbatim`
+> and the `forge-root.sh` copy use `shutil.copyfile` — a **raw byte copy**, which is correct (it
+> preserves byte-identity and never reflows, §1.4/§1.6/REQ-GEN-05). But it also means the bundle
+> copies inherit whatever line endings the canonical `references/`/`forge-root.sh` files have on the
+> working-tree checkout, whereas emitter-produced files are forced to `\n` (`02 §4.2`, `newline=""`).
+> If canon were checked out with CRLF on a Windows working tree, the verbatim copies would carry CRLF
+> while the emitted files carry LF, and a fresh build on a different OS could fail the `--check` drift
+> guard (`02 §4.3`) for a **non-canon, line-ending** reason. The contract: **canonical `references/`
+> and `forge-root.sh` are assumed `\n`-normalized in the repo**, enforced by a `.gitattributes`
+> `* text=auto eol=lf` (or equivalent) policy. That `.gitattributes` is **owned by the
+> `packaging-docs-ci` epic member** (PRD §6 / epic manifest — "`.gitattributes` LF/export-ignore
+> safety"), not by this feature; this feature **declares the dependency** rather than re-normalizing
+> on copy, so `shutil.copyfile` + the byte-identity assertion stay intact. The `--check` guard's
+> cross-OS validity rests on this assumption (`05-purity-exemption-and-drift-guard.md §2.1`).
 
 ```python
 from __future__ import annotations
@@ -567,6 +627,7 @@ _No dropped constructs — every canonical construct is representable in this ag
 | `agents/forge-verifier.md` | `sub-agent key 'memory'` | no Codex equivalent |
 | `agents/forge-verifier.md` | `sub-agent key 'skills'` | no Codex equivalent |
 | `skills/forge-1-prd/SKILL.md` | `argument-hint` | no Codex invocation-hint field |
+| … | `argument-hint` (×10, one row per hinted skill) | no Codex invocation-hint field |
 
 ## cursor
 
@@ -576,6 +637,7 @@ _No dropped constructs — every canonical construct is representable in this ag
 | `agents/forge-verifier.md` | `sub-agent key 'memory'` | no Cursor equivalent |
 | `agents/forge-verifier.md` | `sub-agent key 'skills'` | no Cursor equivalent |
 | `skills/forge-1-prd/SKILL.md` | `argument-hint` | no Cursor field |
+| … | `argument-hint` (×10, one row per hinted skill) | no Cursor field |
 
 ## copilot
 
@@ -602,16 +664,36 @@ Regenerate all adapter output with `python3 scripts/build-adapters.py`.
 > native field availability in `03-per-agent-emitters.md`. This document fixes the report's
 > **structure, ordering, provenance form, and the rule that every drop is recorded**; the per-agent
 > emitter decides *which* `DropRecord`s exist.
+>
+> **The example is abbreviated — the `… argument-hint (×10 …)` rows above stand for one real row per
+> hinted skill (10 rows for the current canon; `forge-init` carries no hint, so no row for it), each
+> with its own `skills/<name>/SKILL.md` source.** The report must NOT collapse them into a single
+> aggregate row: REQ-OBS-01 requires one `DropRecord` row per dropped construct (§3.2), so every
+> hinted skill × dropping target produces its own row.
+
+## Public API — exported vs internal
+
+The feature's only externally-stable contract is the three items in `01-architecture-layout.md §4`;
+nothing in this module is a public API. Within it:
+
+| Symbol | Visibility | Notes |
+|---|---|---|
+| `run_self_containment_pass`, `render_generation_report`, `_publish_manifest` | engine-called entry points | Invoked by the engine (`02 §4.1`) at fixed points in the build; module-internal (test-importable), not an external contract. |
+| `_copytree_verbatim`, `_assert_within`, `_assert_byte_identical`, `_render_verbatim_copies_section` | private | Leading-underscore = private; not for cross-module use. |
+
+These are written by the engine's report / self-containment passes — none of their output is an
+`EmittedFile` (`00 §5`). All factoring (single-file vs split package, `02 §2`) is implementer's
+discretion provided the three `01 §4` contracts hold.
 
 ## Dependencies
 
 This document depends on:
 
 - **`00-core-definitions.md`** — the three provenance string templates + `provenance_json` /
-  `PROVENANCE_JSON_KEY` (§7), `REGENERATE_CMD` (§7), `DropRecord` + its `(agent, source, construct)`
-  sort key (§6), `SkillRecord` / `AgentRecord` (incl. `source_path`, `own_refs`, `claude_keys`) (§2),
-  `EmitResult` / `EmittedFile` (§5), `AGENT_TARGETS` iteration order (§1). **Referenced, not
-  redefined.**
+  `PROVENANCE_JSON_KEY` / `GEMINI_EXTENSION_VERSION` (§7), `REGENERATE_CMD` (§7), `DropRecord` + its
+  `(agent, source, construct)` sort key (§6), `SkillRecord` / `AgentRecord` (incl. `source_path`,
+  `own_refs`, `claude_keys`) (§2), `EmitResult` / `EmittedFile` / `ManifestEntry` (§5), `AGENT_TARGETS`
+  iteration order (§1). **Referenced, not redefined.**
 - **`01-architecture-layout.md`** — the `adapters/<agent>/` bundle layout (§3), the read-only
   integration surfaces (the 14-file `references/` tree, the 7 own-references skills, `forge-root.sh`
   50-line/0755) (§7), and the placement of `GENERATION-REPORT.md` (§2).
