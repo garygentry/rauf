@@ -69,7 +69,8 @@
       "version": 1,
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
       "artifacts": ["backlog.json"],
-      "completedAt": "2026-06-16T00:00:00Z"
+      "completedAt": "2026-06-16T00:00:00Z",
+      "commitHash": "50e268f"
     }
   }
 }
