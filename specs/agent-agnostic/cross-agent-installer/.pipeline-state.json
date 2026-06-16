@@ -3,19 +3,26 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T21:24:55Z",
+  "updatedAt": "2026-06-16T21:40:00Z",
   "currentStage": "forge-2-tech",
   "notes": "forge-2-tech must reconcile the install flow with a published, Node-resolvable rauf package that does not exist yet (rauf is a pnpm/Bun monorepo with a local rauf-stable binary, no published bin). Standing up rauf's publish/release path is a cross-repo prerequisite that likely sequences with packaging-docs-ci (see C-7 / OQ-1). PRD pins delivery shape (published + version-pinned, network-permitted, no vendored binary); tech spec resolves the registry/coordinate and the unavailable-pin failure mode.",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
       "status": "complete",
-      "version": 1,
+      "version": 2,
       "artifacts": ["PRD.md"],
       "startedAt": "2026-06-16T21:24:55Z",
-      "completedAt": "2026-06-16T21:24:55Z",
+      "completedAt": "2026-06-16T21:40:00Z",
       "commitHash": "d3750e382a5d320130478736c6ff0be8f6844a1d",
       "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-16T21:34:00Z",
+      "fixedAt": "2026-06-16T21:40:00Z"
     }
   }
 }

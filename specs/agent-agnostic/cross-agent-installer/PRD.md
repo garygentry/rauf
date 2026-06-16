@@ -88,6 +88,14 @@ install yields a *working loop out of the box* — not just installed skills.
   config dirs it probed) and MUST NOT create agent config directories speculatively or fail with an
   opaque error.
   - Priority: P1
+- **REQ-DET-05**: `agent-detection-map` is exposed as a **single surface** combining (a) the static
+  per-agent table of config dir(s) to probe and on-disk install destination (REQ-DET-01) and (b) the
+  detection behavior that applies it to a host (REQ-DET-02). Downstream consumers (`packaging-docs-ci`
+  drives it for OS-matrix dry-runs, `forge-rauf-loop-default` may read it) MUST be able to obtain both
+  the per-agent target paths and a per-agent detected/not-detected result from this one named surface.
+  - Priority: P0
+  - Notes: This reconciles the `kind: function` characterization in `epic-manifest.json` (the
+    detection probe) with the static-table half — they are one exposed contract, not two.
 
 ### 3.3 Operations (add / update / uninstall / list)
 
@@ -110,6 +118,21 @@ install yields a *working loop out of the box* — not just installed skills.
   printing the exact set of planned filesystem actions (per agent, per skill: create / overwrite /
   skip / remove) without making any change.
   - Priority: P0
+- **REQ-OPS-06**: If a target agent is **detected** but its source bundle `adapters/{agent}/` is
+  **absent or fails a minimal integrity check** (e.g. a checkout where adapters were never generated,
+  or a partial generation), the installer MUST report this clearly — naming the agent and the expected
+  source path — and MUST NOT write a partial install for that agent. It MUST continue with the other
+  agents per the per-agent partial-failure rule (REQ-OBS-03).
+  - Priority: P1
+  - Notes: Symmetric to REQ-DET-04's zero-detection handling, but for the consumed-contract side: the
+    agent exists on the machine, yet there is nothing valid to install for it. Closes the
+    consumed-`adapters-output` seam (C-3).
+- **REQ-OPS-07**: For the **Gemini** target, a successful install MUST leave a valid, agent-loadable
+  `gemini-extension.json` in the install destination (Gemini's bundle carries this manifest in
+  addition to its skills). The exact placement/merge mechanism is deferred (OQ-5); this requirement
+  fixes the *outcome* that the manifest is present and loadable.
+  - Priority: P1
+  - Notes: Mirrors the REQ-RAUF-01-fixes-outcome / OQ-1-defers-shape pattern used for rauf bundling.
 
 ### 3.4 Flags & Scoping
 
@@ -247,10 +270,18 @@ install yields a *working loop out of the box* — not just installed skills.
   `bash scripts/validate.sh`, extended to build and test the installer (so the installer's tests and
   any added toolchain steps are reachable through the single gate). There is no rauf `pnpm` gate for
   this work.
-- **C-3 (consumes, read-only):** The installer consumes `adapters-output` (the generated
-  `adapters/{agent}/` tree from `forge-agent-adapters-build`) strictly read-only, and `agent-cli-registry`
-  / the rauf binary from `rauf-agent-cli-adapters` for bundling. This feature MUST NOT modify the
-  generator, canon, or rauf's adapter code.
+- **C-3 (consumes, read-only):** The installer consumes two things, both strictly read-only:
+  (1) `adapters-output` — the generated `adapters/{agent}/` tree from `forge-agent-adapters-build` —
+  which it copies/symlinks; and (2) the **published, runnable rauf** produced by `rauf-agent-cli-adapters`,
+  which it provisions as the bundled default loop runner (per REQ-RAUF-02). The consumed rauf artifact
+  is the *published bin*, NOT the `agent-cli-registry` code module: the installer never imports or
+  drives that module, and §6 explicitly excludes rauf's internal adapter code (incl. `agent-cli-registry`)
+  from this feature's scope. This feature MUST NOT modify the generator, canon, or rauf's adapter code.
+  - **Manifest reconciliation note:** `epic-manifest.json` currently lists this feature's consume as
+    `agent-cli-registry` from `rauf-agent-cli-adapters`. That contract entry mismodels what is actually
+    consumed (the published runnable rauf bin, an *artifact*, not the registry *module*). The manifest
+    `consumes` entry should be corrected to reflect the bundled rauf bin; flagged here for an
+    epic-manifest update (V-001).
 - **C-4 (Node toolchain in feature-forge):** Per REQ-DIST-01 the installer is a Node/`npx`-style
   package; feature-forge (today Python + bash tooling) gains a Node package for the installer. Any
   added toolchain MUST be provisioned so `bash scripts/validate.sh` and CI install/run it
@@ -304,9 +335,10 @@ The following are explicitly owned by sibling epic members and are NOT part of t
 - **OQ-4 (local-modification detection method):** Whether drift detection (REQ-IDEM-02) uses content
   hashing recorded in the manifest, mtime, or a comparison against a freshly materialized bundle —
   tech-spec decision; the requirement (skip-modified-unless-force) is fixed.
-- **OQ-5 (Gemini manifest install):** Gemini's bundle carries a `gemini-extension.json` manifest in
-  addition to skills; whether install places/merges that manifest specially (vs. plain copy) is a
-  per-agent tech-spec detail.
+- **OQ-5 (Gemini manifest install *mechanism*):** REQ-OPS-07 fixes the *outcome* (a valid,
+  agent-loadable `gemini-extension.json` lands in the destination); what remains open is the
+  *mechanism* — whether install plain-copies that manifest or places/merges it specially — a per-agent
+  tech-spec detail.
 
 ## 8. Success Criteria
 
@@ -325,6 +357,10 @@ The following are explicitly owned by sibling epic members and are NOT part of t
 - `uninstall` removes exactly the manifest-tracked files/skills (and unlinks symlinks without
   touching their targets), leaving unrelated user content intact. (REQ-SAFE-01/02, REQ-OPS-03)
 - `list` accurately reports, per agent, detected / installed / up-to-date status. (REQ-OPS-04)
+- When a detected agent has no valid `adapters/{agent}/` source bundle, the installer reports it
+  (naming the agent + expected path), writes no partial install for it, and proceeds with the others;
+  a Gemini install leaves a valid, agent-loadable `gemini-extension.json` in the destination.
+  (REQ-OPS-06, REQ-OPS-07, REQ-OBS-03)
 - `--agent/-a`, `--global/-g`, `--symlink`, and `-y` behave per their requirements, with copy the
   default and Windows always copying. (REQ-FLAG-01/02/03/05, REQ-DIST-02)
 - The installer runs first-class on Linux, macOS, and Windows; partial per-agent failures are
