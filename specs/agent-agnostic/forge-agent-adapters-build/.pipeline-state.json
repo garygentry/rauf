@@ -109,3 +109,5 @@
       "completedAt": "2026-06-16T21:05:33Z",
       "notes": "Docs describe the feature-forge implementation (build-adapters generator); stored in rauf docsDir per sibling convention (forge-skill-spec-purity, rauf-agent-cli-adapters)."
     }
+  }
+}
