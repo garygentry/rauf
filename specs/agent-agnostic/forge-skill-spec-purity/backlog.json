@@ -14,7 +14,7 @@
         "is_root() checks both sentinel files (scripts/epic-manifest.py AND .claude-plugin/plugin.json); the resolver never sources or executes a discovered path (only printf's a directory)",
         "With no discoverable root and CLAUDE_PLUGIN_ROOT unset, forge-root.sh writes exactly 'feature-forge: cannot locate plugin root. Set CLAUDE_PLUGIN_ROOT or run from an installed skill dir.' to stderr and exits 1",
         "references/portable-root.md exists and its bash prelude block is byte-identical to the canonical BOOTSTRAP_PRELUDE in spec 00 section 3",
-        "tests/test_forge_root.py covers cases (a) self-location, (b) total failure, (c) env fallback, (d) candidate probe, with HOME redirected for every failure/fallback/candidate case; python3 -m pytest tests/test_forge_root.py passes from the feature-forge repo root",
+        "tests/test_forge_root.py covers cases (a) self-location, (b) total failure, (c) env fallback, (d) candidate probe per spec 06 section 3: cases (a)/(c)/(d) assert exit 0 AND stdout equals the expected absolute root; case (b) asserts exit 1 AND stderr contains the exact message from acceptance criterion #3; HOME redirected for cases (b)/(c)/(d); python3 -m pytest tests/test_forge_root.py passes from the feature-forge repo root",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root (the script-permission step enforces forge-root.sh's 0755 bit)"
       ],
       "status": "pending",
@@ -40,14 +40,14 @@
         "scripts/check-spec-purity.py exists, is python3 stdlib only (no pyyaml import), exposes CLI 'check-spec-purity.py [--root DIR]', and exits 0 (clean) / 1 (violations) / 2 (argparse usage) per spec 00 section 7",
         "All five rules from spec 05 are implemented (frontmatter-keys, name-matches-dir, no-residual-var, body-size hard-fail at <=300 lines AND <=5000 words, prelude-identity) plus the malformed-block-is-a-violation reader contract (REQ-FM-04, no crash)",
         "Violations render as 'file: reason' using the canonical tokens from spec 00 section 5; output is sorted by (path, rule, reason) so repeated runs over the same tree are byte-identical",
-        "tests/test_check_spec_purity.py + tests/fixtures cover: clean canon (exit 0); one impure fixture per rule 1-5; rule-4 word-limit and both-limbs (two BODY_SIZE violations, body-size=2) cases; both-direction prelude cases; all six reader-robustness fixtures",
+        "tests/test_check_spec_purity.py + tests/fixtures cover: clean canon (exit 0); one impure fixture per rule 1-5; rule-4 word-limit and the both-limbs case (bad-oversized-both) asserting BOTH the 'body ... lines exceeds 300' and 'body ... words exceeds 5000' tokens appear AND the tally line reports body-size=2; both-direction prelude cases; all six reader-robustness fixtures",
         "python3 -m pytest tests/test_check_spec_purity.py passes from the feature-forge repo root",
         "scripts/check-spec-purity.py is NOT referenced anywhere in scripts/validate.sh (validate.sh wiring is item 009)"
       ],
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["001"],
-      "notes": "Verification at this stage is the fixture-driven pytest, NOT the live canon: running check-spec-purity.py against the real (still-impure) skills WILL report violations -- that is expected and correct until items 003-007 land. The checker's BOOTSTRAP_PRELUDE rule-5 oracle must be byte-identical to references/portable-root.md (item 001) / spec 00 section 3. The checker is invoked via python3 (its 0755 bit is convenience only, not gate-enforced).",
+      "notes": "Verification at this stage is the fixture-driven pytest, NOT the live canon: running check-spec-purity.py against the real (still-impure) skills WILL report violations -- that is expected and correct until items 003-007 land. The checker's BOOTSTRAP_PRELUDE rule-5 oracle must be byte-identical to references/portable-root.md (item 001) / spec 00 section 3. The checker is invoked via python3 (its 0755 bit is convenience only, not gate-enforced). This is the largest item by volume (checker + tests + ~16 fixtures); it is one cohesive deliverable (a checker is unverifiable without its tests) and carries estimatedIterations: 2. If the iteration runs long, a minimum viable first pass is the checker + clean-skills + one fixture per rule, with the reader-robustness and both-limbs fixtures completing in the second iteration -- but all fixtures must be green before the ACs pass.",
       "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
@@ -120,7 +120,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["004"],
-      "notes": "Depends on 004 because the prelude additions grow the body; the gate measures the post-prelude file (spec 04 section 6). Relocating command blocks to references/ moves their preludes out of the body, which helps the line budget. TQ-2: the exact line split is the implementer's call, constrained only by the <=300/<=5000 gate.",
+      "notes": "Depends on 004 because the prelude additions grow the body; the gate measures the post-prelude file (spec 04 section 6). Relocating command blocks to references/ moves their preludes out of the body, which helps the line budget. TQ-2: the exact line split is the implementer's call, constrained only by the <=300/<=5000 gate. The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
       "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
@@ -144,7 +144,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["004"],
-      "notes": "Depends on 004 (post-prelude body is what the gate measures, spec 04 section 6). forge-5-loop is ~118 lines over; relocating the runner-contract prose alone may suffice -- result-reporting.md is a headroom safety valve (TQ-2). Independent of items 005 and 007 (different skill).",
+      "notes": "Depends on 004 (post-prelude body is what the gate measures, spec 04 section 6). forge-5-loop is ~118 lines over; relocating the runner-contract prose alone may suffice -- result-reporting.md is a headroom safety valve (TQ-2). Independent of items 005 and 007 (different skill). The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
       "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
@@ -167,7 +167,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["004"],
-      "notes": "Depends on 004 (gate measures the post-prelude body, spec 04 section 6). Reuses the existing references/ file (no new directory). Independent of items 005 and 006 (different skill).",
+      "notes": "Depends on 004 (gate measures the post-prelude body, spec 04 section 6). Reuses the existing references/ file (no new directory). Independent of items 005 and 006 (different skill). The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -178,7 +178,7 @@
     {
       "id": "008",
       "type": "chore",
-      "priority": 2,
+      "priority": 1,
       "title": "Author vendor-construct inventory (references/vendor-construct-inventory.md)",
       "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Create the NEW reference file references/vendor-construct-inventory.md -- the exhaustive REQ-VND-03 audit output -- per spec 02 section 5.\n\nRequired structure (in order):\n1. Title + provenance blockquote (feature name, source-of-truth PRD v1 + tech-spec v1, one line stating this is the REQ-VND-03 audit output).\n2. A disposition legend reproducing the closed Disposition vocabulary from spec 00 section 8: relocated, removed, preserved-as-spec-allowed, out-of-canon, routed-through-resolver.\n3. The inventory table with columns: Construct | Locations / count | Disposition | Rationale / notes.\n4. A short notes section recording that no Codex/Copilot/Cursor/Gemini invocation directive was found (the REQ-VND-02 contingency did not fire), with pointers to spec 03 (resolver mechanics) and spec 00 section 8 (vocabulary).\n\nRequired rows (verify counts by re-grepping the live tree -- the grep is authoritative):\n- argument-hint, 10 SKILL.md (all but forge-init) -> relocated (-> metadata.argument-hint).\n- ${CLAUDE_PLUGIN_ROOT} canonical, 23 across the 9 files -> routed-through-resolver.\n- ${CLAUDE_PLUGIN_ROOT} in scripts/forge-root.sh, 1 (env fallback) -> preserved-as-spec-allowed.\n- ${CLAUDE_PLUGIN_ROOT} in hooks/hooks.json, 1 -> out-of-canon.\n- hooks/hooks.json SessionStart wiring (bash ${CLAUDE_PLUGIN_ROOT}/scripts/session-check.sh) -> out-of-canon.\n\nEvery disposition cell MUST be a member of the closed vocabulary (no free-form values).",
       "acceptanceCriteria": [
@@ -209,7 +209,8 @@
         "python3 scripts/check-spec-purity.py exits 0 against the final state of all 11 skills and prints 'spec-purity: PASS' (REQ-VER-03)",
         "python3 -m pytest tests passes from the feature-forge repo root (all suites including test_check_spec_purity.py and test_forge_root.py)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root with the new checker step running unconditionally (never SKIP-ped)",
-        "git diff --stat (in feature-forge) shows only the expected surface: scripts/forge-root.sh + scripts/check-spec-purity.py (new), references/portable-root.md + references/vendor-construct-inventory.md + per-skill references/ files (new), tests/test_*.py + tests/fixtures (new), 11 edited SKILL.md, agents/forge-verifier.md, references/shared-conventions.md, skills/forge-verify/references/verification-checklists.md, scripts/validate.sh; nothing in .claude-plugin/ or hooks/"
+        "git diff --stat (in feature-forge) shows only the expected surface: scripts/forge-root.sh + scripts/check-spec-purity.py (new), references/portable-root.md + references/vendor-construct-inventory.md + per-skill references/ files (new), tests/test_*.py + tests/fixtures (new), 11 edited SKILL.md, agents/forge-verifier.md, references/shared-conventions.md, skills/forge-verify/references/verification-checklists.md, scripts/validate.sh; nothing in .claude-plugin/ or hooks/",
+        "Maintainer follow-up recorded (manual; NOT loop-verified, non-gating): after the gate is green, run the Claude behavioral smoke (REQ-COMPAT-01/02/03, spec 06 section 5) -- plugin loads, all 11 skills trigger with byte-unchanged descriptions, resolver-backed flows run, and relocated content is reachable via in-body pointers"
       ],
       "status": "pending",
       "completedAt": null,
