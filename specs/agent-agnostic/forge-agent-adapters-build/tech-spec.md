@@ -75,11 +75,11 @@ adapters/<agent>/
 `build-adapters.py` is structured as **discovery → parse → per-agent emit → atomic publish**:
 
 1. **Discovery (REQ-GEN-01, REQ-SCALE-01):** glob the canon under the repo root in **sorted POSIX order** — `skills/*/SKILL.md`, `agents/*.md`, and the reference trees. The input set is discovered, never hard-coded, so adding a skill or sub-agent needs **no generator change** (REQ-SCALE-01). Confirmed current canon: 11 skills, 3 sub-agents (`forge-researcher`, `forge-spec-writer`, `forge-verifier`).
-2. **Parse:** split each markdown file into `(frontmatter_map, body)` via the pinned YAML loader (`safe_load`). The data model the generator owns is small (§4); the canonical frontmatter is `{name, description[, metadata]}` for skills and `{name, description, tools, model, maxTurns, memory, skills}` for sub-agents.
+2. **Parse:** split each markdown file into `(frontmatter_map, body)` via the pinned YAML loader (`safe_load`). The data model the generator owns is small (§4); the canonical frontmatter is `{name, description[, metadata]}` for skills. Sub-agent frontmatter is **not a fixed schema** — each `agents/*.md` carries its own set of Claude-only keys, **discovered per-file from the parsed frontmatter**, not hard-coded. The union actually present across the current 3 sub-agents is `{tools, model, maxTurns, effort, memory, skills}` (verified ground truth: `forge-researcher` has `effort`; only `forge-verifier` has `memory`+`skills`; `forge-spec-writer` has neither). The AgentRecord (§4) therefore carries whatever non-`{name, description}` keys each file actually has, so a future sub-agent adding a new Claude-only key is auto-covered (REQ-SCALE-01).
 3. **Per-agent emit:** for each target, an **emitter** (one function/class per agent — a pluggable registry keyed by agent id) maps the canonical record to that agent's native artifact (§5), applies the **drop-with-record** rule for unrepresentable constructs (REQ-FMT-03 / REQ-OBS-01), copies the skill's `references/` + the shared `references/` (D5) + `forge-root.sh` verbatim, and stamps provenance (§3.5).
 4. **Atomic publish (REQ-DET-02, REQ-ROB-01):** build the **complete** tree into a sibling temp dir (`adapters.tmp-<pid>/`), then `os.replace`-swap it over `adapters/` only after a fully successful build. A failure leaves the previously-committed `adapters/` intact (no partial tree). This also delivers "full regenerate" — stale/orphaned files cannot survive because the published tree is built from scratch each run.
 
-**Sub-agent translation (REQ-GEN-06):** the 3 `agents/*.md` carry Claude-only keys (`tools`, `model`, `maxTurns`, `memory`, `skills`). Each emitter translates the sub-agent into the target's native agent construct where one exists (e.g. Codex `agents/openai.yaml`) and **records it as dropped** otherwise (§3.5). The `description` is preserved byte-for-byte everywhere it lands (REQ-FMT-04).
+**Sub-agent translation (REQ-GEN-06):** the 3 `agents/*.md` carry Claude-only keys drawn from the union `{tools, model, maxTurns, effort, memory, skills}` (per-file, not uniform — see step 2). Each emitter translates the sub-agent into the target's native agent construct where one exists (e.g. Codex `agents/openai.yaml`) and, for **every** Claude-only key not representable in the target, applies drop-with-record (REQ-FMT-03 / REQ-OBS-01) — the dropped keys are **enumerated from the parsed frontmatter of each file, not from a hard-coded list**, so keys like `effort` cannot be silently dropped-without-record. The `description` is preserved byte-for-byte everywhere it lands (REQ-FMT-04).
 
 ### 3.2 Per-agent format translation (REQ-FMT-01..04)
 
@@ -111,7 +111,7 @@ Hand-authored `AGENTS.md` at the feature-forge repo root. **MUST** document (REQ
     ```
   - **Strict JSON (`gemini-extension.json`), no comments possible (OQ-2):** a documented `"_generated"` object carrying `source` + `regenerate` keys.
   - **Copied scripts (`forge-root.sh`):** **no** header is injected — REQ-GEN-05 requires byte-identity. Its provenance is documented in `GENERATION-REPORT.md` instead.
-- **Generation report (REQ-OBS-01):** committed at `adapters/GENERATION-REPORT.md` (OQ-3 → committed). Per agent, it lists every canonical construct **dropped or unrepresentable** (e.g. "cursor: sub-agent `tools`/`model`/`memory` keys — no Cursor equivalent — dropped"; "copilot: `hooks.json` — omitted"). Being a committed `adapters/` file, it is itself part of the drift-guarded tree, so the drop-record stays truthful.
+- **Generation report (REQ-OBS-01):** committed at `adapters/GENERATION-REPORT.md` (OQ-3 → committed). Per agent, it lists every canonical construct **dropped or unrepresentable** (e.g. "cursor: sub-agent `tools`/`model`/`effort`/`memory` keys — no Cursor equivalent — dropped"; "copilot: `hooks.json` — omitted"). Being a committed `adapters/` file, it is itself part of the drift-guarded tree, so the drop-record stays truthful. **Provenance treatment:** the report is generated markdown with **no frontmatter block**, so it does not take the in-frontmatter comment form above. It instead carries a **body-top provenance line as its first line** — `<!-- GENERATED — DO NOT EDIT. Generated by python3 scripts/build-adapters.py -->` — satisfying REQ-OUT-01's "every generated file in `adapters/`" requirement for a frontmatter-less file.
 
 ### 3.6 Determinism & the pinned-dependency contract (REQ-DET-01..03, REQ-PERF-01)
 
@@ -141,7 +141,9 @@ SkillRecord:   name: str            # == skills/<dir>; emitters MUST NOT rename
                body: str             # markdown below frontmatter
                own_refs: Path|None   # skills/<name>/references/ if present
 AgentRecord:   name, description, body
-               claude_keys: dict     # tools, model, maxTurns, memory, skills (Claude-only)
+               claude_keys: dict     # per-file: whatever non-{name,description} frontmatter keys
+                                     #   the agent file actually has — union across current 3 agents is
+                                     #   {tools, model, maxTurns, effort, memory, skills}; NOT a fixed schema
 ```
 
 Fixed frontmatter key emission order per target (for determinism, §3.6). Canonical frontmatter schema is the one the upstream checker enforces (`{name, description, license, compatibility, metadata, allowed-tools}`); the generator reads it, never widens it on canon.
@@ -174,7 +176,7 @@ Every target also receives: the skill's own `references/` (verbatim), the whole 
 
 **Depends on (existing in feature-forge, read-only — C-3):**
 - **`skills/*/SKILL.md`** (11) + their `references/` subdirs (7 skills have one) — the `spec-pure-skills` contract. Frontmatter shape verified: `{name, description[, metadata.argument-hint]}`; `name == <dir>`.
-- **`agents/*.md`** (3) — Claude sub-agent defs; frontmatter `{name, description, tools, model, maxTurns, memory, skills}`.
+- **`agents/*.md`** (3) — Claude sub-agent defs; frontmatter is **per-file, not uniform**: `{name, description}` plus a per-file subset of the Claude-only union `{tools, model, maxTurns, effort, memory, skills}` (verified: `forge-researcher` carries `effort`; only `forge-verifier` carries `memory`+`skills`; `forge-spec-writer` carries neither). The generator discovers these keys from each file rather than assuming a fixed set.
 - **`references/`** (repo-root): `epic-manifest-schema.json`, `forge-config-schema.json`, `pipeline-state-schema.json`, `portable-root.md`, `process-overview.md`, `ralph-loop-contract.md`, `shared-conventions.md`, `stack-resolution.md`, `stacks/{_generic,go,python,rust,typescript}.md`, `vendor-construct-inventory.md` — all copied verbatim into each bundle.
 - **`scripts/forge-root.sh`** (50 lines, 0755) — the `portable-skill-root-resolver` contract; copied **byte-identical** (REQ-GEN-05).
 - **`scripts/check-spec-purity.py`** — extended additively (§3.7): add `adapters/**` exemption. `CANONICAL_SURFACES` and `RESIDUAL_VAR_EXEMPT` shapes verified in source; `--root` default = parent of script dir.
@@ -193,7 +195,7 @@ Every target also receives: the skill's own `references/` (verbatim), the whole 
 
 - **Fail-fast on bad canon (REQ-ROB-01, REQ-OBS-02):** malformed frontmatter, missing required `name`, or an unreadable file → abort the **entire** build with a clear `path: reason` message to stderr and a non-zero exit. Because the tree is built to a temp dir and only atomic-swapped on full success, a failure **never** leaves a partial `adapters/`. (Canon is pre-gated pure upstream, so any failure here is a real defect that must block.)
 - **Drift (REQ-CI-03):** `--check` prints the `diff` + remediation message, exits non-zero.
-- **Path safety (REQ-SEC-01):** all writes are confined to `adapters/` under the resolved repo root; the generator resolves and asserts the output path is within `root/adapters` before writing, and never writes elsewhere (`AGENTS.md` is hand-authored — the generator does not touch it).
+- **Path safety (REQ-SEC-01):** all **generator** writes are confined to `adapters/` (plus its own sibling `adapters.tmp-<pid>/` staging dir, atomic-swapped in) under the resolved repo root; the generator resolves and asserts the output path is within the repo root before writing, and never writes elsewhere (`AGENTS.md` is hand-authored — the generator does not touch it). The one-time `.gitignore` amendment (§9) is a setup/repo-config edit performed during implementation, **not** a generator write, so it does not violate the REQ-SEC-01 sandbox.
 - **Convention:** Python tooling uses explicit exit codes (0 success / non-zero failure) like `check-spec-purity.py`; Bash uses `set -euo pipefail`. No `Result`-type concern (shell/Python tooling, not the TS core).
 
 ## 8. Testing Approach
@@ -204,7 +206,7 @@ Every target also receives: the skill's own `references/` (verbatim), the whole 
 - **Full regenerate (REQ-DET-02):** seed a stale/orphan file under the output, regenerate → orphan is gone.
 - **Self-containment (REQ-GEN-04, D5):** each bundle contains the skill's own `references/`, the shared `references/` tree, and `forge-root.sh`.
 - **Verbatim resolver (REQ-GEN-05):** copied `forge-root.sh` is byte-identical to canon (hash compare).
-- **Provenance (REQ-OUT-01):** every generated `.md`/`.mdc` has the in-frontmatter header; `gemini-extension.json` has the `_generated` key; `forge-root.sh` has none.
+- **Provenance (REQ-OUT-01):** every generated `.md`/`.mdc` **that has a frontmatter block** has the in-frontmatter header; the frontmatter-less `GENERATION-REPORT.md` has the body-top provenance line as its first line (§3.5); `gemini-extension.json` has the `_generated` key; `forge-root.sh` has none.
 - **Claude round-trip (REQ-VND-01):** `adapters/claude/.../SKILL.md` has top-level `argument-hint` reconstructed from `metadata.argument-hint`; `forge-init` (no hint) has none.
 - **Description byte-fidelity (REQ-FMT-04):** decoded `description` equals canon for every target.
 - **Drop-with-record (REQ-FMT-03 / REQ-OBS-01):** sub-agent Claude-only keys are absent from non-Claude output **and** appear in `GENERATION-REPORT.md`.
@@ -217,6 +219,7 @@ Every target also receives: the skill's own `references/` (verbatim), the whole 
 
 - **One new runtime dependency (D2, C-4):** a pinned YAML library (default **PyYAML**, exact version pinned in `scripts/requirements-adapters.txt`; ruamel.yaml considered for finer emit control — see §10). **Auto-provisioned**: the `validate.sh` "6b" step creates/reuses an isolated venv `feature-forge/.venv-adapters` (gitignored) and `pip install -q -r scripts/requirements-adapters.txt` into it, then runs the generator from that interpreter. Isolation avoids PEP-668 "externally-managed" failures and never mutates system Python; first run pays a one-time install, subsequent runs are cached. The verify command requires **no** manual setup (C-4 satisfied).
 - **No other new deps.** Existing toolchain: `python3` (stdlib for the rest), Bash, `pytest` (dev; non-fatal if absent per `validate.sh`).
+- **`.gitignore` amendment (deliverable):** amend `feature-forge/.gitignore` to add `.venv-adapters/` (the gitignored provision venv, §2) and `adapters.tmp-*/` (the sibling temp build dirs used by atomic publish, §3.1 step 4). The generator names its temp dir to match that glob (`adapters.tmp-<pid>/`) so a single pattern covers it. Without this, the venv shows as a large untracked tree on every `validate.sh` run and an aborted/fail-fast build (§7) can leave an `adapters.tmp-<pid>/` dir as untracked noise that could pollute a `--check` diff or a maintainer commit. This is a one-time repo-config edit, **not** a generator write (see §7).
 - **Internal:** canon's `forge-root.sh` (copied), `check-spec-purity.py` (extended), `validate.sh` (extended).
 
 ## 10. Open Technical Questions

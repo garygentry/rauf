@@ -29,7 +29,15 @@
       "version": 1,
       "basedOnVersions": { "forge-1-prd": 1 },
       "artifacts": ["tech-spec.md"],
-      "completedAt": "2026-06-16T00:00:00Z"
+      "completedAt": "2026-06-16T00:00:00Z",
+      "commitHash": "adb8aac"
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-tech-2026-06-16.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-06-16T00:00:00Z",
+      "fixedAt": "2026-06-16T00:00:00Z"
     }
   }
 }
