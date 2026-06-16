@@ -3,9 +3,9 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T03:24:00Z",
-  "currentStage": "forge-3-specs",
-  "notes": "tech-spec v1 decisions (all interview-confirmed): body budget ≤300 ln/≤5000 w (tightened from OQ-1's 500, captures forge-0-epic/forge-5-loop/forge-verify); resolver = single Bash scripts/forge-root.sh + verbatim bootstrap prelude (no Python twin); hooks.json left in place + documented (out-of-canon); checker = stdlib-only scripts/check-spec-purity.py wired into validate.sh + pytest. Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 version mismatch (flag for packaging-docs-ci).",
+  "updatedAt": "2026-06-16T03:52:00Z",
+  "currentStage": "forge-4-backlog",
+  "notes": "Specs v1 complete: 7 numbered docs + TRACEABILITY (all 28 PRD reqs traced, cross-refs resolve). Foundation (00 schema/constants/prelude/types, 01 layout/exports/validate.sh map) authored in-session; domain docs 02 (frontmatter+inventory), 03 (resolver+prelude, 23 loci/9 files grep-confirmed), 04 (body-size ≤300/≤5000), 05 (stdlib checker+5 rules) via parallel forge-spec-writers; 06 testing. Decisions carried from tech-spec: D1 ≤300ln/≤5000w, D2 single Bash forge-root.sh (no Python twin), D3 hooks.json out-of-canon, D4 stdlib-only checker. Deferred non-blocking: TQ-1 prelude⊆resolver candidate-set (manual review, 03 §3), TQ-2 exact line-split for 3 oversized skills (impl time, 04 §5). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 mismatch (flag for packaging-docs-ci).",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
@@ -44,6 +44,21 @@
       "findingsCount": 7,
       "verifiedAt": "2026-06-16T03:20:00Z",
       "fixedAt": "2026-06-16T03:24:00Z"
+    },
+    "forge-3-specs": {
+      "status": "in-progress",
+      "version": 1,
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-frontmatter-purity-and-inventory.md",
+        "03-portable-root-resolver.md",
+        "04-body-size-discipline.md",
+        "05-spec-purity-checker.md",
+        "06-testing-strategy.md",
+        "TRACEABILITY.md"
+      ]
     }
   }
 }
