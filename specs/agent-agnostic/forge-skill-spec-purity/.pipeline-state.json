@@ -3,8 +3,9 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T02:42:00Z",
-  "currentStage": "forge-2-tech",
+  "updatedAt": "2026-06-16T03:18:05Z",
+  "currentStage": "forge-3-specs",
+  "notes": "tech-spec v1 decisions (all interview-confirmed): body budget ≤300 ln/≤5000 w (tightened from OQ-1's 500, captures forge-0-epic/forge-5-loop/forge-verify); resolver = single Bash scripts/forge-root.sh + verbatim bootstrap prelude (no Python twin); hooks.json left in place + documented (out-of-canon); checker = stdlib-only scripts/check-spec-purity.py wired into validate.sh + pytest. Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 version mismatch (flag for packaging-docs-ci).",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
@@ -28,6 +29,13 @@
         "fixedAt": "2026-06-16T02:11:00Z",
         "resolved": 7
       }
+    },
+    "forge-2-tech": {
+      "status": "in-progress",
+      "version": 1,
+      "completedAt": "2026-06-16T03:18:05Z",
+      "basedOnVersions": { "forge-1-prd": 1 },
+      "artifacts": ["tech-spec.md"]
     }
   }
 }
