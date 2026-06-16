@@ -3,17 +3,23 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T13:55:00Z",
-  "currentStage": "forge-5-loop",
-  "notes": "Backlog v1 complete: 9 items, validated green via rauf-stable (valid:true, 0 findings). C-1 cross-repo: ALL impl lands in feature-forge (/home/gary/workspace/feature-forge); specs/backlog/loop run from rauf. No TypeScript/pnpm here (Bash+Python3+Markdown) — ignore rauf pnpm gate; per-item verify uses python3 scripts/check-spec-purity.py, python3 -m pytest tests, bash scripts/validate.sh from the feature-forge root. Item ordering: tooling-first (001 resolver+prelude+tests, 002 checker+fixtures) → 003 frontmatter, 004 routing → 005/006/007 body reductions (parallel-eligible, all dep 004) → 008 inventory → 009 wire-checker-into-validate.sh + completion gate. validate.sh wiring deliberately last (wiring early would red the gate for all mid-stream items); mid-stream items assert SCOPED checker rules, only 009 requires checker exit 0 + validate.sh e2e. No agentDelegation (routing kept cohesive for prelude byte-identity). Manual Claude behavioral smoke (REQ-COMPAT-01/02/03) is a 009 maintainer follow-up — not loop-automatable. Decisions D1 ≤300ln/≤5000w, D2 single Bash forge-root.sh, D3 hooks.json out-of-canon, D4 stdlib checker. Deferred non-blocking: TQ-1 (prelude⊆resolver, manual), TQ-2 (exact line-split, impl time). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 (flag for packaging-docs-ci).",
+  "updatedAt": "2026-06-16T15:11:44Z",
+  "currentStage": "forge-6-docs",
+  "notes": "Backlog v1 complete: 9 items, validated green via rauf-stable (valid:true, 0 findings). C-1 cross-repo: ALL impl lands in feature-forge (/home/gary/workspace/feature-forge); specs/backlog/loop run from rauf. No TypeScript/pnpm here (Bash+Python3+Markdown) \u2014 ignore rauf pnpm gate; per-item verify uses python3 scripts/check-spec-purity.py, python3 -m pytest tests, bash scripts/validate.sh from the feature-forge root. Item ordering: tooling-first (001 resolver+prelude+tests, 002 checker+fixtures) \u2192 003 frontmatter, 004 routing \u2192 005/006/007 body reductions (parallel-eligible, all dep 004) \u2192 008 inventory \u2192 009 wire-checker-into-validate.sh + completion gate. validate.sh wiring deliberately last (wiring early would red the gate for all mid-stream items); mid-stream items assert SCOPED checker rules, only 009 requires checker exit 0 + validate.sh e2e. No agentDelegation (routing kept cohesive for prelude byte-identity). Manual Claude behavioral smoke (REQ-COMPAT-01/02/03) is a 009 maintainer follow-up \u2014 not loop-automatable. Decisions D1 \u2264300ln/\u22645000w, D2 single Bash forge-root.sh, D3 hooks.json out-of-canon, D4 stdlib checker. Deferred non-blocking: TQ-1 (prelude\u2286resolver, manual), TQ-2 (exact line-split, impl time). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 (flag for packaging-docs-ci).",
   "stages": {
-    "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
     "forge-1-prd": {
       "status": "complete",
       "version": 1,
       "completedAt": "2026-06-16T01:47:06Z",
       "basedOnVersions": {},
-      "artifacts": ["PRD.md"],
+      "artifacts": [
+        "PRD.md"
+      ],
       "commit": "9d38caf"
     },
     "forge-verify-prd": {
@@ -34,8 +40,12 @@
       "status": "complete",
       "version": 1,
       "completedAt": "2026-06-16T03:18:05Z",
-      "basedOnVersions": { "forge-1-prd": 1 },
-      "artifacts": ["tech-spec.md"],
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "artifacts": [
+        "tech-spec.md"
+      ],
       "commitHash": "2d79b4e"
     },
     "forge-verify-tech": {
@@ -50,7 +60,10 @@
       "version": 1,
       "completedAt": "2026-06-16T03:53:00Z",
       "commitHash": "91b70c0",
-      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
       "artifacts": [
         "00-core-definitions.md",
         "01-architecture-layout.md",
@@ -73,8 +86,14 @@
       "status": "complete",
       "version": 1,
       "completedAt": "2026-06-16T13:46:00Z",
-      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
-      "artifacts": ["backlog.json"],
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "artifacts": [
+        "backlog.json"
+      ],
       "commitHash": "ee34313"
     },
     "forge-verify-backlog": {
@@ -83,6 +102,18 @@
       "findingsCount": 6,
       "verifiedAt": "2026-06-16T13:55:00Z",
       "fixedAt": "2026-06-16T13:58:00Z"
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-16T14:41:01Z",
+      "completedAt": "2026-06-16T15:11:44Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        ".forge-loop/.rauf/state.json (feature-forge; loop state, gitignored)"
+      ],
+      "implementedIn": "feature-forge @ branch forge/skill-spec-purity (9 commits ae9c205..264507c)"
     }
   }
 }

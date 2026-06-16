@@ -17,8 +17,8 @@
         "tests/test_forge_root.py covers cases (a) self-location, (b) total failure, (c) env fallback, (d) candidate probe per spec 06 section 3: cases (a)/(c)/(d) assert exit 0 AND stdout equals the expected absolute root; case (b) asserts exit 1 AND stderr contains the exact message from acceptance criterion #3; HOME redirected for cases (b)/(c)/(d); python3 -m pytest tests/test_forge_root.py passes from the feature-forge repo root",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root (the script-permission step enforces forge-root.sh's 0755 bit)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-16T14:42:59.776Z",
       "dependsOn": [],
       "notes": "All paths are in /home/gary/workspace/feature-forge. The prelude string is owned by spec 00 section 3 and reproduced byte-identically in spec 03 sections 3-4; copy from there. Globs that match nothing expand to themselves, so the is_root test must reject literal unexpanded globs. pwd -P (not realpath) is used deliberately for portability. This file is copied verbatim into per-agent mirrors downstream, so keep it dependency-free.",
       "estimatedIterations": 2,
@@ -44,9 +44,11 @@
         "python3 -m pytest tests/test_check_spec_purity.py passes from the feature-forge repo root",
         "scripts/check-spec-purity.py is NOT referenced anywhere in scripts/validate.sh (validate.sh wiring is item 009)"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["001"],
+      "status": "done",
+      "completedAt": "2026-06-16T14:46:48.252Z",
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Verification at this stage is the fixture-driven pytest, NOT the live canon: running check-spec-purity.py against the real (still-impure) skills WILL report violations -- that is expected and correct until items 003-007 land. The checker's BOOTSTRAP_PRELUDE rule-5 oracle must be byte-identical to references/portable-root.md (item 001) / spec 00 section 3. The checker is invoked via python3 (its 0755 bit is convenience only, not gate-enforced). This is the largest item by volume (checker + tests + ~16 fixtures); it is one cohesive deliverable (a checker is unverifiable without its tests) and carries estimatedIterations: 2. If the iteration runs long, a minimum viable first pass is the checker + clean-skills + one fixture per rule, with the reader-robustness and both-limbs fixtures completing in the second iteration -- but all fixtures must be green before the ACs pass.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -69,9 +71,11 @@
         "grep -rnE '^argument-hint:' skills/*/SKILL.md returns zero matches from the feature-forge repo root",
         "python3 scripts/check-spec-purity.py reports zero frontmatter-keys (rule 1) and zero name-matches-dir (rule 2) violations across all 11 skills (run standalone from the feature-forge repo root; rules 3/4/5 may still report and that is acceptable in this item)"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["002"],
+      "status": "done",
+      "completedAt": "2026-06-16T14:47:52.199Z",
+      "dependsOn": [
+        "002"
+      ],
       "notes": "This is the single frontmatter transformation the feature performs (REQ-VND-01). metadata is the spec-sanctioned home for vendor data (constraint C-2). The checker (item 002) gives a quick rule-1/rule-2 read; to confirm just those rules, grep the checker output for 'frontmatter key' and '!= directory'. Verify description byte-identity by eye / git diff -- the gate does not enforce it.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -93,9 +97,12 @@
         "grep -rn 'CLAUDE_PLUGIN_ROOT' skills agents references returns zero matches from the feature-forge repo root (hooks/hooks.json and scripts/forge-root.sh are exempt and remain unchanged)",
         "python3 scripts/check-spec-purity.py reports zero no-residual-var (rule 3) and zero prelude-identity (rule 5) violations across all canonical surfaces"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["001", "002"],
+      "status": "done",
+      "completedAt": "2026-06-16T14:54:03.398Z",
+      "dependsOn": [
+        "001",
+        "002"
+      ],
       "notes": "Kept as one cohesive item (no agentDelegation) deliberately: the prelude must be byte-identical across every occurrence (checker rule 5), and a single agent copying from one source (references/portable-root.md) is safer than parallel agents risking drift. INVARIANTS -- do not 'fix' them: the prelude probes paths not the env var; the exec inside $(...) means first-discoverable-resolver-wins (removing exec is a regression). body-size (rule 4) will still fail for forge-0-epic/forge-5-loop/forge-verify after this item -- expected; handled in 005-007.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -117,9 +124,11 @@
         "python3 scripts/check-spec-purity.py reports zero body-size violations for skills/forge-0-epic/SKILL.md (final body <=300 lines AND <=5000 words)",
         "python3 scripts/check-spec-purity.py reports zero rule 1/2/3/5 violations for skills/forge-0-epic (no regression from items 003/004)"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["004"],
+      "status": "done",
+      "completedAt": "2026-06-16T15:02:30.684Z",
+      "dependsOn": [
+        "004"
+      ],
       "notes": "Depends on 004 because the prelude additions grow the body; the gate measures the post-prelude file (spec 04 section 6). Relocating command blocks to references/ moves their preludes out of the body, which helps the line budget. TQ-2: the exact line split is the implementer's call, constrained only by the <=300/<=5000 gate. The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -141,9 +150,11 @@
         "python3 scripts/check-spec-purity.py reports zero body-size violations for skills/forge-5-loop/SKILL.md (final body <=300 lines AND <=5000 words)",
         "python3 scripts/check-spec-purity.py reports zero rule 1/2/3/5 violations for skills/forge-5-loop (no regression from items 003/004)"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["004"],
+      "status": "done",
+      "completedAt": "2026-06-16T15:06:07.223Z",
+      "dependsOn": [
+        "004"
+      ],
       "notes": "Depends on 004 (post-prelude body is what the gate measures, spec 04 section 6). forge-5-loop is ~118 lines over; relocating the runner-contract prose alone may suffice -- result-reporting.md is a headroom safety valve (TQ-2). Independent of items 005 and 007 (different skill). The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
       "estimatedIterations": 2,
       "model": "opus",
@@ -164,9 +175,11 @@
         "python3 scripts/check-spec-purity.py reports zero body-size violations for skills/forge-verify/SKILL.md (final body <=300 lines AND <=5000 words)",
         "python3 scripts/check-spec-purity.py reports zero rule 1/2/3/5 violations for skills/forge-verify and skills/forge-verify/references/verification-checklists.md (no regression from items 003/004)"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["004"],
+      "status": "done",
+      "completedAt": "2026-06-16T15:07:59.446Z",
+      "dependsOn": [
+        "004"
+      ],
       "notes": "Depends on 004 (gate measures the post-prelude body, spec 04 section 6). Reuses the existing references/ file (no new directory). Independent of items 005 and 006 (different skill). The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -187,9 +200,12 @@
         "Every disposition cell is exactly one member of the closed Disposition vocabulary from spec 00 section 8 (no free-form dispositions)",
         "python3 scripts/check-spec-purity.py reports zero violations for references/vendor-construct-inventory.md (it is a canonical surface: no raw ${CLAUDE_PLUGIN_ROOT}; the literal in the hooks.json row must be written so it is not a routable invocation -- describe it as text, e.g. in a code span, matching how the spec records it)"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["001", "004"],
+      "status": "done",
+      "completedAt": "2026-06-16T15:09:19.576Z",
+      "dependsOn": [
+        "001",
+        "004"
+      ],
       "notes": "Depends on 001 (the forge-root.sh sanctioned-residual row is real only after the resolver exists) and 004 (the routed-through-resolver dispositions). references/ is a canonical surface scanned by checker rule 3 -- when the inventory mentions ${CLAUDE_PLUGIN_ROOT} in the hooks.json row, the literal would trip rule 3; spec 02 section 5 writes these as descriptive text / code spans. Confirm rule 3 stays green for this file after authoring; if the literal trips it, reword to name the construct without the routable invocation form (consistent with how the spec docs themselves record it).",
       "estimatedIterations": 1,
       "model": "opus",
@@ -212,9 +228,16 @@
         "git diff --stat (in feature-forge) shows only the expected surface: scripts/forge-root.sh + scripts/check-spec-purity.py (new), references/portable-root.md + references/vendor-construct-inventory.md + per-skill references/ files (new), tests/test_*.py + tests/fixtures (new), 11 edited SKILL.md, agents/forge-verifier.md, references/shared-conventions.md, skills/forge-verify/references/verification-checklists.md, scripts/validate.sh; nothing in .claude-plugin/ or hooks/",
         "Maintainer follow-up recorded (manual; NOT loop-verified, non-gating): after the gate is green, run the Claude behavioral smoke (REQ-COMPAT-01/02/03, spec 06 section 5) -- plugin loads, all 11 skills trigger with byte-unchanged descriptions, resolver-backed flows run, and relocated content is reachable via in-body pointers"
       ],
-      "status": "pending",
-      "completedAt": null,
-      "dependsOn": ["003", "004", "005", "006", "007", "008"],
+      "status": "done",
+      "completedAt": "2026-06-16T15:10:24.576Z",
+      "dependsOn": [
+        "003",
+        "004",
+        "005",
+        "006",
+        "007",
+        "008"
+      ],
       "notes": "This is the acceptance gate the whole feature builds toward (spec 06 section 4). The checker requires only python3 stdlib, so the new step is always available -- there is no skip path. After this item the maintainer should run the manual behavioral smoke under Claude (plugin loads, all 11 skills still trigger with byte-unchanged descriptions, resolver-backed flows run, relocated content reachable via in-body pointers) -- spec 06 section 5; it cannot be automated by the loop.",
       "estimatedIterations": 1,
       "model": "opus",
