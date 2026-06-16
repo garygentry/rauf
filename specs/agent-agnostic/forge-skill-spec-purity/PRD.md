@@ -128,7 +128,7 @@ Today there is no such canon. Every downstream feature in the epic (`forge-agent
 ## 6. Out of Scope
 
 - Generating any per-agent adapter (Codex/Copilot/Cursor/Gemini) or `AGENTS.md` — that is `forge-agent-adapters-build`.
-- Building the cross-agent installer — that is `cross-agent-installer`.
+- Building the cross-agent installer — that is `cross-agent-installer`. **Note (REQ-RES-01 scope boundary):** this feature provides the portable resolver *mechanism* and strips the env-var coupling from canonical surfaces, but the bootstrap prelude's discovery globs remain Claude-only (`~/.claude/...`). Wiring per-agent discovery paths so a non-Claude agent can bootstrap-discover the resolver belongs to `cross-agent-installer` (see `03-portable-root-resolver.md §1`/§3, TQ-1).
 - Standing up CI gates, OS matrices, evals, versioning/licensing alignment — that is `packaging-docs-ci` (this feature only provides the runnable checker it will wire in).
 - Wiring `forge-5-loop` to default to rauf across agents — that is `forge-rauf-loop-default`.
 - Rewriting skill *descriptions* or changing skill *behavior/triggering*.

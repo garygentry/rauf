@@ -46,8 +46,10 @@
       "fixedAt": "2026-06-16T03:24:00Z"
     },
     "forge-3-specs": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
+      "completedAt": "2026-06-16T03:53:00Z",
+      "commitHash": "91b70c0",
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
       "artifacts": [
         "00-core-definitions.md",
@@ -59,6 +61,13 @@
         "06-testing-strategy.md",
         "TRACEABILITY.md"
       ]
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-06-16.md",
+      "findingsCount": 22,
+      "verifiedAt": "2026-06-16T12:20:00Z",
+      "fixedAt": "2026-06-16T12:35:00Z"
     }
   }
 }

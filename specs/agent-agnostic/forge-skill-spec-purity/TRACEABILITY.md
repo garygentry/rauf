@@ -17,7 +17,7 @@
 | REQ-VND-02 | Other vendor directives removed/relocated (contingency) | `02-frontmatter-purity-and-inventory.md` §3 | `00` §8 |
 | REQ-VND-03 | Exhaustive vendor-construct inventory | `02-frontmatter-purity-and-inventory.md` §5 | `00` §8, `01` §2 |
 | REQ-VND-04 | `hooks/hooks.json` kept, documented out-of-canon | `02-frontmatter-purity-and-inventory.md` §4 | `00` §8, `01` §3, `03` §5 |
-| REQ-RES-01 | Portable resolver provided | `03-portable-root-resolver.md` §1–2 | `02` (disposition) |
+| REQ-RES-01 | Portable resolver provided (mechanism; full cross-agent *discovery* deferred to `cross-agent-installer`, see `03` §1) | `03-portable-root-resolver.md` §1–2 | `02` (disposition) |
 | REQ-RES-02 | Resolution order (self → candidates → env) | `03-portable-root-resolver.md` §2 | `00` §2 |
 | REQ-RES-03 | No residual `${CLAUDE_PLUGIN_ROOT}` in canonical surfaces | `03-portable-root-resolver.md` §1,§3,§5 | `00` §6, `05` §3.3, `06` §2.2 |
 | REQ-RES-04 | Actionable failure when root unresolvable | `03-portable-root-resolver.md` §2,§6 | `00` §7, `06` §3 |

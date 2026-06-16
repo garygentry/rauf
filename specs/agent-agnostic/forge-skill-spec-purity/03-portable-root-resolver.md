@@ -49,6 +49,18 @@ The **only** `${CLAUDE_PLUGIN_ROOT}` permitted to survive in the whole tree afte
 
 Both are out of scope for REQ-RES-03; every *other* occurrence is rewritten (§5).
 
+**Scope boundary — what "portable" means in this feature (REQ-RES-01).** This feature delivers the
+resolver *mechanism* (`forge-root.sh` self-location + sentinel probe) and removes the env-var
+coupling from every canonical surface. It does **not** yet make the canon bootstrap-discoverable
+under a non-Claude agent: the bootstrap prelude's discovery globs (§3) are deliberately a Claude-only
+`$HOME`-Claude subset (`~/.claude/skills/feature-forge`, `~/.claude/plugins/*/feature-forge`), so
+under Codex/Copilot/Cursor/Gemini the prelude finds no `forge-root.sh` and the guard exits 1. The
+resolver's own self-location step works under any layout once it is *reached*, but wiring per-agent
+discovery paths into the prelude/resolver candidate set so a non-Claude agent can bootstrap-discover
+`forge-root.sh` is owned by **`cross-agent-installer`** (the same TQ-1 deferral noted in §3). REQ-RES-01
+is satisfied at the mechanism level here; full cross-agent discovery is an intended downstream scope
+boundary, not a gap in this feature.
+
 ## 2. `scripts/forge-root.sh` — the portable resolver (REQ-RES-01, REQ-RES-02, REQ-RES-04, REQ-RES-05, REQ-SEC-01)
 
 `scripts/forge-root.sh` is the exposed **`portable-skill-root-resolver`** contract
@@ -316,6 +328,10 @@ on-disk location (step 1) and (b) the fixed candidate-root list (step 2), plus t
   the *prelude* runs the trusted, sentinel-gated `forge-root.sh`, never a discovered candidate.)
 - **Validates by content sentinel** (`is_root`, both `SENTINEL_FILES`) before trusting any
   candidate, so an attacker-controlled empty directory cannot masquerade as a root.
+
+**Concurrency.** The resolver is idempotent and side-effect-free — it reads nothing it writes and
+only `printf`s a directory string — so it is safe to invoke concurrently (e.g. from parallel skill
+blocks) with no locking.
 
 ## Dependencies
 

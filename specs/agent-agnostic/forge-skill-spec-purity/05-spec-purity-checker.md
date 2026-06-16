@@ -342,11 +342,15 @@ For every `skills/*/SKILL.md`: the parsed top-level key set MUST be a subset of
 present. A malformed frontmatter block is itself a single violation (REQ-FM-04).
 
 ```python
-# Imported conceptually from 00-core-definitions.md §1 (do NOT redefine).
+# Imported conceptually from 00-core-definitions.md §1 + §5 (do NOT redefine).
 ALLOWED_FRONTMATTER_KEYS: frozenset[str] = frozenset(
     {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 )
 REQUIRED_FRONTMATTER_KEYS: frozenset[str] = frozenset({"name", "description"})
+# Reason-string constants (00 §5) — interpolated here, never re-typed inline.
+VR_MALFORMED_FM: str = "malformed frontmatter block"
+VR_DISALLOWED_KEY: str = "disallowed frontmatter key '{key}'"
+VR_MISSING_REQUIRED: str = "missing required frontmatter key '{key}'"
 
 
 def check_frontmatter_keys(root: Path) -> list[Violation]:
@@ -369,20 +373,19 @@ def check_frontmatter_keys(root: Path) -> list[Violation]:
         text = _read_text(skill_md)
         if text is None:
             violations.append(Violation(rel, Rule.FRONTMATTER_KEYS,
-                                        "malformed frontmatter block (unreadable file)"))
+                                        f"{VR_MALFORMED_FM} (unreadable file)"))
             continue
         fm = read_frontmatter(text)
         if not fm.ok:
-            violations.append(Violation(rel, Rule.FRONTMATTER_KEYS,
-                                        "malformed frontmatter block"))
+            violations.append(Violation(rel, Rule.FRONTMATTER_KEYS, VR_MALFORMED_FM))
             continue
         keys = set(fm.keys)
         for key in sorted(keys - ALLOWED_FRONTMATTER_KEYS):
             violations.append(Violation(rel, Rule.FRONTMATTER_KEYS,
-                                        f"disallowed frontmatter key '{key}'"))
+                                        VR_DISALLOWED_KEY.format(key=key)))
         for key in sorted(REQUIRED_FRONTMATTER_KEYS - keys):
             violations.append(Violation(rel, Rule.FRONTMATTER_KEYS,
-                                        f"missing required frontmatter key '{key}'"))
+                                        VR_MISSING_REQUIRED.format(key=key)))
     return violations
 ```
 
@@ -405,6 +408,9 @@ matcher (the same anchoring discipline as the reader):
 ```python
 #: Capture a column-0 `name:` value (unquoted or single/double quoted scalar).
 _NAME_VALUE_RE: re.Pattern[str] = re.compile(r'^name:\s*["\']?([^"\'\r\n]+?)["\']?\s*$')
+
+# Reason-string constant (00 §5) — interpolated, never re-typed inline.
+VR_NAME_MISMATCH: str = "name '{name}' != directory '{dir}'"
 
 
 def check_name_matches_dir(root: Path) -> list[Violation]:
@@ -438,7 +444,7 @@ def check_name_matches_dir(root: Path) -> list[Violation]:
                 break
         if name_value is not None and name_value != dir_name:
             violations.append(Violation(rel, Rule.NAME_MATCHES_DIR,
-                                        f"name '{name_value}' != directory '{dir_name}'"))
+                                        VR_NAME_MISMATCH.format(name=name_value, dir=dir_name)))
     return violations
 ```
 
@@ -459,6 +465,9 @@ future surface glob widens.
 #: scripts/forge-root.sh (00 §6 RESIDUAL_VAR_EXEMPT), which is NOT a canonical
 #: surface and is therefore never scanned by this rule.
 _RESIDUAL_VAR: str = "${CLAUDE_PLUGIN_ROOT}"
+
+# Reason-string constant (00 §5) — no format field, used verbatim (never .format()).
+VR_RESIDUAL_VAR: str = "residual ${CLAUDE_PLUGIN_ROOT} in canonical surface"
 
 
 def check_no_residual_var(root: Path) -> list[Violation]:
@@ -482,8 +491,7 @@ def check_no_residual_var(root: Path) -> list[Violation]:
             continue
         if _RESIDUAL_VAR in text:
             rel = path.relative_to(root).as_posix()
-            violations.append(Violation(rel, Rule.NO_RESIDUAL_VAR,
-                                        "residual ${CLAUDE_PLUGIN_ROOT} in canonical surface"))
+            violations.append(Violation(rel, Rule.NO_RESIDUAL_VAR, VR_RESIDUAL_VAR))
     return violations
 ```
 
@@ -506,9 +514,12 @@ over-budget body is a hard failure (the checker exits non-zero), so the three na
 skills (`forge-0-epic`, `forge-5-loop`, `forge-verify`) block completion until reduced.
 
 ```python
-# Imported from 00-core-definitions.md §2 (decision D1; do NOT redefine).
+# Imported from 00-core-definitions.md §2 + §5 (decision D1; do NOT redefine).
 MAX_BODY_LINES: int = 300
 MAX_BODY_WORDS: int = 5000
+# Reason-string constants (00 §5) — interpolated with the count + cap.
+VR_BODY_LINES: str = "body {n} lines exceeds {limit}"
+VR_BODY_WORDS: str = "body {n} words exceeds {limit}"
 
 
 def check_body_size(root: Path) -> list[Violation]:
@@ -545,10 +556,10 @@ def check_body_size(root: Path) -> list[Violation]:
         n_words = sum(len(line.split()) for line in body_lines)
         if n_lines > MAX_BODY_LINES:
             violations.append(Violation(rel, Rule.BODY_SIZE,
-                                        f"body {n_lines} lines exceeds {MAX_BODY_LINES}"))
+                                        VR_BODY_LINES.format(n=n_lines, limit=MAX_BODY_LINES)))
         if n_words > MAX_BODY_WORDS:
             violations.append(Violation(rel, Rule.BODY_SIZE,
-                                        f"body {n_words} words exceeds {MAX_BODY_WORDS}"))
+                                        VR_BODY_WORDS.format(n=n_words, limit=MAX_BODY_WORDS)))
     return violations
 ```
 
@@ -571,8 +582,10 @@ The canonical 2-line snippet (`00 §3` — reproduced here only for the rule's m
 re-defined, it is the same string):
 
 ```python
-# The canonical bootstrap prelude (00 §3 / references/portable-root.md).
-# Defined ONCE here as the comparison oracle; identical to 00 §3 byte-for-byte.
+# The canonical bootstrap prelude — imported conceptually from 00 §3 /
+# references/portable-root.md (do NOT redefine). Reproduced here only as the
+# comparison oracle for rule 5; byte-identical to BOOTSTRAP_PRELUDE in 00 §3,
+# which owns the canonical Python binding.
 BOOTSTRAP_PRELUDE: str = (
     'R="$(for d in "$HOME"/.claude/skills/feature-forge '
     '"$HOME"/.claude/plugins/*/feature-forge; do '
@@ -582,6 +595,9 @@ BOOTSTRAP_PRELUDE: str = (
 
 #: First line of the prelude — its presence marks a prelude occurrence to verify.
 _PRELUDE_SENTINEL: str = '[ -x "$d/scripts/forge-root.sh" ] && exec "$d/scripts/forge-root.sh"'
+
+# Reason-string constant (00 §5) — no format field, used verbatim.
+VR_PRELUDE_DRIFT: str = "bootstrap prelude not byte-identical to canon"
 
 
 def check_prelude_identity(root: Path) -> list[Violation]:
@@ -607,8 +623,7 @@ def check_prelude_identity(root: Path) -> list[Violation]:
         normalized = text.replace("\r\n", "\n")
         if _PRELUDE_SENTINEL in normalized and BOOTSTRAP_PRELUDE not in normalized:
             rel = path.relative_to(root).as_posix()
-            violations.append(Violation(rel, Rule.PRELUDE_IDENTITY,
-                                        "bootstrap prelude not byte-identical to canon"))
+            violations.append(Violation(rel, Rule.PRELUDE_IDENTITY, VR_PRELUDE_DRIFT))
     return violations
 ```
 
@@ -714,16 +729,20 @@ re-parsing.
 
 ## 5. `validate.sh` wiring (REQ-VER-03, REQ-COMPAT-03)
 
-The checker is inserted into `scripts/validate.sh` as **one new step**, placed **after** the
-existing `epic-manifest` `py_compile` substep and **before** the `pytest` substep — i.e. between
-the current step 6 (script permissions) machinery and the soft-skipped pytest run, exactly per
-`tech-spec.md §3.4` and the integration map in `01-architecture-layout.md §5`.
+The checker is inserted into `scripts/validate.sh` as **one new top-level step**, placed **after**
+the existing step 6 (script-permission loop) and **before** the step-7 epic-manifest helper guard
+begins — exactly per `tech-spec.md §3.4` and the integration map in `01-architecture-layout.md §5`.
 
-The current source (verified, `scripts/validate.sh`) compiles `epic-manifest.py` with
-`py_compile`, then conditionally runs `pytest`. The new step goes between them:
+The current source (verified, `scripts/validate.sh`) wraps **both** `py_compile` **and** the
+conditional `pytest` run inside a single `if [ -f "$HELPER" ]` guard (the whole block is skipped when
+`epic-manifest.py` is absent). The new step therefore MUST go **outside** that guard — *not* "between
+py_compile and pytest", which are both inside the `if`. Inserting it inside the guard would skip the
+spec-purity gate whenever `epic-manifest.py` is missing, breaking the unconditional hard-gate
+guarantee below. Place it as a standalone step after the permission loop:
 
 ```bash
-# 7a. Spec-purity gate (REQ-VER-01..03) — runs UNCONDITIONALLY.
+# 6a. Spec-purity gate (REQ-VER-01..03) — a TOP-LEVEL step, OUTSIDE the
+#     `if [ -f "$HELPER" ]` epic-manifest guard, so it runs UNCONDITIONALLY.
 #     python3 stdlib only (no pyyaml), so it is always available; under
 #     `set -euo pipefail` a non-zero exit fails validate.sh immediately.
 #     This is a HARD gate — it is NEVER soft-skipped (unlike the pytest step).
@@ -821,6 +840,23 @@ Every operation is specified so the checker reports rather than crashes, and pro
 - **No partial-failure exit ambiguity.** The exit code is a pure function of "did any rule emit a
   violation" (`report`, §4): 0 ⇔ empty list, 1 otherwise. A rule that internally skipped an
   unreadable file does not change the verdict for files it could read.
+- **Concurrency.** The checker is **read-only and stateless** (§1), so it is safe to run
+  concurrently with other gate steps or multiple invocations. It takes **no snapshot**, however, so
+  running it against a tree being mutated in parallel — e.g. mid-loop-iteration, since this repo
+  self-hosts — may read a partially-written file and report a **transient** `malformed frontmatter`
+  or size violation. Run the gate against a **quiescent** (post-iteration) tree, as `validate.sh`
+  already does. (`scripts/forge-root.sh` is likewise concurrency-safe — side-effect-free, prints
+  only; `03-portable-root-resolver.md §6`.)
+- **Empty / missing inputs (scope).** A `skills/<name>/` directory with **no** `SKILL.md` yields no
+  glob match and is **silently skipped** — it is **out of scope** for the checker, which validates
+  files that exist; tree-completeness (every skill dir has its `SKILL.md`) is the concern of
+  `01-architecture-layout.md`'s `git diff --stat` checklist, not this checker. An entirely empty
+  `skills/` tree yields zero violations (exit 0); the checker does not assert any expected skill
+  count.
+- **Performance.** The checker does a single full scan of the canonical surfaces (recursive globs
+  over `skills/**` + `references/**`); at the current scale (~11 skills) this is sub-second. Each
+  `SKILL.md` is read independently by rules 1/2/4 (no shared `read_text` cache) — acceptable at this
+  scale; if the canon grows large, cache the per-path read.
 
 ---
 

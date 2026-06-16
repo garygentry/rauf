@@ -44,6 +44,20 @@
   resolver is Bash; a pytest `subprocess.run(["bash", "forge-root.sh"], …)` harness is acceptable
   and keeps everything under one `pytest` invocation.
 
+### 1.1 Coverage target
+
+Coverage is defined **behaviorally**, not by a line/branch percentage (line-% is the wrong metric
+for a small stdlib checker). "Enough" means all of:
+
+- Every checker **Rule** (`00-core-definitions.md §5`) has **≥1 clean** and **≥1 impure** fixture
+  asserting its leading reason token (§2.1, §2.2).
+- Every frontmatter-**reader corner** in `00-core-definitions.md §4` has a fixture (§2.3).
+- The **resolver** has a case per resolution step of `03-portable-root-resolver.md §2` — self-
+  location, candidate probe, env fallback, total failure — or a documented waiver (§3).
+
+Adding a new rule, reason string, reader corner, or resolution step **without** its matching fixture
+is a spec/CI regression, not an optional follow-up.
+
 ## 2. `tests/test_check_spec_purity.py` (NEW) — the checker (REQ-VER-01/02, REQ-OBS-01)
 
 A subprocess runner invokes `scripts/check-spec-purity.py --root <fixture-tree>` and asserts
@@ -82,10 +96,13 @@ def run_checker(root: Path) -> subprocess.CompletedProcess[str]:
 
 ### 2.1 Clean canon → exit 0 (REQ-VER-02)
 
-A `clean-skills` fixture: a minimal but spec-pure tree — ≥2 `skills/<name>/SKILL.md` with only
-`{name, description}` (one also carrying `metadata.argument-hint`), a `scripts/forge-root.sh`
-sentinel pair so canonical-surface scanning has a real root, an in-canon body containing one
-byte-identical bootstrap prelude, and no `${CLAUDE_PLUGIN_ROOT}` outside the sanctioned residual.
+A `clean-skills` fixture: a minimal but spec-pure tree — ≥2 `skills/<name>/SKILL.md` carrying only
+`{name, description}` (one also carrying `metadata.argument-hint`), each with `name == <dir>`, one
+in-canon body containing a byte-identical bootstrap prelude, and **no** `${CLAUDE_PLUGIN_ROOT}` in
+any canonical surface. (The checker takes `--root` directly and globs `CANONICAL_SURFACES`
+beneath it — `05-spec-purity-checker.md §3.3` — so it does **not** consult the resolver sentinel
+pair; the fixture needs no `scripts/epic-manifest.py` / `.claude-plugin/plugin.json` for the checker
+to scan it. The sentinel pair is the resolver's concern, exercised in §3.)
 
 ```python
 def test_clean_canon_passes(fixture_copy):
@@ -136,11 +153,25 @@ offending file + reason reported. This guards against a checker that never actua
 but > 5,000 words asserts the `body … words exceeds 5000` token, confirming both limbs of the
 AND-budget (`00-core-definitions.md §2`) are enforced, not just the line limit.
 
+**Rule 4 — both limbs at once:** a `bad-oversized-both` fixture whose body exceeds **both** limits
+(> 300 lines AND > 5,000 words) asserts that **two** `BODY_SIZE` violations are emitted (both the
+`exceeds 300` and the `exceeds 5000` tokens appear, and the per-rule tally line reports
+`body-size=2`). This pins the "independent limbs → two violations" contract from
+`05-spec-purity-checker.md §3.4`, which testing each limb in isolation does not cover.
+
 ### 2.3 Reader-robustness fixtures (REQ-FM-04 — the frontmatter parser hardening)
 
 The hand-rolled stdlib reader (`05-spec-purity-checker.md §2`) must not raise false positives on
 legal YAML nor crash on malformed blocks. Each fixture asserts the reader extracts the **correct**
 top-level key set:
+
+> **Fixture placement (required):** each reader fixture is a complete `skills/<name>/SKILL.md` whose
+> frontmatter, beyond the corner under test, carries valid `name` (== `<name>`) and `description`
+> keys. This matters because the checker reads frontmatter only for files matching
+> `skills/*/SKILL.md` (rule 1 / rule 2, `05 §3.1`/`§3.2`): a fixture placed elsewhere is never
+> scanned and the test passes **vacuously** (false negative), and an "expect clean" fixture missing
+> `name`/`description` (or with `name != <dir>`) would fail rule 1/2 for the wrong reason, masking
+> what the reader assertion claims to verify.
 
 | Fixture | Frontmatter shape | Expected |
 |---------|-------------------|----------|
@@ -180,13 +211,26 @@ false negative / crash** (a malformed block must surface as a reported violation
 ## 3. `scripts/forge-root.sh` coverage (REQ-RES-03/04/05) — REQUIRED, not optional
 
 Per `tech-spec.md §8`, resolver coverage is **required** (not "optional"). A shell/bats test, or a
-pytest harness driving `bash forge-root.sh` as a subprocess, asserts three cases:
+pytest harness driving `bash forge-root.sh` as a subprocess, asserts the four cases below — one per
+resolution step of `03-portable-root-resolver.md §2`:
 
 | Case | Setup | Assertion |
 |------|-------|-----------|
-| (a) self-location success | invoke from inside a tree containing the sentinel pair (`scripts/epic-manifest.py` + `.claude-plugin/plugin.json`) | exit 0; stdout == that absolute root |
-| (b) total failure | no discoverable root **and** `CLAUDE_PLUGIN_ROOT` unset | exit 1; stderr == the exact message `feature-forge: cannot locate plugin root. Set CLAUDE_PLUGIN_ROOT or run from an installed skill dir.` (REQ-RES-04) |
-| (c) env fallback | self/candidate probes fail but `CLAUDE_PLUGIN_ROOT` points at a valid root | exit 0; stdout == `$CLAUDE_PLUGIN_ROOT` (the single sanctioned residual, REQ-RES-03) |
+| (a) self-location success (step 1) | invoke from inside a tree containing the sentinel pair (`scripts/epic-manifest.py` + `.claude-plugin/plugin.json`) | exit 0; stdout == that absolute root |
+| (d) candidate probe (step 2) | self-location FAILS (script copied **outside** any root), but a candidate root containing the sentinel pair exists under a **`HOME`-redirected** path (`$HOME/.claude/skills/feature-forge`) | exit 0; stdout == that candidate root |
+| (b) total failure (step 4) | no discoverable root **and** `CLAUDE_PLUGIN_ROOT` unset | exit 1; stderr == the exact message `feature-forge: cannot locate plugin root. Set CLAUDE_PLUGIN_ROOT or run from an installed skill dir.` (REQ-RES-04) |
+| (c) env fallback (step 3) | self/candidate probes fail but `CLAUDE_PLUGIN_ROOT` points at a valid root | exit 0; stdout == `$CLAUDE_PLUGIN_ROOT` (the single sanctioned residual, REQ-RES-03) |
+
+> **Hermetic `$HOME` is mandatory for cases (b), (c), and (d).** `forge-root.sh` step 2 probes
+> `$HOME/.claude/skills/feature-forge` and `$HOME/.claude/plugins/*/feature-forge`. On the
+> maintainer's machine `$HOME/.claude/skills/feature-forge` is a **live dev symlink** to an installed
+> feature-forge (this repo self-hosts), so a harness that leaves the real `$HOME` in place would
+> resolve a root and **false-fail** case (b) (exit 0 instead of 1) in CI run from that account or any
+> dev box with feature-forge installed. Every failure/fallback/candidate case MUST therefore run with
+> a redirected `HOME` — `env={**os.environ, "HOME": str(tmp_path / "empty-home"), "CLAUDE_PLUGIN_ROOT": ""}`
+> — so neither the dev symlink nor real plugin installs leak into the probe. Case (d) redirects
+> `HOME` to a `tmp_path` that *does* contain a sentinel-bearing candidate, making step 2
+> deterministic without touching the real `$HOME`.
 
 ```python
 def test_forge_root_self_location(tmp_path):
@@ -201,9 +245,12 @@ def test_forge_root_self_location(tmp_path):
 
 def test_forge_root_fails_actionably(tmp_path):
     lone = _copy_only_script(tmp_path)         # forge-root.sh with NO sentinel pair around it
+    # Redirect HOME so the step-2 candidate probe cannot find the maintainer's live
+    # ~/.claude/skills/feature-forge dev symlink (this repo self-hosts) and false-pass.
     result = subprocess.run(
         ["bash", str(lone)],
-        capture_output=True, text=True, env={**os.environ, "CLAUDE_PLUGIN_ROOT": ""},
+        capture_output=True, text=True,
+        env={**os.environ, "HOME": str(tmp_path / "empty-home"), "CLAUDE_PLUGIN_ROOT": ""},
     )
     assert result.returncode == 1
     assert "cannot locate plugin root" in result.stderr
@@ -247,8 +294,13 @@ smoke (the automated suite cannot exercise Claude skill-triggering):
 
 ## Dependencies
 
+**Hard upstream dependency (must land first):**
+
 - `00-core-definitions.md` — exit-code contract (§7), violation reason tokens (§5), body budget
   (§2), the canonical prelude (§3), the reader contract (§4).
+
+**Forward references (artifacts under test — this doc tests them, it does not block them):**
+
 - `05-spec-purity-checker.md` — the checker under test (rules, reader, output, validate.sh wiring).
 - `03-portable-root-resolver.md` — `forge-root.sh` under test (§3) and the prelude (rule-5 fixtures).
 - `02-frontmatter-purity-and-inventory.md` / `04-body-size-discipline.md` — the canon states the
@@ -258,10 +310,13 @@ smoke (the automated suite cannot exercise Claude skill-triggering):
 
 - [ ] `tests/test_check_spec_purity.py` exists, follows `conftest.py` conventions, and is collected
       by `python3 -m pytest tests`.
-- [ ] One passing clean fixture and one failing fixture **per rule** (1–5), plus the word-limit and
-      both-directions prelude cases.
-- [ ] All six reader-robustness fixtures assert the correct outcome (5 clean, 1 reported-malformed).
-- [ ] `forge-root.sh` has automated cases (a)/(b)/(c) — or, if infeasible, documented manual smoke
-      steps explicitly substituted as the gate.
+- [ ] One passing clean fixture and one failing fixture **per rule** (1–5), plus the word-limit, the
+      both-limbs body-size case (two `BODY_SIZE` violations, `body-size=2`), and both-directions
+      prelude cases.
+- [ ] All six reader-robustness fixtures assert the correct outcome (5 clean, 1 reported-malformed),
+      each a full `skills/<name>/SKILL.md` with valid `name`(==dir)+`description`.
+- [ ] `forge-root.sh` has automated cases (a)/(b)/(c)/(d) — self-location, candidate probe, env
+      fallback, total failure, each failure/fallback/candidate case run with a redirected `HOME` — or,
+      if infeasible, documented manual smoke steps explicitly substituted as the gate.
 - [ ] The completion gate (§4) — checker green vs 11 skills AND `validate.sh` end-to-end — passes.
 - [ ] The §5 behavioral-smoke checklist is executed and recorded before the feature is marked done.

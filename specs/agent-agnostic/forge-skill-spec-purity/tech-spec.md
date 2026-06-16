@@ -22,6 +22,8 @@ Four concrete workstreams, each independently verifiable and each owning a slice
 - **D3 — `hooks/hooks.json` left in place + documented** as an out-of-canon Claude artifact (OQ-3 / REQ-VND-04).
 - **D4 — Checker = standalone stdlib-only `scripts/check-spec-purity.py`** wired into `validate.sh` and `tests/`, matching `epic-manifest.py`'s deliberate no-pyyaml convention.
 
+> **Decision map (downstream specs cite against this):** D1 = body size · D2 = resolver · D3 = hooks.json · D4 = checker.
+
 ## 2. Module Structure
 
 All paths relative to the `feature-forge` repo root.
@@ -44,7 +46,8 @@ feature-forge/
 │   ├── session-check.sh, forge-init.sh, validate-traceability.py — UNCHANGED internals
 ├── hooks/hooks.json              — UNCHANGED (out-of-canon Claude artifact, documented)
 └── tests/
-    └── test_check_spec_purity.py — NEW: pytest for the checker (follows conftest.py conventions)
+    ├── test_check_spec_purity.py — NEW: pytest for the checker (follows conftest.py conventions)
+    └── fixtures/                 — NEW: clean + impure skill-tree fixtures (clean-skills, bad-*, reader-*) for the checker test
 ```
 
 **Executable bit (both new scripts):** `scripts/forge-root.sh` and `scripts/check-spec-purity.py` MUST be created mode `0755` (executable). The backlog item creating each must `chmod +x` it and confirm it is recognized by `validate.sh`'s permission-check step (add both to that step's script list if it is an explicit allow-list). Concrete failure mode if missed: the §3.2 bootstrap prelude gates discovery on `[ -x "$d/scripts/forge-root.sh" ]`, so a non-executable resolver is silently invisible — `$R` resolves empty and every skill invocation dies with "cannot locate plugin root" even though the file exists.
@@ -159,7 +162,7 @@ The prelude additions (§3.2) slightly grow bodies; reduction targets must accou
 4. Body size ≤ 300 lines AND ≤ 5,000 words (REQ-SIZE-03) — **hard fail** when exceeded.
 5. (REQ-RES-05 guard) bootstrap-prelude occurrences are byte-identical to the canonical snippet.
 
-**Behavior:** human-readable summary (counts + per-violation `file: reason`), exit **0** when clean, **non-zero** when any violation (REQ-VER-02, REQ-OBS-01). Runnable standalone (`python3 scripts/check-spec-purity.py [--root DIR]`) so `packaging-docs-ci` wires it verbatim. Wired into `validate.sh` as a new step inserted immediately after the `py_compile` step and before `pytest`; it runs **unconditionally** (python3 stdlib only, always available) and any non-zero exit fails `validate.sh` immediately under `set -e` — it is **never** soft-skipped, unlike the `pytest` step. Covered by `tests/test_check_spec_purity.py`. The feature's completion gate is this checker running **green against the final state of all 11 skills** (REQ-VER-03).
+**Behavior:** human-readable summary (counts + per-violation `file: reason`), exit **0** when clean, **non-zero** when any violation (REQ-VER-02, REQ-OBS-01). Runnable standalone (`python3 scripts/check-spec-purity.py [--root DIR]`) so `packaging-docs-ci` wires it verbatim. Wired into `validate.sh` as a new **top-level** step inserted after the script-permission step and **before** the `if [ -f "$HELPER" ]` epic-manifest guard — *outside* that guard, since `py_compile` and `pytest` are both nested inside it; placing the checker "between py_compile and pytest" would skip the gate whenever `epic-manifest.py` is absent. As a top-level step it runs **unconditionally** (python3 stdlib only, always available) and any non-zero exit fails `validate.sh` immediately under `set -e` — it is **never** soft-skipped, unlike the `pytest` step. Covered by `tests/test_check_spec_purity.py`. The feature's completion gate is this checker running **green against the final state of all 11 skills** (REQ-VER-03).
 
 ### 3.5 Vendor-Construct Inventory (REQ-VND-03)
 
@@ -197,7 +200,7 @@ Skill bodies consume `forge-root.sh` only through the documented bootstrap prelu
 
 **Depends on (existing, in feature-forge):**
 - `scripts/epic-manifest.py` — invoked by bodies via the resolver. Its subcommands (`resolve`, `validate`, `render-status`, `check-name`, `add-feature`, `remove-feature`, `reorder`, `set-dep`, `set-status`) and exit-code contract (0/1/2) are **unchanged**; only the path-naming in callers changes. Verified: it does not reference `${CLAUDE_PLUGIN_ROOT}`.
-- `scripts/validate.sh` — extended with a `check-spec-purity.py` step inserted after the existing `py_compile` step and before `pytest`. The step runs unconditionally and a non-zero exit fails the script immediately (`set -e`); it is a hard gate and is **never** soft-skipped (unlike `pytest`, which may no-op when absent).
+- `scripts/validate.sh` — extended with a `check-spec-purity.py` step inserted as a **top-level** step after the script-permission step and **before** the `if [ -f "$HELPER" ]` epic-manifest guard (outside that guard — `py_compile` and `pytest` are both nested inside it). The step runs unconditionally and a non-zero exit fails the script immediately (`set -e`); it is a hard gate and is **never** soft-skipped (unlike `pytest`, which may no-op when absent).
 - `scripts/{session-check.sh, forge-init.sh, validate-traceability.py}` — located via the resolver from bodies/hooks; internals unchanged.
 - `tests/` (pytest + `conftest.py` fixtures: `fixture_copy`, `run_cli`, importlib module loader for hyphenated filenames) — the new test follows these conventions: a subprocess runner over `check-spec-purity.py` against clean + impure fixture trees, asserting exit code + reported violations; optional in-process import of the hyphenated script via `importlib`.
 - `.claude-plugin/plugin.json` + `marketplace.json` — **not modified**; plugin must remain loadable (REQ-COMPAT-02). (Note: a pre-existing version mismatch — manifest `0.10.0` vs marketplace entry `0.9.0` — is **out of scope** here; flag for `packaging-docs-ci`.)

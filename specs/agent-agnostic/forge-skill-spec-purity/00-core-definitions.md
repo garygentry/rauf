@@ -122,6 +122,13 @@ The sentinel is content-based (not name-based) so it identifies a feature-forge 
 **any** agent's directory layout, never sources or executes the discovered path (REQ-SEC-01), and
 only ever yields a directory string.
 
+> **`SENTINEL_FILES` is the spec/documentation source for the sentinel pair**, not a runtime
+> import. The Bash `is_root` predicates (here and in `03-portable-root-resolver.md §2`) deliberately
+> **hardcode** the same two paths: the resolver is Bash with no Python twin (decision **D2**), so no
+> Python consumer reads the tuple, and the checker (`05`) never references it. The Verification
+> checklist below cross-checks the tuple against the predicate by eye, which is the intended
+> mechanism given D2.
+
 ## 3. The Canonical Bootstrap Prelude (REQ-RES-05, REQ-MAINT-01)
 
 Because each fenced shell block an agent runs is a **separate** process with no persisted state,
@@ -134,6 +141,20 @@ never drift.
 ```bash
 R="$(for d in "$HOME"/.claude/skills/feature-forge "$HOME"/.claude/plugins/*/feature-forge; do [ -x "$d/scripts/forge-root.sh" ] && exec "$d/scripts/forge-root.sh"; done)"
 [ -n "$R" ] || { echo "feature-forge: cannot locate plugin root" >&2; exit 1; }
+```
+
+This document **owns** the canonical Python binding of that snippet; `05-spec-purity-checker.md
+§3.5` reproduces it only as the rule-5 comparison oracle and MUST stay byte-identical:
+
+```python
+# Canonical bootstrap prelude (REQ-RES-05). The single source of truth; the
+# checker's rule 5 oracle (05 §3.5) is a byte-identical copy of this string.
+BOOTSTRAP_PRELUDE: str = (
+    'R="$(for d in "$HOME"/.claude/skills/feature-forge '
+    '"$HOME"/.claude/plugins/*/feature-forge; do '
+    '[ -x "$d/scripts/forge-root.sh" ] && exec "$d/scripts/forge-root.sh"; done)"\n'
+    '[ -n "$R" ] || { echo "feature-forge: cannot locate plugin root" >&2; exit 1; }'
+)
 ```
 
 Invariants (do **not** "fix" these — see `03-portable-root-resolver.md §4`):
@@ -223,9 +244,33 @@ stable):
 | `VR_MALFORMED_FM` | `FRONTMATTER_KEYS` | `malformed frontmatter block` |
 | `VR_NAME_MISMATCH` | `NAME_MATCHES_DIR` | `name '<name>' != directory '<dir>'` |
 | `VR_RESIDUAL_VAR` | `NO_RESIDUAL_VAR` | `residual ${CLAUDE_PLUGIN_ROOT} in canonical surface` |
-| `VR_BODY_LINES` | `BODY_SIZE` | `body 320 lines exceeds 300` |
-| `VR_BODY_WORDS` | `BODY_SIZE` | `body 5120 words exceeds 5000` |
+| `VR_BODY_LINES` | `BODY_SIZE` | `body <n> lines exceeds 300` |
+| `VR_BODY_WORDS` | `BODY_SIZE` | `body <n> words exceeds 5000` |
 | `VR_PRELUDE_DRIFT` | `PRELUDE_IDENTITY` | `bootstrap prelude not byte-identical to canon` |
+
+These are **real module-level constants**, defined once here and **imported/interpolated** by the
+checker's rule functions (`05-spec-purity-checker.md §3.1–§3.5`) — the rules do NOT re-type the
+literal strings. This makes the reason wording single-sourced: a test in `06-testing-strategy.md`
+asserts against the same constant the checker emits. Placeholder fields (`{key}` / `{name}` /
+`{dir}` / `{n}`) are filled with `str.format(...)` at emit time; the no-placeholder strings
+(`VR_MALFORMED_FM`, `VR_RESIDUAL_VAR`, `VR_PRELUDE_DRIFT`) are used verbatim. The fixed numbers in
+`VR_BODY_LINES` / `VR_BODY_WORDS` are the `MAX_BODY_LINES` / `MAX_BODY_WORDS` constants (§2), not
+free literals.
+
+```python
+# Canonical violation reason strings (REQ-VER-02, REQ-OBS-01). Single source of
+# truth — 05-spec-purity-checker.md interpolates these; tests assert against them.
+# NOTE: VR_RESIDUAL_VAR contains a literal `${CLAUDE_PLUGIN_ROOT}` and has no
+# format field, so it is used verbatim — never passed through str.format().
+VR_DISALLOWED_KEY: str = "disallowed frontmatter key '{key}'"
+VR_MISSING_REQUIRED: str = "missing required frontmatter key '{key}'"
+VR_MALFORMED_FM: str = "malformed frontmatter block"
+VR_NAME_MISMATCH: str = "name '{name}' != directory '{dir}'"
+VR_RESIDUAL_VAR: str = "residual ${CLAUDE_PLUGIN_ROOT} in canonical surface"
+VR_BODY_LINES: str = "body {n} lines exceeds {limit}"   # limit = MAX_BODY_LINES (§2)
+VR_BODY_WORDS: str = "body {n} words exceeds {limit}"   # limit = MAX_BODY_WORDS (§2)
+VR_PRELUDE_DRIFT: str = "bootstrap prelude not byte-identical to canon"
+```
 
 ## 6. Canonical Surfaces (REQ-RES-03)
 
@@ -275,6 +320,11 @@ Idempotent, side-effect-free; takes no arguments; never sources/executes a disco
 |------|---------|
 | 0 | Canon clean — zero violations across all 11 skills + canonical surfaces. |
 | non-zero (1) | One or more violations; each printed as `file: reason`, preceded by a summary count. |
+| 2 | Usage error (argparse) — a caller mistake (bad flag), **not** a canon verdict. |
+
+Only `0` and `1` are **canon-verdict** codes; `2` is argparse's standard usage-error code and never
+indicates the canon's purity (a CI consumer like `packaging-docs-ci` must not read `2` as
+"violations found").
 
 CLI: `check-spec-purity.py [--root DIR]` (default root derived from `__file__`). Output is a
 human-readable summary plus one `file: reason` line per `Violation` — readable in a terminal and

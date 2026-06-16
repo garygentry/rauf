@@ -74,7 +74,7 @@ feature-forge/
 ├── scripts/
 │   ├── forge-root.sh               ★  portable resolver = exposed `portable-skill-root-resolver`; mode 0755
 │   ├── check-spec-purity.py        ★  runnable spec-purity checker (REQ-VER-01); mode 0755
-│   ├── validate.sh                 ✎  insert check-spec-purity.py step after py_compile, before pytest
+│   ├── validate.sh                 ✎  insert check-spec-purity.py as a top-level step before the epic-manifest helper guard
 │   ├── epic-manifest.py            ·  UNCHANGED (does not reference the env var; invoked via resolver)
 │   ├── forge-init.sh               ·  UNCHANGED internals (located via resolver from bodies)
 │   ├── session-check.sh            ·  UNCHANGED internals (invoked by hooks.json)
@@ -136,13 +136,19 @@ source):
 4. skill frontmatter has `name` + `description` (loops `skills/*/SKILL.md`)
 5. agent frontmatter has `name` + `description`
 6. **script permissions** — loops `scripts/*.sh`, asserts each is `-x`
-7. epic-manifest helper: `py_compile`, then `pytest tests` (soft-skip when pytest absent)
+7. epic-manifest helper: an `if [ -f "$HELPER" ]` guard wrapping **both** `py_compile` **and**
+   `pytest tests` (the latter soft-skips when pytest is absent); the whole block is skipped when
+   `epic-manifest.py` is absent.
 
-**New step (inserted between 6 and 7 — i.e. after the existing script-permission check and the
-`py_compile`, before `pytest`, per `tech-spec.md §3.4`):** invoke `check-spec-purity.py`
-**unconditionally** (python3 stdlib only — always available). Under `set -euo pipefail` any
-non-zero exit fails `validate.sh` immediately; it is a **hard gate**, never soft-skipped (unlike the
-`pytest` step). Implementation detail in `05-spec-purity-checker.md §5`.
+**New step (inserted as a new TOP-LEVEL step between step 6 and step 7 — i.e. after the
+script-permission loop and *before* the `if [ -f "$HELPER" ]` epic-manifest guard begins):** invoke
+`check-spec-purity.py` **unconditionally** (python3 stdlib only — always available). It MUST sit
+**outside** the helper guard: `py_compile` and `pytest` are both nested inside that `if`, so placing
+the checker literally "between py_compile and pytest" would nest it in the conditional and skip the
+gate whenever `epic-manifest.py` is absent — breaking the hard-gate guarantee. As a top-level step it
+runs regardless. Under `set -euo pipefail` any non-zero exit fails `validate.sh` immediately; it is a
+**hard gate**, never soft-skipped (unlike the `pytest` substep). Implementation detail in
+`05-spec-purity-checker.md §5`.
 
 **Executable-bit note (gate subtlety, `tech-spec.md §2`):** validate.sh step 6 globs `scripts/*.sh`,
 so it auto-covers `forge-root.sh` (a `.sh`) — that file's `0755` bit **is** enforced by the gate. It

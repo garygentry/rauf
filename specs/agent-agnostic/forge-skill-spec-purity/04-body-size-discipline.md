@@ -196,6 +196,14 @@ The concrete candidate relocations below are derived from `tech-spec.md §3.3` a
 the live body structure of each skill. For each, the **target reference file(s)** and the
 **in-body pointer that remains** are named.
 
+> **Produced artifacts (contract surface vs internal).** This workstream produces these NEW
+> `references/` files (the contract surface — read by the reduced skill bodies via in-body
+> pointers): `skills/forge-0-epic/references/{epic-manifest-subcommands,edit-mode}.md`,
+> `skills/forge-5-loop/references/{runner-contract,result-reporting}.md`, plus appended sections in
+> the **existing** `skills/forge-verify/references/verification-checklists.md`. The reduced
+> `SKILL.md` bodies remain the agent-facing entrypoint; the relocated files are lookup detail reached
+> only through the in-body pointers (§4 rule 2).
+
 > **TQ-2 — the exact line-by-line split is finalized during implementation**
 > (`tech-spec.md §3.3`/§10 TQ-2), constrained **only** by the ≤300-line / ≤5000-word gate (§1).
 > The sections named below are the planned relocation candidates; the implementer MAY move more
@@ -213,9 +221,10 @@ machinery — large, reference-style blocks the body can point to rather than in
   per-subcommand `epic-manifest.py` reference tables and exact flag-surface command catalog —
   the full `add-feature` / `remove-feature` / `reorder` / `set-dep` / `set-status` invocation
   blocks and the per-subcommand exit-code (`0`/`1`/`2`) disposition tables currently inline in
-  **Step E3** and the **Error Handling** table. (The flag surface is *owned* by
-  `02-frontmatter-purity-and-inventory.md §7` per the body's own note; the skill only needs a
-  catalog + pointer.)
+  **Step E3** and the **Error Handling** table. (The exact `epic-manifest.py` mutator flag surface
+  is defined by the existing `forge-0-epic` SKILL.md body and `scripts/epic-manifest.py --help`; the
+  subcommand list is enumerated in `01-architecture-layout.md §3`. The relocated reference file only
+  needs a catalog + an in-body pointer, not a re-specification of the flags.)
   - **In-body pointer (remains in SKILL.md, Step E3):** *"For the exact `epic-manifest.py`
     mutator flag surface and per-subcommand exit-code handling, read
     `references/epic-manifest-subcommands.md`."*
@@ -315,18 +324,23 @@ This is a **sequencing / headroom constraint** (`01-architecture-layout.md §6`,
 
 ## Dependencies
 
+**Hard upstream dependencies (must land first):**
+
 - **`00-core-definitions.md`** — REQUIRED. This document reuses `MAX_BODY_LINES` (300),
   `MAX_BODY_WORDS` (5000), and the authoritative **body definition** (§2: body = content after
   the second `---`; line count = newline-terminated body lines; word count = whitespace-split
   tokens; CRLF tolerated). It does not redefine them.
+- **`01-architecture-layout.md §2`** — defines where the relocated content lands (each skill's
+  `references/`) and notes (`§6`) the prelude-growth headroom constraint.
 - **`03-portable-root-resolver.md`** — the prelude additions it specifies affect the **final**
   body size (§6). The exact `${CLAUDE_PLUGIN_ROOT}`-per-file counts live in its §5. Reduction
   targets must account for prelude growth, so 04's headroom planning presupposes 03's prelude.
+
+**Forward reference (verifies this workstream's output):**
+
 - **`05-spec-purity-checker.md`** — its **rule 4** (`Rule.BODY_SIZE`) is the HARD gate that
   enforces this budget; it re-measures bodies with the algorithm of §2 and emits `VR_BODY_LINES`
   / `VR_BODY_WORDS` (`00-core-definitions.md §5`). The gate, not §3's table, is authoritative.
-- **`01-architecture-layout.md §2`** — defines where the relocated content lands (each skill's
-  `references/`) and notes (`§6`) the prelude-growth headroom constraint.
 
 ## Verification
 
