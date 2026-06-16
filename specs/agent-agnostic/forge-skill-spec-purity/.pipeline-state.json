@@ -3,9 +3,9 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T03:52:00Z",
-  "currentStage": "forge-4-backlog",
-  "notes": "Specs v1 complete: 7 numbered docs + TRACEABILITY (all 28 PRD reqs traced, cross-refs resolve). Foundation (00 schema/constants/prelude/types, 01 layout/exports/validate.sh map) authored in-session; domain docs 02 (frontmatter+inventory), 03 (resolver+prelude, 23 loci/9 files grep-confirmed), 04 (body-size ≤300/≤5000), 05 (stdlib checker+5 rules) via parallel forge-spec-writers; 06 testing. Decisions carried from tech-spec: D1 ≤300ln/≤5000w, D2 single Bash forge-root.sh (no Python twin), D3 hooks.json out-of-canon, D4 stdlib-only checker. Deferred non-blocking: TQ-1 prelude⊆resolver candidate-set (manual review, 03 §3), TQ-2 exact line-split for 3 oversized skills (impl time, 04 §5). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 mismatch (flag for packaging-docs-ci).",
+  "updatedAt": "2026-06-16T13:46:00Z",
+  "currentStage": "forge-5-loop",
+  "notes": "Backlog v1 complete: 9 items, validated green via rauf-stable (valid:true, 0 findings). C-1 cross-repo: ALL impl lands in feature-forge (/home/gary/workspace/feature-forge); specs/backlog/loop run from rauf. No TypeScript/pnpm here (Bash+Python3+Markdown) — ignore rauf pnpm gate; per-item verify uses python3 scripts/check-spec-purity.py, python3 -m pytest tests, bash scripts/validate.sh from the feature-forge root. Item ordering: tooling-first (001 resolver+prelude+tests, 002 checker+fixtures) → 003 frontmatter, 004 routing → 005/006/007 body reductions (parallel-eligible, all dep 004) → 008 inventory → 009 wire-checker-into-validate.sh + completion gate. validate.sh wiring deliberately last (wiring early would red the gate for all mid-stream items); mid-stream items assert SCOPED checker rules, only 009 requires checker exit 0 + validate.sh e2e. No agentDelegation (routing kept cohesive for prelude byte-identity). Manual Claude behavioral smoke (REQ-COMPAT-01/02/03) is a 009 maintainer follow-up — not loop-automatable. Decisions D1 ≤300ln/≤5000w, D2 single Bash forge-root.sh, D3 hooks.json out-of-canon, D4 stdlib checker. Deferred non-blocking: TQ-1 (prelude⊆resolver, manual), TQ-2 (exact line-split, impl time). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 (flag for packaging-docs-ci).",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
@@ -68,6 +68,14 @@
       "findingsCount": 22,
       "verifiedAt": "2026-06-16T12:20:00Z",
       "fixedAt": "2026-06-16T12:35:00Z"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-16T13:46:00Z",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "artifacts": ["backlog.json"],
+      "commitHash": "ee34313"
     }
   }
 }
