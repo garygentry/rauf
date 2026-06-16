@@ -26,10 +26,12 @@
       "commitHash": "50cf5d4fa33776c44769e243611bb687ddc310f2"
     },
     "forge-2-tech": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "artifacts": ["tech-spec.md"],
       "startedAt": "2026-06-16T22:10:00Z",
+      "completedAt": "2026-06-16T22:12:00Z",
+      "commitHash": "34be7420d4e8733964520531097d578b80db29e2",
       "basedOnVersions": { "forge-1-prd": 2 }
     }
   }
