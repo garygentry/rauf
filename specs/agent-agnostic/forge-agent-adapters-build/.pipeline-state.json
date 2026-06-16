@@ -86,6 +86,7 @@
       "completedAt": "2026-06-16T20:47:26Z",
       "basedOnVersions": { "forge-4-backlog": 1 },
       "artifacts": ["backlog.json"],
+      "commitHash": "7efc0f6",
       "notes": "Cross-repo run: all 11 items implemented in feature-forge (branch forge/skill-spec-purity) as [rauf] commits 7ad0f90..ef7e8f0; staged backlog .forge-loop/ (gitignored). validate.sh completion gate green (spec-purity 0, adapters/ drift-clean, 104 pytest). Statuses synced back here."
     }
   }
