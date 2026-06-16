@@ -358,7 +358,7 @@ When a descriptor supplies no `detect`, `detectAgent` uses a default detector th
 ### 5.1 Algorithm
 
 ```ts
-// providers/registry.ts (internal helper — not exported)
+// providers/registry.ts (exported within the package for reuse by generic-cli's custom `detect`; not re-exported on the public barrel)
 import { access, constants } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
 import { delimiter } from "node:path";

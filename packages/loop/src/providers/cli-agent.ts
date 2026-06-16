@@ -125,6 +125,10 @@ export class CliAgent implements LLMProvider {
       if (delivery === "arg") argv.push(prompt);
 
       const res = await spawnProcessGroup(this.config.binary, argv, {
+        // REQ-SEC-01 confinement boundary: agent runs with cwd === ROOT_DIRECTORY
+        // (process.cwd() is the runner's project root). Passed explicitly so the
+        // boundary is self-documenting rather than relying on child cwd inheritance.
+        cwd: process.cwd(),
         timeoutMs: options.timeoutMinutes * 60 * 1000,
         signal: options.signal,
         // Runner-supplied child env (options.env) is merged OVER the adapter's static config.env
