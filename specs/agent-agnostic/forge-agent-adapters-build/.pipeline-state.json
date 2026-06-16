@@ -97,3 +97,5 @@
       "fixedAt": "2026-06-16T20:56:33Z",
       "notes": "Parallel forge-verifier fan-out (4 dimensions, 20/20 checks pass). 2 improvement-severity findings only (V-001 cursor byte-fidelity test, V-002 Form-C provenance comment); 0 gaps/errors. Both applied in feature-forge commit 340b6d0; validate.sh green (104 pytest, adapters drift-clean)."
     }
+  }
+}
