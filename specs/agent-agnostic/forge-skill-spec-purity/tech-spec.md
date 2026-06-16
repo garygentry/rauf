@@ -17,7 +17,7 @@ Four concrete workstreams, each independently verifiable and each owning a slice
 
 **Key architectural decisions (resolved in the interview):**
 
-- **D1 — Body budget = ≤300 lines AND ≤5,000 words** (tightens OQ-1's provisional 500). Captures all three PRD-named skills (`forge-0-epic` 511, `forge-5-loop` 418, `forge-verify` 337); next-largest skill is `forge-2-tech` at 192, a safe margin.
+- **D1 — Body budget = ≤300 lines AND ≤5,000 words** (tightens OQ-1's provisional 500). Captures all three PRD-named skills (`forge-0-epic` 517, `forge-5-loop` 418, `forge-verify` 337); next-largest skill is `forge-2-tech` at 192, a safe margin.
 - **D2 — Resolver = single Bash script + verbatim bootstrap prelude** (OQ-2). No Python twin — no `.py`/`.sh` script references the env var today (it is purely an invocation-layer concern), so a Python helper would add unused surface.
 - **D3 — `hooks/hooks.json` left in place + documented** as an out-of-canon Claude artifact (OQ-3 / REQ-VND-04).
 - **D4 — Checker = standalone stdlib-only `scripts/check-spec-purity.py`** wired into `validate.sh` and `tests/`, matching `epic-manifest.py`'s deliberate no-pyyaml convention.
@@ -46,6 +46,8 @@ feature-forge/
 └── tests/
     └── test_check_spec_purity.py — NEW: pytest for the checker (follows conftest.py conventions)
 ```
+
+**Executable bit (both new scripts):** `scripts/forge-root.sh` and `scripts/check-spec-purity.py` MUST be created mode `0755` (executable). The backlog item creating each must `chmod +x` it and confirm it is recognized by `validate.sh`'s permission-check step (add both to that step's script list if it is an explicit allow-list). Concrete failure mode if missed: the §3.2 bootstrap prelude gates discovery on `[ -x "$d/scripts/forge-root.sh" ]`, so a non-executable resolver is silently invisible — `$R` resolves empty and every skill invocation dies with "cannot locate plugin root" even though the file exists.
 
 **Public API surface (the two exposed contracts):**
 
@@ -100,6 +102,8 @@ R="$(for d in "$HOME"/.claude/skills/feature-forge "$HOME"/.claude/plugins/*/fea
 - The prelude probes **paths** (not the forbidden env var) to locate `forge-root.sh`, then delegates final resolution to it. It contains **no** `${CLAUDE_PLUGIN_ROOT}`, satisfying REQ-RES-03.
 - The prelude's candidate set covers the only current consumer (Claude, dev-symlink + plugin install). It is extended as per-agent install dirs land downstream; the **resolver** is the portable authority.
 - **Maintainability (REQ-MAINT-01):** the prelude is a single canonical string defined once in `references/portable-root.md`; the checker asserts each occurrence is byte-identical, so it can never drift.
+- **First-discoverable-resolver-wins (invariant — do not "fix" the loop):** the `exec` inside the `$(…)` command substitution means the prelude stops at the **first** directory containing an executable `forge-root.sh` and delegates ALL final root resolution to that script (which performs the real multi-candidate probe per §3.2 step 1–4). The prelude's `for` list is a *discovery order for `forge-root.sh` itself*, not a fallback chain for the plugin root — once `exec`'d, the loop never advances to a second candidate. Removing the `exec` to "keep looping" would be a regression.
+- **Single-source candidate-list maintenance (TQ-1):** `forge-root.sh` step 2 is the **authoritative** candidate-root list; the prelude's `for d in …` set is intentionally a minimal `$HOME`-Claude bootstrap subset whose only job is to locate `forge-root.sh`. When adding an install root, update `forge-root.sh` first; extend the prelude **only** if the new root is needed to bootstrap-discover `forge-root.sh` itself. The checker guards prelude byte-identity across occurrences (REQ-MAINT-01) but does **not** assert prelude-set ⊆ resolver-set — that subset relationship remains a manual-review item (revisit in `cross-agent-installer`).
 
 **Replacement scope — 23 canonical occurrences across 9 files (grep-verified; do not trust counts, re-grep at impl time):**
 
@@ -123,7 +127,7 @@ Invocations → prelude + `"$R/scripts/…"`. Prose mentions → rewritten to de
 
 | Skill | Body lines | Body words | Action |
 |---|---|---|---|
-| forge-0-epic | 511 | 3,594 | **reduce** (lines bind) |
+| forge-0-epic | 517 | 3,594 | **reduce** (lines bind) |
 | forge-5-loop | 418 | 3,415 | **reduce** (lines bind) |
 | forge-verify | 337 | 2,451 | **reduce** (lines bind) |
 | forge-2-tech | 192 | 1,769 | ok |
@@ -135,6 +139,8 @@ Invocations → prelude + `"$R/scripts/…"`. Prose mentions → rewritten to de
 | forge-fix | 59 | 518 | ok |
 | forge-init | 22 | 82 | ok |
 
+Body counts above are authorship-time measurements; the checker re-measures at gate time, so the gate — not this table — is authoritative (cf. §3.2 "do not trust counts, re-grep at impl time").
+
 **Reduction method (REQ-SIZE-02):** relocate overflow detail into each skill's `references/`, leaving an explicit in-body pointer so the agent can still find it. Content is **moved, never deleted**. Candidate relocations (final selection at spec/impl stage):
 - `forge-0-epic`: the per-subcommand `epic-manifest.py` reference tables and edit-mode mechanics → `references/`.
 - `forge-5-loop`: detailed runner/loop-contract prose and model-precedence detail → `references/`.
@@ -143,7 +149,7 @@ The prelude additions (§3.2) slightly grow bodies; reduction targets must accou
 
 ### 3.4 Spec-Purity Checker (REQ-VER-01..03, REQ-OBS-01, D4)
 
-`scripts/check-spec-purity.py` — **pure Python stdlib, no pyyaml** (matches `epic-manifest.py`; pyyaml is not guaranteed in CI/other-agent environments). Frontmatter parsed by a minimal hand-rolled reader: a line at column 0 matching `^[A-Za-z][\w-]*:` is a top-level key; indented lines are values/nested (so `metadata:`'s nested `argument-hint` is **not** mistaken for a disallowed top-level key).
+`scripts/check-spec-purity.py` — **pure Python stdlib, no pyyaml** (matches `epic-manifest.py`; pyyaml is not guaranteed in CI/other-agent environments). Frontmatter parsed by a minimal hand-rolled reader: a line at column 0 matching `^[A-Za-z][\w-]*:` is a top-level key; indented lines are values/nested (so `metadata:`'s nested `argument-hint` is **not** mistaken for a disallowed top-level key). **Documented reader assumptions** (code to this contract, not to an example): only column-0 `key:` lines are treated as top-level keys; continuation lines, indented lines, and quoted/folded scalar *values* (including a `description` whose value contains a colon, or a `>` / `|` block scalar) are **not** re-scanned for keys. A frontmatter block the reader cannot parse into a well-formed key set is itself a reported violation (REQ-FM-04), never a crash.
 
 **Rules enforced (each violation → `file: reason`):**
 
@@ -153,7 +159,7 @@ The prelude additions (§3.2) slightly grow bodies; reduction targets must accou
 4. Body size ≤ 300 lines AND ≤ 5,000 words (REQ-SIZE-03) — **hard fail** when exceeded.
 5. (REQ-RES-05 guard) bootstrap-prelude occurrences are byte-identical to the canonical snippet.
 
-**Behavior:** human-readable summary (counts + per-violation `file: reason`), exit **0** when clean, **non-zero** when any violation (REQ-VER-02, REQ-OBS-01). Runnable standalone (`python3 scripts/check-spec-purity.py [--root DIR]`) so `packaging-docs-ci` wires it verbatim. Wired into `validate.sh` as a new step and covered by `tests/test_check_spec_purity.py`. The feature's completion gate is this checker running **green against the final state of all 11 skills** (REQ-VER-03).
+**Behavior:** human-readable summary (counts + per-violation `file: reason`), exit **0** when clean, **non-zero** when any violation (REQ-VER-02, REQ-OBS-01). Runnable standalone (`python3 scripts/check-spec-purity.py [--root DIR]`) so `packaging-docs-ci` wires it verbatim. Wired into `validate.sh` as a new step inserted immediately after the `py_compile` step and before `pytest`; it runs **unconditionally** (python3 stdlib only, always available) and any non-zero exit fails `validate.sh` immediately under `set -e` — it is **never** soft-skipped, unlike the `pytest` step. Covered by `tests/test_check_spec_purity.py`. The feature's completion gate is this checker running **green against the final state of all 11 skills** (REQ-VER-03).
 
 ### 3.5 Vendor-Construct Inventory (REQ-VND-03)
 
@@ -191,7 +197,7 @@ Skill bodies consume `forge-root.sh` only through the documented bootstrap prelu
 
 **Depends on (existing, in feature-forge):**
 - `scripts/epic-manifest.py` — invoked by bodies via the resolver. Its subcommands (`resolve`, `validate`, `render-status`, `check-name`, `add-feature`, `remove-feature`, `reorder`, `set-dep`, `set-status`) and exit-code contract (0/1/2) are **unchanged**; only the path-naming in callers changes. Verified: it does not reference `${CLAUDE_PLUGIN_ROOT}`.
-- `scripts/validate.sh` — extended with a `check-spec-purity.py` step (mirrors its existing py_compile/pytest steps; non-fatal-skip pattern available if desired, but purity is a hard gate).
+- `scripts/validate.sh` — extended with a `check-spec-purity.py` step inserted after the existing `py_compile` step and before `pytest`. The step runs unconditionally and a non-zero exit fails the script immediately (`set -e`); it is a hard gate and is **never** soft-skipped (unlike `pytest`, which may no-op when absent).
 - `scripts/{session-check.sh, forge-init.sh, validate-traceability.py}` — located via the resolver from bodies/hooks; internals unchanged.
 - `tests/` (pytest + `conftest.py` fixtures: `fixture_copy`, `run_cli`, importlib module loader for hyphenated filenames) — the new test follows these conventions: a subprocess runner over `check-spec-purity.py` against clean + impure fixture trees, asserting exit code + reported violations; optional in-process import of the hyphenated script via `importlib`.
 - `.claude-plugin/plugin.json` + `marketplace.json` — **not modified**; plugin must remain loadable (REQ-COMPAT-02). (Note: a pre-existing version mismatch — manifest `0.10.0` vs marketplace entry `0.9.0` — is **out of scope** here; flag for `packaging-docs-ci`.)
@@ -212,8 +218,8 @@ Skill bodies consume `forge-root.sh` only through the documented bootstrap prelu
 
 ## 8. Testing Approach
 
-- **`tests/test_check_spec_purity.py`** (pytest, new) — fixtures for a clean skill tree (exit 0) and impure trees exercising each rule: disallowed key, missing `name`/`description`, `name != dir`, residual `${CLAUDE_PLUGIN_ROOT}`, over-budget body, drifted prelude. Asserts exit code + that the offending file/reason appears. Follows `conftest.py` patterns (subprocess runner; importlib for the hyphenated filename).
-- **`scripts/forge-root.sh`** — covered indirectly by the green checker run + manual verification under Claude that every skill still locates and runs its scripts (REQ-COMPAT-03). A lightweight bats-style or inline shell assertion is optional; primary signal is the live checker + behavioral smoke test.
+- **`tests/test_check_spec_purity.py`** (pytest, new) — fixtures for a clean skill tree (exit 0) and impure trees exercising each rule: disallowed key, missing `name`/`description`, `name != dir`, residual `${CLAUDE_PLUGIN_ROOT}`, over-budget body, drifted prelude. Asserts exit code + that the offending file/reason appears. For the prelude byte-identity rule (§3.4 rule 5), test **both directions**: a clean fixture with identical preludes passes, AND a drifted-prelude fixture fails with the offending file/reason reported. **Reader-robustness fixtures** (frontmatter parser hardening): a `description` whose value contains a colon and/or is a quoted/folded scalar (`description: "foo: bar"`, `description: >`), a frontmatter block with blank lines, and a CRLF file — each asserting the reader extracts the correct top-level key set (no false positive flagging a legal value as a disallowed key; no false negative missing a malformed block). Follows `conftest.py` patterns (subprocess runner; importlib for the hyphenated filename).
+- **`scripts/forge-root.sh`** — **required** automated coverage (not optional): a shell/bats or pytest-driving-subprocess test asserting (a) exit 0 + correct stdout when invoked from inside an install dir, (b) exit 1 + the exact stderr message when no root is discoverable and `CLAUDE_PLUGIN_ROOT` is unset (REQ-RES-04), and (c) the env-fallback success path (REQ-RES-03). If a fully-automated resolver test proves infeasible in CI, state that explicitly and define the manual smoke steps as the gate instead — do not leave coverage merely "optional." Primary additional signal remains the live checker + behavioral smoke test under Claude (REQ-COMPAT-03).
 - **Completion gate (REQ-VER-03):** `check-spec-purity.py` green against all 11 final skills, and `bash scripts/validate.sh` passes end-to-end.
 - **Behavioral preservation (REQ-COMPAT-01):** manual smoke — load the plugin in Claude Code, confirm all 11 skills still trigger (descriptions untouched) and that `forge-init` / `epic-manifest.py`-backed flows run via the resolver.
 
