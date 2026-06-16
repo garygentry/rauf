@@ -289,11 +289,12 @@ A shared discovery helper enumerates the canonical surfaces for rules 3 and 5:
 
 ```python
 #: Canonical shipped skill surfaces scanned for residual var + prelude identity
-#: (00 §6 — CANONICAL_SURFACES). Globs are relative to the repo root.
+#: (00 §6 — CANONICAL_SURFACES). Globs are relative to the repo root. Recursive
+#: patterns end in `/**/*` (a bare `/**` matches directories only in pathlib).
 CANONICAL_SURFACES: tuple[str, ...] = (
     "skills/**/SKILL.md",
-    "skills/**/references/**",
-    "references/**",
+    "skills/**/references/**/*",
+    "references/**/*",
     "agents/*.md",
 )
 
@@ -455,15 +456,16 @@ yields zero rule-2 violations; the rule exists to keep it that way.
 ### 3.3 Rule 3 — No residual `${CLAUDE_PLUGIN_ROOT}` in canonical surfaces (REQ-RES-03)
 
 Scan every canonical-surface file (`00 §6` `CANONICAL_SURFACES`) for any occurrence of the literal
-`${CLAUDE_PLUGIN_ROOT}`. The exemptions (`00 §6` `RESIDUAL_VAR_EXEMPT`) are **not** reachable by
-`iter_canonical_files` (they live in `scripts/`, `hooks/`, `specs/`, `plans/`, `docs/`), so no
-explicit exclusion filter is needed — but the rule asserts the exemption set defensively in case a
-future surface glob widens.
+`${CLAUDE_PLUGIN_ROOT}`, skipping any path in `RESIDUAL_VAR_EXEMPT` (`00 §6`). Most exempt loci
+(`scripts/forge-root.sh`, `hooks/hooks.json`, `specs/`, `plans/`, `docs/`) fall outside the canonical
+globs anyway, but `references/vendor-construct-inventory.md` is the REQ-VND-03 audit artifact, which
+documents the literal as prose **inside** a canonical surface — so an explicit exclusion filter
+(matched with `fnmatch` against the repo-relative POSIX path) is required, not optional.
 
 ```python
-#: The forbidden literal. The single sanctioned residual lives in
-#: scripts/forge-root.sh (00 §6 RESIDUAL_VAR_EXEMPT), which is NOT a canonical
-#: surface and is therefore never scanned by this rule.
+#: The forbidden literal. The sanctioned residual in scripts/forge-root.sh and the
+#: documentary occurrences in references/vendor-construct-inventory.md are skipped
+#: via RESIDUAL_VAR_EXEMPT (00 §6); other exempt loci fall outside the canonical globs.
 _RESIDUAL_VAR: str = "${CLAUDE_PLUGIN_ROOT}"
 
 # Reason-string constant (00 §5) — no format field, used verbatim (never .format()).
@@ -473,10 +475,11 @@ VR_RESIDUAL_VAR: str = "residual ${CLAUDE_PLUGIN_ROOT} in canonical surface"
 def check_no_residual_var(root: Path) -> list[Violation]:
     """Rule 3: zero ${CLAUDE_PLUGIN_ROOT} across canonical surfaces (REQ-RES-03).
 
-    Scans CANONICAL_SURFACES (00 §6). The exempt loci — scripts/forge-root.sh
-    (sanctioned env fallback), hooks/hooks.json (non-canonical Claude artifact),
-    and specs/plans/docs (feature-forge's own forge artifacts) — are outside the
-    canonical globs and so are never visited. Emits VR_RESIDUAL_VAR (00 §5).
+    Scans CANONICAL_SURFACES (00 §6), skipping paths in RESIDUAL_VAR_EXEMPT — the
+    sanctioned scripts/forge-root.sh fallback and the in-surface
+    references/vendor-construct-inventory.md audit artifact are exempted by name;
+    the remaining exempt globs fall outside the canonical surfaces. Emits
+    VR_RESIDUAL_VAR (00 §5).
 
     Args:
         root: The repo root to scan.
@@ -486,11 +489,13 @@ def check_no_residual_var(root: Path) -> list[Violation]:
     """
     violations: list[Violation] = []
     for path in iter_canonical_files(root):
+        rel = path.relative_to(root).as_posix()
+        if any(fnmatch.fnmatch(rel, pattern) for pattern in RESIDUAL_VAR_EXEMPT):
+            continue
         text = _read_text(path)
         if text is None:
             continue
         if _RESIDUAL_VAR in text:
-            rel = path.relative_to(root).as_posix()
             violations.append(Violation(rel, Rule.NO_RESIDUAL_VAR, VR_RESIDUAL_VAR))
     return violations
 ```

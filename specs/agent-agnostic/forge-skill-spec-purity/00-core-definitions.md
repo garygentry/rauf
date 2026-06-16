@@ -205,6 +205,11 @@ class Rule(enum.StrEnum):
     """The five spec-purity rules check-spec-purity.py enforces (tech-spec §3.4).
 
     Each maps one PRD requirement cluster onto a checkable assertion.
+
+    Implementation note: `enum.StrEnum` is Python 3.11+. The runnable checker
+    targets the repo's 3.10 baseline (matching `scripts/epic-manifest.py`), so it
+    uses the equivalent `class Rule(str, enum.Enum)` mixin instead; `.value` is a
+    plain `str`, which is all the ordering/output logic relies on.
     """
 
     FRONTMATTER_KEYS = "frontmatter-keys"      # rule 1 — REQ-FM-01/04
@@ -279,19 +284,24 @@ The "canonical surfaces" are the shipped skill canon that rule 3 scans for resid
 relative to the feature-forge repo root:
 
 ```python
-# Scanned (canonical shipped skill surfaces).
+# Scanned (canonical shipped skill surfaces). The recursive patterns end in
+# `/**/*`, NOT `/**`: in pathlib a bare trailing `/**` matches directories only,
+# so `/**/*` is required to reach the files inside the references/ trees.
 CANONICAL_SURFACES: tuple[str, ...] = (
     "skills/**/SKILL.md",
-    "skills/**/references/**",
-    "references/**",
+    "skills/**/references/**/*",
+    "references/**/*",
     "agents/*.md",
 )
 
-# Excluded from the residual-var scan (NOT canonical, or the one sanctioned residual).
+# Excluded from the residual-var scan (NOT canonical, the one sanctioned residual,
+# or — for the inventory — documented prose inside a canonical surface). Matched
+# with fnmatch against the repo-relative POSIX path.
 RESIDUAL_VAR_EXEMPT: tuple[str, ...] = (
     "scripts/forge-root.sh",   # the single sanctioned residual (env fallback, REQ-RES-02 step 3)
     "hooks/hooks.json",        # non-canonical Claude artifact (REQ-VND-04)
     "specs/**", "plans/**", "docs/**",  # feature-forge's own forge artifacts, not shipped canon
+    "references/vendor-construct-inventory.md",  # REQ-VND-03 audit prose; documents the literal in-canon
 )
 ```
 
