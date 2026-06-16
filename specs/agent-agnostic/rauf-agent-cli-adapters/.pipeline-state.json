@@ -3,9 +3,20 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T00:50:00Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-06-16T01:05:00Z",
+  "currentStage": "complete",
   "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-16T01:05:00Z",
+      "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 2, "forge-3-specs": 1, "forge-4-backlog": 1, "forge-5-loop": 1 },
+      "artifacts": [
+        "docs/architecture/rauf-agent-cli-adapters/README.md",
+        "docs/architecture/rauf-agent-cli-adapters/architecture.md",
+        "docs/architecture/rauf-agent-cli-adapters/api-reference.md",
+        "docs/architecture/rauf-agent-cli-adapters/guides/adding-an-agent.md"
+      ]
+    },
     "forge-5-loop": {
       "status": "complete",
       "startedAt": "2026-06-15T22:52:18Z",
