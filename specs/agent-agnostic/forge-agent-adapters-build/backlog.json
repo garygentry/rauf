@@ -91,6 +91,7 @@
         "CopilotEmitter and GeminiEmitter emit body files and drop-record argument-hint and every claude_keys entry; GeminiEmitter.emit_skill returns one ManifestEntry per skill",
         "effort, memory and skills each appear as DropRecords for codex/copilot/cursor/gemini, sourced from the sub-agent that actually carries them (per-file enumeration)",
         "Any TQ-1 field confirmed against official docs has its flag dropped and mapping set; unconfirmed fields keep drop-with-record",
+        "If official docs are unreachable, ALL TQ-1 fields keep the documented safe default (name+description, drop-with-record) and are recorded as unconfirmed in the GENERATION-REPORT, so the committed baseline (item 009) is the deterministic safe-default tree regardless of doc reachability",
         "python3 -m py_compile scripts/build-adapters.py passes",
         "bash scripts/validate.sh passes"
       ],
@@ -112,7 +113,7 @@
       "title": "Implement provenance, self-containment pass, manifest serialization and generation report",
       "description": "Extend scripts/build-adapters.py with the agent-independent passes the engine runs around the emitters, per spec 04. Implement exactly as written.\n\n1. Self-containment pass (04 §2): run_self_containment_pass(bundle_root, repo_root, skills) adds (a) the WHOLE repo-root references/ tree verbatim, (b) each skill's own references/ subdir where own_refs is not None, (c) a byte-identical scripts/forge-root.sh copy (mode 0755, NO header). Helpers: _copytree_verbatim (walk sorted, shutil.copyfile bytes-only, no header, sandbox-checked) and _assert_byte_identical (sha256 compare for forge-root.sh, REQ-GEN-05).\n2. Manifest serialization (04 §1.3): _publish_manifest(root, dest, agent_id, entries) writes gemini's gemini-extension.json with the `_generated` provenance object FIRST (provenance_json(\"skills/\")), then name \"feature-forge\", version GEMINI_EXTENSION_VERSION (fixed, no timestamp), then skills[] built from entries; and codex's agents/openai.yaml with `_generated` first. JSON via json.dumps(indent=2, sort_keys=False, ensure_ascii=False) + trailing \\n.\n3. Generation report (04 §3): render_generation_report(drops) returns the report text — Form B body-top HTML provenance line first, `# Adapter Generation Report` heading, per-agent sections in AGENT_TARGETS order, rows sorted by (agent, source, construct), the \"_No dropped constructs_\" sentinel for empty sections (claude), and the fixed _render_verbatim_copies_section() at the end.",
       "acceptanceCriteria": [
-        "run_self_containment_pass copies all 14 shared references/ files (9 root + stacks/×5) preserving stacks/, each own-refs skill's references/, and forge-root.sh byte-identical at mode 0755 with no GENERATED header",
+        "run_self_containment_pass copies the entire repo-root references/ tree verbatim (every root file AND the stacks/ subtree, preserving directory structure; currently 14: 9 root + 5 stacks), each own-refs skill's references/, and forge-root.sh byte-identical at mode 0755 with no GENERATED header",
         "_publish_manifest writes gemini-extension.json with _generated first, name \"feature-forge\", version == GEMINI_EXTENSION_VERSION, skills[] from entries; codex agents/openai.yaml carries _generated first",
         "render_generation_report: first line is the Form B HTML comment; sections in AGENT_TARGETS order; drop rows sorted by (agent,source,construct); claude shows the no-dropped-constructs sentinel; the verbatim-copies section is present",
         "python3 -m py_compile scripts/build-adapters.py passes",
@@ -122,7 +123,7 @@
       "completedAt": null,
       "dependsOn": ["004"],
       "notes": "Form A headers are produced by the emitters (item 003 render_frontmatter_block); this item produces Form B (report), Form C (gemini JSON _generated), and the EXEMPT verbatim copies (forge-root.sh + references/). Cross-OS byte-identity assumes LF-normalized canon (.gitattributes owned by packaging-docs-ci — declared dependency, not implemented here).",
-      "estimatedIterations": 1,
+      "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
         "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
@@ -141,6 +142,7 @@
         "Seeding an orphan file under adapters/ then regenerating removes it (atomic whole-tree swap)",
         "A malformed-frontmatter canon makes generate exit 1 with \"<source_path>: reason\" on stderr and leaves no adapters/ and no adapters.tmp-* directory",
         "main exposes --check and --root (default parent-of-script-dir); diff-missing/diff-error returns exit 2 (not a drift verdict)",
+        "safe_write/_assert_within reject a relpath that resolves outside the staging/adapters root (e.g. '../escape' or an absolute path): the write raises and no out-of-bounds file is created (REQ-SEC-01)",
         "bash scripts/validate.sh passes"
       ],
       "status": "pending",
@@ -165,7 +167,7 @@
         "tests/test_build_adapters.py defines run_build + hash_tree and implements all §3.1-§3.10 tests; it imports no YAML at module load",
         "The drop-with-record test asserts effort, memory and skills are each recorded AND absent from each non-claude agent's output, and that claude retains them",
         "The fail-fast tests assert non-zero exit, the offending file on stderr, and no adapters/ or adapters.tmp-* left behind",
-        "python3 -m pytest tests/test_build_adapters.py -q passes (with .venv-adapters provisioned)",
+        "On a provisioned .venv-adapters, python3 -m pytest tests/test_build_adapters.py -q exits 0 and collects all §3.1-§3.10 tests (asserted, not skipped) — the blocking correctness gate",
         "bash scripts/validate.sh passes"
       ],
       "status": "pending",
@@ -211,7 +213,7 @@
       "title": "Generate and commit the authoritative adapters/ baseline",
       "description": "Produce the committed adapters/ tree (REQ-OUT-02) — the drift-guard baseline — by running the finished generator against the real feature-forge canon, and confirm it integrates cleanly with the purity exemption (item 008) on real data.\n\n1. From the feature-forge repo root on branch forge/skill-spec-purity, provision the venv: `python3 -m venv .venv-adapters` then `.venv-adapters/bin/pip install -r scripts/requirements-adapters.txt`.\n2. Run `.venv-adapters/bin/python3 scripts/build-adapters.py` to generate the full adapters/ tree for all five agents plus adapters/GENERATION-REPORT.md. Leave the generated tree in the working tree (the loop runner owns the commit) — do NOT hand-edit any generated file.\n3. Confirm `.venv-adapters/bin/python3 scripts/build-adapters.py --check` exits 0 (no drift), `python3 scripts/check-spec-purity.py` exits 0 with the generated tree present (the item-008 \"adapters/**\" exemption keeps the bundled forge-root.sh ${CLAUDE_PLUGIN_ROOT} fallback and references/ preludes from tripping rules 3/5), and a second generate run produces no git diff (idempotent).",
       "acceptanceCriteria": [
-        "adapters/{claude,codex,copilot,cursor,gemini}/ and adapters/GENERATION-REPORT.md exist; each bundle contains the 14-file references/ tree and a byte-identical scripts/forge-root.sh at mode 0755",
+        "adapters/{claude,codex,copilot,cursor,gemini}/ and adapters/GENERATION-REPORT.md exist; each bundle contains the full repo-root references/ tree verbatim (root files + stacks/ subtree; currently 14 files) and a byte-identical scripts/forge-root.sh at mode 0755",
         ".venv-adapters/bin/python3 scripts/build-adapters.py --check exits 0",
         "python3 scripts/check-spec-purity.py exits 0 with the generated adapters/ tree present",
         "Running build-adapters.py a second time produces no git diff against the committed tree (idempotency)",
@@ -267,8 +269,8 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["006", "007", "008", "009", "010"],
-      "notes": "feature-forge has no .github/workflows/ yet — validate.sh is the gate; standing up the GH Actions workflow is packaging-docs-ci's scope, and \"in CI\" follows for free once it runs validate.sh. A provisioning failure is an environment fault, NOT a CanonError or drift verdict (00 §9). This is the success-criterion demonstration (PRD §8).",
+      "dependsOn": ["006", "007", "008", "009"],
+      "notes": "feature-forge has no .github/workflows/ yet — validate.sh is the gate; standing up the GH Actions workflow is packaging-docs-ci's scope, and \"in CI\" follows for free once it runs validate.sh. A provisioning failure is an environment fault, NOT a CanonError or drift verdict (00 §9). This is the success-criterion demonstration (PRD §8). Step 6b is the drift gate (regenerate-and-diff); the item-007 pytest suite is the complementary correctness gate that CI (packaging-docs-ci) enforces — the local step-7 soft-skip is intentional, but the suite is a required, not optional, check.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [

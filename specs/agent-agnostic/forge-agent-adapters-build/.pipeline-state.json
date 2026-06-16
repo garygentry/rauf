@@ -71,6 +71,13 @@
       "artifacts": ["backlog.json"],
       "completedAt": "2026-06-16T00:00:00Z",
       "commitHash": "50e268f"
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-16.md",
+      "findingsCount": 7,
+      "verifiedAt": "2026-06-16T00:00:00Z",
+      "fixedAt": "2026-06-16T00:00:00Z"
     }
   }
 }
