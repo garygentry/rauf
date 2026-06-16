@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T15:46:30Z",
+  "updatedAt": "2026-06-16T15:59:10Z",
   "currentStage": "forge-6-docs",
   "notes": "Backlog v1 complete: 9 items, validated green via rauf-stable (valid:true, 0 findings). C-1 cross-repo: ALL impl lands in feature-forge (/home/gary/workspace/feature-forge); specs/backlog/loop run from rauf. No TypeScript/pnpm here (Bash+Python3+Markdown) \u2014 ignore rauf pnpm gate; per-item verify uses python3 scripts/check-spec-purity.py, python3 -m pytest tests, bash scripts/validate.sh from the feature-forge root. Item ordering: tooling-first (001 resolver+prelude+tests, 002 checker+fixtures) \u2192 003 frontmatter, 004 routing \u2192 005/006/007 body reductions (parallel-eligible, all dep 004) \u2192 008 inventory \u2192 009 wire-checker-into-validate.sh + completion gate. validate.sh wiring deliberately last (wiring early would red the gate for all mid-stream items); mid-stream items assert SCOPED checker rules, only 009 requires checker exit 0 + validate.sh e2e. No agentDelegation (routing kept cohesive for prelude byte-identity). Manual Claude behavioral smoke (REQ-COMPAT-01/02/03) is a 009 maintainer follow-up \u2014 not loop-automatable. Decisions D1 \u2264300ln/\u22645000w, D2 single Bash forge-root.sh, D3 hooks.json out-of-canon, D4 stdlib checker. Deferred non-blocking: TQ-1 (prelude\u2286resolver, manual), TQ-2 (exact line-split, impl time). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 (flag for packaging-docs-ci).",
   "stages": {
@@ -122,7 +122,9 @@
       "verifiedAt": "2026-06-16T15:28:54Z",
       "fixedAt": "2026-06-16T15:46:30Z",
       "resolved": 6,
-      "accepted": 1
+      "accepted": 1,
+      "reVerifiedAt": "2026-06-16T15:59:10Z",
+      "reVerifyResult": "clean (0 open findings; RT-001 closed)"
     }
   }
 }

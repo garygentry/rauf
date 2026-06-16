@@ -88,3 +88,16 @@ After fixes: re-run all three gates from the feature-forge root, commit the code
 - Step 6 (V-007): [ACCEPTED — deliberate, no change] 2026-06-16 — forge-0-epic (297) / forge-5-loop (296) bodies are within the hard ≤300 cap; on inspection the bodies are already thoroughly relocated (Error Handling reduced to a 4-line pointer; many references/ pointers in place) and the residual margin cannot be improved without disturbing freshly-balanced operational step-logic. The finding explicitly permits accepting the thin margin knowingly. Flagged to maintainer.
 
 Re-verification: `check-spec-purity.py` exit 0 (38 files scanned), `pytest tests` 74 passed, `bash scripts/validate.sh` exit 0.
+
+---
+
+## Re-Verification (2026-06-16)
+
+Independent 2-way re-verify (integration/checker + testing) against fix commits feature-forge `3db2fa8` / rauf `7c92e2a`:
+
+- **V-001, V-002, V-003, V-005, V-006 — RESOLVED** (empirical: scan scope 14→38; planted residual-var in `references/` now caught; inventory exemption load-bearing; spec↔impl byte-exact on the corrected blocks; `import sys` gone + compiles).
+- **V-004 — RESOLVED, tests proven NON-VACUOUS** via fix-revert simulation: with the pre-fix bare `/**` glob, `bad-residual-var-references` and `bad-prelude-drift-references` produce 0 violations → both tests fail. The fix is what makes them pass.
+- **No new defects** from the wider globs / fnmatch exemption (no over-match, no decode errors on the 3 newly-scanned `.json` files).
+- **RT-001** (re-verify, improvement) — determinism test asserted over rendered lines vs the `(path, rule.value, reason)` key; closed with a clarifying comment (feature-forge `d5c0ff1`).
+
+Gates: `check-spec-purity.py` exit 0 (38 files), `pytest tests` 74 passed, `validate.sh` exit 0. **forge-verify-impl confirmed clean — 0 open findings.**
