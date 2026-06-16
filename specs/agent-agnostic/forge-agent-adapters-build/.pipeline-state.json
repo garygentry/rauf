@@ -3,8 +3,8 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T20:56:33Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-06-16T21:05:33Z",
+  "currentStage": "complete",
   "notes": "forge-3-specs/impl: confirm the Codex/Copilot/Cursor/Gemini native frontmatter schemas and invocation-hint fields (tech-spec TQ-1) against official agent docs before emitting; emitters are isolated so corrections stay localized. YAML lib (TQ-2) pin is part of the determinism contract.",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
@@ -96,6 +96,16 @@
       "verifiedAt": "2026-06-16T20:56:33Z",
       "fixedAt": "2026-06-16T20:56:33Z",
       "notes": "Parallel forge-verifier fan-out (4 dimensions, 20/20 checks pass). 2 improvement-severity findings only (V-001 cursor byte-fidelity test, V-002 Form-C provenance comment); 0 gaps/errors. Both applied in feature-forge commit 340b6d0; validate.sh green (104 pytest, adapters drift-clean)."
+    },
+    "forge-6-docs": {
+      "status": "complete",
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1, "forge-4-backlog": 1, "forge-5-loop": 1 },
+      "artifacts": [
+        "docs/architecture/forge-agent-adapters-build/README.md",
+        "docs/architecture/forge-agent-adapters-build/architecture.md",
+        "docs/architecture/forge-agent-adapters-build/api-reference.md",
+        "docs/architecture/forge-agent-adapters-build/guides/integration.md"
+      ],
+      "completedAt": "2026-06-16T21:05:33Z",
+      "notes": "Docs describe the feature-forge implementation (build-adapters generator); stored in rauf docsDir per sibling convention (forge-skill-spec-purity, rauf-agent-cli-adapters)."
     }
-  }
-}
