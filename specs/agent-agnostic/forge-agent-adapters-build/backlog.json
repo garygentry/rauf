@@ -1,0 +1,280 @@
+{
+  "project": "forge-agent-adapters-build",
+  "description": "Epic agent-agnostic, member 3 of 6. Add a deterministic canonical->per-agent adapter build step to feature-forge: one generator (scripts/build-adapters.py) that walks the spec-pure canon (11 skills, 3 sub-agents, the references/ trees) and emits a self-contained, provenance-stamped adapters/<agent>/ tree for claude/codex/copilot/cursor/gemini, plus a hand-authored AGENTS.md and a regenerate-and-diff drift guard wired into scripts/validate.sh. ALL implementation lands in the feature-forge repo (/home/gary/workspace/feature-forge), branch forge/skill-spec-purity, which holds the canon this feature consumes read-only (C-3). There is NO pnpm/TypeScript gate (C-2): the single verify command is `bash scripts/validate.sh`. The generator is Python 3 (3.10 baseline) + Bash + Markdown, with one pinned YAML runtime dependency auto-provisioned into a gitignored .venv-adapters. Items build scripts/build-adapters.py up incrementally (foundation -> discovery/parse -> emitters -> provenance/closure/report -> engine orchestration), then add the test suite, the purity exemption, the committed adapters/ baseline, AGENTS.md, and the validate.sh completion gate.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Scaffold build-adapters.py foundation: shared types, constants, errors + dep manifest + .gitignore",
+      "description": "Create scripts/build-adapters.py (the generator) with the FULL foundation layer from spec 00, plus the dependency manifest and the .gitignore amendment. All paths are in the feature-forge repo root.\n\n1. Create scripts/build-adapters.py (mode 0755) implementing EXACTLY the Python in 00-core-definitions.md: `from __future__ import annotations`, full type annotations, Google-style docstrings, 3.10 baseline. Define: AGENT_TARGETS (00 §1); FRONTMATTER_KEY_ORDER (00 §4); frozen dataclasses SkillRecord, AgentRecord (00 §2), EmittedFile, ManifestEntry, EmitResult (00 §5), DropRecord (00 §6); the Emitter Protocol (00 §5); provenance constants REGENERATE_CMD, PROVENANCE_FM_COMMENT, PROVENANCE_BODY_TOP, provenance_json(), PROVENANCE_JSON_KEY, GEMINI_EXTENSION_VERSION (00 §7); REMEDIATION_MESSAGE (00 §9); and the CanonError hierarchy MalformedFrontmatterError/MissingNameError/UnreadableFileError (00 §8). Add `import yaml` at module top (the pinned dep used by later items). Later items add discovery/parse/emitters/engine to THIS file.\n2. Create scripts/requirements-adapters.txt pinning an exact released YAML lib version (e.g. PyYAML==6.0.2).\n3. Amend feature-forge/.gitignore: add `.venv-adapters/` and `adapters.tmp-*/` (do NOT ignore adapters/ — it is committed).\n\nDo NOT modify any canon (skills/, agents/, references/, scripts/forge-root.sh).",
+      "acceptanceCriteria": [
+        "scripts/build-adapters.py defines AGENT_TARGETS == (\"claude\",\"codex\",\"copilot\",\"cursor\",\"gemini\") and FRONTMATTER_KEY_ORDER exactly per 00 §4",
+        "SkillRecord, AgentRecord, EmittedFile, ManifestEntry, EmitResult, DropRecord are frozen dataclasses and Emitter is a Protocol, matching 00 §2/§5/§6",
+        "CanonError renders \"<source_path>: <reason>\"; MalformedFrontmatterError/MissingNameError/UnreadableFileError subclass it; provenance constants and GEMINI_EXTENSION_VERSION == \"0.0.0\" match 00 §7/§9",
+        "scripts/requirements-adapters.txt pins an exact YAML lib version; .gitignore contains .venv-adapters/ and adapters.tmp-*/ but NOT adapters/",
+        "scripts/build-adapters.py is mode 0755",
+        "python3 -m py_compile scripts/build-adapters.py passes",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Target repo: feature-forge, branch forge/skill-spec-purity. Canon is read-only (C-3). py_compile does not resolve imports, so `import yaml` is fine before the dep is provisioned. This single file is extended by items 002-006.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement discovery and parse stages in build-adapters.py",
+      "description": "Extend scripts/build-adapters.py with the discovery (stage 1) and parse (stage 2) procedures from spec 02 §1 and §3. Implement exactly as written there.\n\n1. Discovery (02 §1): SKILLS_GLOB = \"skills/*/SKILL.md\", AGENTS_GLOB = \"agents/*.md\", REFERENCES_ROOT = \"references\"; discover_skill_paths(root) and discover_agent_paths(root) returning paths SORTED by repo-relative POSIX path (byte order, never OS glob order).\n2. Parse (02 §3, contract in 00 §3): read_canon_text(path, source_path) reads UTF-8 and normalizes CRLF/CR to \\n, raising UnreadableFileError on failure; split_frontmatter(text, source_path) splits on the first/next column-0 `---`, safe_load-s the block (must be a mapping), raising MalformedFrontmatterError on any malformed/unbalanced/invalid-YAML/non-mapping case; parse_skill(path, root) builds a SkillRecord (require string name == directory name else MissingNameError; description must be str; metadata must be mapping or None; own_refs = skills/<name>/references/ if it is a dir else None); parse_agent(path, root) builds an AgentRecord (name == file stem else MissingNameError; claude_keys = frontmatter minus name/description, preserving source/document order).\n\nFail fast on any unprocessable canon (REQ-ROB-01) — raise the correct CanonError subclass, never crash, never silently skip.",
+      "acceptanceCriteria": [
+        "discover_skill_paths/discover_agent_paths use globs skills/*/SKILL.md and agents/*.md and return lists sorted by repo-relative POSIX path",
+        "parse_skill returns SkillRecord{name,description,metadata,body,own_refs,source_path}; name != directory name raises MissingNameError",
+        "parse_agent populates claude_keys per-file in source order (effort only on the researcher; memory/skills only on the verifier)",
+        "Unbalanced/missing/non-mapping/invalid-YAML frontmatter raises MalformedFrontmatterError(\"<src>: ...\"); missing/non-string name raises MissingNameError; unreadable file raises UnreadableFileError",
+        "read_canon_text normalizes CRLF/CR to \\n",
+        "python3 -m py_compile scripts/build-adapters.py passes",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001"],
+      "notes": "Parse is the ONLY place canon is read from disk; emitters consume records. Verify claude_keys against the real agents/*.md on branch forge/skill-spec-purity (00 §2 ground-truth table). A focused scratch/pytest check confirms behavior; the formal committed suite lands in item 007.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/02-generator-engine.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement shared emitter helpers + Claude and Cursor emitters",
+      "description": "Extend scripts/build-adapters.py with the cross-cutting emitter helpers (spec 03 §2) and the two CONFIRMED-format emitters: Claude (03 §3) and Cursor (03 §6). Implement exactly as specified.\n\n1. Shared helpers (03 §2.1-§2.3): render_frontmatter_block(fields, source_path) serializing via yaml.safe_dump with sort_keys=False, default_flow_style=False, allow_unicode=True, width=4096, emitting the Form A provenance comment (PROVENANCE_FM_COMMENT) as the first line INSIDE the `---` block (`---` stays byte 0); order_fields(native) projecting onto FRONTMATTER_KEY_ORDER and asserting no key outside it; hint_value(skill) returning the metadata.argument-hint scalar or None; drop_all_claude_keys(agent, agent_id, reason) yielding one DropRecord per claude_keys entry in source order.\n2. ClaudeEmitter (agent_id \"claude\", 03 §3): emit_skill emits skills/<name>/SKILL.md with {name, description, argument-hint?} where argument-hint is RECONSTRUCTED from metadata.argument-hint (REQ-VND-01) and omitted (no drop) when absent (forge-init analog); emit_agent emits agents/<name>.md with {name, description, **claude_keys} and ZERO drops (all keys representable).\n3. CursorEmitter (agent_id \"cursor\", 03 §6): emit_skill emits skills/<name>/<name>.mdc with description/globs:[]/alwaysApply:false ONLY (no name field; identity via filename), argument-hint drop-recorded (reason \"no Cursor .mdc invocation-hint field\"); emit_agent emits a body-only .mdc and drop-records every claude_keys entry (reason \"no Cursor sub-agent equivalent\").",
+      "acceptanceCriteria": [
+        "render_frontmatter_block output starts with `---` then `# GENERATED — DO NOT EDIT. Source: <src>. Regenerate: python3 scripts/build-adapters.py`; order_fields asserts the field set is a subset of FRONTMATTER_KEY_ORDER",
+        "ClaudeEmitter.emit_skill: a hinted skill yields top-level argument-hint; a hintless (forge-init analog) skill yields none with no DropRecord; relpath is skills/<name>/SKILL.md",
+        "ClaudeEmitter.emit_agent emits full {name,description,**claude_keys} frontmatter (per-file keys) with drops == ()",
+        "CursorEmitter.emit_skill yields skills/<name>/<name>.mdc with description/globs/alwaysApply only and an argument-hint DropRecord; emit_agent drop-records every claude_keys entry",
+        "python3 -m py_compile scripts/build-adapters.py passes",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002"],
+      "notes": "Claude and Cursor formats are CONFIRMED (not TQ-1): Claude is a round-trip of repo canon's pre-purity shape; Cursor .mdc keys are the documented Project-Rules schema. Emitters are pure (no clock/env/RNG/FS). description is preserved byte-for-byte via the shared dumper (REQ-FMT-04).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/03-per-agent-emitters.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement Codex, Copilot and Gemini emitters (TQ-1 targets)",
+      "description": "Extend scripts/build-adapters.py with the three TQ-1 emitters from spec 03 §4/§5/§7, reusing the item-003 shared helpers.\n\n1. CodexEmitter (agent_id \"codex\", 03 §4): emit_skill -> skills/<name>/<name>.md with {name, description} frontmatter + body; argument-hint drop-recorded. emit_agent -> a body artifact agents/<name>.md AND one ManifestEntry per sub-agent in EmitResult.manifest_entries (the aggregate agents/openai.yaml is written by the ENGINE later, not here); drop-record every claude_keys entry NOT in _CODEX_AGENT_KEYS (an empty frozenset until TQ-1 confirms the schema).\n2. CopilotEmitter (agent_id \"copilot\", 03 §5): emit_skill -> skills/<name>/<name>.md body; argument-hint drop-recorded. emit_agent -> body-only agents/<name>.md + drop_all_claude_keys.\n3. GeminiEmitter (agent_id \"gemini\", 03 §7): emit_skill -> skills/<name>/<name>.md body AND one ManifestEntry per skill (the gemini-extension.json is written by the engine later); argument-hint drop-recorded. emit_agent -> body-only agents/<name>.md + drop_all_claude_keys.\n\nBefore finalizing, attempt to confirm the TQ-1 native field names (Codex skill/agents-config, GitHub Copilot custom-instructions/skillset, Gemini gemini-extension.json + body frontmatter) against each agent's OFFICIAL docs (context7 MCP or web). If reachable and a field exists, set the native key (and for hints switch to branch-1 reconstruction / for codex add the key to _CODEX_AGENT_KEYS) and drop the TQ-1 flag. If unreachable, KEEP the documented safe defaults (name+description, drop-with-record for everything unconfirmed) per 03 §8.",
+      "acceptanceCriteria": [
+        "CodexEmitter.emit_skill yields skills/<name>/<name>.md with {name,description} + body and an argument-hint DropRecord for hinted skills",
+        "CodexEmitter.emit_agent returns manifest_entries with one ManifestEntry per sub-agent and drop-records every claude_keys entry (since _CODEX_AGENT_KEYS is empty pre-TQ-1)",
+        "CopilotEmitter and GeminiEmitter emit body files and drop-record argument-hint and every claude_keys entry; GeminiEmitter.emit_skill returns one ManifestEntry per skill",
+        "effort, memory and skills each appear as DropRecords for codex/copilot/cursor/gemini, sourced from the sub-agent that actually carries them (per-file enumeration)",
+        "Any TQ-1 field confirmed against official docs has its flag dropped and mapping set; unconfirmed fields keep drop-with-record",
+        "python3 -m py_compile scripts/build-adapters.py passes",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["003"],
+      "notes": ".pipeline-state notes flag confirming Codex/Copilot/Cursor/Gemini native schemas (TQ-1) at impl. Emitters are isolated: a wrong field name is a one-method fix caught by the drift guard + item-007 byte-snapshot tests. Never emit invalid frontmatter — omit + record (REQ-FMT-03).",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/03-per-agent-emitters.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement provenance, self-containment pass, manifest serialization and generation report",
+      "description": "Extend scripts/build-adapters.py with the agent-independent passes the engine runs around the emitters, per spec 04. Implement exactly as written.\n\n1. Self-containment pass (04 §2): run_self_containment_pass(bundle_root, repo_root, skills) adds (a) the WHOLE repo-root references/ tree verbatim, (b) each skill's own references/ subdir where own_refs is not None, (c) a byte-identical scripts/forge-root.sh copy (mode 0755, NO header). Helpers: _copytree_verbatim (walk sorted, shutil.copyfile bytes-only, no header, sandbox-checked) and _assert_byte_identical (sha256 compare for forge-root.sh, REQ-GEN-05).\n2. Manifest serialization (04 §1.3): _publish_manifest(root, dest, agent_id, entries) writes gemini's gemini-extension.json with the `_generated` provenance object FIRST (provenance_json(\"skills/\")), then name \"feature-forge\", version GEMINI_EXTENSION_VERSION (fixed, no timestamp), then skills[] built from entries; and codex's agents/openai.yaml with `_generated` first. JSON via json.dumps(indent=2, sort_keys=False, ensure_ascii=False) + trailing \\n.\n3. Generation report (04 §3): render_generation_report(drops) returns the report text — Form B body-top HTML provenance line first, `# Adapter Generation Report` heading, per-agent sections in AGENT_TARGETS order, rows sorted by (agent, source, construct), the \"_No dropped constructs_\" sentinel for empty sections (claude), and the fixed _render_verbatim_copies_section() at the end.",
+      "acceptanceCriteria": [
+        "run_self_containment_pass copies all 14 shared references/ files (9 root + stacks/×5) preserving stacks/, each own-refs skill's references/, and forge-root.sh byte-identical at mode 0755 with no GENERATED header",
+        "_publish_manifest writes gemini-extension.json with _generated first, name \"feature-forge\", version == GEMINI_EXTENSION_VERSION, skills[] from entries; codex agents/openai.yaml carries _generated first",
+        "render_generation_report: first line is the Form B HTML comment; sections in AGENT_TARGETS order; drop rows sorted by (agent,source,construct); claude shows the no-dropped-constructs sentinel; the verbatim-copies section is present",
+        "python3 -m py_compile scripts/build-adapters.py passes",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["004"],
+      "notes": "Form A headers are produced by the emitters (item 003 render_frontmatter_block); this item produces Form B (report), Form C (gemini JSON _generated), and the EXEMPT verbatim copies (forge-root.sh + references/). Cross-OS byte-identity assumes LF-normalized canon (.gitattributes owned by packaging-docs-ci — declared dependency, not implemented here).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/04-provenance-selfcontainment-report.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 1,
+      "title": "Implement engine orchestration: registry, build_tree, atomic publish, --check and main()",
+      "description": "Extend scripts/build-adapters.py with the orchestration core from spec 02 §2/§4/§5, wiring the emitters and the item-005 passes into a generator that runs end-to-end.\n\n1. Registry (02 §2): AGENT_TARGETS_REGISTRY mapping each AGENT_TARGETS id to its emitter class; build_emitters() asserting registry keys == AGENT_TARGETS and instantiating in AGENT_TARGETS order.\n2. Path sandbox (02 §4.2): _assert_within(path, allowed_root) and safe_write(allowed_root, relpath, content, mode) writing with newline=\"\" (no CRLF translation) after asserting containment.\n3. Atomic publish + pipeline (02 §4.1/§4.3): _new_staging_dir(root) -> adapters.tmp-<pid>/; _publish_emit_result writing EmitResult.files via safe_write; build_tree(root, dest) running discover->parse->per-agent emit loop, accumulating ManifestEntry-s per agent and calling _publish_manifest after that agent's loop, calling run_self_containment_pass per bundle, collecting all DropRecords and writing adapters/GENERATION-REPORT.md via render_generation_report; generate(root) building to the temp dir then os.replace-swapping over adapters/ (CanonError -> remove staging, print to stderr, return 1, NO partial tree); check(root) building to temp, diff -r vs committed adapters/, printing REMEDIATION_MESSAGE on drift (exit 1), exit 2 if diff is missing/errors, removing the temp dir in finally, never mutating adapters/.\n4. main(argv) (02 §5): argparse with --check and --root (default = parent of script dir), dispatching to generate/check.",
+      "acceptanceCriteria": [
+        "python3 scripts/build-adapters.py exits 0 and writes adapters/{claude,codex,copilot,cursor,gemini}/ plus adapters/GENERATION-REPORT.md, each bundle self-contained (references/ + scripts/forge-root.sh)",
+        "python3 scripts/build-adapters.py --check exits 0 immediately after a build and does not mutate adapters/",
+        "Seeding an orphan file under adapters/ then regenerating removes it (atomic whole-tree swap)",
+        "A malformed-frontmatter canon makes generate exit 1 with \"<source_path>: reason\" on stderr and leaves no adapters/ and no adapters.tmp-* directory",
+        "main exposes --check and --root (default parent-of-script-dir); diff-missing/diff-error returns exit 2 (not a drift verdict)",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["005"],
+      "notes": "Provision the YAML dep to run the generator: `python3 -m venv .venv-adapters && .venv-adapters/bin/pip install -r scripts/requirements-adapters.txt`, then run via .venv-adapters/bin/python3. Verify against the real canon (or a temp copy). The authoritative committed adapters/ baseline is finalized in item 009.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/02-generator-engine.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "test",
+      "priority": 1,
+      "title": "Add generator pytest suite and canon fixtures",
+      "description": "Create the generator test suite and fixtures per spec 06. The suite is the deliverable.\n\n1. Fixtures under tests/fixtures/ (06 §2.2): minimal-canon/ (skills/with-refs with metadata.argument-hint \"[target]\", a description containing a colon and trailing period, and its own references/detail.md; skills/noarg with NO hint; agents/researcher with claude_keys {tools,model,maxTurns,effort}; agents/verifier with {tools,model,maxTurns,memory,skills}; references/shared-conventions.md + references/stacks/python.md; scripts/forge-root.sh copied from the REAL canonical resolver, mode 0755; and a COMMITTED expected-adapters/ snapshot generated from this fixture); malformed-canon/ (skills/broken/SKILL.md with an unbalanced frontmatter block); malformed-canon-noname/ (skills/anon/SKILL.md with no name).\n2. tests/test_build_adapters.py (06 §2-§3): a local run_build subprocess runner + hash_tree helper, and the tests §3.1-§3.10 — determinism (build-twice byte-equality + committed-snapshot equality), no-timestamp scan, orphan purge, self-containment per target (incl a nested stacks/ file AND the negative no-own-refs case), verbatim resolver hash + no-header, provenance Forms A/B/C, claude argument-hint round-trip (with-hint restored, noarg none), description byte-fidelity (decoded scalar via pytest.importorskip(\"yaml\"); per-target filenames SKILL.md/<name>.md/manifest), per-file drop-with-record asserting effort/memory/skills are each recorded AND absent from non-claude output, claude retains those keys, fail-fast for both error types (no partial adapters/ or adapters.tmp-*), and the drift guard (clean exit 0; mutated exit 1 + remediation). The module imports NO yaml at collection time.",
+      "acceptanceCriteria": [
+        "Fixtures minimal-canon (+ committed expected-adapters/), malformed-canon and malformed-canon-noname exist per 06 §2.2; expected-adapters/ equals a fresh build of minimal-canon",
+        "tests/test_build_adapters.py defines run_build + hash_tree and implements all §3.1-§3.10 tests; it imports no YAML at module load",
+        "The drop-with-record test asserts effort, memory and skills are each recorded AND absent from each non-claude agent's output, and that claude retains them",
+        "The fail-fast tests assert non-zero exit, the offending file on stderr, and no adapters/ or adapters.tmp-* left behind",
+        "python3 -m pytest tests/test_build_adapters.py -q passes (with .venv-adapters provisioned)",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["006"],
+      "notes": "run_build must use an interpreter that can import the pinned YAML dep: prefer feature-forge/.venv-adapters/bin/python3 when present, else sys.executable, and skip (pytest.importorskip-style) if the generator's yaml import is unavailable — so the module stays collectable without the venv (06 §2 preamble) while actually running once provisioned. validate.sh step 7 soft-skips pytest when absent; the hard gate (step 6b) is added in item 011.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/00-core-definitions.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add adapters/ spec-purity exemption to check-spec-purity.py + tests",
+      "description": "Make the adapters/ tree exempt from the spec-purity checker as a belt-and-suspenders, regression-proofing edit, per spec 05 §1 and its tests in 06 §3.11. This is an additive, generator-independent change to existing feature-forge tooling.\n\n1. In scripts/check-spec-purity.py, add EXACTLY ONE new element \"adapters/**\" to the RESIDUAL_VAR_EXEMPT tuple (with the clarifying comment from 05 §1.2 explaining that adapters/ is the generated tree, is outside CANONICAL_SURFACES by construction, and that the named entry keeps rule 3 / the prelude scan from ever re-flagging the verbatim forge-root.sh and references/ copies under adapters/). Do NOT modify CANONICAL_SURFACES, the five rule functions, the CLI, exit codes, or --root default.\n2. Add fixtures tests/fixtures/adapters-impure-exempt/ (an adapters/claude/skills/x/SKILL.md carrying a top-level argument-hint AND a ${CLAUDE_PLUGIN_ROOT} residual, plus a clean canonical skills/ surface) and tests/fixtures/adapters-impure-under-skills/ (the SAME impure SKILL.md placed under skills/).\n3. Add the back-to-back tests to the EXISTING tests/test_check_spec_purity.py using its run_checker helper: impurity under adapters/ -> exit 0 (REQ-PUR-01); the same impurity under skills/ -> non-zero with \"argument-hint\" in output (REQ-PUR-02).",
+      "acceptanceCriteria": [
+        "RESIDUAL_VAR_EXEMPT gains exactly one element \"adapters/**\" plus the clarifying comment; CANONICAL_SURFACES and the five rule functions are byte-unchanged",
+        "Fixtures adapters-impure-exempt and adapters-impure-under-skills exist per 06 §2.2.3",
+        "New tests pass: impure-under-adapters exits 0; same-impurity-under-skills exits non-zero with \"argument-hint\" in stdout",
+        "Existing test_check_spec_purity.py tests still pass",
+        "python3 -m pytest tests/test_check_spec_purity.py -q passes",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Independent of the generator — edits only the existing checker + its tests, so it can land in parallel with the generator items. Must NOT weaken enforcement over skills/, references/, agents/ (REQ-PUR-02).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/05-purity-exemption-and-drift-guard.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "chore",
+      "priority": 1,
+      "title": "Generate and commit the authoritative adapters/ baseline",
+      "description": "Produce the committed adapters/ tree (REQ-OUT-02) — the drift-guard baseline — by running the finished generator against the real feature-forge canon, and confirm it integrates cleanly with the purity exemption (item 008) on real data.\n\n1. From the feature-forge repo root on branch forge/skill-spec-purity, provision the venv: `python3 -m venv .venv-adapters` then `.venv-adapters/bin/pip install -r scripts/requirements-adapters.txt`.\n2. Run `.venv-adapters/bin/python3 scripts/build-adapters.py` to generate the full adapters/ tree for all five agents plus adapters/GENERATION-REPORT.md. Leave the generated tree in the working tree (the loop runner owns the commit) — do NOT hand-edit any generated file.\n3. Confirm `.venv-adapters/bin/python3 scripts/build-adapters.py --check` exits 0 (no drift), `python3 scripts/check-spec-purity.py` exits 0 with the generated tree present (the item-008 \"adapters/**\" exemption keeps the bundled forge-root.sh ${CLAUDE_PLUGIN_ROOT} fallback and references/ preludes from tripping rules 3/5), and a second generate run produces no git diff (idempotent).",
+      "acceptanceCriteria": [
+        "adapters/{claude,codex,copilot,cursor,gemini}/ and adapters/GENERATION-REPORT.md exist; each bundle contains the 14-file references/ tree and a byte-identical scripts/forge-root.sh at mode 0755",
+        ".venv-adapters/bin/python3 scripts/build-adapters.py --check exits 0",
+        "python3 scripts/check-spec-purity.py exits 0 with the generated adapters/ tree present",
+        "Running build-adapters.py a second time produces no git diff against the committed tree (idempotency)",
+        "No generated file under adapters/ was hand-edited",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["006", "008"],
+      "notes": "adapters/ IS committed (not gitignored, per item 001). This item is the integration point where the engine (006) and the purity exemption (008) are exercised on the real generated tree, including real forge-root.sh copies and references/ preludes that only appear under adapters/ at full scale.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/02-generator-engine.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/04-provenance-selfcontainment-report.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "chore",
+      "priority": 2,
+      "title": "Author the hand-written canonical AGENTS.md",
+      "description": "Create AGENTS.md at the feature-forge repo root, hand-authored per the BINDING content checklist in spec 05 §3.3. It is NOT generated.\n\nMUST contain, in prose or lists:\n1. Build & Test commands: `bash scripts/validate.sh` (the single verify gate, C-2/REQ-CI-04); `python3 scripts/build-adapters.py` (regenerate all adapters); and, recommended, `python3 scripts/build-adapters.py --check` and `python3 scripts/check-spec-purity.py`.\n2. Repository conventions (four): spec-pure canon (skills/, agents/, references/ are the single source of truth; per-agent output is GENERATED into adapters/ and never hand-edited); stdlib + pinned-YAML tooling (Python 3 stdlib + Bash plus the single pinned YAML dep in scripts/requirements-adapters.txt, auto-provisioned into the gitignored .venv-adapters by validate.sh; no pnpm/TypeScript gate); the resolver/prelude pattern (scripts/forge-root.sh copied byte-identical into each bundle; canonical bootstrap prelude byte-identical everywhere); generated-output provenance (every file under adapters/ carries a GENERATED — DO NOT EDIT header naming its canonical source + the regenerate command).\n3. Install-path priority: Claude Code marketplace/plugin install is preferred/first-class (C-5), then the universal cross-agent install path (owned by cross-agent-installer; name it as the fallback, do not document its mechanics).\n4. The dependency-upgrade trade-off (D2): a YAML-dependency version bump is a behavior change requiring regenerating adapters/, reviewing the diff, and committing it (the drift guard fails the gate otherwise).\n\nMUST NOT carry any GENERATED/DO-NOT-EDIT provenance header, and MUST NOT be placed under adapters/.",
+      "acceptanceCriteria": [
+        "AGENTS.md exists at the feature-forge repo root (not under adapters/)",
+        "It covers every 05 §3.3 checklist item: the build/test commands, the four repository conventions, the two-tier install priority (Claude marketplace preferred, then universal), and the dependency-upgrade trade-off",
+        "It carries NO GENERATED/DO-NOT-EDIT provenance header in any form",
+        "python3 scripts/build-adapters.py --check is unaffected by AGENTS.md (it lives at the repo root, not adapters/)",
+        "bash scripts/validate.sh passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "AGENTS.md is the only doc this feature authors (user-facing READMEs are owned by packaging-docs-ci). It is excluded from the drift guard by construction (lives outside adapters/) and is not a canonical surface (so check-spec-purity does not scan it).",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/05-purity-exemption-and-drift-guard.md"
+      ]
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "Wire validate.sh step 6b drift guard + venv provisioning (completion gate)",
+      "description": "Add the regenerate-and-diff drift guard to scripts/validate.sh as a new top-level step, per spec 05 §2 — the feature's completion gate.\n\nInsert the \"6b. Adapters regen-and-diff\" block from 05 §2.2 BETWEEN the existing step 6a (spec-purity gate) and the step-7 comment, OUTSIDE the `if [ -f \"$HELPER\" ]` epic-manifest guard, so it runs UNCONDITIONALLY under `set -euo pipefail`. The step: echoes a section header; sets ADAPTERS_VENV=\"$REPO_ROOT/.venv-adapters\", ADAPTERS_REQS=\"$REPO_ROOT/scripts/requirements-adapters.txt\", ADAPTERS_PY=\"$ADAPTERS_VENV/bin/python3\"; creates the venv if ADAPTERS_PY is not executable; runs `\"$ADAPTERS_PY\" -m pip install -q -r \"$ADAPTERS_REQS\"` and, on success, runs `\"$ADAPTERS_PY\" \"$REPO_ROOT/scripts/build-adapters.py\" --check` INSIDE an `if ...; then ... else ... fi` (never bare, so set -e does not abort before the ERRORS bump). On a clean check print `PASS: adapters/ matches a fresh generation (no drift)`; on drift print a FAIL line naming `python3 scripts/build-adapters.py` and \"commit the result\" and do `ERRORS=$((ERRORS + 1))`; on a provisioning failure print the distinct env-fault FAIL message and bump ERRORS. Mirror step 6a's echo/PASS/FAIL/ERRORS idiom. This is a HARD gate — never soft-skipped.",
+      "acceptanceCriteria": [
+        "scripts/validate.sh contains step 6b between the old step 6a and the step-7 comment, OUTSIDE the `if [ -f \"$HELPER\" ]` guard, bumping failures via ERRORS=$((ERRORS + 1))",
+        "The build-adapters.py --check call is wrapped in if...then...else...fi (not bare), so drift increments ERRORS and reaches the final tally instead of aborting mid-script",
+        "On the in-sync committed tree, bash scripts/validate.sh prints \"PASS: adapters/ matches a fresh generation\" and exits 0",
+        "A deliberate canon edit without regenerating makes bash scripts/validate.sh exit 1 with a remediation naming python3 scripts/build-adapters.py and \"commit the result\"",
+        "After the test, the canon edit is reverted and bash scripts/validate.sh passes green on the in-sync tree"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["006", "007", "008", "009", "010"],
+      "notes": "feature-forge has no .github/workflows/ yet — validate.sh is the gate; standing up the GH Actions workflow is packaging-docs-ci's scope, and \"in CI\" follows for free once it runs validate.sh. A provisioning failure is an environment fault, NOT a CanonError or drift verdict (00 §9). This is the success-criterion demonstration (PRD §8).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-agent-adapters-build/05-purity-exemption-and-drift-guard.md",
+        "specs/agent-agnostic/forge-agent-adapters-build/06-testing-strategy.md"
+      ]
+    }
+  ]
+}
