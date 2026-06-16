@@ -14,7 +14,7 @@
       "artifacts": ["PRD.md"],
       "startedAt": "2026-06-16T21:24:55Z",
       "completedAt": "2026-06-16T21:40:00Z",
-      "commitHash": "d3750e382a5d320130478736c6ff0be8f6844a1d",
+      "commitHash": "50cf5d4fa33776c44769e243611bb687ddc310f2",
       "basedOnVersions": {}
     },
     "forge-verify-prd": {
@@ -22,7 +22,8 @@
       "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
       "findingsCount": 4,
       "verifiedAt": "2026-06-16T21:34:00Z",
-      "fixedAt": "2026-06-16T21:40:00Z"
+      "fixedAt": "2026-06-16T21:40:00Z",
+      "commitHash": "50cf5d4fa33776c44769e243611bb687ddc310f2"
     }
   }
 }
