@@ -3,12 +3,16 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-15T22:52:18Z",
-  "currentStage": "forge-5-loop",
+  "updatedAt": "2026-06-16T00:27:18Z",
+  "currentStage": "forge-6-docs",
   "stages": {
     "forge-5-loop": {
-      "status": "in-progress",
-      "startedAt": "2026-06-15T22:52:18Z"
+      "status": "complete",
+      "startedAt": "2026-06-15T22:52:18Z",
+      "completedAt": "2026-06-16T00:27:18Z",
+      "basedOnVersions": { "forge-4-backlog": 1 },
+      "artifacts": ["specs/agent-agnostic/rauf-agent-cli-adapters/.rauf/state.json"],
+      "notes": "13/13 items done first-pass (iteration 14/20), 0 blocked/needsHuman/deferred. --review pass: itemsCreated=0, 'No issues found'. Runner committed each item atomically."
     },
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
