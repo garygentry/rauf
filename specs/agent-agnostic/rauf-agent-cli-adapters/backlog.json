@@ -336,8 +336,8 @@
         "All existing claude scenarios still pass unchanged (SC-2)",
         "bash test-sandbox/verify.sh is green across all rows, and pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-16T00:24:02.876Z",
       "dependsOn": [
         "012"
       ],

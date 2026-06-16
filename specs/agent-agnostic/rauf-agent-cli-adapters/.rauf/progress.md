@@ -43,3 +43,35 @@
 - Running `verify.sh` leaves debris in the PARENT tree (commit-no-signal writes
   `recovered-feature.txt` into the sandbox workdir, which isn't gitignored) + mutates
   `test-sandbox/.rauf/backlog.json`; clean both before finishing.
+
+## Item 013 — verify.sh per-agent + fail-fast + SC-2 regression
+
+- **Two production gaps surfaced (items 009/010 left them):** wiring needed to make
+  the generic-cli + fail-fast rows pass, so this test item had to close them:
+  1. **providerConfig was never threaded into createProvider.** `runner.ts` read
+     `MarkerOptions.provider` but not `.providerConfig`, so `generic-cli` resolution
+     threw "missing binary". Fix: store `projectProviderConfig` from the marker and
+     pass it as `createProvider(agentId, this.projectProviderConfig)` (preset/claude
+     factories ignore the arg, so it's safe for all ids).
+  2. **Fail-fast exited 0.** `failRunSetup` returned a benign zero-iteration
+     LoopResult indistinguishable from idle, so the CLI mapped it to SUCCESS.
+     REQ-DET-02/SC-3 require non-zero. Fix: added `LoopResult.setupFailed?: boolean`
+     (set in failRunSetup), and `loopRunExitCode` returns ERROR(1) first when set.
+     Unit-tested in loop-commands.test.ts.
+- **generic-cli row dirty-tree trap:** the providerConfig must be injected into
+  `.rauf.json` BEFORE `setup.sh` commits the sandbox baseline — otherwise the
+  modified tracked marker trips the dirty-tree guard and the loop refuses to run.
+  Restore the committed marker (mv .verifybak back) AFTER the run so the parent
+  repo stays clean.
+- **Fail-fast PATH must exclude ~/.local/bin too:** a REAL `codex` (and `claude`)
+  can be installed there, so the absent-agent PATH is `scripts/bin:<bun dir>:/usr/bin:/bin`
+  only — excluding both the sandbox mocks and ~/.local/bin. A real codex otherwise
+  actually runs (46s) and defeats the test.
+- **Stale exit-code expectation fixed:** the pause-resume row expected exit 6
+  (old PAUSED_HUMAN). The contract changed — PAUSED_HUMAN folded into
+  NEEDS_HUMAN=3 (commands.ts:95) and 6 is now RUNNING (query-time only). Updated
+  the assertion to 3. This was the lone pre-existing red row noted in item 012.
+- Plain-text agents emit only spawn/exit + item lifecycle events (no
+  llm_token_update / llm_tool_activity), so "telemetry gracefully absent" is a
+  jq "none of those types" check. Every completed item commits because the
+  backlog.json status flip is a tracked change (mocks change no source files).

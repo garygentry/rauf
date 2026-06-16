@@ -226,7 +226,142 @@ assert_dogfood_commit() {
   fi
 }
 
-# ─── Run a scenario ──────────────────────────────────────────────────
+# ─── Cross-agent assertion helpers (item 013) ────────────────────────
+
+# assert_event_provider <id>
+# Assert some llm_spawned/llm_exited event in events.ndjson carries provider==<id>
+# (REQ-OBS-01, SC-4) AND that no llm_spawned/llm_exited event carries 'claude-cli'
+# — proving a non-claude run reports the REAL resolved agent id, never the legacy
+# hardcoded default.
+assert_event_provider() {
+  local id="$1"
+  local events="$SANDBOX_DIR/.rauf/events.ndjson"
+  if [ ! -s "$events" ]; then
+    fail "events.ndjson missing/empty (provider==$id check)"
+    return
+  fi
+  if jq -s -e --arg id "$id" \
+    'any(.[]; (.type=="llm_spawned" or .type=="llm_exited") and .provider==$id)' \
+    "$events" >/dev/null; then
+    pass "llm_spawned/llm_exited carry provider==$id"
+  else
+    fail "no llm_spawned/llm_exited event with provider==$id"
+  fi
+  if jq -s -e \
+    'any(.[]; (.type=="llm_spawned" or .type=="llm_exited") and .provider=="claude-cli")' \
+    "$events" >/dev/null; then
+    fail "a non-claude run emitted provider==claude-cli (must not for $id)"
+  else
+    pass "no llm_spawned/llm_exited event carries claude-cli ($id run)"
+  fi
+}
+
+# assert_no_usage_preflight
+# Reuse the exact marker the usage-limit-stdout case greps for. For a non-claude
+# agent (no checkUsage) the Anthropic usage preflight/banner scan is gated off
+# (REQ-USAGE-02), so this line must be ABSENT.
+assert_no_usage_preflight() {
+  if ! grep -q "Usage limit detected" "$SANDBOX_DIR/.rauf/rauf.log"; then
+    pass "no 'Usage limit detected' (Anthropic preflight skipped)"
+  else
+    fail "'Usage limit detected' present (usage preflight ran for a non-claude agent)"
+  fi
+}
+
+# assert_no_agent_telemetry
+# A plain-text CLI agent emits no stream-json, so there must be NO token-count
+# (llm_token_update) or tool-activity (llm_tool_activity) events — telemetry is
+# gracefully absent (REQ-OBS-02) without failing the run.
+assert_no_agent_telemetry() {
+  local events="$SANDBOX_DIR/.rauf/events.ndjson"
+  if [ ! -s "$events" ]; then
+    fail "events.ndjson missing/empty (telemetry-absence check)"
+    return
+  fi
+  if jq -s -e 'any(.[]; .type=="llm_tool_activity" or .type=="llm_token_update")' \
+    "$events" >/dev/null; then
+    fail "plain-text agent emitted token/tool telemetry (should be absent)"
+  else
+    pass "no token/llm_tool_activity telemetry (gracefully absent)"
+  fi
+}
+
+# assert_agent_stream_done <id>
+# The full SC-1/SC-4 per-agent stream-done assertion bundle: item done + DONE
+# file + limit_reached + exactly one [rauf] 001 commit + real provider id + no
+# usage preflight + no telemetry + no events/state contradiction (clean run).
+assert_agent_stream_done() {
+  local id="$1"
+  assert_item_status "001" "done"
+  assert_done_file_exists
+  assert_state_status "limit_reached"
+  assert_dogfood_commit
+  assert_event_provider "$id"
+  assert_no_usage_preflight
+  assert_no_agent_telemetry
+  assert_events_never_contradict
+}
+
+# ─── Run a scenario through a specific mock agent (item 013) ──────────
+
+# run_agent_scenario <agent> <scenario>
+# Cross-agent sibling of run_scenario: resets the sandbox, puts the sandbox mock
+# binaries first on PATH, exports the canonical scenario env, and runs ONE loop
+# iteration through `rauf loop run ... --agent <id>`. For <agent>=claude (or
+# empty/claude-cli) no --agent flag is passed (exactly today's claude path).
+run_agent_scenario() {
+  local agent="$1"
+  local scenario="$2"
+  CURRENT_SCENARIO="$scenario ($agent)"
+  echo ""
+  echo "=== Scenario: $scenario (agent: $agent) ==="
+
+  bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+  export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+  export MOCK_AGENT_SCENARIO="$scenario"
+  export MOCK_CLAUDE_SCENARIO="$scenario"
+
+  local agent_flag=""
+  if [ -n "$agent" ] && [ "$agent" != "claude" ] && [ "$agent" != "claude-cli" ]; then
+    agent_flag="--agent $agent"
+  fi
+
+  # shellcheck disable=SC2086
+  rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 $agent_flag >/dev/null 2>&1 || true
+}
+
+# run_generic_cli_scenario <scenario>
+# Drives the reserved generic-cli adapter via a marker `providerConfig` pointing
+# at mock-generic-agent.sh (REQ-ADP-04, REQ-SCALE-01 — the config-driven, no-code
+# path). Injects the providerConfig into a COPY of the committed .rauf.json for
+# the run, then restores it so the repo/later rows are untouched.
+run_generic_cli_scenario() {
+  local scenario="$1"
+  CURRENT_SCENARIO="$scenario (generic-cli)"
+  echo ""
+  echo "=== Scenario: $scenario (agent: generic-cli) ==="
+
+  # Inject the providerConfig BEFORE setup.sh commits the sandbox baseline, so the
+  # modified .rauf.json lands in the baseline and the dirty-tree guard sees a clean
+  # tree. Restored after the run so the parent repo's committed marker is untouched.
+  local marker="$SANDBOX_DIR/.rauf.json"
+  cp "$marker" "$marker.verifybak"
+  jq --arg bin "$SANDBOX_DIR/mock-generic-agent.sh" \
+    '.options.providerConfig = { binary: $bin, promptDelivery: "stdin", nonInteractive: ["--auto-approve"] }' \
+    "$marker.verifybak" >"$marker"
+
+  bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+  export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+  export MOCK_AGENT_SCENARIO="$scenario"
+  export MOCK_CLAUDE_SCENARIO="$scenario"
+
+  rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --agent generic-cli >/dev/null 2>&1 || true
+
+  # Restore the committed marker (no providerConfig) for the rest of the suite.
+  mv "$marker.verifybak" "$marker"
+}
 
 run_scenario() {
   local scenario="$1"
@@ -509,11 +644,12 @@ PAUSE_EXIT=0
 rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 \
   --pause-on-needs-human --ndjson >"$NDJSON_OUT" 2>/dev/null || PAUSE_EXIT=$?
 
-# Distinct needs-human exit code (ExitCode.PAUSED_HUMAN = 6).
-if [ "$PAUSE_EXIT" -eq 6 ]; then
-  pass "loop run --pause-on-needs-human exited PAUSED_HUMAN (6)"
+# Distinct needs-human exit code. The former PAUSED_HUMAN(6) was folded into
+# ExitCode.NEEDS_HUMAN = 3 (commands.ts:95); 6 is now RUNNING (query-time only).
+if [ "$PAUSE_EXIT" -eq 3 ]; then
+  pass "loop run --pause-on-needs-human exited NEEDS_HUMAN (3)"
 else
-  fail "expected exit 6 (PAUSED_HUMAN), got $PAUSE_EXIT"
+  fail "expected exit 3 (NEEDS_HUMAN), got $PAUSE_EXIT"
 fi
 
 # The NDJSON stream must carry needs_human THEN loop_paused (reason needs_human).
@@ -643,6 +779,95 @@ else
 fi
 
 rm -rf "$COMPAT_HOME"
+
+# ─── Cross-agent: per-agent stream-done (SC-1, SC-4) ─────────────────
+
+# 13. Each shipped non-claude preset drives the stream-done scenario (plain-text)
+#     end-to-end: reaches RAUF_DONE, commits, reports its REAL provider id in the
+#     events, skips the Anthropic usage preflight, and emits no token/tool
+#     telemetry — the "telemetry gracefully absent" path (REQ-OBS-02). cursor is
+#     driven via its `cursor-agent` binary but its provider id is "cursor".
+for agent in codex gemini copilot cursor; do
+  run_agent_scenario "$agent" "stream-done"
+  assert_agent_stream_done "$agent"
+done
+
+# 14. The reserved generic-cli adapter, driven by a marker providerConfig pointing
+#     at mock-generic-agent.sh (REQ-ADP-04, REQ-SCALE-01) — the config-driven,
+#     no-code path. Same end-to-end guarantees, provider id == "generic-cli".
+run_generic_cli_scenario "stream-done"
+assert_agent_stream_done "generic-cli"
+
+# 15. A non-claude stream-blocked run proves plain-text RAUF_BLOCKED parsing on
+#     the non-claude path (parseSignal over raw stdout, REQ-SIG-02).
+run_agent_scenario "codex" "stream-blocked"
+assert_item_status "001" "blocked"
+assert_event_provider "codex"
+
+# ─── Fail-fast: absent agent CLI (SC-3, REQ-DET-02) ──────────────────
+
+# 16. Selecting an agent whose CLI is absent must fail BEFORE any iteration runs
+#     or any state is written, naming the agent + remediation, with NO fallback
+#     to claude. Run --agent codex on a PATH that resolves rauf (and its bun
+#     runtime) but NOT the codex mock — and NOT a real system codex — so the
+#     binary genuinely does not resolve. "No state written" = (a) no state.json,
+#     (b) no backlog status change, (c) no per-item commit.
+echo ""
+echo "=== Scenario: fail-fast (--agent codex, codex absent from PATH) ==="
+
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+
+# A minimal PATH: rauf wrapper + bun runtime + base system, deliberately EXCLUDING
+# both the sandbox mocks and ~/.local/bin (where a real codex/claude may live).
+FAILFAST_BUN_DIR="$(dirname "$(command -v bun)")"
+FAILFAST_PATH="$REPO_ROOT/scripts/bin:$FAILFAST_BUN_DIR:/usr/bin:/bin"
+
+# Record the baseline commit so we can prove no new commit was made.
+FAILFAST_BASELINE="$(git rev-parse HEAD 2>/dev/null)"
+
+FAILFAST_OUT="$(mktemp)"
+FAILFAST_EXIT=0
+PATH="$FAILFAST_PATH" rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 \
+  --agent codex >"$FAILFAST_OUT" 2>&1 || FAILFAST_EXIT=$?
+
+# Non-zero exit.
+if [ "$FAILFAST_EXIT" -ne 0 ]; then
+  pass "fail-fast exits non-zero (got $FAILFAST_EXIT)"
+else
+  fail "fail-fast exited 0 (expected non-zero for an absent agent)"
+fi
+
+# Message names the agent and how to install / put it on PATH.
+if grep -qi "codex" "$FAILFAST_OUT" &&
+  grep -qiE "install|on PATH" "$FAILFAST_OUT"; then
+  pass "fail-fast message names codex + install/PATH remediation"
+else
+  fail "fail-fast message missing codex or install/PATH remediation"
+fi
+
+# No silent fallback to claude (the supported-agents list may contain 'claude-cli',
+# but the run must not announce it is USING/falling back to claude).
+if grep -qiE "fall.?back|using claude|defaulting to claude|switching to claude" "$FAILFAST_OUT"; then
+  fail "fail-fast output mentions falling back to claude"
+else
+  pass "fail-fast output never mentions a claude fallback"
+fi
+
+# (a) No state.json written.
+assert_file_not_exists "$SANDBOX_DIR/.rauf/state.json" ".rauf/state.json (fail-fast wrote no state)"
+
+# (b) No backlog status mutation — item 001 stays at its setup.sh value (pending).
+assert_item_status "001" "pending"
+
+# (c) No per-item commit since the baseline.
+FAILFAST_NEW="$(git rev-list "${FAILFAST_BASELINE}..HEAD" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$FAILFAST_NEW" = "0" ]; then
+  pass "fail-fast made no commit since baseline"
+else
+  fail "fail-fast made $FAILFAST_NEW commit(s) since baseline (expected 0)"
+fi
+
+rm -f "$FAILFAST_OUT"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 

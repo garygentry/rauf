@@ -684,6 +684,9 @@ function isLimitTerminal(result: LoopResult): boolean {
  * RUNNING(6) is NEVER returned here — a finished run is not running.
  */
 export function loopRunExitCode(result: LoopResult): ExitCode {
+  if (result.setupFailed) {
+    return ExitCode.ERROR; // 1 — pre-loop setup aborted (e.g. agent unavailable, REQ-DET-02/SC-3)
+  }
   const needsHuman = (result.needsHumanCount ?? 0) > 0 || result.pausedReason === "needs_human";
   if (needsHuman) {
     return ExitCode.NEEDS_HUMAN; // 3

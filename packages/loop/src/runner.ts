@@ -85,6 +85,14 @@ export interface LoopResult {
    * Analogous to `pausedReason` — a clearly-named optional carrier, not a shape change.
    */
   limitReached?: boolean;
+  /**
+   * Set by {@link failRunSetup} when pre-loop setup aborts the run before any
+   * iteration (fail-fast agent detection or run-level provider resolution). Maps
+   * to ExitCode.ERROR so an unavailable agent surfaces a NON-zero exit (REQ-DET-02,
+   * SC-3). The human-readable error is on the emitted `loop_error` event; this is
+   * just the carrier the CLI exit mapping keys on — analogous to `limitReached`.
+   */
+  setupFailed?: boolean;
 }
 
 /** Result of a review pass */
@@ -141,6 +149,12 @@ export class LoopRunner extends TypedEventEmitter {
   private projectProvider?: string;
   /** Global default agent id, read once at loop start (04 §5.1). */
   private globalProvider?: string;
+  /**
+   * Project-level generic adapter config (MarkerOptions.providerConfig, schemas.ts:149),
+   * read once at loop start. Threaded into createProvider so the reserved `generic-cli`
+   * id (and any config-driven factory) resolves its binary from the marker (03 §7.2).
+   */
+  private projectProviderConfig?: Record<string, unknown>;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -253,6 +267,7 @@ export class LoopRunner extends TypedEventEmitter {
         sweepMinAgeDays = opts.sweepMinAgeDays ?? 0;
         projectModel = opts.model;
         this.projectProvider = opts.provider; // MarkerOptions.provider (schemas.ts:148)
+        this.projectProviderConfig = opts.providerConfig; // MarkerOptions.providerConfig (schemas.ts:149)
       }
       // Read the global default agent once (ToolConfig.defaultProvider, schemas.ts:222).
       // Hoisted out of the iteration loop — it does not vary per item.
@@ -487,7 +502,10 @@ export class LoopRunner extends TypedEventEmitter {
     if (cached) return ok(cached);
 
     try {
-      const provider = createProvider(agentId); // may throw on unknown id
+      // Pass the marker providerConfig so the config-driven `generic-cli` factory
+      // (and any named config-driven factory) resolves its binary (03 §7.2). The
+      // preset/claude factories ignore the config arg, so this is safe for all ids.
+      const provider = createProvider(agentId, this.projectProviderConfig); // may throw on unknown id
       this.providerCache.set(agentId, provider);
       return ok(provider);
     } catch (e) {
@@ -582,7 +600,7 @@ export class LoopRunner extends TypedEventEmitter {
   private failRunSetup(error: RaufError): LoopResult {
     appendLog(this.paths, error.message);
     this.emitEvent("loop_error", { error: error.message });
-    return { completedCount: 0, blockedCount: 0, cancelled: false };
+    return { completedCount: 0, blockedCount: 0, cancelled: false, setupFailed: true };
   }
 
   /**

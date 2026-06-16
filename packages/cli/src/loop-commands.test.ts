@@ -145,6 +145,16 @@ describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)",
       result: { ...base, blockedCount: 1, limitReached: true },
       expected: ExitCode.LIMIT,
     },
+    {
+      name: "setupFailed → ERROR(1) (fail-fast agent unavailable, REQ-DET-02/SC-3)",
+      result: { ...base, setupFailed: true },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "setupFailed precedes every other terminal (highest priority)",
+      result: { ...base, setupFailed: true, completedCount: 5, limitReached: true },
+      expected: ExitCode.ERROR,
+    },
   ];
 
   it.each(cases)("$name", ({ result, expected }) => {
