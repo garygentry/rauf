@@ -4,7 +4,8 @@
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
   "updatedAt": "2026-06-16T00:00:00Z",
-  "currentStage": "forge-2-tech",
+  "currentStage": "forge-3-specs",
+  "notes": "forge-3-specs/impl: confirm the Codex/Copilot/Cursor/Gemini native frontmatter schemas and invocation-hint fields (tech-spec TQ-1) against official agent docs before emitting; emitters are isolated so corrections stay localized. YAML lib (TQ-2) pin is part of the determinism contract.",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
@@ -20,7 +21,15 @@
       "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
       "findingsCount": 3,
       "verifiedAt": "2026-06-16T00:00:00Z",
-      "fixedAt": "2026-06-16T00:00:00Z"
+      "fixedAt": "2026-06-16T00:00:00Z",
+      "commitHash": "57a1ab0"
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "basedOnVersions": { "forge-1-prd": 1 },
+      "artifacts": ["tech-spec.md"],
+      "completedAt": "2026-06-16T00:00:00Z"
     }
   }
 }
