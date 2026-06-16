@@ -125,3 +125,14 @@ This is a high-quality tech spec. Every load-bearing source claim that was check
 - Step 2: [APPLIED] 2026-06-16 — V-001: §4 `featureForgeVersion` changed to `string | null` with a comment that bundles carry no version coordinate today (deferred to generator, C-3); extended §10 OQ-A to track the missing version coordinate alongside the resolver sentinels.
 - Step 3: [APPLIED] 2026-06-16 — V-003: §6 `.gitignore` "(17 lines)" → "(16 lines)".
 - Step 4: [APPLIED] 2026-06-16 — V-004: §6 V-001 reconciliation note broadened to require the consume correction in **both** `epic-manifest.json` and `EPIC.md` in lockstep (CHECK-E06).
+
+## Confirmation Re-run (2026-06-16)
+
+A confirmation forge-verify (tech mode) was run against the fixed spec (commit `012a9ca`): **17 of 17 checks pass, 0 new findings**. All 4 prior findings re-verified against the current artifacts + source:
+
+- **V-001 — RESOLVED:** §4 `featureForgeVersion: string | null` with deferral note; §10 OQ-A extended. Confirmed no `plugin.json`/version header exists in any bundle.
+- **V-002 — RESOLVED:** §3.1 explicit REQ-RAUF-04 paragraph; header range `..05`; all 40 REQs trace.
+- **V-003 — RESOLVED:** §6 "(16 lines)"; `wc -l .gitignore` = 16 confirmed.
+- **V-004 — RESOLVED:** §6 note names both `epic-manifest.json` and `EPIC.md` in lockstep (the stale `agent-cli-registry` consume still lives in both — deferred to an epic-level fix, correctly not done in this spec).
+
+No fix-induced contradictions found (checked §4 ↔ §3.1 ↔ §3.6 consistency). **Verdict: tech spec clean → `forge-verify-tech` advanced to `passed`.**
