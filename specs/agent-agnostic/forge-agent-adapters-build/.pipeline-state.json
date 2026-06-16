@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-16T20:47:26Z",
+  "updatedAt": "2026-06-16T20:56:33Z",
   "currentStage": "forge-6-docs",
   "notes": "forge-3-specs/impl: confirm the Codex/Copilot/Cursor/Gemini native frontmatter schemas and invocation-hint fields (tech-spec TQ-1) against official agent docs before emitting; emitters are isolated so corrections stay localized. YAML lib (TQ-2) pin is part of the determinism contract.",
   "stages": {
@@ -88,6 +88,12 @@
       "artifacts": ["backlog.json"],
       "commitHash": "7efc0f6",
       "notes": "Cross-repo run: all 11 items implemented in feature-forge (branch forge/skill-spec-purity) as [rauf] commits 7ad0f90..ef7e8f0; staged backlog .forge-loop/ (gitignored). validate.sh completion gate green (spec-purity 0, adapters/ drift-clean, 104 pytest). Statuses synced back here."
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-impl-2026-06-16.md",
+      "findingsCount": 2,
+      "verifiedAt": "2026-06-16T20:56:33Z",
+      "fixedAt": "2026-06-16T20:56:33Z",
+      "notes": "Parallel forge-verifier fan-out (4 dimensions, 20/20 checks pass). 2 improvement-severity findings only (V-001 cursor byte-fidelity test, V-002 Form-C provenance comment); 0 gaps/errors. Both applied in feature-forge commit 340b6d0; validate.sh green (104 pytest, adapters drift-clean)."
     }
-  }
-}
