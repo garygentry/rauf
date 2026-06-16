@@ -25,20 +25,22 @@ This feature solves that by adding a deterministic **canonical→per-agent build
 
 ### 3.1 Adapter Generator (`build-adapters`)
 
-- **REQ-GEN-01**: The system MUST provide a generator that walks every canonical skill under `skills/`, parses its frontmatter and body, and emits per-agent artifacts into an `adapters/` tree.
+- **REQ-GEN-01**: The system MUST provide a generator that walks every canonical skill under `skills/` **and every canonical sub-agent definition under `agents/`**, parses each one's frontmatter and body, and emits per-agent artifacts into an `adapters/` tree.
   - Priority: P0
+  - Notes: `agents/` is a first-class canonical surface (it appears in `check-spec-purity.py`'s `CANONICAL_SURFACES` alongside `skills/` and `references/`), so the generator's input set MUST cover it, not just `skills/`.
 - **REQ-GEN-02**: The generator MUST be invokable as a single command from the feature-forge repo root, requiring no interactive input.
   - Priority: P0
 - **REQ-GEN-03**: The generator MUST target these agents in v1: **Claude**, **Codex**, **Copilot**, **Cursor**, **Gemini**. Claude is included as a generated target (not merely the canon), so all five agents' artifacts derive from the same source.
   - Priority: P0
   - Notes: Claude is generated to restore native frontmatter (see REQ-VND-01) and to keep every agent uniformly derived from canon.
-- **REQ-GEN-04**: For each canonical skill, the generated per-agent bundle MUST be self-contained: it MUST include the skill's `references/`, any shared references the skill depends on (e.g. `shared-conventions.md`), and the `forge-root.sh` resolver, such that the skill set is runnable for that agent without reaching back into canon.
+- **REQ-GEN-04**: For each canonical skill (and each `agents/` definition per REQ-GEN-01), the generated per-agent bundle MUST be self-contained: it MUST include the skill's own `references/`, the **transitive closure** of shared references it depends on, and the `forge-root.sh` resolver, such that the skill set is runnable for that agent without reaching back into canon.
   - Priority: P0
-  - Notes: Exact on-disk layout per agent is a tech-spec decision; the self-containment requirement is fixed here.
+  - Notes: "Transitive closure of shared references" means every shared reference reachable from a skill/agent body, not just the named example. The canonical shared-reference set actually present in feature-forge is the repo-root `references/` tree — its `*.md` files (including load-bearing ones such as `shared-conventions.md`, `portable-root.md`, `stack-resolution.md`), the `references/stacks/` subtree, and the schema JSON files. Whether the closure is computed (parse skill/agent bodies for `references/...` mentions) or whole-tree copied is a tech-spec decision; the fixed requirement is that the resulting bundle is runnable without reaching back into canon. Exact on-disk layout per agent is also a tech-spec decision.
 - **REQ-GEN-05**: The `forge-root.sh` resolver MUST be copied **verbatim** (byte-identical) into each per-agent script mirror; the generator MUST NOT reflow or edit it.
   - Priority: P0
-- **REQ-GEN-06**: Canonical sub-agent definitions (e.g. `agents/forge-verifier.md`) MUST be translated into each target agent's native form where the agent supports an equivalent construct, and recorded as dropped where it does not (see REQ-OBS-01).
+- **REQ-GEN-06**: All canonical sub-agent definitions under `agents/` (currently `forge-researcher.md`, `forge-spec-writer.md`, `forge-verifier.md`) MUST be translated into each target agent's native form where the agent supports an equivalent construct, and recorded as dropped where it does not (see REQ-OBS-01).
   - Priority: P1
+  - Notes: The generator MUST cover the complete `agents/` set discovered by the REQ-GEN-01 walk, not a fixed example; adding a new sub-agent definition requires no generator change (see REQ-SCALE-01).
 
 ### 3.2 Per-Agent Format Translation
 

@@ -33,7 +33,7 @@
       "charter": "Target repo: feature-forge. Add the canonical-to-per-agent build step: a generator that walks the spec-pure canonical skills, parses frontmatter, and emits per-agent artifacts (Codex mirror + optional agents/openai.yaml, Copilot copy with Copilot frontmatter, Cursor .mdc, gemini-extension.json) into adapters/, each carrying a DO-NOT-EDIT generated header. Author the canonical AGENTS.md cross-agent project instructions (documenting build/test/conventions and install priority). Wire a CI regenerate-and-diff so generated adapters can never drift from canon. Consumes the spec-pure skills and portable resolver as read-only inputs. Exposes the generator, AGENTS.md, and the generated adapters/ tree that the installer ships.",
       "dependsOn": ["forge-skill-spec-purity"],
       "exposes": [
-        { "name": "build-adapters", "kind": "function", "summary": "Generator deriving per-agent artifacts (codex/copilot/cursor/gemini) from the canonical skills." },
+        { "name": "build-adapters", "kind": "function", "summary": "Generator deriving per-agent artifacts (claude/codex/copilot/cursor/gemini) from the canonical skills." },
         { "name": "AGENTS.md", "kind": "module", "summary": "Canonical cross-agent project instructions: build/test, conventions, and install-path priority." },
         { "name": "adapters-output", "kind": "module", "summary": "Generated adapters/ tree (per-agent skill mirrors + manifests) consumed by the installer and CI diff." }
       ],

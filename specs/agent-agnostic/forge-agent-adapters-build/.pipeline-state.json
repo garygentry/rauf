@@ -14,6 +14,13 @@
       "artifacts": ["PRD.md"],
       "completedAt": "2026-06-16T00:00:00Z",
       "commitHash": "54c8f66"
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-06-16T00:00:00Z",
+      "fixedAt": "2026-06-16T00:00:00Z"
     }
   }
 }
