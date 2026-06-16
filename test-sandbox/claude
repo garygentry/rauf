@@ -1,4 +1,8 @@
 #!/bin/bash
-SCENARIO="${MOCK_CLAUDE_SCENARIO:-stream-done}"
+# Mock claude dispatcher. Resolves the scenario from MOCK_AGENT_SCENARIO first
+# (the canonical cross-agent env), falling back to the legacy MOCK_CLAUDE_SCENARIO
+# and finally stream-done — so every existing MOCK_CLAUDE_SCENARIO usage keeps
+# working unchanged. Emits stream-json (MOCK_AGENT_FORMAT defaults to stream).
+SCENARIO="${MOCK_AGENT_SCENARIO:-${MOCK_CLAUDE_SCENARIO:-stream-done}}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 exec bash "$SCRIPT_DIR/scenarios/${SCENARIO}.sh" "$@"

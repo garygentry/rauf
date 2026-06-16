@@ -1,5 +1,14 @@
 #!/bin/bash
+# shellcheck source=_emit.sh
+source "$(cd "$(dirname "$0")" && pwd)/_emit.sh"
 cat > /dev/null
+
+# Plain mode emits no tool telemetry — that path is claude-only (stream-json).
+if is_plain; then
+  emit_done "All changes applied and verified."
+  exit 0
+fi
+
 echo '{"type":"message_start","message":{"usage":{"input_tokens":20000}}}'
 echo '{"type":"content_block_start","index":0,"content_block":{"type":"text"}}'
 echo '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me read and modify the files.\n\n"}}'

@@ -12,11 +12,18 @@
 # GIT_DIR / GIT_WORK_TREE are exported by run.sh / verify.sh and point at the
 # sandbox's throwaway repo, so the git commands here land there, never the
 # parent rauf repo.
+# shellcheck source=_emit.sh
+source "$(cd "$(dirname "$0")" && pwd)/_emit.sh"
 cat > /dev/null
+
+if ! is_plain; then
 echo '{"type":"message_start","message":{"usage":{"input_tokens":12000}}}'
 echo '{"type":"content_block_start","index":0,"content_block":{"type":"text"}}'
 echo '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Implemented the change and committing it.\n\n"}}'
 echo '{"type":"content_block_stop","index":0}'
+else
+  printf '%s\n' "Implemented the change and committing it."
+fi
 
 # Produce a real code change and commit it as the iteration's work. `git add -A`
 # also stages the in_progress backlog.json bookkeeping, leaving a clean tree —
@@ -29,6 +36,8 @@ git add -A -- . ':(exclude,glob)**/.rauf/state.json' ':(exclude,glob)**/.rauf/ra
 git -c user.email="sandbox@rauf.test" -c user.name="Rauf Sandbox" -c commit.gpgsign=false \
   commit -q -m "[rauf] 001: recovered via commit" >/dev/null 2>&1
 
-echo '{"type":"message_delta","usage":{"output_tokens":1800}}'
-echo '{"type":"message_stop"}'
+if ! is_plain; then
+  echo '{"type":"message_delta","usage":{"output_tokens":1800}}'
+  echo '{"type":"message_stop"}'
+fi
 # Exit WITHOUT printing RAUF_DONE — the signal is lost.

@@ -310,8 +310,8 @@
         "Running an existing claude scenario via the generalized run.sh behaves exactly as before",
         "pnpm gate passes (the unit suites are unaffected by the sandbox changes)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-16T00:04:11.467Z",
       "dependsOn": [
         "010",
         "011"
