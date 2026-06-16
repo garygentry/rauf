@@ -8,11 +8,12 @@
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "basedOnVersions": {},
       "artifacts": ["PRD.md"],
-      "completedAt": "2026-06-16T00:00:00Z"
+      "completedAt": "2026-06-16T00:00:00Z",
+      "commitHash": "54c8f66"
     }
   }
 }
