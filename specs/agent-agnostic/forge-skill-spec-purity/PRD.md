@@ -1,7 +1,7 @@
 # forge-skill-spec-purity — Product Requirements Document
 
 > **Epic:** `agent-agnostic` · **Feature:** `forge-skill-spec-purity` · **Version:** 1
-> **Target repo:** `feature-forge` · **Depends on:** none · **Consumed by:** `forge-agent-adapters-build`
+> **Target repo:** `feature-forge` · **Depends on:** none · **Consumed by:** `forge-agent-adapters-build` (consumes `spec-pure-skills` + `portable-skill-root-resolver`), `packaging-docs-ci` (consumes `spec-pure-skills`)
 
 ## 1. Problem Statement
 
@@ -40,8 +40,9 @@ Today there is no such canon. Every downstream feature in the epic (`forge-agent
 - **REQ-VND-01**: The Claude-specific `argument-hint` key MUST be relocated out of top-level frontmatter into the spec-allowed `metadata` map (preserving its value), for every skill that currently declares it.
   - Priority: P0
   - Notes: Default chosen in lieu of a per-agent sidecar; keeps canon self-contained and lossless.
-- **REQ-VND-02**: Any other vendor-only directive discovered during the audit (Claude hook wiring, and forward-looking Codex/Copilot/Cursor invocation policy) MUST be removed from the canonical `SKILL.md` body and frontmatter, and either relocated to a clearly non-canonical location or documented as belonging to a later per-agent adapter.
+- **REQ-VND-02**: Any other vendor-only directive discovered during the audit MUST be removed from the canonical `SKILL.md` body and frontmatter, and either relocated to a clearly non-canonical location or documented as belonging to a later per-agent adapter.
   - Priority: P0
+  - Notes: As of authoring, the only in-canon vendor constructs found across the 11 skills are `argument-hint` (handled by REQ-VND-01), the Claude `hooks/hooks.json` wiring (REQ-VND-04), and `${CLAUDE_PLUGIN_ROOT}` (REQ-RES-03). No Codex/Copilot/Cursor/Gemini invocation directives exist in any `SKILL.md` body today — so this requirement is a **contingency**: IF the exhaustive audit (REQ-VND-03) surfaces any such vendor invocation directive, it MUST be relocated/removed under this requirement.
 - **REQ-VND-03**: The audit MUST be exhaustive: a documented inventory of every vendor-specific construct found across all 11 skills (and their `references/`) MUST be produced, with each item's disposition (relocated / removed / preserved-as-spec-allowed) recorded.
   - Priority: P1
 - **REQ-VND-04**: Claude hook wiring (`hooks/hooks.json`) is Claude-specific. This feature MUST NOT delete functioning Claude behavior; it MAY leave `hooks.json` in place as a non-canonical Claude artifact, but MUST document it as vendor-specific (out of canon) so the adapter build treats it accordingly.
@@ -53,9 +54,9 @@ Today there is no such canon. Every downstream feature in the epic (`forge-agent
   - Priority: P0
 - **REQ-RES-02**: The resolver MUST resolve the skill/plugin root relative to its own on-disk location first (so it works under any agent's install layout), then fall back to probing known candidate skill roots and finally honored environment variables (including `${CLAUDE_PLUGIN_ROOT}` for backward compatibility).
   - Priority: P0
-- **REQ-RES-03**: Every current `${CLAUDE_PLUGIN_ROOT}` usage in canonical surfaces — `SKILL.md` bodies, `references/`, and `hooks` invocations — MUST be replaced by (or routed through) the portable resolver, OR retained only as a documented fallback inside the resolver itself.
+- **REQ-RES-03**: Every current `${CLAUDE_PLUGIN_ROOT}` usage in **canonical** surfaces — `SKILL.md` bodies and `references/` — MUST be replaced so the surface invokes the portable resolver (REQ-RES-05) instead of referencing the Claude-only env var directly. ("Routed through" = the body or bundled script calls the resolver, not the raw variable.) The ONLY sanctioned residual `${CLAUDE_PLUGIN_ROOT}` is the documented fallback inside the **single portable-resolver file** itself (REQ-RES-02/05). The non-canonical Claude `hooks/hooks.json` (REQ-VND-04) is **out of scope** for this requirement: it is not a canonical surface, so its `${CLAUDE_PLUGIN_ROOT}` is exempt and stays in place as a documented Claude artifact.
   - Priority: P0
-  - Notes: ~20 occurrences identified across `forge-0-epic`, `forge`, `forge-verify`, `forge-5-loop`, `forge-6-docs`, `forge-init`, `shared-conventions.md`, and `hooks.json`.
+  - Notes: ~21 occurrences as of authoring — **derive the authoritative loci by grepping `${CLAUDE_PLUGIN_ROOT}` across the tree** rather than trusting this list. Known loci: `forge-0-epic` SKILL (12), `forge` SKILL (3), `forge-5-loop` SKILL (1), `forge-6-docs` SKILL (1), `forge-init` SKILL (1), `forge-verify` SKILL (1), `forge-verify/references/verification-checklists.md` (1), and `references/shared-conventions.md` (2) — these are the canonical surfaces in scope. The non-canonical `hooks/hooks.json` (1) is **exempt** per REQ-VND-04 (see this requirement's body).
 - **REQ-RES-04**: When the root cannot be resolved by any strategy, the resolver MUST fail with a clear, actionable error message (not a silent failure or an empty path).
   - Priority: P1
 - **REQ-RES-05**: The resolver MUST be a reusable unit (a single function/script) so the later adapter build can copy it verbatim into per-agent script mirrors. It is one of this feature's two exposed artifacts (`portable-skill-root-resolver`).
@@ -63,13 +64,13 @@ Today there is no such canon. Every downstream feature in the epic (`forge-agent
 
 ### 3.4 Skill Body Size Discipline
 
-- **REQ-SIZE-01**: Each `SKILL.md` body SHOULD be reduced to within the Agent Skills recommended size budget; overflow detail MUST be moved into the skill's `references/` directory rather than deleted.
-  - Priority: P1
-  - Notes: Known overruns to address: `forge-0-epic` (522 lines), `forge-5-loop` (423), `forge-verify` (342). Remaining 8 skills are already within budget and need no size work.
+- **REQ-SIZE-01**: Each `SKILL.md` body SHOULD be reduced to within the size budget defined in REQ-SIZE-03. For the three skills currently over budget (`forge-0-epic`, `forge-5-loop`, `forge-verify`) this is a **hard requirement**: they MUST be brought within budget, and overflow detail MUST be moved into the skill's `references/` directory rather than deleted.
+  - Priority: P0
+  - Notes: Known overruns to address: `forge-0-epic` (522 lines), `forge-5-loop` (423), `forge-verify` (342). Remaining 8 skills are already within budget and need no size work. The spec-purity checker (REQ-VER-01) enforces the budget as a **hard gate** — an over-budget body fails the check (REQ-VER-02/03), so the three named skills block completion until reduced.
 - **REQ-SIZE-02**: Relocating content into `references/` MUST preserve all instructions; any reference the body relied on inline MUST become an explicit pointer to the moved content so the agent can still find it.
   - Priority: P0
-- **REQ-SIZE-03**: A concrete, checkable size budget MUST be defined (e.g., a maximum line and/or word count for the body) so "within recommended size" is objectively verifiable.
-  - Priority: P1
+- **REQ-SIZE-03**: A concrete, checkable size budget MUST be defined so "within recommended size" is objectively verifiable. **Binding (provisional, pending tech-spec confirmation per OQ-1):** a `SKILL.md` **body** (content below the frontmatter) MUST NOT exceed **500 lines or 5,000 words**, whichever limit is reached first. The spec-purity checker (REQ-VER-01) uses this single threshold; the tech spec MAY tighten it but MUST NOT loosen it without revisiting OQ-1.
+  - Priority: P0
 
 ### 3.5 Canonical Single Source of Truth
 
@@ -82,9 +83,9 @@ Today there is no such canon. Every downstream feature in the epic (`forge-agent
 
 ### 3.6 Spec-Purity Verification
 
-- **REQ-VER-01**: A runnable spec-purity checker MUST be delivered that validates the canon against the rules in §3.1–§3.4: allowed-frontmatter-keys-only, `name == directory`, required keys present, no residual `${CLAUDE_PLUGIN_ROOT}` in canonical surfaces (outside the resolver's documented fallback), and size budget compliance.
+- **REQ-VER-01**: A runnable spec-purity checker MUST be delivered that validates the canon against the rules in §3.1–§3.4: allowed-frontmatter-keys-only, `name == directory`, required keys present, no residual `${CLAUDE_PLUGIN_ROOT}` in canonical surfaces (outside the single portable-resolver file's documented fallback per REQ-RES-05; the non-canonical `hooks/hooks.json` is also exempt per REQ-VND-04), and size budget compliance.
   - Priority: P0
-  - Notes: `packaging-docs-ci` wires this into CI later; this feature owns the check itself so it has an objective acceptance gate.
+  - Notes: `packaging-docs-ci` wires this into CI later; this feature owns the check itself so it has an objective acceptance gate. The size-budget assertion is **parameterized by the single threshold in REQ-SIZE-03** (500 lines / 5,000 words) and is a hard failure: an over-budget body makes the checker exit non-zero.
 - **REQ-VER-02**: The checker MUST exit non-zero and report each violation with file + reason when canon is impure, and exit zero when canon is clean.
   - Priority: P0
 - **REQ-VER-03**: The checker MUST run green against the final state of all 11 skills as the feature's completion gate.
@@ -144,7 +145,7 @@ Today there is no such canon. Every downstream feature in the epic (`forge-agent
 1. The spec-purity checker (REQ-VER-01) runs green against all 11 skills.
 2. Every `SKILL.md` frontmatter contains only spec-sanctioned keys, with `argument-hint` preserved under `metadata` (REQ-FM-01, REQ-VND-01).
 3. No canonical surface depends on `${CLAUDE_PLUGIN_ROOT}` except as a documented resolver fallback (REQ-RES-03).
-4. The three oversized skills are within the defined size budget, with relocated content intact in `references/` (REQ-SIZE-01/02).
+4. The three oversized skills are within the defined size budget (REQ-SIZE-03: ≤500 lines / ≤5,000 words body), with relocated content intact in `references/`, and the checker's size gate passes (REQ-SIZE-01/02, REQ-VER-01).
 5. All 11 skills still trigger and behave identically under Claude Code; the plugin still loads (REQ-COMPAT-01/02).
 6. A vendor-construct inventory with dispositions exists (REQ-VND-03).
 7. The canon is consumable as the read-only `spec-pure-skills` + `portable-skill-root-resolver` inputs by `forge-agent-adapters-build` (REQ-SOT-01/05).
