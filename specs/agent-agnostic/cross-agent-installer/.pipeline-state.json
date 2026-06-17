@@ -69,6 +69,7 @@
       "artifacts": ["backlog.json"],
       "startedAt": "2026-06-17T00:45:00Z",
       "completedAt": "2026-06-17T01:05:00Z",
+      "commitHash": "638d976",
       "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 1, "forge-3-specs": 1 },
       "notes": "13 items, validated clean by rauf-stable backlog validate (valid:true, 0 findings). Bottom-up build order; verify gate is feature-forge bash scripts/validate.sh (step 8), NOT pnpm gate (C-2). Item 011 uses agentDelegation (4 e2e subtasks); 013 is the epic-level V-001 consumes fix (P2)."
     },
