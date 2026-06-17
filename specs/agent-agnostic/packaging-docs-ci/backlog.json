@@ -167,8 +167,8 @@
         "Run from ../feature-forge: `ruff check eval/` reports no E/F/W violations",
         "The harness contains no blocking accuracy threshold (advisory only)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:07:02.678Z",
       "dependsOn": [],
       "notes": "Model pin claude-haiku-4-5-20251001 + MAX_TOKENS 64 bound cost (OQ-D). Two-fixture coverage is the deliberate SC-06 floor; full-catalog coverage is out of scope. Creating eval/ here is what the CI composite's `[ -d eval ]` ruff guard anticipates — no ordering constraint with item 003.",
       "estimatedIterations": 1,
