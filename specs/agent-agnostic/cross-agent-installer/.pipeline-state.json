@@ -121,7 +121,7 @@
         "backlog.json"
       ],
       "notes": "Cross-repo run: impl committed to feature-forge branch forge/cross-agent-installer as [rauf] 001-012 (13 items, all done; item 013 was the rauf-side epic-manifest V-001 consumes fix). Loop ran natively in feature-forge via staged .forge-loop backlog; verify=bash scripts/validate.sh. 14 iterations/20.",
-      "commitHash": "c535a0e"
+      "commitHash": "a517002"
     }
   }
 }
