@@ -6,6 +6,12 @@
   "updatedAt": "2026-06-17T17:01:34Z",
   "currentStage": "forge-6-docs",
   "stages": {
+    "forge-verify-impl": {
+      "status": "findings-reported",
+      "findingsFile": ".verification/VERIFY-impl-2026-06-17.md",
+      "findingsCount": 2,
+      "verifiedAt": "2026-06-17T17:01:34Z"
+    },
     "forge-5-loop": {
       "status": "complete",
       "startedAt": "2026-06-17T16:41:02Z",
