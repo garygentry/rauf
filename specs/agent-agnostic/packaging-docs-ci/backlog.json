@@ -369,14 +369,17 @@
       "dependsOn": [
         "005",
         "006",
+        "007",
+        "008",
         "009",
         "010",
+        "011",
         "012",
         "013",
         "014",
         "016"
       ],
-      "notes": "If some referenced subsections land after this item, include only the already-true ones — but all 16 items are part of this feature, so the full lists are accurate. The rauf changelog edit is plain Markdown; watch the check:docs triggers (item 011's notes). V-004 fix: dependsOn the deliverable-producing items so the CHANGELOG is authored after the work it enumerates has landed (avoids claiming not-yet-true subsections).",
+      "notes": "If some referenced subsections land after this item, include only the already-true ones — but all 16 items are part of this feature, so the full lists are accurate. The rauf changelog edit is plain Markdown; watch the check:docs triggers (item 011's notes). V-004 fix: dependsOn the deliverable-producing items so the CHANGELOG is authored after the work it enumerates has landed (avoids claiming not-yet-true subsections). V-001 (reverify) fix: added 007/008/011 so dependsOn fully matches the deliverables the CHANGELOG enumerates (eval harness, eval.yml, rauf README cross-agent section); 001/003 already transitive via 005.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
