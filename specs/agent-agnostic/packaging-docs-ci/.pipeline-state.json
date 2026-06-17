@@ -125,8 +125,9 @@
       "fixedAt": "2026-06-17T22:37:09Z"
     },
     "forge-6-docs": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
+      "commitHash": "71c91d380b17e4129507150bd192ef924c2c0e54",
       "startedAt": "2026-06-17T23:31:26Z",
       "completedAt": "2026-06-17T23:31:26Z",
       "basedOnVersions": {
