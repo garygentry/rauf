@@ -143,8 +143,8 @@
         "Local Linux leg passes: from ../feature-forge run `cd installer && npm ci && npm run build && cd ..` then `node installer/dist/cli.js install --dry-run --skip-rauf --json` (exit 0, valid JSON) and `node installer/dist/cli.js uninstall -y --skip-rauf` (exit 0)",
         "The os-matrix.yml file parses as valid YAML"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:00:26.213Z",
       "dependsOn": [],
       "notes": "Consumes the cross-agent-installer CLI surface (00 §7); authors no installer behavior. The committed adapters/<agent>/ bundles must be present (they are). SC-05 done bar: local leg passes AND all three legs are declared; live three-OS green is post-merge.",
       "estimatedIterations": 1,
