@@ -137,7 +137,8 @@ and its per-agent detection map that packaging/docs and the forge loop integrati
 
 **Consumes:**
 - `adapters-output` from `forge-agent-adapters-build` — The generated per-agent artifacts the installer copies/symlinks into each agent's dir.
-- `agent-cli-registry` from `rauf-agent-cli-adapters` — rauf's agent adapter layer, bundled as the default loop runner in the multi-agent install.
+
+_External (not an intra-epic contract):_ the installer provisions the published **rauf** bin (`rauf@0.6.0`, npm/GitHub-release coordinate) at install time; downstream `forge-rauf-loop-default` invokes it as the default loop runner. Out of scope: rauf's internal `agent-cli-registry` module (per the feature's §6).
 
 ### forge-rauf-loop-default
 
