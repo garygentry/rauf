@@ -320,8 +320,8 @@
         "No separate docs-license file is added and no per-file SPDX headers are introduced",
         "rauf/LICENSE is not modified by this item"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:08:12.469Z",
       "dependsOn": [],
       "notes": "feature-forge and rauf intentionally keep different copyright holder strings (Gary Gentry vs Ralph Contributors) — both MIT, satisfying REQ-LIC-01. Docs are covered by the single root LICENSE (REQ-LIC-02).",
       "estimatedIterations": 1,
