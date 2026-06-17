@@ -20,7 +20,8 @@
       "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
       "findingsCount": 4,
       "verifiedAt": "2026-06-16T00:00:00Z",
-      "fixedAt": "2026-06-17T00:00:00Z"
+      "fixedAt": "2026-06-17T00:00:00Z",
+      "commitHash": "92130debf4673368a9614f4ae9f8eccc4ba1b681"
     }
   }
 }
