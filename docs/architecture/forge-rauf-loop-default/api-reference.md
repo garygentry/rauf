@@ -9,36 +9,36 @@ Three surfaces make up this feature: the `loopRunner` **config fields**, the run
 All three are flat string fields on the `loopRunner` object, tokenized like the existing
 `*Command` fields. The **presence** of `agentArgument` is the capability gate.
 
-| Field | Type | Default | Purpose |
-|-------|------|---------|---------|
-| `agentArgument` | string | `"--agent {agent}"` | Tokenized argument appended to the launch command (`eventStreamCommand`/`runCommand`) when forge resolves a non-default agent. `{agent}` is substituted **only** with a validated, advertised id. Its presence arms the entire agent surface; omit it to disable. |
-| `agentsProbeCommand` | string | `"{bin} agents --json"` | Availability probe. MUST emit `{ agents: [{ id, displayName, available, ... }] }` and exit 0. Run **once** (no retries) before launching a non-default agent. |
-| `defaultAgent` | string | `""` | Project-default agent id, so a project can fix its agent once. `""` ⇒ no project default (the runner's own default applies). Overridden by the per-run selector. |
+| Field                | Type   | Default                 | Purpose                                                                                                                                                                                                                                                           |
+| -------------------- | ------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentArgument`      | string | `"--agent {agent}"`     | Tokenized argument appended to the launch command (`eventStreamCommand`/`runCommand`) when forge resolves a non-default agent. `{agent}` is substituted **only** with a validated, advertised id. Its presence arms the entire agent surface; omit it to disable. |
+| `agentsProbeCommand` | string | `"{bin} agents --json"` | Availability probe. MUST emit `{ agents: [{ id, displayName, available, ... }] }` and exit 0. Run **once** (no retries) before launching a non-default agent.                                                                                                     |
+| `defaultAgent`       | string | `""`                    | Project-default agent id, so a project can fix its agent once. `""` ⇒ no project default (the runner's own default applies). Overridden by the per-run selector.                                                                                                  |
 
 Two existing fields changed:
 
-| Field | Change |
-|-------|--------|
-| `minRunnerVersion` | Default bumped `0.5.0` → **`0.6.0`** — the agent-surface floor (the rauf release shipping `--agent`, the `agents` probe, and the preset registry). |
-| `installHint` | Now names two binary-provisioning paths: the cross-agent installer (`npx feature-forge install`, recording the pinned `rauf@0.6.0`) **and** the direct rauf CLI one-liner (`curl … install-binary.sh \| bash`). `setupHint` is unchanged. |
+| Field              | Change                                                                                                                                                                                                                                    |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `minRunnerVersion` | Default bumped `0.5.0` → **`0.6.0`** — the agent-surface floor (the rauf release shipping `--agent`, the `agents` probe, and the preset registry).                                                                                        |
+| `installHint`      | Now names two binary-provisioning paths: the cross-agent installer (`npx feature-forge install`, recording the pinned `rauf@0.6.0`) **and** the direct rauf CLI one-liner (`curl … install-binary.sh \| bash`). `setupHint` is unchanged. |
 
 ## Probe contract (`agents --json`)
 
 The probe command MUST:
 
 - **Always exit 0.** Availability is conveyed in the data, never the exit code. An
-  unknown id is *absent*; a known-unavailable id is *present* with `available: false`.
+  unknown id is _absent_; a known-unavailable id is _present_ with `available: false`.
 - Emit `{ "agents": [ AgentAvailability, … ] }` on stdout.
 
 Each `AgentAvailability` row:
 
-| Field | Required | Meaning |
-|-------|----------|---------|
-| `id` | yes | Stable registry key — the only field read for the advertised (allow-list) set. |
-| `displayName` | yes | Human-readable name (e.g. `"Claude Code (CLI)"`). |
-| `available` | yes | Whether the agent's CLI / credentials are currently present. |
-| `binaryName` | no | Executable probed on PATH (absent for binary-less descriptors). |
-| `detail` | no | PATH location, `"not found"`, or credential status — surfaced in the UNAVAILABLE warning. |
+| Field         | Required | Meaning                                                                                   |
+| ------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `id`          | yes      | Stable registry key — the only field read for the advertised (allow-list) set.            |
+| `displayName` | yes      | Human-readable name (e.g. `"Claude Code (CLI)"`).                                         |
+| `available`   | yes      | Whether the agent's CLI / credentials are currently present.                              |
+| `binaryName`  | no       | Executable probed on PATH (absent for binary-less descriptors).                           |
+| `detail`      | no       | PATH location, `"not found"`, or credential status — surfaced in the UNAVAILABLE warning. |
 
 ## `loop-agent-selection.py`
 

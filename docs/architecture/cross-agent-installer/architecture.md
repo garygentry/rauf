@@ -20,20 +20,20 @@ cli ──┬─ detect ──── agent-targets ── types
 index  (library barrel — re-exports the public surface only)
 ```
 
-| Module | Responsibility |
-|--------|----------------|
-| `types` | Shared types + constants: `AGENT_IDS`, `EXIT`, `MANIFEST_PREFIX`, `Scope`, `Mode`, `InstallManifest`, `PlannedAction`, `RunReport`, the `ErrorCode` union, and the `Result<T,E>` helpers. |
-| `agent-targets` | The static per-agent config-dir map plus detection (`detectAgent`/`detectAgents`) and root/destination resolution (`resolveRoots`, `destinationFor`). |
-| `detect` | Filesystem + advisory PATH probing that decides whether each agent is present. |
-| `source` | Locates the `adapters/<agent>/` bundle (packaged copy or repo checkout, cwd-independent via `import.meta.url`) and integrity-checks its required paths. **Read-only.** |
-| `hash` | SHA-256 of file bytes — the basis for change and drift detection. |
-| `plan` | **Pure** planner: given the source tree, the destination, and the prior manifest, classify every path (add / change / unchanged / remove / skip-modified). No I/O. |
-| `apply` | Executes a plan through sandboxed, atomic primitives (copy mode = per-file; symlink mode = whole-dir link), then writes the manifest. |
-| `manifest` | Read/serialize the `.feature-forge.<scope>.json` manifest; compute drift against recorded SHA-256s. |
-| `fsutil` | The sandbox: `resolveWithin` containment, atomic `.tmp`→rename writes, symlink-safe removal, empty-dir pruning. |
-| `rauf` | The rauf pin (`RAUF_PIN`) and the install-time resolvability preflight (`preflightRauf`, synchronous `spawnSync`). |
-| `report` | Renders the `RunReport` as human text or `--json`, and formats structured errors one-line. |
-| `cli` | Arg parsing (`node:util.parseArgs`), subcommand dispatch, the `main()` boundary, and exit-code mapping. |
+| Module          | Responsibility                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types`         | Shared types + constants: `AGENT_IDS`, `EXIT`, `MANIFEST_PREFIX`, `Scope`, `Mode`, `InstallManifest`, `PlannedAction`, `RunReport`, the `ErrorCode` union, and the `Result<T,E>` helpers. |
+| `agent-targets` | The static per-agent config-dir map plus detection (`detectAgent`/`detectAgents`) and root/destination resolution (`resolveRoots`, `destinationFor`).                                     |
+| `detect`        | Filesystem + advisory PATH probing that decides whether each agent is present.                                                                                                            |
+| `source`        | Locates the `adapters/<agent>/` bundle (packaged copy or repo checkout, cwd-independent via `import.meta.url`) and integrity-checks its required paths. **Read-only.**                    |
+| `hash`          | SHA-256 of file bytes — the basis for change and drift detection.                                                                                                                         |
+| `plan`          | **Pure** planner: given the source tree, the destination, and the prior manifest, classify every path (add / change / unchanged / remove / skip-modified). No I/O.                        |
+| `apply`         | Executes a plan through sandboxed, atomic primitives (copy mode = per-file; symlink mode = whole-dir link), then writes the manifest.                                                     |
+| `manifest`      | Read/serialize the `.feature-forge.<scope>.json` manifest; compute drift against recorded SHA-256s.                                                                                       |
+| `fsutil`        | The sandbox: `resolveWithin` containment, atomic `.tmp`→rename writes, symlink-safe removal, empty-dir pruning.                                                                           |
+| `rauf`          | The rauf pin (`RAUF_PIN`) and the install-time resolvability preflight (`preflightRauf`, synchronous `spawnSync`).                                                                        |
+| `report`        | Renders the `RunReport` as human text or `--json`, and formats structured errors one-line.                                                                                                |
+| `cli`           | Arg parsing (`node:util.parseArgs`), subcommand dispatch, the `main()` boundary, and exit-code mapping.                                                                                   |
 
 ## Data flow (an `install` run)
 
@@ -61,7 +61,7 @@ from the manifest without writing anything.
 
 - **Pure planner, effectful applier.** Separating classification (`plan`) from
   execution (`apply`) makes the hard part — deciding what changes — trivially testable
-  and lets `--dry-run` be the *same* plan minus the apply step.
+  and lets `--dry-run` be the _same_ plan minus the apply step.
 - **Manifest as the contract.** Tracking installed paths + SHA-256 in
   `.feature-forge.<scope>.json` is what makes re-runs idempotent, uninstall exact (only
   manifest-tracked files), and drift detectable (a hand-edited destination differs from

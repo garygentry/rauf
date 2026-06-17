@@ -18,30 +18,30 @@ discover → parse → emit (per agent) → provenance → self-containment → 
    frozen `SkillRecord` / `AgentRecord`. Parsing is **fail-fast**: a malformed frontmatter
    block raises `MalformedFrontmatterError`, a missing `name` raises `MissingNameError`, and
    an unreadable file raises `UnreadableFileError`. Any of these aborts the whole run before
-   a single output file is published (see *Atomic publish*).
+   a single output file is published (see _Atomic publish_).
 3. **Emit** — for each target agent (in `AGENT_TARGETS` order), the registered `Emitter`
    translates every record into that agent's native files, returning an `EmitResult`
    (`EmittedFile`s + any `DropRecord`s + `ManifestEntry`s).
 4. **Provenance** — each emitted file gets a `GENERATED — DO NOT EDIT` marker in the form
-   its format allows (see *Provenance forms*).
+   its format allows (see _Provenance forms_).
 5. **Self-containment** — each `adapters/<agent>/` bundle receives a verbatim copy of the
    whole `references/` tree and a byte-identical `scripts/forge-root.sh`, so it runs without
    the canon present.
 6. **Atomic publish** — the full tree is built into a sibling staging dir and swapped over
-   `adapters/` in one move (see *Atomic publish & failure semantics*).
+   `adapters/` in one move (see _Atomic publish & failure semantics_).
 
 ## The five emitters & the registry
 
 Each target is one class implementing the `Emitter` Protocol (`emit_skill`, `emit_agent`,
 `agent_id`):
 
-| Agent | Emitter | Native skill shape | Agent files | Notes |
-|-------|---------|--------------------|-------------|-------|
-| `claude` | `ClaudeEmitter` | `SKILL.md` mirror | `agents/<name>.md` | Lossless; reconstructs top-level `argument-hint` for hinted skills. |
-| `cursor` | `CursorEmitter` | `<name>.mdc` rule | — | Frontmatter reduced to `description` / `globs` / `alwaysApply` (no `name`). |
-| `codex` | `CodexEmitter` | `<name>.md` | aggregate `agents/openai.yaml` | Safe-default `{name, description}` frontmatter; extra keys dropped-with-record. |
-| `copilot` | `CopilotEmitter` | `<name>.md` | `agents/<name>.md` | Copilot frontmatter; extra keys dropped-with-record. |
-| `gemini` | `GeminiEmitter` | body file | `gemini-extension.json` manifest | Manifest carries skills/agents; fixed canon-sourced `version` (`0.0.0`). |
+| Agent     | Emitter          | Native skill shape | Agent files                      | Notes                                                                           |
+| --------- | ---------------- | ------------------ | -------------------------------- | ------------------------------------------------------------------------------- |
+| `claude`  | `ClaudeEmitter`  | `SKILL.md` mirror  | `agents/<name>.md`               | Lossless; reconstructs top-level `argument-hint` for hinted skills.             |
+| `cursor`  | `CursorEmitter`  | `<name>.mdc` rule  | —                                | Frontmatter reduced to `description` / `globs` / `alwaysApply` (no `name`).     |
+| `codex`   | `CodexEmitter`   | `<name>.md`        | aggregate `agents/openai.yaml`   | Safe-default `{name, description}` frontmatter; extra keys dropped-with-record. |
+| `copilot` | `CopilotEmitter` | `<name>.md`        | `agents/<name>.md`               | Copilot frontmatter; extra keys dropped-with-record.                            |
+| `gemini`  | `GeminiEmitter`  | body file          | `gemini-extension.json` manifest | Manifest carries skills/agents; fixed canon-sourced `version` (`0.0.0`).        |
 
 The registry (`AGENT_TARGETS_REGISTRY`) maps each agent id to its emitter class.
 `build_emitters()` asserts the registry's key set equals `AGENT_TARGETS` exactly, so adding
@@ -52,8 +52,8 @@ an agent to one place but not the other fails loudly rather than silently skippi
 A generated file must announce itself, but the marker syntax depends on the format. There
 are three forms (00 §7):
 
-- **Form A — files *with* a YAML frontmatter block** (Claude `SKILL.md`, Cursor `.mdc`,
-  agent files): a YAML **comment** as the first line *inside* the `---` block, so `---`
+- **Form A — files _with_ a YAML frontmatter block** (Claude `SKILL.md`, Cursor `.mdc`,
+  agent files): a YAML **comment** as the first line _inside_ the `---` block, so `---`
   stays byte 0 for strict parsers.
 - **Form B — frontmatter-less generated markdown** (`GENERATION-REPORT.md`): an HTML comment
   as the file's first line.
@@ -67,7 +67,7 @@ All three single-source the same regenerate command (`python3 scripts/build-adap
 Not every agent's frontmatter schema can carry every canonical key. Rather than silently
 losing data, an emitter drops the unsupported key and appends a `DropRecord` naming the
 file, the agent, the dropped key, and the reason. Every drop is enumerated per-file in
-`adapters/GENERATION-REPORT.md`, so the translation is fully auditable (and a *missing*
+`adapters/GENERATION-REPORT.md`, so the translation is fully auditable (and a _missing_
 expected drop is as visible as an unexpected one).
 
 ## Atomic publish & failure semantics

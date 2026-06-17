@@ -26,7 +26,7 @@ reported** (re-run with `--force` to overwrite it).
 - Keeping an existing install in sync after the adapter bundles change (`update`).
 - Auditing install state across agents (`list`, `list --json`).
 
-### When *not* to use
+### When _not_ to use
 
 - As a build step that mutates `adapters/` — the installer treats the bundle source as
   read-only and never writes into it. Generating the bundles is
@@ -45,7 +45,7 @@ install time:
   **skills still install** — rauf provisioning is non-fatal.
 - `--skip-rauf` bypasses the preflight entirely and records `raufPin: null`.
 
-rauf is an *external* published artifact (npm / GitHub-release coordinate), not an
+rauf is an _external_ published artifact (npm / GitHub-release coordinate), not an
 intra-epic contract — the installer just needs to know the pin resolves.
 
 ## CI dry-runs
@@ -65,7 +65,7 @@ consumes this surface is owned by the downstream `packaging-docs-ci` feature.)
 
 ## Responsibility boundary
 
-This feature delivers the **installer mechanism** and its *architecture* docs (this
+This feature delivers the **installer mechanism** and its _architecture_ docs (this
 directory). It deliberately does **not** ship:
 
 - the package's user-facing **README / install-usage docs** — owned by the sibling

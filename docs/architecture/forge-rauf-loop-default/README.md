@@ -1,7 +1,7 @@
 # Forge ↔ Rauf Loop-Runner Contract (Agent-Agnostic Loop)
 
 This feature formalizes the contract between **feature-forge**'s pipeline and the
-**rauf** loop runner, and threads a *coding-agent* dimension through forge's existing
+**rauf** loop runner, and threads a _coding-agent_ dimension through forge's existing
 tokenized `loopRunner` seam — so a forge loop can be driven by Claude Code, Codex,
 Gemini, Copilot, or Cursor, with rauf as the default and reference implementation.
 
@@ -11,7 +11,7 @@ byte-identically to before — no selector, no probe, no extra output (REQ-PLUG-
 REQ-COMPAT-01).
 
 > **Where the code lives.** All implementation ships in the `feature-forge` repo
-> (skill prose + JSON references + a Python helper); rauf is *consumed*, not modified.
+> (skill prose + JSON references + a Python helper); rauf is _consumed_, not modified.
 > The canonical files are `references/forge-config-schema.json`,
 > `references/loop-agent-selection.py`, `references/ralph-loop-contract.md`, and
 > `skills/forge-5-loop/` (`SKILL.md` + `references/runner-contract.md`). The per-agent
@@ -27,10 +27,10 @@ and feeds a single resolved value to rauf:
 {
   "loopRunner": {
     "bin": "rauf",
-    "agentArgument": "--agent {agent}",     // presence of this field arms the agent surface
+    "agentArgument": "--agent {agent}", // presence of this field arms the agent surface
     "agentsProbeCommand": "{bin} agents --json",
-    "defaultAgent": "codex"                  // "" ⇒ no project default (rauf's own default applies)
-  }
+    "defaultAgent": "codex", // "" ⇒ no project default (rauf's own default applies)
+  },
 }
 ```
 
@@ -52,32 +52,32 @@ always was — rauf applies its own default (`claude-cli`).
 - **Three config fields.** `agentArgument` (the tokenized flag, default `--agent {agent}`),
   `agentsProbeCommand` (the availability probe, default `{bin} agents --json`), and
   `defaultAgent` (the project default, default `""`). See [api-reference](./api-reference.md).
-- **Resolution precedence** (highest wins): `item.provider` *(rauf's per-item override)* >
-  run selector *(forge)* > `defaultAgent` *(forge)* > runner default *(`claude-cli`)*. forge
+- **Resolution precedence** (highest wins): `item.provider` _(rauf's per-item override)_ >
+  run selector _(forge)_ > `defaultAgent` _(forge)_ > runner default _(`claude-cli`)_. forge
   owns only the run + project layers and collapses them into one `--agent` value; rauf
   alone applies the per-item override above it. forge never re-implements rauf's resolver.
-- **Availability pre-check.** Before launching a *non-default* agent, forge runs the probe
+- **Availability pre-check.** Before launching a _non-default_ agent, forge runs the probe
   **once** (no retries) and classifies the choice three ways against the advertised set:
   **AVAILABLE** (proceed), **UNAVAILABLE** (known id, CLI/creds missing → warn + proceed-or-choose),
   **UNKNOWN** (id not advertised → **hard-reject** before any loop side-effect, listing valid ids).
-  Disambiguation is by *membership*, not exit code — the probe always exits 0.
+  Disambiguation is by _membership_, not exit code — the probe always exits 0.
 - **The advertised set is the allow-list.** Only an id that the probe reports is ever
   interpolated into `{agent}` (REQ-SEC-01).
 - **Capability gate.** Everything above is gated on `agentArgument` being present and
   non-empty. Absent ⇒ the loop renders and behaves exactly as before this feature.
-- **`validate` is agent-agnostic.** No agent argument is *ever* passed to backlog
+- **`validate` is agent-agnostic.** No agent argument is _ever_ passed to backlog
   validation, in any stage. Only the loop-running stage (forge-5-loop) is agent-aware.
 
 ## Package Exports
 
 This feature is documentation + an executable spec, not a shipped runtime library.
 
-| Entry point | Description |
-|-------------|-------------|
-| `references/loop-agent-selection.py` | The executable spec (test-only): `resolve`, `render_launch`, `classify`, `needs_precheck`, `advertised_set` + the shared types/constants. Pure, total, stdlib-only. NOT adapter-wired. |
-| `references/forge-config-schema.json` | The `loopRunner` config schema — the three agent fields + the `0.6.0` version floor + dual-path `installHint`. |
-| `references/ralph-loop-contract.md` | The authoritative loop-runner contract (the `forge-loop-runner-contract` expose consumed by `packaging-docs-ci`). |
-| `skills/forge-5-loop/**` | The skill prose that *operates* the contract (Step 2d selector + pre-check + observability). |
+| Entry point                           | Description                                                                                                                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/loop-agent-selection.py`  | The executable spec (test-only): `resolve`, `render_launch`, `classify`, `needs_precheck`, `advertised_set` + the shared types/constants. Pure, total, stdlib-only. NOT adapter-wired. |
+| `references/forge-config-schema.json` | The `loopRunner` config schema — the three agent fields + the `0.6.0` version floor + dual-path `installHint`.                                                                         |
+| `references/ralph-loop-contract.md`   | The authoritative loop-runner contract (the `forge-loop-runner-contract` expose consumed by `packaging-docs-ci`).                                                                      |
+| `skills/forge-5-loop/**`              | The skill prose that _operates_ the contract (Step 2d selector + pre-check + observability).                                                                                           |
 
 ## Further Reading
 

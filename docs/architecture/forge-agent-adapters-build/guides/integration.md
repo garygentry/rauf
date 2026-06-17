@@ -6,11 +6,11 @@ How `forge-agent-adapters-build` fits the `agent-agnostic` epic, and how to work
 
 This feature exposes three contracts to the rest of the epic:
 
-| Exposed | Kind | Summary |
-|---------|------|---------|
-| `build-adapters` | function | The generator deriving per-agent artifacts (claude/codex/copilot/cursor/gemini) from the canonical skills. |
-| `AGENTS.md` | module | Hand-authored cross-agent project instructions: build/test, conventions, install-path priority. |
-| `adapters-output` | module | The generated `adapters/` tree (per-agent skill mirrors + manifests) consumed by the installer and CI diff. |
+| Exposed           | Kind     | Summary                                                                                                     |
+| ----------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `build-adapters`  | function | The generator deriving per-agent artifacts (claude/codex/copilot/cursor/gemini) from the canonical skills.  |
+| `AGENTS.md`       | module   | Hand-authored cross-agent project instructions: build/test, conventions, install-path priority.             |
+| `adapters-output` | module   | The generated `adapters/` tree (per-agent skill mirrors + manifests) consumed by the installer and CI diff. |
 
 It **consumes** two contracts from its dependency `forge-skill-spec-purity`:
 
@@ -83,7 +83,7 @@ are agent-agnostic.
 
 ## Out of scope (do not do here)
 
-- **Authoring new skills/agents** — this feature only *translates* existing canon.
+- **Authoring new skills/agents** — this feature only _translates_ existing canon.
 - **Modifying canon** — `skills/`, `agents/`, `references/`, and `scripts/forge-root.sh` are
   consumed read-only (constraint C-3). The generated bundles' resolvers are byte-identical
   copies, never edited.

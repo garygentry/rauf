@@ -61,14 +61,14 @@ gitignored `.venv-adapters/`; everything else is Python 3 stdlib.
 
 ## Package Exports
 
-| Entry point | Description |
-|-------------|-------------|
-| `scripts/build-adapters.py` | The generator CLI (`build-adapters`). Default = full regenerate; `--check` = drift guard. |
-| `adapters/<agent>/` | Generated, committed per-agent bundles (`claude`, `codex`, `copilot`, `cursor`, `gemini`) — each self-contained. |
-| `adapters/GENERATION-REPORT.md` | Audit record of every per-file frontmatter-key drop. |
-| `AGENTS.md` (repo root) | Hand-authored cross-agent project instructions (build/test, conventions, install-path priority). Not generated. |
-| `scripts/validate.sh` step 6b | The drift-guard gate (venv provision → `--check`). |
-| `scripts/check-spec-purity.py` | Canon purity checker; carries the `adapters/**` residual-var exemption so generated output is not flagged. |
+| Entry point                     | Description                                                                                                      |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `scripts/build-adapters.py`     | The generator CLI (`build-adapters`). Default = full regenerate; `--check` = drift guard.                        |
+| `adapters/<agent>/`             | Generated, committed per-agent bundles (`claude`, `codex`, `copilot`, `cursor`, `gemini`) — each self-contained. |
+| `adapters/GENERATION-REPORT.md` | Audit record of every per-file frontmatter-key drop.                                                             |
+| `AGENTS.md` (repo root)         | Hand-authored cross-agent project instructions (build/test, conventions, install-path priority). Not generated.  |
+| `scripts/validate.sh` step 6b   | The drift-guard gate (venv provision → `--check`).                                                               |
+| `scripts/check-spec-purity.py`  | Canon purity checker; carries the `adapters/**` residual-var exemption so generated output is not flagged.       |
 
 ## When to use
 
@@ -85,7 +85,7 @@ gitignored `.venv-adapters/`; everything else is Python 3 stdlib.
   drift guard will reject manual changes. Edit the canon instead, then regenerate.
 - **Do not edit `AGENTS.md` via the generator** — it is hand-authored and lives at the repo
   root, outside `adapters/` and outside the drift guard.
-- **Do not use it to author new skills** — it only *translates* existing canonical skills.
+- **Do not use it to author new skills** — it only _translates_ existing canonical skills.
 
 ## Further Reading
 

@@ -1,7 +1,7 @@
 # Agent CLI Adapters
 
 Rauf's loop runner is **agent-agnostic**: each iteration is driven by a pluggable
-*agent adapter* rather than a hardcoded `claude` subprocess. This feature wires the
+_agent adapter_ rather than a hardcoded `claude` subprocess. This feature wires the
 runner to a provider seam, adds a config-driven engine that can drive any non-Claude
 coding-agent CLI (Codex, Gemini, Copilot, Cursor, or an arbitrary `generic-cli`), and
 exposes agent selection through `--agent`, `.rauf.json`, and per-item config.
@@ -64,7 +64,7 @@ Or set a project default in `.rauf.json` (the `agent` alias folds onto `provider
 - **`generic-cli`** — a reserved adapter built at run time from a `providerConfig` you
   supply, so you can drive an unlisted CLI without writing code.
 - **Descriptor registry** — every agent is registered as an `AgentDescriptor`, making the
-  full set *enumerable* (for `--help` / `rauf agents`) and *probeable* (PATH/credential
+  full set _enumerable_ (for `--help` / `rauf agents`) and _probeable_ (PATH/credential
   detection) without constructing a provider or reading run config.
 - **Selection** — `resolveAgentId` collapses four precedence layers (item → run →
   project → global → default) into the single id that drives an iteration.
@@ -75,17 +75,17 @@ All symbols are exported from the `@rauf/loop` package barrel (and its `provider
 subpath). There is **no** `exports` map change — the package keeps its single
 `main`/`types` entry.
 
-| Export | Description |
-|---|---|
-| `AgentAdapter`, `LLMProvider`, `ExecuteOptions`, `ExecutionResult` | The per-iteration adapter contract and its I/O types |
-| `AgentDescriptor`, `DetectionResult`, `AgentAvailability` | Registry descriptor + availability-probe results |
-| `registerAgent`, `registerProvider`, `createProvider` | Registration + construction |
-| `getAgentDescriptors`, `listAgents`, `detectAgent` | Enumeration + availability probing |
-| `CliAgent`, `CliAgentConfig`, `PromptDelivery`, `BuildArgsContext` | The config-driven engine |
-| `PRESET_CONFIGS`, `getPresetConfig` | The four shipped presets |
-| `createGenericCliProvider`, `configToCliAgentConfig` | The reserved `generic-cli` adapter |
-| `resolveAgentId`, `normalizeAgentAlias` | Pure selection + alias-fold helpers |
-| `DEFAULT_AGENT_ID` (`"claude-cli"`), `GENERIC_AGENT_ID` (`"generic-cli"`) | Reserved ids |
+| Export                                                                    | Description                                          |
+| ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `AgentAdapter`, `LLMProvider`, `ExecuteOptions`, `ExecutionResult`        | The per-iteration adapter contract and its I/O types |
+| `AgentDescriptor`, `DetectionResult`, `AgentAvailability`                 | Registry descriptor + availability-probe results     |
+| `registerAgent`, `registerProvider`, `createProvider`                     | Registration + construction                          |
+| `getAgentDescriptors`, `listAgents`, `detectAgent`                        | Enumeration + availability probing                   |
+| `CliAgent`, `CliAgentConfig`, `PromptDelivery`, `BuildArgsContext`        | The config-driven engine                             |
+| `PRESET_CONFIGS`, `getPresetConfig`                                       | The four shipped presets                             |
+| `createGenericCliProvider`, `configToCliAgentConfig`                      | The reserved `generic-cli` adapter                   |
+| `resolveAgentId`, `normalizeAgentAlias`                                   | Pure selection + alias-fold helpers                  |
+| `DEFAULT_AGENT_ID` (`"claude-cli"`), `GENERIC_AGENT_ID` (`"generic-cli"`) | Reserved ids                                         |
 
 ## When to use
 
@@ -96,7 +96,7 @@ subpath). There is **no** `exports` map change — the package keeps its single
 
 ## When NOT to use
 
-- Don't add a new preset/adapter just to change *flags or model* for an existing agent —
+- Don't add a new preset/adapter just to change _flags or model_ for an existing agent —
   use `generic-cli` config or the model precedence instead.
 - Don't reach for `CliAgent` to drive Claude — `claude-cli` has its own adapter with
   stream parsing and usage gating that `CliAgent` deliberately omits.

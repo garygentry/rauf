@@ -30,8 +30,8 @@ rauf defaults you can simply spell out the block:
     "minRunnerVersion": "0.6.0",
     "agentArgument": "--agent {agent}",
     "agentsProbeCommand": "{bin} agents --json",
-    "defaultAgent": ""              // or e.g. "codex" to fix a project default
-  }
+    "defaultAgent": "", // or e.g. "codex" to fix a project default
+  },
 }
 ```
 
@@ -80,7 +80,7 @@ Because every command — including the agent surface — is tokenized config, a
 ralph-style runner that conforms to the contract drops in with no skill edits. It must:
 
 - expose `agentArgument` / `agentsProbeCommand` (+ optional `defaultAgent`) in its
-  `loopRunner` block to *get* agent selection, or omit them to degrade silently;
+  `loopRunner` block to _get_ agent selection, or omit them to degrade silently;
 - make its probe **always exit 0** and emit `{ agents: [{ id, displayName, available, … }] }`;
 - apply any per-item agent override itself (forge feeds only the run layer).
 
@@ -106,6 +106,6 @@ full E2E coverage.
 
 ## Boundary with `packaging-docs-ci`
 
-This feature *produces* the authoritative `forge-loop-runner-contract` (the contract doc
-plus the `loopRunner` schema block). The epic capstone `packaging-docs-ci` *consumes* it
+This feature _produces_ the authoritative `forge-loop-runner-contract` (the contract doc
+plus the `loopRunner` schema block). The epic capstone `packaging-docs-ci` _consumes_ it
 for user-facing packaging and CI docs; it is not part of this feature.

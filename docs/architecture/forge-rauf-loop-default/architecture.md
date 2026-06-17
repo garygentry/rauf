@@ -15,20 +15,20 @@ feature-forge drives the loop runner entirely through the `loopRunner` block in
 {bin} loop run . --backlog {backlogDir} --iterations {iterations}
 ```
 
-There are no hardcoded `rauf …` strings anywhere in the skills — rauf is the *default*
-that fills in when `loopRunner` is absent, and the *reference implementation* of the
+There are no hardcoded `rauf …` strings anywhere in the skills — rauf is the _default_
+that fills in when `loopRunner` is absent, and the _reference implementation_ of the
 contract. This feature preserves that property: the only new vocabulary is `{agent}`,
 and it appears in exactly one place — the default of `agentArgument`.
 
 ## Components
 
-| Component | Repo / path | Role |
-|-----------|-------------|------|
-| Config schema | `references/forge-config-schema.json` | Declares `agentArgument`, `agentsProbeCommand`, `defaultAgent`; floors `minRunnerVersion` at `0.6.0`; dual-path `installHint`. |
-| Executable spec | `references/loop-agent-selection.py` | Pure, total functions capturing the resolution + pre-check algorithm so tests can't drift from the prose. Test-only; not adapter-wired. |
-| Operating skill | `skills/forge-5-loop/SKILL.md` + `references/runner-contract.md` | Step 2d selector + availability listing + verdict handling + the resolved-agent observability line. Adapter-wired. |
-| Contract doc | `references/ralph-loop-contract.md` | The authoritative, runner-neutral contract — the `forge-loop-runner-contract` expose. |
-| Tests | `tests/test_loop_agent_selection.py` + `tests/fixtures/mock-rauf/rauf` | Exercise the executable spec + schema defaults against a fake runner, no live agent. |
+| Component       | Repo / path                                                            | Role                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Config schema   | `references/forge-config-schema.json`                                  | Declares `agentArgument`, `agentsProbeCommand`, `defaultAgent`; floors `minRunnerVersion` at `0.6.0`; dual-path `installHint`.          |
+| Executable spec | `references/loop-agent-selection.py`                                   | Pure, total functions capturing the resolution + pre-check algorithm so tests can't drift from the prose. Test-only; not adapter-wired. |
+| Operating skill | `skills/forge-5-loop/SKILL.md` + `references/runner-contract.md`       | Step 2d selector + availability listing + verdict handling + the resolved-agent observability line. Adapter-wired.                      |
+| Contract doc    | `references/ralph-loop-contract.md`                                    | The authoritative, runner-neutral contract — the `forge-loop-runner-contract` expose.                                                   |
+| Tests           | `tests/test_loop_agent_selection.py` + `tests/fixtures/mock-rauf/rauf` | Exercise the executable spec + schema defaults against a fake runner, no live agent.                                                    |
 
 ## Resolution: how forge picks the agent
 
@@ -44,7 +44,7 @@ defaultAgent   (forge.config.json)   ─┘
 - Precedence collapsed here: `run_selection` > `defaultAgent`.
 - Empty/whitespace is treated as unset (mirrors rauf's own `resolveAgentId`).
 - A pick equal to the runner's own default id (`claude-cli`) collapses to the **default
-  path** — `Resolution(agent=None, source=DEFAULT)` — meaning *forge sends nothing* and
+  path** — `Resolution(agent=None, source=DEFAULT)` — meaning _forge sends nothing_ and
   rauf applies its default. This is why selecting "default (claude-cli)" and selecting
   nothing render identically.
 
@@ -92,13 +92,13 @@ classifies:
 ```
 
 **Why membership, not exit code:** `rauf agents --json` always exits 0. An unknown id is
-simply *absent* from `agents[]`; a known-but-unavailable one is *present* with
+simply _absent_ from `agents[]`; a known-but-unavailable one is _present_ with
 `available: false`. Keying off exit code couldn't tell those apart. The advertised set
 also doubles as the security allow-list (REQ-SEC-01) — only an advertised id is ever
 substituted into `{agent}`.
 
 **Probe failure** (non-zero exit, unparseable JSON, missing/empty `agents[]`, a row with
-no `id`) is handled by the *caller* before `classify` is ever reached — surface the
+no `id`) is handled by the _caller_ before `classify` is ever reached — surface the
 failure and offer choose-another/abort; never launch a non-default agent unvalidated.
 `classify` itself is total and never raises.
 
@@ -117,8 +117,8 @@ degrade silently to today's behavior.
 
 ## Why an executable spec
 
-The selection algorithm is described in skill *prose* (the skills don't import Python).
-To stop the prose and the tests from drifting, the algorithm is *also* captured once in
+The selection algorithm is described in skill _prose_ (the skills don't import Python).
+To stop the prose and the tests from drifting, the algorithm is _also_ captured once in
 `references/loop-agent-selection.py` — pure, total, stdlib-only functions that the
 pytest suite imports and the prose mirrors. The module is intentionally **not** wired
 into any generated adapter, so it's exempt from the adapter drift guard. It is the
@@ -126,23 +126,23 @@ single source of truth the tests pin against.
 
 ## Per-stage applicability
 
-Only stages that *run the loop* are agent-aware:
+Only stages that _run the loop_ are agent-aware:
 
-| Stage | Runner commands used | Agent-aware? |
-|-------|----------------------|--------------|
-| forge-5-loop | run / eventStream / status / version | **Full** |
-| forge-4-backlog | validate | None |
-| forge-verify | validate | None |
+| Stage           | Runner commands used                 | Agent-aware? |
+| --------------- | ------------------------------------ | ------------ |
+| forge-5-loop    | run / eventStream / status / version | **Full**     |
+| forge-4-backlog | validate                             | None         |
+| forge-verify    | validate                             | None         |
 
 `validate` is agent-agnostic by rule: no `--agent`, no `{agent}`, no agent id may ever be
 passed to backlog validation in any stage (REQ-SEAM-02). Backlog validation is about
-*data*, not *who runs the loop*.
+_data_, not _who runs the loop_.
 
 ## Version floor
 
 The agent surface requires rauf ≥ `0.6.0` — the release that ships `--agent`, the
 `rauf agents` probe, and the preset agent registry. forge-5-loop's Step 1c version gate
-enforces this *before* any runner side-effect, using the `--json` form of the version
+enforces this _before_ any runner side-effect, using the `--json` form of the version
 command (never the human `rauf vX.Y.Z` output). The `installHint` names two distinct
 ways to provision the binary: the cross-agent installer (`npx feature-forge install`,
 which records the pinned `rauf@0.6.0`) and the direct rauf CLI one-liner.

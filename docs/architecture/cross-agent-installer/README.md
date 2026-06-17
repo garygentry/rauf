@@ -39,8 +39,8 @@ npx feature-forge uninstall
 
 - **Agents.** The five supported targets are `claude`, `codex`, `copilot`, `cursor`,
   `gemini` (the canonical `AGENT_IDS` order). Detection probes each agent's config
-  directory; nothing is installed for an agent that isn't present. *Zero detected is
-  success, not failure* — a fresh machine with no agents exits cleanly.
+  directory; nothing is installed for an agent that isn't present. _Zero detected is
+  success, not failure_ — a fresh machine with no agents exits cleanly.
 - **Scope.** `project` (default — installs into the repo-local config dir) or
   `global` (`--global`, the user-level config dir). Each scope has its own manifest,
   so project and global installs never collide.
@@ -56,7 +56,7 @@ npx feature-forge uninstall
   through sandboxed, atomic filesystem primitives. `--dry-run` stops after the plan.
 - **rauf provisioning.** The installer pins the rauf loop runner
   (`RAUF_PIN = rauf@0.6.0`) and runs a resolvability **preflight** at install time.
-  rauf is an *external* published artifact (invoked later via `npx`), not bundled
+  rauf is an _external_ published artifact (invoked later via `npx`), not bundled
   source. `--skip-rauf` records `raufPin: null` and skips the check; skills still
   install if the pin is unresolvable.
 
@@ -64,9 +64,9 @@ npx feature-forge uninstall
 
 The package is both a CLI and a small Node library.
 
-| Entry point | Description |
-|-------------|-------------|
-| `feature-forge` (bin) | The CLI: `install` / `update` / `uninstall` / `list`. |
+| Entry point              | Description                                                                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `feature-forge` (bin)    | The CLI: `install` / `update` / `uninstall` / `list`.                                                                                                                                                        |
 | `feature-forge` (import) | Library barrel — the agent-detection-map surface (`AGENT_TARGETS`, `detectAgent`, `detectAgents`, `resolveRoots`, `destinationFor`, `formatZeroDetection`), the `RAUF_PIN` coordinate, and the shared types. |
 
 ## Further Reading

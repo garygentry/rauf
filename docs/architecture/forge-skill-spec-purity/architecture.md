@@ -18,7 +18,7 @@ CANONICAL_SURFACES = (
 )
 ```
 
-> **Glob shape matters.** A bare trailing `/**` matches *directories only* in `pathlib`;
+> **Glob shape matters.** A bare trailing `/**` matches _directories only_ in `pathlib`;
 > the recursive patterns therefore end in `/**/*` to reach the files inside the
 > `references/` trees. (An earlier `/**` form silently scanned 0 reference files — a
 > false PASS caught in impl verification and fixed; the test suite now plants violations
@@ -34,13 +34,13 @@ rule even when they fall under a scanned tree.
 `check-spec-purity.py` runs five independent checks (each a `Rule` enum member). All are
 hard-fail: any violation makes the checker exit 1.
 
-| # | Rule (`Rule.value`) | What it asserts | Requirement |
-|---|---------------------|-----------------|-------------|
-| 1 | `frontmatter-keys` | Frontmatter parses; keys ⊆ {name, description, license, compatibility, metadata, allowed-tools}; name+description present. A malformed block is a *reported violation*, never a crash. | REQ-FM-01/04 |
-| 2 | `name-matches-dir` | Each skill's frontmatter `name` equals its containing directory. | REQ-FM-02 |
-| 3 | `no-residual-var` | No literal `${CLAUDE_PLUGIN_ROOT}` in any canonical-surface file, except `RESIDUAL_VAR_EXEMPT` paths. | REQ-RES-03 |
-| 4 | `body-size` | Each `SKILL.md` body (below the closing `---`) is ≤ 300 lines AND ≤ 5000 words. Both limbs are checked, so an over-budget body can emit two violations. | REQ-SIZE-03 |
-| 5 | `prelude-identity` | Any file containing the prelude sentinel must contain the canonical `BOOTSTRAP_PRELUDE` byte-for-byte. | REQ-RES-05 |
+| #   | Rule (`Rule.value`) | What it asserts                                                                                                                                                                        | Requirement  |
+| --- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| 1   | `frontmatter-keys`  | Frontmatter parses; keys ⊆ {name, description, license, compatibility, metadata, allowed-tools}; name+description present. A malformed block is a _reported violation_, never a crash. | REQ-FM-01/04 |
+| 2   | `name-matches-dir`  | Each skill's frontmatter `name` equals its containing directory.                                                                                                                       | REQ-FM-02    |
+| 3   | `no-residual-var`   | No literal `${CLAUDE_PLUGIN_ROOT}` in any canonical-surface file, except `RESIDUAL_VAR_EXEMPT` paths.                                                                                  | REQ-RES-03   |
+| 4   | `body-size`         | Each `SKILL.md` body (below the closing `---`) is ≤ 300 lines AND ≤ 5000 words. Both limbs are checked, so an over-budget body can emit two violations.                                | REQ-SIZE-03  |
+| 5   | `prelude-identity`  | Any file containing the prelude sentinel must contain the canonical `BOOTSTRAP_PRELUDE` byte-for-byte.                                                                                 | REQ-RES-05   |
 
 Violations are collected, then **sorted by `(path, rule.value, reason)`** so repeated runs
 over the same tree produce byte-identical output (a determinism contract the test suite
@@ -96,7 +96,7 @@ files were routed).
 ## Gate wiring
 
 `check-spec-purity.py` is invoked as one **unconditional** top-level step in
-`scripts/validate.sh`, placed *after* the script-permission loop and *before* the
+`scripts/validate.sh`, placed _after_ the script-permission loop and _before_ the
 `epic-manifest` helper guard (so it runs even when that guard is skipped). A non-zero
 checker exit increments `ERRORS`, so `validate.sh` fails hard — there is no soft-skip path
 (the checker needs only Python 3 stdlib, so it is always available). `*.py` is intentionally

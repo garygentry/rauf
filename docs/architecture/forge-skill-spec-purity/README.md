@@ -66,13 +66,13 @@ python3 "$R/scripts/epic-manifest.py" --json
 
 This feature ships scripts and Markdown, not a code package. The "exports" are:
 
-| Entry point | Description |
-|-------------|-------------|
-| `scripts/forge-root.sh` | Portable plugin-root resolver. Prints the root; never sources/executes. |
-| `scripts/check-spec-purity.py` | Stdlib-only spec-purity checker (CLI + 5 rules). |
-| `references/portable-root.md` | Canonical home of the bootstrap prelude + resolver usage. |
-| `references/vendor-construct-inventory.md` | The REQ-VND-03 vendor-construct audit + dispositions. |
-| `skills/*/SKILL.md` (×11) + `references/` | The `spec-pure-skills` canon itself. |
+| Entry point                                | Description                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| `scripts/forge-root.sh`                    | Portable plugin-root resolver. Prints the root; never sources/executes. |
+| `scripts/check-spec-purity.py`             | Stdlib-only spec-purity checker (CLI + 5 rules).                        |
+| `references/portable-root.md`              | Canonical home of the bootstrap prelude + resolver usage.               |
+| `references/vendor-construct-inventory.md` | The REQ-VND-03 vendor-construct audit + dispositions.                   |
+| `skills/*/SKILL.md` (×11) + `references/`  | The `spec-pure-skills` canon itself.                                    |
 
 ## When to use / When NOT to use
 

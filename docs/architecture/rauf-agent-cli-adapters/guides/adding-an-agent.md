@@ -38,15 +38,15 @@ a binary, some static args, a prompt-delivery method, non-interactive flags, and
 Select `generic-cli` and supply a `providerConfig`. The config is normalized by
 `configToCliAgentConfig`, which accepts:
 
-| Key | Default | Meaning |
-|---|---|---|
-| `binary` (required) | — | Executable to spawn |
-| `promptDelivery` | `"stdin"` | `"stdin"` \| `"arg"` \| `"file"` |
-| `args` | `[]` | Static subcommand/positional args |
-| `nonInteractive` | `[]` | Auto-approve flags, always appended |
-| `modelFlagTemplate` | — | String flag prepended before the model, e.g. `"--model"` |
-| `env` | — | Static env overrides (merged under the runner's child env) |
-| `displayName` | the id | Human-readable name |
+| Key                 | Default   | Meaning                                                    |
+| ------------------- | --------- | ---------------------------------------------------------- |
+| `binary` (required) | —         | Executable to spawn                                        |
+| `promptDelivery`    | `"stdin"` | `"stdin"` \| `"arg"` \| `"file"`                           |
+| `args`              | `[]`      | Static subcommand/positional args                          |
+| `nonInteractive`    | `[]`      | Auto-approve flags, always appended                        |
+| `modelFlagTemplate` | —         | String flag prepended before the model, e.g. `"--model"`   |
+| `env`               | —         | Static env overrides (merged under the runner's child env) |
+| `displayName`       | the id    | Human-readable name                                        |
 
 For example, to drive a hypothetical `mytool` CLI invoked as
 `mytool run --yes "<prompt>"`:
@@ -58,11 +58,11 @@ For example, to drive a hypothetical `mytool` CLI invoked as
   "args": ["run"],
   "nonInteractive": ["--yes"],
   "promptDelivery": "arg",
-  "modelFlagTemplate": "--model"
+  "modelFlagTemplate": "--model",
 }
 ```
 
-A missing/empty `binary` or an invalid `promptDelivery` is an *expected error*
+A missing/empty `binary` or an invalid `promptDelivery` is an _expected error_
 (`VALIDATION_ERROR`) surfaced by the run, not a crash.
 
 > **Prompt delivery picks the wiring:** `stdin` pipes the prompt to the child; `arg`
@@ -97,21 +97,25 @@ that deserves a short id and `--help` listing.
 ### 3b. Custom behavior — implement `LLMProvider` and `registerAgent`
 
 ```typescript
-import { registerAgent, type LLMProvider } from '@rauf/loop';
+import { registerAgent, type LLMProvider } from "@rauf/loop";
 
 class MyToolProvider implements LLMProvider {
-  readonly id = 'mytool';
-  readonly displayName = 'My Tool';
-  async execute(prompt, options) { /* spawn / call SDK; return Result<ExecutionResult> */ }
-  validateCredentials() { /* return ok(undefined) or err(...) */ }
+  readonly id = "mytool";
+  readonly displayName = "My Tool";
+  async execute(prompt, options) {
+    /* spawn / call SDK; return Result<ExecutionResult> */
+  }
+  validateCredentials() {
+    /* return ok(undefined) or err(...) */
+  }
   // Add checkUsage?() ONLY if this agent has Anthropic-style usage gating —
   // the runner keys all usage handling on its presence.
 }
 
 registerAgent({
-  id: 'mytool',
-  displayName: 'My Tool',
-  binaryName: 'mytool',           // omit only if there is no fixed binary
+  id: "mytool",
+  displayName: "My Tool",
+  binaryName: "mytool", // omit only if there is no fixed binary
   factory: () => new MyToolProvider(),
   // detect defaults to a PATH probe of binaryName; override for credential/config checks.
 });

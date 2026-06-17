@@ -436,8 +436,8 @@
         "The 20 docs/architecture files are reformatted with prettier --write only (no content changes)",
         "check:docs still passes after reformatting"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:19:15.490Z",
       "source": "review",
       "reviewBatch": "2026-06-17T22:15:59.224Z"
     }

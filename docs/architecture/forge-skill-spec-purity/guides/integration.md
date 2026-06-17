@@ -6,10 +6,10 @@ use the canon, plus how a maintainer keeps the canon pure.
 
 ## Exposed artifacts (epic manifest contract)
 
-| Artifact | What it is | Consumed by |
-|----------|-----------|-------------|
-| `spec-pure-skills` | The 11 conforming `skills/*/SKILL.md` + their `references/` | `forge-agent-adapters-build`, `packaging-docs-ci` |
-| `portable-skill-root-resolver` | `scripts/forge-root.sh` (+ the canonical prelude in `references/portable-root.md`) | `forge-agent-adapters-build` |
+| Artifact                       | What it is                                                                         | Consumed by                                       |
+| ------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `spec-pure-skills`             | The 11 conforming `skills/*/SKILL.md` + their `references/`                        | `forge-agent-adapters-build`, `packaging-docs-ci` |
+| `portable-skill-root-resolver` | `scripts/forge-root.sh` (+ the canonical prelude in `references/portable-root.md`) | `forge-agent-adapters-build`                      |
 
 ## For `forge-agent-adapters-build`
 
@@ -58,7 +58,7 @@ Common violations and fixes:
   `{name, description, license, compatibility, metadata, allowed-tools}` are allowed.
 - **`residual ${CLAUDE_PLUGIN_ROOT} …`** — replace the invocation with the bootstrap
   prelude + `"$R/scripts/…"`. The only sanctioned residual is the fallback inside
-  `forge-root.sh`. If you are *documenting* the construct as prose, add the file to
+  `forge-root.sh`. If you are _documenting_ the construct as prose, add the file to
   `RESIDUAL_VAR_EXEMPT` (as `references/vendor-construct-inventory.md` is).
 - **`body … lines exceeds 300` / `words exceeds 5000`** — relocate overflow into the
   skill's `references/` and leave an in-body pointer; never delete instructions.
