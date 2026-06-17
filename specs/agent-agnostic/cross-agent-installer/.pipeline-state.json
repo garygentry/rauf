@@ -59,7 +59,8 @@
       "findingsFile": ".verification/VERIFY-specs-2026-06-16.md",
       "findingsCount": 13,
       "verifiedAt": "2026-06-16T23:35:00Z",
-      "fixedAt": "2026-06-16T23:55:00Z"
+      "fixedAt": "2026-06-16T23:55:00Z",
+      "commitHash": "bcc7621"
     },
     "forge-verify-tech": {
       "status": "passed",
