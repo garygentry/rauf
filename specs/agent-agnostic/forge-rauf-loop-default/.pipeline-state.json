@@ -12,7 +12,8 @@
       "version": 1,
       "completedAt": "2026-06-17T03:48:42Z",
       "basedOnVersions": {},
-      "artifacts": ["PRD.md"]
+      "artifacts": ["PRD.md"],
+      "commitHash": "e0cf1e50470039bee6456aec0ac6c226c0cc6041"
     }
   }
 }
