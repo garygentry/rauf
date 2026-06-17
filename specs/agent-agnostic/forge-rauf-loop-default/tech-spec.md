@@ -153,10 +153,14 @@ appears in rauf's own events.
 
 ### 3.5 Runner discovery & version coherence (REQ-BIN-01/02/03/04, CON-03 · resolves OQ-01)
 
-**OQ-01 resolved:** rauf is at **0.6.0**, and the `--agent` flag, `rauf agents` probe, and full
-preset registry are present at 0.6.0 (not called out as added in any earlier CHANGELOG entry).
-The version floor is therefore **0.6.0** — a successful gate guarantees the agent surface exists
-(REQ-BIN-02). Edit: `loopRunner.minRunnerVersion` default `0.5.0`→`0.6.0`, and update its
+**OQ-01 resolved:** the agent surface (`--agent` flag, `rauf agents` probe, full preset registry)
+is **verified present in rauf source at VERSION 0.6.0** — `packages/loop/src/providers/registry.ts`,
+`constants.ts`, `agent-selection.ts`, `packages/cli/src/{commands,loop-commands}.ts`, with
+`packages/core/src/version.ts` = `0.6.0`. The CHANGELOG's 0.6.0 entry documents only the
+agent-contract *documentation* finalization (an additive minor bump), so the floor is pinned to
+**source-presence**, not changelog text. The version floor is therefore **0.6.0** — flooring here
+is safe-and-sufficient (even if the surface technically landed earlier on the branch), and a
+successful gate guarantees the agent surface exists (REQ-BIN-02). Edit: `loopRunner.minRunnerVersion` default `0.5.0`→`0.6.0`, and update its
 description to state that 0.6.0 is the agent-surface floor.
 
 **Discovery (REQ-BIN-01):** unchanged — forge locates rauf via `loopRunner.bin` (default `rauf`
@@ -199,6 +203,24 @@ This doc + the schema block constitute the `forge-loop-runner-contract` expose.
 feature-forge skills are markdown prose, not callable code, so the documented algorithm is
 captured once as an **executable spec** and tested against a mock runner (see §8).
 
+### 3.8 Alternatives considered
+
+- **Nested `agent` sub-object (`loopRunner.agent = { argument, probeCommand, default }`)** —
+  *rejected.* Cleaner grouping, and the object's presence would advertise the surface, but it
+  diverges from the flat `*Command` convention every other field in the `loopRunner` block uses
+  (`runCommand`, `validateCommand`, `statusJsonCommand`, …). The chosen flat
+  `agentArgument`/`agentsProbeCommand`/`defaultAgent` trio matches that established style, keeps
+  the project default human-readable and per-run-overridable, and gates on a single field's
+  presence (§3.1) — without any new nesting for skills/tests to special-case.
+- **Single tokenized `agentArgument` only, project default folded into the token** — *rejected.*
+  Smallest schema, but it makes the project default implicit and hard to read/override, and would
+  push run-vs-project resolution into opaque token text rather than the explicit `defaultAgent`
+  field. Worse traceability for REQ-AGENT-02/REQ-PREC-01 with no offsetting benefit.
+- **forge re-implementing rauf's full multi-layer resolver** — *rejected* on principle (CON-02,
+  CON-04): forge owns only the run/project layers it passes; rauf alone resolves item-vs-run. The
+  chosen design collapses forge's own run+project into one `--agent` value and lets rauf apply the
+  item override above it (§3.2), so forge never duplicates rauf's resolution logic.
+
 ## 4. Data Model
 
 **Consumed from rauf (fixed by CON-02 — verified shapes):**
@@ -219,7 +241,9 @@ interface AgentAvailability {
 
 **Owned by this feature (new `loopRunner` fields):** `agentArgument: string`,
 `agentsProbeCommand: string`, `defaultAgent: string` (§3.1). No new persisted state, no new
-event types (REQ-OBS-02).
+event types (REQ-OBS-02). Because agent selection resolves per-run into a single launch-time
+value and persists no shared state, concurrent loops over distinct `--backlog` state dirs are
+unaffected by it (REQ-COMPAT-02).
 
 **Token vocabulary:** the existing `{bin}` / `{backlogDir}` / `{specsDir}` / `{iterations}` set
 gains **`{agent}`**, substituted only inside `agentArgument` and only with a member of the
