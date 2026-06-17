@@ -114,8 +114,8 @@
         "Run from ../feature-forge: `bash scripts/validate.sh`, `shellcheck scripts/*.sh`, and `ruff check scripts/` each exit 0 (the gate's deterministic steps, version-sync excepted until item 012)",
         "The quality-gate composite installs pytest (`python3 -m pip install pytest`) so `validate.sh` step 7's schema↔checker anti-drift assertion is a HARD gate in CI and cannot soft-skip (spec 07 §2.2; REQ-CI-02 / REQ-CONST-03)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T21:59:24.756Z",
       "dependsOn": [
         "001",
         "002",
