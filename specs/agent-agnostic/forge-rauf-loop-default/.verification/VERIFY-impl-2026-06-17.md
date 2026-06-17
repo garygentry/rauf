@@ -58,11 +58,9 @@ keeps the dependent `packaging-docs-ci` unblocked for orchestration.
 
 ### User Decisions Required
 
-- **V-001** requires a scope decision: is the fixture's `version --json` branch in-scope for
-  this test module, or is it covered by spec 05's separate verification? If the latter, close
-  V-001 with no change.
-- **V-002** is a cosmetic doc edit and can be applied directly (no decision needed), but may
-  legitimately be deferred — it does not affect any spec-mandated requirement or the gate.
+- **V-001** [RESOLVED 2026-06-17 — apply]: the fixture's `version --json` branch is treated as
+  in-scope for this test module; a direct test was added so the documented contract is exercised.
+- **V-002** [RESOLVED 2026-06-17 — apply]: applied directly.
 
 ### Execution Steps
 
@@ -80,3 +78,11 @@ keeps the dependent `packaging-docs-ci` unblocked for orchestration.
 > `forge/forge-rauf-loop-default`); the gate is `bash scripts/validate.sh` from the
 > feature-forge root, not rauf's `pnpm gate`. This findings document and the pipeline state
 > live in the **rauf** repo.
+
+## Fix Progress
+
+- Step 1: [APPLIED] 2026-06-17 — V-002: refreshed `rauf v0.1.0` → `rauf v0.6.0` in
+  forge-5-loop SKILL.md Step 1c; regenerated adapters; `bash scripts/validate.sh` green.
+- Step 2: [APPLIED] 2026-06-17 — V-001: added `test_fixture_version_reports_floor` exercising
+  the mock-rauf `version --json` branch (exit 0 + `{"version":"0.6.0"}`); pytest 23 passed.
+- feature-forge commit: 635aa2e84fd01517c62b6d07b1a215122db95c2c (branch forge/forge-rauf-loop-default)
