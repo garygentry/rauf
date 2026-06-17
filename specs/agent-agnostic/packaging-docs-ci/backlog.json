@@ -216,8 +216,8 @@
         "docs/agents/claude.md leads with the marketplace block and contains a `## The default loop runner` section stating the rauf default, the item>run>project>default precedence, agent-agnostic validate, the 0.6.0 floor, and a link to ../../references/ralph-loop-contract.md",
         "Any rauf@0.6.0 npm reference is labeled 'available once rauf 0.6.0 is published' (grep confirms each hit is on/near that label)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:02:06.730Z",
       "dependsOn": [],
       "notes": "Required before item 010 so the README per-surface table links resolve. Path-derivation: only Claude's ~/.claude is treated as well-known; codex/copilot/cursor/gemini config dirs are best-known-but-unverified, so docs read them from the installer plan. feature-forge has no check:docs gate, but avoid the `ralph` token where practical (refer to 'the loop-runner contract').",
       "estimatedIterations": 2,
