@@ -46,6 +46,10 @@ documents this very contract.
 - **As the maintainer of the capstone**, I want a single documented forge↔rauf loop-runner
   contract — covering default-to-rauf, agent selection, and which stages carry the agent
   dimension — so packaging-docs-ci can document and CI-gate it.
+- **As a forge user whose rauf is missing or too old for agent selection**, I want forge to
+  fail the version gate *before any loop side-effects* with a message telling me exactly which
+  install path to run (the cross-agent installer for a multi-agent setup, or the rauf CLI
+  install/upgrade hint), so I can fix provisioning without a half-run.
 
 ## 3. Functional Requirements
 
@@ -116,6 +120,16 @@ documents this very contract.
 - **REQ-AVAIL-03**: The pre-check MUST NOT run for the default (claude) path, so the common
   case incurs no extra probe and behaves exactly as today.
   - Priority: P1
+- **REQ-AVAIL-04**: When the selected agent id is **not among the agent ids the runner
+  advertises** (via rauf's `agents` probe), `forge-5-loop` MUST reject it **before any loop
+  side-effects** with an error that lists the valid agent ids. This unknown/typo-id case is
+  **distinct from** REQ-AVAIL-02's known-but-unavailable path: an unknown id is NOT offered a
+  proceed-anyway path. No unknown value may be interpolated into the tokenized agent argument
+  (REQ-SEC-01).
+  - Priority: P0
+  - Notes: Reuses the same `agents` probe already required by REQ-AGENT-04 / REQ-AVAIL-01 —
+    forge validates against rauf's advertised id set, it does not re-implement rauf's
+    resolution (CON-02/CON-04). Mirrors REQ-BIN-04's "fail clearly before side-effects" posture.
 
 ### 3.5 Capability-gated pluggability
 
@@ -169,8 +183,9 @@ documents this very contract.
 - **REQ-PERF-01**: The default (claude) path MUST add no new runtime cost — no extra agent
   probe, no extra gate work beyond the version-floor bump.
   - Priority: P0
-- **REQ-PERF-02**: The availability pre-check (non-default agent only) MUST be a single,
-  bounded one-shot probe that does not materially delay launch.
+- **REQ-PERF-02**: The availability pre-check (non-default agent only) MUST complete within a
+  single bounded probe invocation (one `rauf agents` call, no retries), so launch is not
+  delayed beyond that one probe.
   - Priority: P1
 
 ### 4.2 Security
@@ -178,6 +193,8 @@ documents this very contract.
   ids (no arbitrary string interpolated into a shell command beyond the contract's tokenized
   argument), consistent with how existing flags are templated.
   - Priority: P0
+  - Notes: The behavior when the value is *not* a known agent id is defined by REQ-AVAIL-04
+    (hard-reject before launch, listing the valid ids).
 
 ### 4.3 Observability
 - **REQ-OBS-01**: The selected agent (and its source layer: run vs. project vs. default) MUST
@@ -247,10 +264,12 @@ documents this very contract.
 - **SC-01**: With no `loopRunner` block and no agent selection, `forge-5-loop` drives rauf
   with claude exactly as today (REQ-DEF-01, REQ-AGENT-03, REQ-COMPAT-01).
 - **SC-02**: A user can select a non-default agent per run and via a project default, with the
-  documented precedence (item > run > project > default) observably honored (REQ-AGENT-01/02,
-  REQ-PREC-01/02).
+  documented precedence (item > run > project > default) honored — verifiable because the
+  resolved agent and its source layer are shown in the pre-launch confirmation and the "loop
+  started" output (REQ-AGENT-01/02, REQ-PREC-01/02, REQ-OBS-01).
 - **SC-03**: Selecting an unavailable non-default agent produces a pre-launch warning with a
-  proceed/choose-another path — the run does not start blind (REQ-AVAIL-01/02).
+  proceed/choose-another path, and the pre-launch confirmation lists the available agents so
+  the user can choose another — the run does not start blind (REQ-AVAIL-01/02, REQ-AGENT-04).
 - **SC-04**: Configuring an alternate runner with no agent surface makes agent selection
   vanish and the loop behaves exactly as today (REQ-PLUG-01/02).
 - **SC-05**: The version gate floors at the agent-capable rauf and fails clearly when rauf is
@@ -261,3 +280,6 @@ documents this very contract.
   mock-runner test proves the agent plumbing, precedence, availability pre-check, and
   capability-gated degradation without a live agent. The real-agent end-to-end run (a true
   multi-agent install driving a loop) is maintainer-run and not CI-automatable.
+- **SC-08**: Selecting an agent id that is not advertised by the runner aborts the run before
+  any loop side-effects with an error listing the valid agent ids — distinct from the
+  unavailable-but-known warn/proceed path (REQ-AVAIL-04, REQ-SEC-01).
