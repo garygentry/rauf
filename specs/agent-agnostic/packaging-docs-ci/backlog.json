@@ -342,8 +342,8 @@
         "Neither .gitattributes contains a `* -text` blanket",
         "`pnpm gate` (rauf) still passes after adding rauf/.gitattributes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:09:38.189Z",
       "dependsOn": [],
       "notes": "export-ignore only affects `git archive` output, not the working tree or clone. The per-repo export-ignore tree lists differ (eval/ + plans/ for feature-forge; test-sandbox/ for rauf). REQ-OS-02 (exec bits) is already enforced by feature-forge validate.sh's permission check — no new tooling.",
       "estimatedIterations": 1,
