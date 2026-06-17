@@ -4,8 +4,25 @@
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
   "updatedAt": "2026-06-17T12:11:43Z",
-  "currentStage": "forge-3-specs",
+  "currentStage": "forge-4-backlog",
   "stages": {
+    "forge-3-specs": {
+      "status": "in-progress",
+      "version": 1,
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-config-schema-and-gating.md",
+        "03-selection-resolution-observability.md",
+        "04-availability-precheck.md",
+        "05-runner-discovery-version-gate.md",
+        "06-loop-runner-contract-doc.md",
+        "07-testing-strategy.md",
+        "TRACEABILITY.md"
+      ],
+      "notes": "8 numbered docs + TRACEABILITY. Resolved OQ-01 (floor 0.6.0, source-pinned), OQ-02 (flat presence-gated fields), OQ-T1 (executable spec is test-only + doc, not adapter-wired), OQ-T2 (installHint names `npx feature-forge install`). render_launch canonicalized in 03 §3.4 (parallel-author gap fixed). All 29 PRD REQs traced."
+    },
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
     "forge-1-prd": {
       "status": "complete",
