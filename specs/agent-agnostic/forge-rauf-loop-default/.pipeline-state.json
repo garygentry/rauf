@@ -3,9 +3,21 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T00:00:00Z",
-  "currentStage": "forge-5-loop",
+  "updatedAt": "2026-06-17T17:01:34Z",
+  "currentStage": "forge-6-docs",
   "stages": {
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-17T16:41:02Z",
+      "completedAt": "2026-06-17T17:01:34Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "feature-forge:.forge-loop/.rauf/state.json"
+      ],
+      "notes": "Cross-repo run: impl landed in feature-forge on branch forge/forge-rauf-loop-default (5 [rauf] commits, off cross-agent-installer tip). Ran natively in feature-forge against staged .forge-loop backlog (abs specRefs); per-item gate + final = bash scripts/validate.sh (145 tests green). 5/5 done, 0 blocked/needsHuman/deferred, lastSignal clean, --review pass ran. Statuses synced back to canonical backlog (relative specRefs preserved)."
+    },
     "forge-4-backlog": {
       "status": "complete",
       "version": 1,

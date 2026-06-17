@@ -17,7 +17,7 @@
         "python3 scripts/build-adapters.py was run and adapters/*/references/forge-config-schema.json reflect the edits; python3 scripts/build-adapters.py --check passes (no drift, no hand-edited adapters)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "notes": "All paths are in /home/gary/workspace/feature-forge. This item owns the schema half of two specs: spec 02 (the three fields + minRunnerVersion default) and spec 05 section 4.3 (the installHint wording). The gate behavior that READS minRunnerVersion is item 004 (skill prose); the contract-doc restatement is item 005. Copy the exact JSON fragments from spec 02 section 4 / section 5 and spec 05 section 4.3 -- do not paraphrase the descriptions. The 0.6.0 floor is coherent with the cross-agent installer's RAUF_PIN = rauf@0.6.0 (CON-03).",
       "estimatedIterations": 1,
@@ -27,7 +27,8 @@
         "specs/agent-agnostic/forge-rauf-loop-default/05-runner-discovery-version-gate.md",
         "specs/agent-agnostic/forge-rauf-loop-default/00-core-definitions.md",
         "specs/agent-agnostic/forge-rauf-loop-default/01-architecture-layout.md"
-      ]
+      ],
+      "completedAt": "2026-06-17T16:42:17.238Z"
     },
     {
       "id": "002",
@@ -46,7 +47,7 @@
         "The module is NOT referenced by any file under adapters/; python3 scripts/build-adapters.py --check passes with no regeneration required for this file (OQ-T1 test-only)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
-      "status": "pending",
+      "status": "done",
       "dependsOn": [],
       "notes": "This single module embodies spec 00's types/constants, spec 03's resolve/render_launch, and spec 04's classify/needs_precheck/advertised_set -- copy the function bodies and docstrings verbatim from those specs so the executable spec cannot diverge from the prose. It is verified by the pytest in item 003; on its own it leaves the repo green because no test imports it yet and it is not adapter-wired. Keep it dependency-free. The {\"available\": True} match arm matches only exact True; every other advertised row (incl. available False) falls to the UNAVAILABLE branch.",
       "estimatedIterations": 2,
@@ -55,7 +56,8 @@
         "specs/agent-agnostic/forge-rauf-loop-default/00-core-definitions.md",
         "specs/agent-agnostic/forge-rauf-loop-default/03-selection-resolution-observability.md",
         "specs/agent-agnostic/forge-rauf-loop-default/04-availability-precheck.md"
-      ]
+      ],
+      "completedAt": "2026-06-17T16:46:29.286Z"
     },
     {
       "id": "003",
@@ -73,7 +75,7 @@
         "python3 -m pytest tests/test_loop_agent_selection.py passes from the feature-forge repo root",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "001",
         "002"
@@ -86,7 +88,8 @@
         "specs/agent-agnostic/forge-rauf-loop-default/02-config-schema-and-gating.md",
         "specs/agent-agnostic/forge-rauf-loop-default/04-availability-precheck.md",
         "specs/agent-agnostic/forge-rauf-loop-default/00-core-definitions.md"
-      ]
+      ],
+      "completedAt": "2026-06-17T16:50:20.099Z"
     },
     {
       "id": "004",
@@ -104,7 +107,7 @@
         "python3 scripts/build-adapters.py was run; python3 scripts/build-adapters.py --check passes (adapters/*/skills/forge-5-loop/** reflect the canonical edits with no drift)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "001",
         "002"
@@ -118,7 +121,8 @@
         "specs/agent-agnostic/forge-rauf-loop-default/05-runner-discovery-version-gate.md",
         "specs/agent-agnostic/forge-rauf-loop-default/02-config-schema-and-gating.md",
         "specs/agent-agnostic/forge-rauf-loop-default/00-core-definitions.md"
-      ]
+      ],
+      "completedAt": "2026-06-17T16:57:59.196Z"
     },
     {
       "id": "005",
@@ -137,7 +141,7 @@
         "python3 scripts/build-adapters.py was run; python3 scripts/build-adapters.py --check passes (adapters/*/references/ralph-loop-contract.md updated, no drift)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
-      "status": "pending",
+      "status": "done",
       "dependsOn": [
         "001",
         "004"
@@ -151,7 +155,8 @@
         "specs/agent-agnostic/forge-rauf-loop-default/03-selection-resolution-observability.md",
         "specs/agent-agnostic/forge-rauf-loop-default/04-availability-precheck.md",
         "specs/agent-agnostic/forge-rauf-loop-default/05-runner-discovery-version-gate.md"
-      ]
+      ],
+      "completedAt": "2026-06-17T16:59:25.012Z"
     }
   ]
 }
