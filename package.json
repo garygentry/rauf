@@ -1,8 +1,16 @@
 {
   "name": "rauf",
   "version": "0.6.0",
-  "private": true,
   "description": "Management tool for rauf autonomous coding loops",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "rauf": "dist/index.js"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/garygentry/rauf.git"

@@ -74,3 +74,18 @@
   rauf-agent-cli-adapters). Proven not-mine via `git stash` → identical 20-file failure on the clean
   tree. These are prior forge-6-docs output drift, outside this item's scope (README-only edit). The
   item's substantive bar (check:docs over README) passes.
+
+## Item 016 (rauf npm-publishability prep + optional npm-publish.yml)
+
+- **Pin target = ROOT manifest, not @rauf/cli.** The installer pin `RAUF_PIN = rauf@0.6.0`
+  is an UNSCOPED name `rauf`, which byte-matches the root `package.json` (`name: "rauf"`).
+  `@rauf/cli` is scoped (`@rauf/cli`) and would NOT resolve from `npx rauf@0.6.0`. So the npm-prep
+  metadata (remove `private:true`, add `publishConfig:{access:public}`, `files:["dist"]`,
+  `bin:{rauf:"dist/index.js"}`) went on the ROOT manifest. No version field changed anywhere.
+- `pnpm version:check` stays green — all six manifests still 0.6.0 (only metadata fields added).
+- Added `.github/workflows/npm-publish.yml` verbatim from spec 06 §7.2: `workflow_dispatch`-only,
+  publish step left COMMENTED. No `npm publish` executed.
+- **`pnpm gate` fails ONLY at `format:check`** on the same 20 PRE-EXISTING `docs/architecture/*`
+  files item 011 documented (forge-6-docs drift). Proven not-mine via `git stash` → identical 21
+  warnings on the clean tree. My edits (package.json, npm-publish.yml) add zero new format failures.
+- **OQ-A SURFACED, not decided** — see signal output below.

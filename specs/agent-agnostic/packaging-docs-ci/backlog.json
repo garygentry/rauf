@@ -398,8 +398,8 @@
         "No `npm publish` is executed; if npm-publish.yml is added it triggers on workflow_dispatch only and its publish step is commented out",
         "OQ-A (Bun-required npm package vs compiled-binary wrapper) is explicitly surfaced to the maintainer, not silently decided"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:11:49.731Z",
       "dependsOn": [],
       "notes": "rauf-side item — verified with `pnpm gate`. @rauf/cli is name '@rauf/cli', private:true, bin rauf -> dist/index.js; root manifest is name 'rauf', private:true, no bin. Which becomes the published `rauf` is the deferred OQ-A; the prep must be compatible with either resolution. The CLI uses a Bun shebang, so a plain npx needs Bun present — exactly why OQ-A is open. Docs (items 009/010) already label the npx rauf@0.6.0 path 'available once rauf 0.6.0 is published'.",
       "estimatedIterations": 1,

@@ -1,0 +1,22 @@
+name: npm Publish (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing vX.Y.Z tag to publish to npm"
+        required: true
+permissions:
+  contents: read # least-privilege; NPM_TOKEN injected as a secret at publish time
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # NOTE: npm publish is intentionally NOT wired by this feature (PRD §6).
+      # A maintainer fills in the publish step + NPM_TOKEN secret when cutting the release.
+      # - run: npm publish --access public --provenance
+      #   env: { NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} }
