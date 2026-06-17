@@ -3,9 +3,17 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T13:41:50Z",
-  "currentStage": "forge-4-backlog",
+  "updatedAt": "2026-06-17T15:32:01Z",
+  "currentStage": "forge-5-loop",
   "stages": {
+    "forge-4-backlog": {
+      "status": "in-progress",
+      "version": 1,
+      "startedAt": "2026-06-17T15:32:01Z",
+      "artifacts": ["backlog.json"],
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "notes": "5 items. Cross-repo: implementation lands in feature-forge; gate is bash scripts/validate.sh (CON-05), NOT rauf's pnpm gate. author-backlog skill unavailable in this install, so authored inline against .rauf/backlog.schema.json. Validated green (valid:true, 0 findings) via rauf-stable 0.6.0 backlog validate. Items: 001 schema (3 loopRunner fields + 0.6.0 floor + dual installHint), 002 executable spec loop-agent-selection.py, 003 mock-rauf fixture + pytest, 004 forge-5-loop skill edits (selector/precheck/version-wording/observability), 005 ralph-loop-contract.md expose."
+    },
     "forge-3-specs": {
       "status": "complete",
       "version": 1,
