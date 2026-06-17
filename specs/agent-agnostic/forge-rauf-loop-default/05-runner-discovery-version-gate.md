@@ -153,12 +153,21 @@ runner"). The `bin` field's current schema description is authoritative and **no
 > every command." (`references/forge-config-schema.json`, `loopRunner.bin`)
 
 **How the installer satisfies REQ-BIN-01 / CON-03.** The `cross-agent-installer` provisions
-rauf by the lazy-`npx` contract — it records `RAUF_PIN = "rauf@0.6.0"` and the forge loop
-invokes `npx rauf@<pin> …` (`cross-agent-installer/06-rauf-provisioning.md` §2;
-`installer/src/rauf.ts:30`). The default `loopRunner.bin = "rauf"` resolves the provisioned
-rauf on PATH after a multi-agent install; a project that drives rauf via `npx` may set
-`loopRunner.bin` to the appropriate launcher without any skill edit (CON-04 — the seam is
-tokenized). **No new discovery logic is introduced by this feature.** The only discovery-side
+rauf by the lazy-`npx` contract — it **records `RAUF_PIN = "rauf@0.6.0"`** and **preflights its
+resolvability**, but it **never vendors a binary, never mutates global npm state, and never puts
+rauf on PATH** (`cross-agent-installer/06-rauf-provisioning.md` §1–§2; `installer/src/rauf.ts`).
+Discovery therefore has **two coherent shapes**, both reached through the same tokenized
+`loopRunner.bin` seam without any skill edit (CON-04):
+
+- **rauf already on PATH** (dev checkout, global install) — the default `loopRunner.bin = "rauf"`
+  resolves it directly, exactly as today.
+- **Multi-agent-installer projects** — there is *no* rauf on PATH; the loop reaches the pinned rauf
+  via `npx rauf@<pin> …` using the recorded `RAUF_PIN`. Such a project sets `loopRunner.bin` to the
+  `npx` launcher (e.g. `bin: "npx"`, with `rauf@<pin>` folded into the command templates), so `{bin}`
+  substitution still produces the right invocation. The installer-written config supplies this; forge
+  introduces no new logic to choose between the two shapes.
+
+**No new discovery logic is introduced by this feature.** The only discovery-side
 change is the version *floor* (§1/§2), which is what makes a discovered-but-too-old rauf fail
 the gate (REQ-BIN-02/04).
 

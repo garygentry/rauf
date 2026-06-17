@@ -158,8 +158,11 @@ module (`00-core-definitions.md §4`).
 ```python
 from __future__ import annotations
 
-from .types import AgentAvailability  # the dict/TypedDict row shape (00-core-definitions.md §1.1)
-from .results import Classification, Verdict  # 00-core-definitions.md §4
+from loop_agent_selection import (  # all defined in this same single module (00-core-definitions.md §4)
+    AgentAvailability,  # the TypedDict probe-row shape (00 §4, mirrors the TS row in §1.1)
+    Classification,
+    Verdict,
+)
 
 
 def classify(
@@ -317,10 +320,16 @@ construction, a member of `AdvertisedSet` — the allow-list (§7).
 
 ## 5. Probe failure handling
 
-A **probe failure** is any outcome that is not "exit 0 with parseable `{ agents: [...] }`":
+A **probe failure** is any outcome that is not "exit 0 with parseable `{ agents: [...] }` carrying a
+usable advertised set":
 
 - Non-zero exit from `agentsProbeCommand`.
 - stdout that is not valid JSON, or valid JSON missing the `agents` array (wrong shape).
+- valid JSON whose `agents` array is **empty** (`[]`), or whose rows **lack the required `id`
+  field** — the probe yielded no usable advertised set, so a non-default selection cannot be
+  validated. Treating these as a probe failure is what lets `advertised_set` (§2) assume every row
+  has an `id` (no `KeyError`) and keeps `classify` from producing an UNKNOWN rejection with an empty
+  `valid_ids` list ("Valid agent ids: " with nothing after it).
 - The probe binary not found / not executable (a discovery problem — but see note below).
 
 **Behavior (tech-spec §7 row).** A probe failure means forge **cannot validate** a non-default

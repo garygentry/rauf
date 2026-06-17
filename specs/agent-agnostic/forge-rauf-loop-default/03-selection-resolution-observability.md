@@ -268,7 +268,7 @@ def render_launch(
     base_cmd: str,
     agent_argument: str | None,
     resolved: Resolution,
-    runner_default_id: str = RUNNER_DEFAULT_ID,
+    runner_default_id: str,
 ) -> str:
     """Append the rendered ``agentArgument`` to the launch command, or return it unchanged.
 
@@ -419,6 +419,17 @@ Coding agent: {resolved.agent or runnerDefaultId} (source: {sourceLabel}).
 using the same `sourceLabel` mapping as §6.1. The existing template body (the watch-directly
 commands and the state-file listing) is otherwise unchanged. `skills/forge-5-loop/SKILL.md` Step
 3c continues to point at this template; the only edit is the added agent line in the template.
+
+**Proceed-anyway audit note (REQ-OBS-01 × REQ-AVAIL-02).** When the launch proceeded via the
+UNAVAILABLE *proceed-anyway* path (`04-availability-precheck.md §4.2` — a known-but-unavailable
+agent the user chose to run regardless), the agent line records it so the run remains auditable:
+
+```
+Coding agent: {resolved.agent} (source: {sourceLabel}; proceeded despite unavailability warning).
+```
+
+This is the same session-side prose line, with the parenthetical appended only on that path; it
+introduces no new event type (REQ-OBS-02 — see §6.3).
 
 ### 6.3 No new event types (REQ-OBS-02)
 

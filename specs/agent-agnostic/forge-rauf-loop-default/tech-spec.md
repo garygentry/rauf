@@ -163,8 +163,11 @@ is safe-and-sufficient (even if the surface technically landed earlier on the br
 successful gate guarantees the agent surface exists (REQ-BIN-02). Edit: `loopRunner.minRunnerVersion` default `0.5.0`→`0.6.0`, and update its
 description to state that 0.6.0 is the agent-surface floor.
 
-**Discovery (REQ-BIN-01):** unchanged — forge locates rauf via `loopRunner.bin` (default `rauf`
-on PATH); the cross-agent installer provisions `rauf@0.6.0` onto PATH. No new discovery logic.
+**Discovery (REQ-BIN-01):** unchanged — forge locates rauf via the tokenized `loopRunner.bin` seam
+(default `rauf`, assumed on PATH for dev/global installs). The cross-agent installer does **not** put
+rauf on PATH; it records `RAUF_PIN = "rauf@0.6.0"` and the installer-written config drives the loop
+via `npx rauf@<pin>` through the same `{bin}` seam (`cross-agent-installer/06-rauf-provisioning.md`).
+No new discovery logic. See `05-runner-discovery-version-gate.md` §3.
 
 **Gate behavior (REQ-BIN-04):** unchanged hard-gate (Step 1c) — semver-compare reported version
 vs floor *before* any loop side-effect; on missing/too-old, STOP and show the hint.
@@ -273,7 +276,7 @@ render_launch(baseCmd, agentArgument, resolvedAgent) -> cmd  # appends nothing w
 ## 6. Integration Points
 
 **A. feature-forge → rauf (consumed; verified signatures).**
-- `rauf loop run … --agent <id>` — `packages/cli/src/commands.ts:197` (flag) → folds to
+- `rauf loop run … --agent <id>` — `packages/cli/src/commands.ts:198` (flag) → folds to
   `LoopStartOptions.provider`; ids from `SUPPORTED_AGENT_IDS`.
 - `rauf agents [--json]` — `packages/cli/src/loop-commands.ts:1190` `handleAgents`; JSON shape
   `{ agents: AgentAvailability[] }`; **always exit 0**.

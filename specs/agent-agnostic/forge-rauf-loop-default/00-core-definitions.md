@@ -148,10 +148,29 @@ The executable spec (`references/loop-agent-selection.py`) defines these; every 
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
+from typing import TypedDict
 
 #: The advertised id set parsed from the probe — { row.id for row in agents }. Doubles as
 #: REQ-SEC-01's allow-list: the ONLY values ever interpolated into {agent}.
 AdvertisedSet = frozenset[str]
+
+
+class _AgentRow(TypedDict):
+    """Required fields of one `rauf agents --json` probe row."""
+    id: str            # stable registry key — the only field read for the advertised set
+    displayName: str   # human-readable name (e.g. "Claude Code (CLI)")
+    available: bool     # whether the agent's CLI / credentials are currently available
+
+
+class AgentAvailability(_AgentRow, total=False):
+    """One probe row — the Python mirror of the TS `AgentAvailability` interface in §1.1
+    (what `rauf agents --json` emits per agent). The base `_AgentRow` carries the required
+    fields; the optional fields below default to absent (`total=False`). Consumed by
+    `classify` / `advertised_set` in `04-availability-precheck.md` — only `id` is read for
+    the advertised set; `detail` is surfaced for the UNAVAILABLE warning. Split into a
+    required base + optional subclass to stay Python 3.10-compatible (no `NotRequired`)."""
+    binaryName: str    # executable probed on PATH, or absent for binary-less descriptors
+    detail: str        # PATH location, "not found", or credential status
 
 
 class AgentSource(str, Enum):
@@ -189,6 +208,10 @@ class Classification:
         verdict: AVAILABLE | UNAVAILABLE | UNKNOWN.
         detail: For UNAVAILABLE, the probe row's `detail` (PATH/credential status). None otherwise.
         valid_ids: For UNKNOWN, sorted(advertised set) to list in the rejection error. None otherwise.
+
+    Invariant: `detail` is set iff `verdict == UNAVAILABLE`; `valid_ids` is set iff
+    `verdict == UNKNOWN`; both are None for AVAILABLE. Enforced by `classify`'s construction
+    (04 §3.2), not by the dataclass itself.
     """
     verdict: Verdict
     detail: str | None = None

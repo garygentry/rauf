@@ -45,7 +45,8 @@ The unit-of-test is the pure algorithm the skill prose prescribes, extracted to 
 module so the test cannot drift from the prose (it is *also* a documentation artifact the skill
 references). It exposes exactly three pure, total functions plus the shared types from
 `00-core-definitions.md §4` (`Resolution`, `AgentSource`, `Classification`, `Verdict`,
-`AdvertisedSet`) and constants from `00 §2` (`RUNNER_DEFAULT_ID`, `MIN_RUNNER_VERSION`):
+`AdvertisedSet`, `AgentAvailability`) and constants from `00 §2` (`RUNNER_DEFAULT_ID`,
+`MIN_RUNNER_VERSION`):
 
 ```python
 def resolve(
@@ -66,7 +67,7 @@ def render_launch(
     base_cmd: str,
     agent_argument: str | None,    # loopRunner.agentArgument, or None when the gate is off
     resolved: Resolution,
-    runner_default_id: str = RUNNER_DEFAULT_ID,
+    runner_default_id: str,
 ) -> str:
     """Append the rendered agent_argument iff resolved.agent is a non-default id; else return base_cmd unchanged (03 §3.4)."""
 ```
@@ -85,12 +86,13 @@ Each group below is an explicit test; all import from `references/loop-agent-sel
 
 ### 3.1 Precedence (REQ-PREC-01/02, REQ-AGENT-03)
 
-- `resolve("codex", "gemini")` ⇒ `Resolution(agent="codex", source=AgentSource.RUN)` — **run beats
-  project default**.
-- `resolve(None, "gemini")` ⇒ `Resolution(agent="gemini", source=AgentSource.PROJECT)`.
-- `resolve(None, "")` and `resolve(None, None)` ⇒ `Resolution(agent=None,
-  source=AgentSource.DEFAULT)` — **the default path** (rauf applies `RUNNER_DEFAULT_ID`).
-- `resolve("claude-cli", "gemini")` ⇒ resolved id equals `RUNNER_DEFAULT_ID`; assert
+- `resolve("codex", "gemini", "claude-cli")` ⇒ `Resolution(agent="codex", source=AgentSource.RUN)`
+  — **run beats project default**.
+- `resolve(None, "gemini", "claude-cli")` ⇒ `Resolution(agent="gemini", source=AgentSource.PROJECT)`.
+- `resolve(None, "", "claude-cli")` and `resolve(None, "   ", "claude-cli")` ⇒ `Resolution(agent=None,
+  source=AgentSource.DEFAULT)` — **the default path** (empty / whitespace-only `default_agent` is
+  treated as unset; rauf applies `RUNNER_DEFAULT_ID`).
+- `resolve("claude-cli", "gemini", "claude-cli")` ⇒ resolved id equals `RUNNER_DEFAULT_ID`; assert
   `render_launch` (§3.3) treats it as the default path (appends nothing).
 - **Item-level is NOT forge's concern (REQ-AGENT-05):** assert there is **no parameter and no code
   path** by which a `BacklogItem.provider` value flows into `resolve`/`render_launch` — i.e. the
@@ -103,10 +105,10 @@ Each group below is an explicit test; all import from `references/loop-agent-sel
 Using the mock `agents[]` (§4): `claude-cli` available; one available non-default (`codex`,
 `available:true`); one known-unavailable (`gemini`, `available:false`); and `bogus` absent.
 
-- `classify("codex", agents)` ⇒ `Verdict.AVAILABLE`.
-- `classify("gemini", agents)` ⇒ `Verdict.UNAVAILABLE`, `detail` populated from the row — drives
-  the warn + proceed-anyway/choose-another `AskUserQuestion` (REQ-AVAIL-02).
-- `classify("bogus", agents)` ⇒ `Verdict.UNKNOWN`, `valid_ids == tuple(sorted({"claude-cli",
+- `classify("codex", agents, "claude-cli")` ⇒ `Verdict.AVAILABLE`.
+- `classify("gemini", agents, "claude-cli")` ⇒ `Verdict.UNAVAILABLE`, `detail` populated from the
+  row — drives the warn + proceed-anyway/choose-another `AskUserQuestion` (REQ-AVAIL-02).
+- `classify("bogus", agents, "claude-cli")` ⇒ `Verdict.UNKNOWN`, `valid_ids == tuple(sorted({"claude-cli",
   "codex","gemini"}))` — drives the **hard-reject listing valid ids** (REQ-AVAIL-04, SC-08); assert
   no proceed-anyway field is offered.
 - **Once, no retries (REQ-PERF-02):** in the end-to-end probe test (§4) assert the mock's recorded
@@ -114,10 +116,10 @@ Using the mock `agents[]` (§4): `claude-cli` available; one available non-defau
 
 ### 3.3 Command render (REQ-AGENT-01, REQ-SEC-01)
 
-- `render_launch(base, "--agent {agent}", Resolution("codex", RUN))` ⇒ base + ` --agent codex`
+- `render_launch(base, "--agent {agent}", Resolution("codex", RUN), "claude-cli")` ⇒ base + ` --agent codex`
   (the validated non-default id substitutes into `{agent}`).
-- `render_launch(base, "--agent {agent}", Resolution(None, DEFAULT))` ⇒ `base` **unchanged**.
-- `render_launch(base, "--agent {agent}", Resolution("claude-cli", RUN))` ⇒ `base` **unchanged**
+- `render_launch(base, "--agent {agent}", Resolution(None, DEFAULT), "claude-cli")` ⇒ `base` **unchanged**.
+- `render_launch(base, "--agent {agent}", Resolution("claude-cli", RUN), "claude-cli")` ⇒ `base` **unchanged**
   (resolved == `RUNNER_DEFAULT_ID` ⇒ default path).
 - **Allow-list (REQ-SEC-01):** assert the only value ever substituted into `{agent}` is one that
   `classify` returned `AVAILABLE`/`UNAVAILABLE` for (a member of the advertised set) — i.e. an
@@ -126,8 +128,8 @@ Using the mock `agents[]` (§4): `claude-cli` available; one available non-defau
 
 ### 3.4 Capability gating (REQ-PLUG-01/02)
 
-- `render_launch(base, None, Resolution("codex", RUN))` ⇒ `base` **unchanged** — `agentArgument`
-  absent (gate off) means no `--agent` is ever appended even with a resolved id.
+- `render_launch(base, None, Resolution("codex", RUN), "claude-cli")` ⇒ `base` **unchanged** —
+  `agentArgument` absent (gate off) means no `--agent` is ever appended even with a resolved id.
 - Assert the integrated flow (§4) runs **no probe** when `agentArgument` is `None` (the mock's argv
   shows no `agents --json` call), and the rendered launch is **byte-identical** to the no-agent
   baseline.
@@ -142,6 +144,20 @@ schema directly):
 - `loopRunner.properties.agentsProbeCommand.default == "{bin} agents --json"`.
 - `loopRunner.properties.defaultAgent.default == ""`.
 - All three new fields are present with `type == "string"`.
+
+### 3.6 Probe-failure edge cases (REQ-AVAIL-01, `04 §5`)
+
+A probe that exits 0 but yields no usable advertised set is a **probe failure**, not an `UNKNOWN`
+verdict (`04 §5`) — `classify` is never reached, and forge must surface the failure +
+choose-another/abort, never launching the non-default selection unvalidated:
+
+- **Empty `agents: []`** — drive the precheck with a probe returning `{"agents": []}` for a
+  non-default selection; assert it is handled as a probe failure (choose-another/abort prompt, no
+  `render_launch` call), **not** an `UNKNOWN` rejection with an empty `valid_ids`.
+- **Row missing `id`** — a probe row lacking the required `id` field is treated as a probe failure
+  before `advertised_set` runs; assert no `KeyError` escapes and the choose-another/abort path fires.
+- (Already covered for completeness: non-zero exit and unparseable/wrong-shape JSON → same
+  probe-failure path.)
 
 ## 4. Fixture — `tests/fixtures/mock-rauf/rauf`
 
