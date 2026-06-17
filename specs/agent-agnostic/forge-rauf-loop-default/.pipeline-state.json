@@ -24,9 +24,10 @@
       "commitHash": "92130debf4673368a9614f4ae9f8eccc4ba1b681"
     },
     "forge-2-tech": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "completedAt": "2026-06-17T12:11:43Z",
+      "commitHash": "cebaa27159dfffe455b3511f91a1a30021eafd44",
       "basedOnVersions": { "forge-1-prd": 1 },
       "artifacts": ["tech-spec.md"],
       "notes": "Resolved PRD OQ-01 (version floor=0.6.0) and OQ-02 (flat tokenized loopRunner fields, presence-gated on agentArgument). Implementation targets feature-forge; gate is bash scripts/validate.sh (CON-05), not rauf's pnpm gate."
