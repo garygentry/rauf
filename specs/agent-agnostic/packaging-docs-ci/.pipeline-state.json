@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T21:30:00Z",
+  "updatedAt": "2026-06-17T21:44:37Z",
   "currentStage": "forge-5-loop",
   "notes": "Capstone is mostly CI-wiring + authoring, not new engines: validate.sh (feature-forge) and pnpm gate (rauf) already run the substantive validators. 7 interview decisions recorded in tech-spec \u00a71. rauf-on-npm reconciled as machinery+documented-gap (--skip-rauf in CI); version-sync = 3 fields -> 0.10.0, installer independent.",
   "stages": {
@@ -105,6 +105,10 @@
         "findingsCount": 4,
         "fixedAt": "2026-06-17T22:00:00Z"
       }
+    },
+    "forge-5-loop": {
+      "status": "in-progress",
+      "startedAt": "2026-06-17T21:44:37Z"
     }
   }
 }
