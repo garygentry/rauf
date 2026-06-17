@@ -364,8 +364,8 @@
         "`pnpm gate` (rauf) passes, including check:docs over the new Unreleased content",
         "Both files preserve their existing Keep-a-Changelog format (### Added / ### Changed under a heading)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:13:28.298Z",
       "dependsOn": [
         "005",
         "006",

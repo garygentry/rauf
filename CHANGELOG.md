@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- **`.gitattributes`** — LF normalization (`* text=auto eol=lf`) + `export-ignore`
+  for dev-only trees (`specs/`, `tests/`, `.github/`, `test-sandbox/`).
+- **npm-publishability prep** on the packages the installer's `rauf@0.6.0` pin
+  targets (`publishConfig` / `files` / `bin`) — machinery only; **no publish** is
+  executed (the `npx rauf@0.6.0` path is documented as "available once rauf 0.6.0
+  is published").
+- **Optional `npm-publish.yml`** — `workflow_dispatch`-only publish machinery,
+  outside the PR gate (not run by this feature).
+
+### Changed
+
+- **README** — added a labeled cross-agent section linking feature-forge's
+  cross-agent install story (loop-runner framing retained).
+
 ## 0.6.0
 
 Phase 4 of the rauf UX/DX overhaul — web/CLI recovery parity, a shared status
