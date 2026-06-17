@@ -3,9 +3,27 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T17:01:34Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-06-17T17:46:30Z",
+  "currentStage": "complete",
   "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-17T17:46:30Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/forge-rauf-loop-default/README.md",
+        "docs/architecture/forge-rauf-loop-default/architecture.md",
+        "docs/architecture/forge-rauf-loop-default/api-reference.md",
+        "docs/architecture/forge-rauf-loop-default/guides/integration.md"
+      ],
+      "notes": "Standard doc set (matches prior epic members). Cross-repo: docs describe impl that lives in feature-forge; docs themselves land in rauf docs/architecture/. No epic-level doc (epic 5/6, not all complete)."
+    },
     "forge-verify-impl": {
       "status": "findings-applied",
       "findingsFile": ".verification/VERIFY-impl-2026-06-17.md",
