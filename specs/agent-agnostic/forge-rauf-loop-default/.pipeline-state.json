@@ -64,7 +64,8 @@
       "findingsFile": ".verification/VERIFY-specs-2026-06-17.md",
       "findingsCount": 11,
       "verifiedAt": "2026-06-17T13:55:00Z",
-      "fixedAt": "2026-06-17T14:10:00Z"
+      "fixedAt": "2026-06-17T14:10:00Z",
+      "commitHash": "78bd3c4d08f499daaddae6ba5c8834ce11f6e5e9"
     }
   }
 }
