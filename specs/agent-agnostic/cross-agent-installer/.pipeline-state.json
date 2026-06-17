@@ -146,7 +146,8 @@
         "docs/architecture/cross-agent-installer/architecture.md",
         "docs/architecture/cross-agent-installer/api-reference.md",
         "docs/architecture/cross-agent-installer/guides/integration.md"
-      ]
+      ],
+      "commitHash": "d600cd2"
     }
   }
 }
