@@ -79,7 +79,8 @@
       "findingsCount": 6,
       "verifiedAt": "2026-06-17T01:20:00Z",
       "fixedAt": "2026-06-17T01:30:00Z",
-      "confirmedAt": "2026-06-17T01:30:00Z"
+      "confirmedAt": "2026-06-17T01:30:00Z",
+      "commitHash": "0a02cda"
     },
     "forge-verify-tech": {
       "status": "passed",
