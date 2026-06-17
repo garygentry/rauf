@@ -65,8 +65,8 @@
         "Run from ../feature-forge: `bash scripts/validate.sh` still exits 0 (no behavior change from lint fixes)",
         "No shellcheck rule globally disabled and no ruff rule removed from the E/F/W floor"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T21:54:32.215Z",
       "dependsOn": [],
       "notes": "epic-manifest.py and validate-traceability.py are sibling-owned but still in scope for ruff; fix minimally or scope with per-line noqa. The CI composite (item 005) guards the eval/ target with `[ -d eval ]`, so lint here is order-independent of the eval item.",
       "estimatedIterations": 1,
