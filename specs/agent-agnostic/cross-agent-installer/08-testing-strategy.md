@@ -574,7 +574,8 @@ The bar (asserted structurally, not by a coverage tool — zero deps):
   `checkIntegrity`, `locateSource`, `sha256File`, `sha256Tree`, `computeSourceHash`,
   `listBundleSkills`, `listBundleFiles` (`03`); `plan`, `planInstall`, `planUpdate`, `apply`,
   `resolveWithin` (`04`); `manifestPath`, `readManifest`, `writeManifest`, `buildManifest`,
-  `validateManifest`, `planUninstall` (`05`); `preflightRauf`, `RAUF_PIN` (`06`); `parseCliArgs`,
+  `planUninstall` (`05`) (`validateManifest` is internal — exercised via `readManifest`);
+  `preflightRauf`, `RAUF_PIN` (`06`); `parseCliArgs`,
   `runCli`, `main`, `helpText`, `renderReport(report, { json })` (`07`). A checklist test
   (`coverage.test.ts`) may assert each named export is defined and reachable.
 - **Every `FileActionKind`** (`create`, `overwrite`, `skip-modified`, `unchanged`, `remove`; `00` §4)

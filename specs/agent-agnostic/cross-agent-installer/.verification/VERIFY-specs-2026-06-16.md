@@ -223,3 +223,13 @@
 - Step 11: [APPLIED] 2026-06-16 — V-013: `[D2]`/`[D4]`/`[D5]` decision tags added (00, 01, 04, 08).
 
 All 13 findings applied; independent grep verification clean.
+
+## Confirmation Re-run (2026-06-16)
+
+A confirmation forge-verify (specs mode, single thorough verifier) was run against the fixed suite (commit `bcc7621`): **all 13 prior findings (V-001..V-013) confirmed RESOLVED**, and a regression sweep found **no fix-induced contract/type drift** — `07`'s `ApplyContext`/`PlanContext` construction exactly matches `04`'s definitions, all `07` sibling imports resolve, the barrel change orphaned no reference, the `RegistryQuery` contract is consistent across `06`/`07`/`08`, and all 40 REQs remain traced.
+
+**One low-severity leftover from the V-010 re-derivation, fixed inline:**
+
+- **V-014 (inconsistency, RESOLVED 2026-06-16):** `08` §6 listed `validateManifest` as a public export of `05`, but `05` declares it module-internal (not exported). Fixed: removed it from the §6 coverage-export list with a note that it is internal and exercised via `readManifest`. (Step: 08-testing-strategy.md §6 one-line edit.)
+
+**Verdict: specs suite clean → `forge-verify-specs` advanced to `passed`.**
