@@ -177,11 +177,27 @@ default) … Do NOT trigger for general rauf usage, standalone loop runs …"):
 > exact negative cases its own description calls out — and the "generate the backlog" prompt is a
 > `shouldTrigger` case for `forge-4-backlog`, so the two fixtures discriminate against each other.
 
+### 4.2 Coverage target (SC-06)
+
+The eval scores over whatever fixtures are present (§4), so "done" needs an explicit floor rather
+than an implicit one:
+
+- **SC-06 is satisfied by ≥2 authored fixtures that discriminate against each other** — here
+  `forge-1-prd.json` and `forge-5-loop.json` (the cross-discrimination is shown above). This is the
+  verifiable minimum: deleting a fixture below this floor is a coverage regression, not a no-op.
+- **Broadening fixtures to all 11 forge/rauf skills is explicitly out of scope for this capstone**
+  and is recorded as follow-up — so the two-fixture coverage reads as a deliberate floor, not an
+  oversight. New skills *should* add a fixture as they land, but this feature does not block on
+  full-catalog coverage.
+
 ## 5. Score Data Shape (extends `00-core-definitions.md` §4)
 
 `00 §4` defers the aggregate/breakdown shape to this document. It is the harness's structured stdout
 (`--json`) and the basis of the human-readable summary. Expressed as TypeScript for parity with the
-foundation docs (the harness implements the same shape as Python dataclasses → `dict`, §6):
+foundation docs. **The wire-format JSON keys are `snake_case`** — the `--json` output is
+`json.dumps(asdict(report))` (§6), and `dataclasses.asdict()` preserves the Python field names
+verbatim, so these interface fields use the exact dataclass key names a consumer will see (not
+camelCase):
 
 ```typescript
 /** Per-prompt judgement record. */
@@ -205,11 +221,11 @@ interface EvalSkillResult {
 interface EvalReport {
   model: string;         // pinned model id (§6.3)
   skills: EvalSkillResult[];
-  totalCases: number;    // sum of per-skill totals
-  totalCorrect: number;
-  accuracy: number;      // totalCorrect / totalCases, 0..1 — the headline score
+  total_cases: number;   // sum of per-skill totals (dataclass field `total_cases`)
+  total_correct: number; // dataclass field `total_correct`
+  accuracy: number;      // total_correct / total_cases, 0..1 — the headline score
   skipped: boolean;      // true when no API key (§6.4); skills == [] in that case
-  skipReason?: string;   // e.g. "no ANTHROPIC_API_KEY"
+  skip_reason?: string;  // dataclass field `skip_reason`; e.g. "no ANTHROPIC_API_KEY"
 }
 ```
 

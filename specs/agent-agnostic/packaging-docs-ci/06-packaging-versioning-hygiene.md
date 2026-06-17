@@ -511,7 +511,7 @@ publish).
 > Bun-shebanged package requires **Bun to be present on the consumer's machine**. The repo's *current*
 > shipped distribution form is a **compiled binary**, not an npm tarball: `release.yml` cross-compiles
 > five targets via `bun build --compile … scripts/binary-entry.ts --outfile dist/rauf-*`
-> (verified `release.yml:65-77`, e.g.
+> (verified `release.yml`: step at `:65`, compile invocations at `:73-77`, e.g.
 > `bun build --compile --target=bun-linux-x64-baseline scripts/binary-entry.ts --outfile dist/rauf-linux-x64`)
 > and publishes them as GitHub release assets — there is **no npm package** in the publish path today.
 >

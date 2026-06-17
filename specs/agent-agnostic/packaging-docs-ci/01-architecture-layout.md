@@ -84,7 +84,8 @@ rauf/
 │   │   ├── release.yml             UNCHANGED  no live publish
 │   │   └── npm-publish.yml         NEW (optional)  workflow_dispatch-only publish machinery (§3.13 tech-spec)
 │   └── actions/quality-gate/action.yml  UNCHANGED  existing (pnpm gate)
-└── packages/*/package.json         EDIT  npm-publishability prep (publishConfig/files/bin); NO publish
+└── packages/cli/package.json (or root, per OQ-A)  EDIT  npm-publishability prep (publishConfig/files/bin)
+                                    on the ONE chosen `rauf` publish target only; NO version change, NO publish (06 §7.1)
 ```
 
 > **Public API surface:** none in the code sense. The feature's surface is the `release-and-ci-gates`

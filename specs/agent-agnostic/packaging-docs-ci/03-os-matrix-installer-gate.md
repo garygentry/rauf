@@ -194,7 +194,8 @@ workflow.
 
 ### 3.4 `--skip-rauf` rationale (tech-spec decision 1 / §6.1, IR-2)
 
-Every install leg passes `--skip-rauf`. Verified behavior (`installer/src/rauf.ts:84-104`):
+Every install leg passes `--skip-rauf`. Verified behavior (`preflightRauf` at
+`installer/src/rauf.ts:84-104`; the `RAUF_PIN` constant itself is at `rauf.ts:30`, matching 06 §7):
 
 - `preflightRauf({ skip: true })` returns `ok({ raufPin: null })` immediately with **no network
   call** (`rauf.ts:88-90`).

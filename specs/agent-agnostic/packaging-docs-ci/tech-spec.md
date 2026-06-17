@@ -100,8 +100,10 @@ AGENTS.md                        # (unchanged) hand-authored; referenced from do
 .gitattributes                   # NEW — LF + export-ignore
 README.md                        # EDIT — add labeled cross-agent section linking feature-forge
 CHANGELOG.md                     # EDIT — record this feature
+.github/workflows/docs.yml       # (exists) — runs check:docs; the rauf README edit must keep it green
 .github/workflows/release.yml    # (exists) — no live publish; npm-prep is package.json metadata only
-package.json (per package)       # EDIT — npm-publishability prep (publishConfig/files/bin); NO publish
+package.json (chosen rauf target) # EDIT — npm-publishability prep (publishConfig/files/bin) on the ONE
+                                 #   package that becomes published `rauf` (per OQ-A); NO version change, NO publish
 .github/workflows/npm-publish.yml# NEW (optional, manual-dispatch only) — the publish *machinery*
 ```
 
@@ -350,8 +352,12 @@ changes (CI gates, docs, hygiene, version reconciliation) under the appropriate 
 ### 3.13 rauf npm-publishability machinery (decision 1; supports the installer's default path)
 
 To make rauf *publishable* without publishing:
-- Remove `private:true` / add `publishConfig`, `files`, and a proper `bin` to the rauf package that
-  the installer's `rauf@0.6.0` pin targets (the unscoped `rauf` package — bin `rauf`). The Bun
+- Remove `private:true` / add `publishConfig`, `files`, and a proper `bin` to the package that will
+  become the published unscoped `rauf` that the installer's `rauf@0.6.0` pin targets. **Which package
+  that is remains deferred to OQ-A** (see 06 §7.1/§7.4): the root `rauf` package currently has no
+  `bin`, while `@rauf/cli` carries `bin: rauf` but is scoped and `private` — so the publish target is
+  a deliberately open decision, not a settled fact. The prep edits metadata fields only, on that one
+  chosen target, and changes no `version` field. The Bun
   shebang (`#!/usr/bin/env bun`) means npm consumers need Bun, or a compiled binary is shipped; the
   packaging-prep documents the chosen distribution form (compiled binary via the existing
   `release.yml` cross-compile, or a Bun-required npm package). **This feature does not run

@@ -71,6 +71,13 @@
       },
       "completedAt": "2026-06-17T20:30:00Z",
       "commitHash": "31b07a8f9475ae938b8919ad81b029c14b1fdd13"
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-06-17.md",
+      "findingsCount": 11,
+      "verifiedAt": "2026-06-17T20:45:00Z",
+      "fixedAt": "2026-06-17T21:05:00Z"
     }
   }
 }

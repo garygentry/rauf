@@ -320,7 +320,12 @@ authoritative source for the allowed/required key sets, keeping one executable g
 `${CLAUDE_PLUGIN_ROOT}`, prelude-identity, and body-size rules. The **only** change is to load the
 allowed/required key sets from the schema instead of hard-coding them.
 
-**Verified current state** — `/home/gary/workspace/feature-forge/scripts/check-spec-purity.py:35-41`:
+**Verified current state** — `/home/gary/workspace/feature-forge/scripts/check-spec-purity.py:35-41`
+(quoted byte-for-byte). **Note:** the `REQ-FM-01` / `REQ-VND-01` in the quoted comment are
+**`forge-skill-spec-purity`'s** requirement IDs, carried in the real `check-spec-purity.py` source —
+they are **not** packaging-docs-ci requirements (the traceability validator flags them as "orphaned"
+because it pattern-matches REQ IDs inside fenced code). This block implements **REQ-CI-02**; the
+quoted code is left unchanged on purpose so "verified current state" stays accurate.
 
 ```python
 # §1 — frontmatter schema (REQ-FM-01, REQ-VND-01).
@@ -731,20 +736,32 @@ python validate-traceability.py <prd-path> <specs-dir> [--json]
 
 ```bash
 # 8. Requirement traceability (REQ-CI-06). validate-traceability.py is standalone
-#    today; wire it as a BLOCKING gate. It is run once per spec suite that ships in
-#    the repo. If no PRD/specs tree is present in the repo (the canon repo may not
-#    carry one), it is a non-fatal SKIP — never a silent pass over a real gap.
+#    today; wire it as a BLOCKING gate. The validator's CLI takes exactly TWO
+#    positionals — a single PRD.md file and ITS specs dir — so it is invoked once
+#    PER SPEC SUITE (each `<root>/specs/<suite>/PRD.md`), with that suite's own
+#    directory as the specs dir. If no PRD/specs tree is present (the canon repo may
+#    not carry one), it is a non-fatal SKIP — never a silent pass over a real gap.
 echo ""
 echo "Checking requirement traceability..."
 TRACE="$REPO_ROOT/scripts/validate-traceability.py"
 # Adjust the PRD/specs path to the repo's shipped spec layout; SKIP if absent.
 TRACE_PRD="$REPO_ROOT/specs"   # repo-specific; set to the canonical PRD/specs root
 if [ -f "$TRACE" ] && [ -d "$TRACE_PRD" ]; then
-  if python3 "$TRACE" "$TRACE_PRD"/*/PRD.md "$TRACE_PRD" 2>/dev/null; then
-    echo "PASS: requirement traceability (all REQ-IDs covered, no orphans)"
-  else
-    echo "FAIL: requirement traceability reported gaps/orphans (see above)"
-    ERRORS=$((ERRORS + 1))
+  TRACE_RAN=0
+  for prd in "$TRACE_PRD"/*/PRD.md; do
+    [ -e "$prd" ] || continue                    # no suite present -> SKIP, not a bogus glob-string failure
+    TRACE_RAN=1
+    specs_dir="$(dirname "$prd")"
+    python3 "$TRACE" "$prd" "$specs_dir"; rc=$?   # NO 2>/dev/null — surface the validator's diagnostic (REQ-OBS-01)
+    case "$rc" in
+      0) echo "PASS: requirement traceability ($specs_dir)" ;;
+      1) echo "FAIL: requirement traceability gaps/orphans in $specs_dir (see above)"; ERRORS=$((ERRORS + 1)) ;;
+      *) echo "FAIL: requirement traceability config error in $specs_dir (rc=$rc — bad PRD/specs path?)"; ERRORS=$((ERRORS + 1)) ;;
+    esac
+  done
+  if [ "$TRACE_RAN" -eq 0 ]; then
+    echo "SKIP: no spec suite (specs/*/PRD.md) present; traceability check not applicable here"
+    WARNINGS=$((WARNINGS + 1))
   fi
 else
   echo "SKIP: no specs tree present; traceability check not applicable here"

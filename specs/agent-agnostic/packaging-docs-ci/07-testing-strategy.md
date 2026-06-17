@@ -28,7 +28,7 @@ run, what counts as pass, and how each Success Criterion maps to a concrete loca
 | Layer | Tool | What it covers | Provisioning |
 |---|---|---|---|
 | Aggregate gate (feature-forge) | `bash scripts/validate.sh` | plugin/marketplace JSON, frontmatter, spec-purity, regen-diff, traceability, installer build+test | python3 stdlib + `.venv-adapters` (PyYAML) |
-| Schema anti-drift | `pytest` (existing `tests/`) | `check-spec-purity.py` loaded key-set == schema `properties` | pytest (CI-installed) |
+| Schema anti-drift | `pytest` (existing `tests/`) | `check-spec-purity.py` loaded key-set == schema `properties` | pytest — **CI MUST `pip install pytest`** so `validate.sh` step 7 cannot soft-skip (§2.2) |
 | Shell lint | `shellcheck scripts/*.sh` | 4 shell scripts at error+warning floor | shellcheck (CI/local) |
 | Python lint | `ruff check scripts/ eval/` | scripts + eval harness at E/F/W floor | ruff (CI pip) |
 | Version-sync | `python3 scripts/check-version-sync.py` | 3 feature-forge version fields byte-equal | stdlib |
@@ -46,7 +46,7 @@ Run from `feature-forge/`:
 ```bash
 bash scripts/validate.sh                 # the aggregate gate (REQ-CI-01,-02,-04,-06)
 shellcheck scripts/*.sh                   # REQ-CI-03 (shell)
-ruff check scripts/ eval/                  # REQ-CI-03 (python; tolerant of absent eval/, §2.5)
+ruff check scripts/ $( [ -d eval ] && echo eval )   # REQ-CI-03 (python; eval/ optional until authored, §2.5)
 python3 scripts/check-version-sync.py      # REQ-CI-05
 ```
 
@@ -68,6 +68,13 @@ python3 scripts/check-version-sync.py      # REQ-CI-05
 - **Anti-drift unit test** (extends existing `tests/test_check_spec_purity.py`): asserts the checker's
   loaded `ALLOWED` set equals the schema's `properties` keys and `REQUIRED` equals the schema's
   `required`. Run via `python3 -m pytest tests -q` (also driven by `validate.sh` step 7).
+- **CI must install pytest — this is the capstone's one net-new test.** `validate.sh` step 7
+  **soft-skips non-fatally when pytest is absent** (`SKIP: pytest not installed … (non-fatal)`) and
+  still reports "All checks passed!". So the feature-forge CI composite **MUST `pip install pytest`**
+  (alongside the existing `ruff`/`anthropic` pip steps) to make step 7 a **hard** gate in CI;
+  otherwise the sole schema↔checker drift guard silently no-ops on a runner without pytest. Locally
+  the assertion is enforced only when pytest is present — a documented local-only affordance, not a
+  CI gap (cross-ref `02-ci-blocking-gates.md` step-7 row).
 - **Negative test:** temporarily add a `version:` key to a SKILL.md → `check-spec-purity.py` MUST fail
   (`additionalProperties:false` ⇒ disallowed-key violation), proving REQ-VER-03/REQ-CONST-03 are
   mechanically enforced. Revert after.
@@ -99,9 +106,13 @@ field) and the pass on the reconciled tree. `installer/package.json` (`0.1.0`) M
 - **ruff:** `E`/`F`/`W` floor, line-length 100; per-line `# noqa: <rule>` permitted. Validate against
   `scripts/*.py` (incl. sibling-owned `epic-manifest.py`, `validate-traceability.py`) and `eval/*.py`.
   Pre-existing violations are fixed minimally or scoped — never by weakening the floor.
-- **Ordering:** `eval/` is created by this feature; the ruff target must tolerate an absent `eval/`
-  **or** the lint-gate backlog item is sequenced AFTER the eval-harness item (a forge-4
-  dependency-ordering constraint — see `02-ci-blocking-gates.md` and `04-trigger-accuracy-eval.md`).
+- **Ordering / absent `eval/`:** `ruff` errors (non-zero) when a path argument does not exist, so the
+  bare `ruff check scripts/ eval/` is **not** self-tolerant of an absent `eval/`. Tolerance is owned by
+  the **CI composite action**, which guards the eval target with `[ -d eval ]` (see
+  `02-ci-blocking-gates.md` §lint); the local recipe above mirrors that guard
+  (`$( [ -d eval ] && echo eval )`). Because the guard makes the gate pass whether or not `eval/`
+  exists yet, **lint-gate ordering relative to the eval-harness item is irrelevant** — there is no
+  forge-4 sequencing constraint here.
 
 ### 2.6 Performance (REQ-PERF-01)
 
@@ -215,6 +226,7 @@ pnpm gate     # build + schema:check + version:check + typecheck + lint + format
 - [ ] `shellcheck scripts/*.sh` and `ruff check scripts/ eval/` exit 0.
 - [ ] `check-version-sync.py` fails on the desynced tree and passes on the reconciled tree.
 - [ ] The anti-drift pytest asserts checker-loaded keys == schema `properties`.
+- [ ] The feature-forge CI workflow installs pytest so `validate.sh` step 7 cannot soft-skip the anti-drift assertion in CI (§2.2).
 - [ ] Installer `--dry-run --skip-rauf --json` + `uninstall -y --skip-rauf` exit 0 locally; 3 legs declared.
 - [ ] `run-eval.py` emits a score with a key and "skipped (no key)" + exit 0 without one.
 - [ ] Every README/per-agent-doc command and path resolves (SC-08 recipe).
