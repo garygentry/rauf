@@ -39,6 +39,7 @@
       "version": 1,
       "startedAt": "2026-06-16T22:50:00Z",
       "completedAt": "2026-06-16T23:15:00Z",
+      "commitHash": "2b84135",
       "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 1 },
       "artifacts": [
         "00-core-definitions.md",
