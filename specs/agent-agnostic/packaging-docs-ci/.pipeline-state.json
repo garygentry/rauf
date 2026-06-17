@@ -3,15 +3,21 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T19:53:44Z",
-  "currentStage": "forge-3-specs",
-  "notes": "Capstone is mostly CI-wiring + authoring, not new engines: validate.sh (feature-forge) and pnpm gate (rauf) already run the substantive validators. 7 interview decisions recorded in tech-spec §1. rauf-on-npm reconciled as machinery+documented-gap (--skip-rauf in CI); version-sync = 3 fields -> 0.10.0, installer independent.",
+  "updatedAt": "2026-06-17T20:30:00Z",
+  "currentStage": "forge-4-backlog",
+  "notes": "Capstone is mostly CI-wiring + authoring, not new engines: validate.sh (feature-forge) and pnpm gate (rauf) already run the substantive validators. 7 interview decisions recorded in tech-spec \u00a71. rauf-on-npm reconciled as machinery+documented-gap (--skip-rauf in CI); version-sync = 3 fields -> 0.10.0, installer independent.",
   "stages": {
-    "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
     "forge-1-prd": {
       "status": "complete",
       "version": 1,
-      "artifacts": ["PRD.md"],
+      "artifacts": [
+        "PRD.md"
+      ],
       "startedAt": "2026-06-17T18:24:23Z",
       "completedAt": "2026-06-17T18:24:23Z",
       "basedOnVersions": {},
@@ -27,10 +33,14 @@
     "forge-2-tech": {
       "status": "complete",
       "version": 1,
-      "artifacts": ["tech-spec.md"],
+      "artifacts": [
+        "tech-spec.md"
+      ],
       "startedAt": "2026-06-17T19:53:44Z",
       "completedAt": "2026-06-17T19:53:44Z",
-      "basedOnVersions": { "forge-1-prd": 1 },
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
       "commitHash": "df900472afd6e539dc5a2a0b40d2b017a9067ba4"
     },
     "forge-verify-tech": {
@@ -39,6 +49,28 @@
       "findingsCount": 5,
       "verifiedAt": "2026-06-17T19:53:44Z",
       "fixedAt": "2026-06-17T19:53:44Z"
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-ci-blocking-gates.md",
+        "03-os-matrix-installer-gate.md",
+        "04-trigger-accuracy-eval.md",
+        "05-readme-and-agent-docs.md",
+        "06-packaging-versioning-hygiene.md",
+        "07-testing-strategy.md",
+        "TRACEABILITY.md"
+      ],
+      "startedAt": "2026-06-17T20:00:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
+      "completedAt": "2026-06-17T20:30:00Z",
+      "commitHash": "31b07a8f9475ae938b8919ad81b029c14b1fdd13"
     }
   }
 }
