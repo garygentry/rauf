@@ -16,8 +16,8 @@
         "Run from ../feature-forge: `bash scripts/validate.sh` step 6a (check-spec-purity) still passes for all 11 skills",
         "Negative check: temporarily adding a `version:` key to any skills/*/SKILL.md makes check-spec-purity.py fail with a disallowed-key violation (revert after)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T21:50:02.812Z",
       "dependsOn": [],
       "notes": "Foundation for the whole CI gate. The schema is consumed by item 004 (validate.sh claude-validate fallback) and item 005 (composite runs validate.sh step 6a). additionalProperties:false is what mechanically enforces spec-purity (no vendor/version keys). The quoted REQ-FM-01/REQ-VND-01 IDs inside check-spec-purity.py are forge-skill-spec-purity's IDs carried in source — leave them as-is.",
       "estimatedIterations": 1,
