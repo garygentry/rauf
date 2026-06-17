@@ -21,8 +21,10 @@ Today:
 - **Nothing is gated.** feature-forge has **no CI at all**. Generated adapters can silently drift
   from canon. Spec-purity, skill-schema conformance, and shell/Python lint are unenforced. The
   installer is never exercised on the OS matrix it claims to support.
-- **Packaging is inconsistent.** feature-forge already ships a **version mismatch**
-  (`.claude-plugin` manifest `0.9.0` vs `plugin.json` `0.10.0`). There is no version-sync check.
+- **Packaging is inconsistent.** feature-forge already ships a **version desync** across three
+  files (`.claude-plugin/plugin.json` at `0.10.0`, `.claude-plugin/marketplace.json` at `0.9.0`,
+  and the generated `adapters/gemini/gemini-extension.json` at `0.0.0`). There is no version-sync
+  check.
   Neither repo declares cross-OS file handling (`.gitattributes` for LF normalization and
   export-ignore), and feature-forge has no `LICENSE` file.
 
@@ -33,9 +35,9 @@ or be adopted by anyone else.
 
 ## 2. User Stories
 
-- **As a new user evaluating the system**, I want each repo's README to show me — within the first
-  screen — the preferred Claude install, a universal one-liner, and a table telling me what to do
-  for my specific agent, so that I can get running without reading the whole repo.
+- **As a new user evaluating the system**, I want each repo's README to show me — before the first
+  non-install section — the preferred Claude install, a universal one-liner, and a table telling me
+  what to do for my specific agent, so that I can get running without reading the whole repo.
 - **As a user of a specific coding agent** (Codex/Copilot/Cursor/Gemini), I want a dedicated setup
   doc for my agent, so that I know exactly how to install and use the skills on my surface.
 - **As the maintainer**, I want CI to fail any PR that lets generated adapters drift from canon,
@@ -54,9 +56,10 @@ or be adopted by anyone else.
 ### 3.1 README Rewrites
 
 - **REQ-README-01: feature-forge README leads with the cross-agent install story.** The README
-  MUST open (within the first screen) with, in order: (a) the Claude-preferred marketplace
-  install, (b) a universal one-liner install, (c) a per-surface table mapping each supported agent
-  to its install path / setup doc.
+  MUST open — before the first non-install `##`-level section after the title — with, in order:
+  (a) the Claude-preferred marketplace install, (b) a universal one-liner install, (c) a
+  per-surface table mapping each supported agent to its install path / setup doc. The ordered
+  presence of (a)→(b)→(c) ahead of any non-install content is the verifiable bar.
   - Priority: P0
 - **REQ-README-02: rauf README keeps its loop-runner shape and cross-links the cross-agent story.**
   rauf's README MUST retain its loop-runner product framing (pitch, install-as-binary, CLI/web)
@@ -83,6 +86,12 @@ or be adopted by anyone else.
   to install the skills for that agent (the relevant installer invocation / adapter location) and
   how to confirm they work (a first-use check).
   - Priority: P1
+- **REQ-DOCS-04: The default forge↔rauf loop path is documented.** At least one doc (the per-agent
+  setup docs and/or the feature-forge README) MUST explain that `forge-5-loop` defaults to rauf as
+  its loop runner and how agent selection flows forge→rauf, satisfying the charter's
+  `consumes forge-loop-runner-contract` obligation.
+  - Priority: P1
+  - Notes: Covers the `forge-loop-runner-contract` contract consumed from `forge-rauf-loop-default`.
 
 ### 3.3 Deterministic CI Gates (Blocking)
 
@@ -107,10 +116,11 @@ the PR when they do not pass.
   output (generated artifacts can never drift from canon).
   - Priority: P0
 - **REQ-CI-05: Version-sync gate.** CI MUST assert that the synced version fields agree **within
-  each repo**. For feature-forge this spans `plugin.json`, the `.claude-plugin` manifest, and
-  `gemini-extension.json`. For rauf this is its existing `version:check` (single source in
-  `packages/core/src/version.ts`). The gate MUST currently FAIL on the existing
-  `0.9.0`/`0.10.0` feature-forge mismatch until it is reconciled (REQ-VER-02).
+  each repo**. For feature-forge this spans `.claude-plugin/plugin.json`,
+  `.claude-plugin/marketplace.json`, and the generated `adapters/gemini/gemini-extension.json`.
+  For rauf this is its existing `version:check` (single source in `packages/core/src/version.ts`).
+  The gate MUST currently FAIL on the existing feature-forge version desync (plugin.json `0.10.0` /
+  marketplace.json `0.9.0` / gemini-extension.json `0.0.0`) until it is reconciled (REQ-VER-02).
   - Priority: P0
 - **REQ-CI-06: feature-forge's existing test/spec-purity checks run in CI.** The repo's existing
   validators (e.g. spec-purity check, traceability validation, adapter build) MUST be wired into
@@ -155,9 +165,13 @@ the PR when they do not pass.
 - **REQ-VER-01: Independent semver per repo.** rauf and feature-forge each maintain their own
   semver line. There is NO requirement that the two repos share a version number.
   - Priority: P0
-- **REQ-VER-02: Within-repo version fields are reconciled.** The current feature-forge mismatch
-  (`.claude-plugin` manifest `0.9.0` vs `plugin.json` `0.10.0`) MUST be reconciled to a single
-  agreed version, after which REQ-CI-05 keeps them synced.
+- **REQ-VER-02: Within-repo version fields are reconciled.** The current feature-forge version
+  desync MUST be reconciled to a single agreed version across `.claude-plugin/plugin.json`
+  (currently `0.10.0`), `.claude-plugin/marketplace.json` (currently `0.9.0`), and
+  `adapters/gemini/gemini-extension.json` (currently `0.0.0`), after which REQ-CI-05 keeps them
+  synced. Because `gemini-extension.json` is a generated adapter (DO-NOT-EDIT, REQ-MAINT-01), it
+  MUST be reconciled at the generator/source, not by hand-edit. The exact reconciled value is
+  deferred to the tech spec (OQ-02).
   - Priority: P0
 - **REQ-VER-03: SKILL.md files carry no version field.** To preserve spec-purity, version numbers
   live in the per-repo manifests only (`plugin.json` / `.claude-plugin` manifest /
@@ -222,6 +236,10 @@ the PR when they do not pass.
 
 ## 5. Constraints
 
+> **Priority note:** Constraints (`REQ-CONST-*`) are P0 mandates by definition — they bound every
+> requirement above. Charter-Deviation records (`REQ-CONS-*`, below) document decisions and carry
+> no independent priority.
+
 - **REQ-CONST-01: GitHub Actions is the CI platform.** Mandated by existing infrastructure — rauf
   already runs GitHub Actions; introducing a second CI system is not acceptable.
 - **REQ-CONST-02: Edits land in both repos.** This feature's loop edits files in BOTH the rauf repo
@@ -264,7 +282,9 @@ the PR when they do not pass.
   `docs/setup/<agent>.md`) — to be settled in the tech spec; REQ-DOCS-01 only fixes "separate files
   under docs/".
 - **OQ-02:** The single reconciled feature-forge version number for REQ-VER-02 (likely `0.10.0`,
-  the higher of the two) — to be confirmed when the version-sync gate is implemented.
+  the highest of the three desynced files: plugin.json `0.10.0` / marketplace.json `0.9.0` /
+  gemini-extension.json `0.0.0`) — deferred to the tech spec / when the version-sync gate is
+  implemented.
 - **OQ-03:** Whether the advisory eval runs on a schedule, on a label, or on-demand only — a CI
   ergonomics choice for the tech spec.
 - **OQ-04:** shellcheck/ruff severity floor (which rules are errors vs warnings) — to be set in the
@@ -272,18 +292,21 @@ the PR when they do not pass.
 
 ## 8. Success Criteria
 
-- **SC-01:** Both repos' READMEs match their required shape (REQ-README-01/02/03) and every
-  command/path shown resolves to a real artifact.
+- **SC-01:** feature-forge's README presents the (a)→(b)→(c) install elements in order before its
+  first non-install `##` section (REQ-README-01); rauf's README retains its loop-runner shape and
+  cross-links the cross-agent story (REQ-README-02); and every command/path shown in either README
+  resolves to a real artifact (REQ-README-03).
 - **SC-02:** A setup doc exists for each of the five agents and is linked from the feature-forge
-  README's per-surface table.
+  README's per-surface table, and the default forge↔rauf loop path is documented (REQ-DOCS-04).
 - **SC-03:** All deterministic blocking gates (REQ-CI-01..06, REQ-CI-07) are authored as GitHub
   Actions and **pass when run locally** against both current trees — except the version-sync gate,
-  which correctly **fails** until the feature-forge version mismatch is reconciled, then passes.
+  which correctly **fails** until the feature-forge version desync is reconciled, then passes.
 - **SC-04:** Running the adapters regen-diff locally against committed `adapters/` produces no diff.
 - **SC-05:** The installer `--dry-run` + `uninstall` complete without error when run locally on the
   available OS legs, and the workflow declares all three (Ubuntu/macOS/Windows) matrix legs.
 - **SC-06:** The trigger-accuracy eval harness runs and emits a score, wired as a non-blocking job.
 - **SC-07:** Both repos have a `.gitattributes` (LF + export-ignore) and an MIT `LICENSE`; their
   within-repo version fields agree; CHANGELOGs reflect this feature's changes.
-- **SC-08:** A user could follow either README's install path end-to-end without hitting a stale or
-  incorrect instruction (validated by walking the documented dry-run path).
+- **SC-08:** Each install command/path in both READMEs is exercised in a local dry-run (installer
+  `--dry-run`, marketplace path resolved, every referenced doc/adapter path `ls`-confirmed to
+  exist), producing zero stale or failing instructions.
