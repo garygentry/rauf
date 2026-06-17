@@ -3,8 +3,8 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T00:10:00Z",
-  "currentStage": "forge-4-backlog",
+  "updatedAt": "2026-06-17T01:05:00Z",
+  "currentStage": "forge-5-loop",
   "notes": "forge-3-specs must resolve OQ-A (IR-1: installed bundles miss forge-root.sh sentinels [scripts/epic-manifest.py + .claude-plugin/plugin.json] and epic-manifest.py is not copied into bundles, so non-Claude installs are not resolver-discoverable — coordinate with forge-agent-adapters-build; installer stays C-3-clean/read-only). IR-2/C-7: rauf is not yet npm-publishable (all packages private, bun shebang, GitHub-Release binaries) — RAUF_PIN=rauf@0.6.0 consumed via lazy npx + install-time resolvability preflight + a fixed unavailable-pin failure mode; publish work is owned by packaging-docs-ci. V-001: epic-manifest 'consumes' should be corrected to the published rauf bin, not agent-cli-registry. Stack: TypeScript / zero runtime deps / node:test / node:util.parseArgs in installer/, npm package bundles dist+adapters, hard validate.sh step 8 (npm ci/build/test). Install model: namespaced feature-forge/ dir per agent, parent-sibling .feature-forge.<scope>.json manifest with SHA-256 drift, plan-then-apply, symlink-whole-dir, gemini plain-copy.",
   "stages": {
     "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
@@ -62,6 +62,15 @@
       "fixedAt": "2026-06-16T23:55:00Z",
       "commitHash": "bcc7621",
       "confirmedAt": "2026-06-17T00:10:00Z"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["backlog.json"],
+      "startedAt": "2026-06-17T00:45:00Z",
+      "completedAt": "2026-06-17T01:05:00Z",
+      "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "notes": "13 items, validated clean by rauf-stable backlog validate (valid:true, 0 findings). Bottom-up build order; verify gate is feature-forge bash scripts/validate.sh (step 8), NOT pnpm gate (C-2). Item 011 uses agentDelegation (4 e2e subtasks); 013 is the epic-level V-001 consumes fix (P2)."
     },
     "forge-verify-tech": {
       "status": "passed",
