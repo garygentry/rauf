@@ -191,8 +191,8 @@
         "The eval.yml file parses as valid YAML",
         "The pinned model referenced by the harness is the current Haiku id (claude-haiku-4-5-20251001) with a small max_tokens"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:07:47.248Z",
       "dependsOn": [
         "007"
       ],
