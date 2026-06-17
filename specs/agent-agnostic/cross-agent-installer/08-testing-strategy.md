@@ -27,6 +27,8 @@ itself is specified in `02`–`07` — this doc fixes how it is verified.
 | REQ-DET-02 | Config-dir presence is the primary signal | §5.1 Detection |
 | REQ-DET-03 | No `--agent` ⇒ all detected agents | §5.1 Detection |
 | REQ-DET-04 | Zero detected reports probed dirs, no speculative dirs | §5.1 Detection |
+| REQ-SCALE-01 | New agent = one `AGENT_TARGETS` row, no logic change | §5.14 Scale: synthetic agent row |
+| REQ-SCALE-02 | New skill = no installer change (multi-skill bundle, no per-skill branch) | §5.4 Update reconcile |
 | REQ-OPS-01 | install/add materializes the bundle | §5.2 Dry-run = real run, §5.3 Idempotency |
 | REQ-OPS-02 | update reconciles (add/refresh/remove) | §5.4 Update reconcile |
 | REQ-OPS-03 | uninstall removes a prior install | §5.6 Uninstall exactness, §5.7 Symlink |
@@ -43,6 +45,8 @@ itself is specified in `02`–`07` — this doc fixes how it is verified.
 | REQ-IDEM-03 | Clean out-of-date refreshed by update, no `--force` | §5.4 Update reconcile |
 | REQ-SAFE-01 | Manifest-exact uninstall; untracked user files survive | §5.6 Uninstall exactness |
 | REQ-SAFE-02 | Symlink uninstall unlinks, never deletes target | §5.7 Symlink |
+| REQ-SAFE-03 | Manifest sufficient for list/update drift | §5.13 list status, §5.4 Update reconcile |
+| REQ-SEC-01 | Writes only within agent dirs + manifest loc; no elevation | §5.2 Dry-run = real run, §5.8 Source integrity |
 | REQ-SEC-02 | Path sandbox: crafted id / `..` rejected before any write | §5.11 Path sandbox |
 | REQ-SEC-03 | Symlink ops never write/delete outside the target | §5.7 Symlink |
 | REQ-OBS-01 | Per-agent/per-skill outcome summary; non-zero exit on failure | §5.12 Exit codes, §5.2 |
@@ -50,6 +54,7 @@ itself is specified in `02`–`07` — this doc fixes how it is verified.
 | REQ-RAUF-01 | Working loop out of the box (pin recorded/resolvable) | §5.10 Rauf preflight |
 | REQ-RAUF-02 | rauf via the Node ecosystem (resolvability preflight, no vendored bin) | §5.10 Rauf preflight |
 | REQ-RAUF-03 | Pinned `rauf@<pin>` coordinate recorded | §5.10 Rauf preflight |
+| REQ-RAUF-04 | rauf bundling idempotent + reversible (re-run no dup; uninstall clears `raufPin`) | §5.10 Rauf preflight |
 | REQ-PERF-01 | detect/dry-run/list instant — no network, no build | §5.13 list status |
 | REQ-DIST-02 | `-y` non-interactive | §5.12 Exit codes (run-helper drives `-y`) |
 | REQ-DIST-03 | `--help` enumerates subcommands/flags | §5.12 Exit codes |
@@ -260,23 +265,27 @@ The rauf preflight (`06-rauf-provisioning.md`, tech-spec §3.1) performs a **rea
 query as an **injectable `RegistryQuery`** so tests substitute a mock with **no network**:
 
 ```typescript
-// shape defined in 06-rauf-provisioning.md; reproduced here for the test harness contract
-export type RegistryQuery = (coordinate: string) => Promise<{ ok: true; version: string } | { ok: false }>;
+// test/helpers/registry.ts
+// RegistryQuery is the SYNCHRONOUS Result-returning seam owned by 06-rauf-provisioning.md
+// (`(coordinate: string) => Result<string>`, backed by spawnSync `npm view`). Import the real
+// type from the built module — do NOT redeclare it here (it must match 06 exactly).
+import type { RegistryQuery } from "../../dist/rauf.js";
+import { ok, err } from "../../dist/types.js";
 
 /** Resolves the pin (REQ-RAUF preflight success). */
-export const resolvableRegistry: RegistryQuery = async () => ({ ok: true, version: "0.6.0" });
+export const resolvableRegistry: RegistryQuery = () => ok("0.6.0");
 /** Fails to resolve (the IR-2 / unpublished-rauf case, tech-spec §3.1 unavailable-pin failure mode). */
-export const unresolvableRegistry: RegistryQuery = async () => ({ ok: false });
+export const unresolvableRegistry: RegistryQuery = () =>
+  err({ code: "RAUF_UNRESOLVABLE", message: "stub: not resolvable", remedy: "stub" });
 /** Asserts it is never called (used for --skip-rauf and for list/dry-run no-network proofs). */
-export function neverCalledRegistry(): RegistryQuery {
-  return () => {
-    throw new Error("registry must not be queried in this path");
-  };
-}
+export const neverCalledRegistry: RegistryQuery = () => {
+  throw new Error("registry must not be queried in this path");
+};
 ```
 
 These three (`resolvable`, `unresolvable`, `neverCalled`) are the only registry behaviors any test
-uses. No real `npm view` runs in the suite.
+uses; each conforms to 06's synchronous `RegistryQuery = (coordinate) => Result<string>`. No real
+`npm view` runs in the suite.
 
 ### 3.4 The run helper — driving a full subcommand
 
@@ -324,7 +333,7 @@ Two tiers, both under `node:test`, both hermetic via §3:
 
 - **Unit (pure-module) tests** target a single module's public functions directly with no full-CLI
   dispatch — e.g. `plan(...)` (`04`), `sha256Tree(...)` (`03`), `detectAgents(...)` (`02`),
-  `resolveDest(...)` containment (`04`/`fsutil`), `readManifest`/`writeManifest` (`05`),
+  `resolveWithin(...)` containment (`04`/`fsutil`), `readManifest`/`writeManifest` (`05`),
   `preflightRauf(...)` with a mock registry (`06`). These give the coverage targets in §6 their
   per-function floor and pin error codes precisely.
 - **Integration (end-to-end subcommand) tests** drive `runCli2(...)` (§3.4) through a real plan→apply→
@@ -375,6 +384,10 @@ One subsection per area, each naming the REQ(s) and the concrete assertion. Area
   worked example in §8 implements this assertion verbatim.
 - Assert every planned `create` produced a real file on disk after the real run, and the per-agent
   summary (`AgentReport.actions`) lists each skill file (REQ-OBS-01).
+- **SEC-01 — positive containment (REQ-SEC-01).** After the real run, assert **nothing** was written
+  outside the agent's config root: every created path lies under `<scopeRoot>/.claude/skills/` (the
+  namespace dir) or is the parent-sibling manifest; assert the sandbox HOME/cwd contain no file
+  outside those locations and no elevation occurred (distinct from §5.11's negative path-escape test).
 
 ### 5.3 Idempotency (REQ-IDEM-01, REQ-OPS-01)
 
@@ -399,6 +412,14 @@ One subsection per area, each naming the REQ(s) and the concrete assertion. Area
     file placed inside the namespace dir is **not** removed.
 - **IDEM-03 — clean out-of-date refreshes without `--force`.** After a source change, a clean prior
   install (matching the manifest before the change) is refreshed by `update` with no `--force` flag.
+- **SCALE-02 — multi-skill bundle, no per-skill branch (REQ-SCALE-02).** Install a fixture bundle with
+  several skills (`makeFixtureBundle(sb, "claude", ["a","b","c"])`) and assert **all** skill dirs land
+  on disk and appear in `manifest.skills` — proving the installer copies whatever skills the bundle
+  contains with no per-skill logic (a new skill needs no installer change). No skill file is parsed.
+- **SAFE-03 — manifest sufficient for update drift (REQ-SAFE-03).** Assert the post-install manifest
+  carries `sourceHash`, per-file `sha256`, and `mode` — exactly the fields `update` uses to classify
+  `unchanged`/`overwrite`/`skip-modified` here (and `list` uses in §5.13). The reconcile sub-tests
+  above already exercise that those fields drive the diff; this bullet pins the sufficiency contract.
 
 ### 5.5 Skip-modified + `--force` (REQ-IDEM-02, REQ-FLAG-04)
 
@@ -482,14 +503,18 @@ One subsection per area, each naming the REQ(s) and the concrete assertion. Area
   exist); overall exit is **non-zero** (`EXIT.FAILURE`). Asserts the installer **never** falls back to
   a vendored binary (no extra files written) and **never** silently degrades.
 - **RAUF-skip.** `runCli2(["install","-a","claude","--skip-rauf","--source",sb.source], sb,
-  { registry: neverCalledRegistry() })` ⇒ manifest `raufPin === null`; the registry mock is **never
+  { registry: neverCalledRegistry })` ⇒ manifest `raufPin === null`; the registry mock is **never
   called** (no network); install succeeds, exit `EXIT.SUCCESS`.
+- **RAUF-04 — idempotent + reversible (REQ-RAUF-04).** Re-run install with `resolvableRegistry`: the
+  manifest still records exactly one `raufPin` (no duplicated rauf state — provisioning is record +
+  preflight, never a write, `06` §5). Then `uninstall` and assert the manifest is gone, so the recorded
+  `raufPin` is cleared with it (the reversibility half — there is no rauf binary/dir to clean up).
 
 ### 5.11 Path sandbox — crafted id / `..` rejected before any write (REQ-SEC-02)
 
 *Tier:* unit (the containment guard in `fsutil`/`04`).
 
-- Call the destination resolver/containment guard (`resolveDest` / `assertContained`, `04`) with a
+- Call the destination resolver/containment guard (`resolveWithin`, `04` §7.1 `fsutil`) with a
   crafted agent id or a relative segment that would escape the agent root (e.g. an `installSubdir`
   containing `../../etc`, or a skill relpath `../../../evil`). Assert it returns
   `err({ code: "PATH_ESCAPE" })` (`00` §7) — **before** any filesystem write. After the call, assert
@@ -522,29 +547,48 @@ One subsection per area, each naming the REQ(s) and the concrete assertion. Area
   `true` (manifest `sourceHash` matches the current bundle).
 - **Installed + out of date:** mutate the source after install ⇒ up-to-date `false`.
 - **Drift present:** hand-edit a destination file ⇒ `list` flags drift (a `skip-modified` would occur).
-- **No network / instant (REQ-PERF-01):** run `list` with `neverCalledRegistry()` injected and assert
+- **No network / instant (REQ-PERF-01):** run `list` with `neverCalledRegistry` injected and assert
   the registry mock is **never invoked** — `list` does detection + manifest read + hash compare only,
   no network, no build.
+- **SAFE-03 (list half) — manifest sufficiency (REQ-SAFE-03).** The "up to date" / "out of date" /
+  "drift" derivations above read **only** the manifest (`sourceHash`, per-file `sha256`) against a
+  fresh local hash — proving the manifest alone is sufficient for `list` to distinguish
+  installer-written content from user content and to detect drift (pairs with §5.4's update half).
+
+### 5.14 Scale: a synthetic agent row drives the pipeline (REQ-SCALE-01)
+
+*Tier:* unit (`detectAgents`/`plan` over an injected `AGENT_TARGETS` row).
+
+- Add a synthetic sixth row to a **local copy** of `AGENT_TARGETS` (and its `AgentId` to a local
+  `AGENT_IDS`) and drive it through `detectAgents` + `destinationFor` + `plan` against a fixture
+  bundle — assert detection, destination derivation, and planning all cover it with **no edit** to any
+  function (REQ-SCALE-01: a new agent is exactly one table row, no logic change). This is the test-side
+  proof of the `02` §5.6 scalability invariant.
 
 ## 6. Coverage targets
 
 The bar (asserted structurally, not by a coverage tool — zero deps):
 
 - **Every public function** exported by `02`–`07` has **≥ 1 test.** Concretely: `detectAgent`,
-  `detectAgents`, `resolveRoots` (`02`); `locateSource`, `checkIntegrity`, `sha256File`, `sha256Tree`
-  (`03`); `plan`, `apply`, `resolveDest`/`assertContained` (`04`); `readManifest`, `writeManifest`,
-  `buildInventory`/`compareInventory` (`05`); `preflightRauf`, `RAUF_PIN` (`06`); `runCli`,
-  `renderReport`/`renderJson` (`07`). A checklist test (`coverage.test.ts`) may assert each named
-  export is defined and reachable.
+  `detectAgents`, `resolveRoots`, `destinationFor`, `formatZeroDetection` (`02`); `locateBundle`,
+  `checkIntegrity`, `locateSource`, `sha256File`, `sha256Tree`, `computeSourceHash`,
+  `listBundleSkills`, `listBundleFiles` (`03`); `plan`, `planInstall`, `planUpdate`, `apply`,
+  `resolveWithin` (`04`); `manifestPath`, `readManifest`, `writeManifest`, `buildManifest`,
+  `validateManifest`, `planUninstall` (`05`); `preflightRauf`, `RAUF_PIN` (`06`); `parseCliArgs`,
+  `runCli`, `main`, `helpText`, `renderReport(report, { json })` (`07`). A checklist test
+  (`coverage.test.ts`) may assert each named export is defined and reachable.
 - **Every `FileActionKind`** (`create`, `overwrite`, `skip-modified`, `unchanged`, `remove`; `00` §4)
   is produced by at least one test — covered across §5.2 (`create`), §5.4 (`overwrite`,`remove`), §5.5
   (`skip-modified`), §5.3 (`unchanged`).
 - **Every `ErrorCode`** (`00` §7) is produced by at least one test: `USAGE` (§5.12), `SOURCE_MISSING`
   + `SOURCE_INVALID` (§5.8), `LOCALLY_MODIFIED` (§5.5), `PATH_ESCAPE` (§5.11), `RAUF_UNRESOLVABLE`
   (§5.10), `MANIFEST_CORRUPT` (a `05` unit test feeds malformed JSON), `WRITE_DENIED` (a `04` unit test
-  targets a read-only dest dir where the platform supports `chmod`; skipped with a logged reason on
-  platforms where read-only enforcement is unavailable), `UNEXPECTED` (a `cli.ts` boundary test injects
-  a throwing seam and asserts exit 1 with the message, never a bare stack).
+  injects a write primitive that throws `EACCES`/`EPERM` — mirroring the `UNEXPECTED` throwing-seam —
+  so `toWriteError` maps it to `WRITE_DENIED` **deterministically on every platform**; an additional,
+  platform-gated `chmod` read-only-dir test exercises the real OS path where supported. The floor is
+  therefore met **unconditionally**, with no soft skip — consistent with §2/§9's "never soft skip"),
+  `UNEXPECTED` (a `cli.ts` boundary test injects a throwing seam and asserts exit 1 with the message,
+  never a bare stack).
 - **Both materialization modes** (`copy`, `symlink`) and **both scopes** (`project`, `global`) are each
   exercised by at least one integration test.
 
@@ -647,7 +691,7 @@ test("install: --dry-run prints exactly the plan a real run performs, and writes
 });
 ```
 
-## 9. The gate (C-2)
+## 9. The gate (C-2) [D4]
 
 The feature's entire verification flows through **`bash scripts/validate.sh`** in feature-forge —
 there is **no** rauf `pnpm` gate for this work (C-1/C-2). `01-architecture-layout.md` §6 specifies the
@@ -701,7 +745,8 @@ Implement these first; this doc's tests exercise their public surfaces:
   injection seam (§3.1).
 - `03-source-and-hashing.md` — `locateSource` (`--source` seam), `checkIntegrity`, `sha256*`.
 - `04-plan-and-apply.md` — `plan` (dry-run engine), `apply`, the `fsutil` containment guard (§5.11).
-- `05-manifest-and-uninstall.md` — `readManifest`/`writeManifest`, inventory build/compare (§5.4/§5.6).
+- `05-manifest-and-uninstall.md` — `manifestPath`, `readManifest`/`writeManifest`, `buildManifest`,
+  `planUninstall` (§5.4/§5.6).
 - `06-rauf-provisioning.md` — `RAUF_PIN`, `preflightRauf`, and the **injectable `RegistryQuery`** seam
   (§3.3) the mock registry relies on.
 - `07-cli-and-reporting.md` — `runCli` (the programmatic entry with the injectable

@@ -76,7 +76,7 @@ import { sha256File, sha256Tree, listBundleFiles } from "./hash.js";
 import { locateSource, type LocatedSource } from "./source.js";
 
 // from 05-manifest-and-uninstall.md (planUninstall is the manifest-driven uninstall planner; §4.3):
-import { readManifest, writeManifest, manifestPathFor, planUninstall } from "./manifest.js";
+import { readManifest, writeManifest, manifestPath, planUninstall } from "./manifest.js";
 
 // this doc's own primitives:
 import { resolveWithin, copyDir, symlinkDir, removePath, isWindows } from "./fsutil.js";
@@ -162,7 +162,7 @@ export interface LocatedSource {
   /** sha256 over the bundle's sorted-path file set — the drift anchor (manifest.sourceHash). */
   readonly sourceHash: string;
   /** Installed skill ids (the bundle's `skills/*` dir names) for manifest.skills. */
-  readonly skills: string[];
+  readonly skills: readonly string[];
   /** Bundle-relative file inventory: POSIX relpath + content sha256, sorted — the set the planner walks. */
   readonly files: ReadonlyArray<{ readonly relpath: string; readonly sha256: string }>;
 }
@@ -308,7 +308,7 @@ export interface ApplyContext {
   readonly agentRoot: string;
   /** The `feature-forge/` namespace dir (manifest.destination). */
   readonly destination: string;
-  /** Hidden parent-sibling manifest path, from 05 `manifestPathFor`. */
+  /** Hidden parent-sibling manifest path, from 05 `manifestPath`. */
   readonly manifestPath: string;
   /** Located source bundle (copy bytes / symlink target). null only for uninstall. */
   readonly source: LocatedSource | null;
@@ -321,7 +321,7 @@ export interface ApplyContext {
 }
 ```
 
-### 5.1 Copy flow (REQ-OPS-01, REQ-OPS-02, REQ-IDEM-01)
+### 5.1 Copy flow (REQ-OPS-01, REQ-OPS-02, REQ-IDEM-01) [D5]
 
 For `mode === "copy"`, `apply` walks `planned.files` in order:
 
@@ -759,18 +759,20 @@ already-written files hash-match and become `unchanged`). This is the intended r
 import { planInstall, resolveMode } from "./plan.js";
 import { apply } from "./apply.js";
 import { locateSource } from "./source.js";
-import { readManifest, manifestPathFor } from "./manifest.js";
+import { readManifest, manifestPath } from "./manifest.js";
 import { RAUF_PIN } from "./rauf.js";
 
 const agent = "claude" as const;
 const scope = "project" as const;
+const home = "/home/u";                               // from 02 resolveRoots (injectable in tests)
+const cwd = "/home/u/proj";                           // from 02 resolveRoots (injectable in tests)
 const mode = resolveMode(flags.symlink);             // "copy" on Windows regardless (REQ-FLAG-03)
 
 const located = locateSource(agent, { source: flags.source });        // 03
 const destination = "/home/u/proj/.claude/skills/feature-forge";       // from 02
 const agentRoot = "/home/u/proj/.claude";                              // containment boundary
-const manifestPath = manifestPathFor(destination, scope);              // 05
-const prior = await readManifest(manifestPath);                        // 05 (null if none)
+const manifestFile = manifestPath(agent, scope, { home, cwd });        // 05
+const prior = await readManifest(manifestFile);                        // 05 (null if none)
 
 const planned = planInstall({
   agent, scope, mode, destination,
@@ -785,7 +787,7 @@ if (flags.dryRun) {
   renderPlan(planned.value);            // prints EXACTLY what a real run would do; writes nothing
 } else if (planned.ok) {
   const report = await apply(planned.value, {
-    agent, scope, mode, agentRoot, destination, manifestPath,
+    agent, scope, mode, agentRoot, destination, manifestPath: manifestFile,
     source: located.ok ? located.value : null,
     raufPin: flags.skipRauf ? null : RAUF_PIN,
     now: new Date().toISOString(),
@@ -804,7 +806,7 @@ Must be implemented (or at least have stable exports) before this doc:
   `Result`, `InstallerError`, `ok`/`err`, `FEATURE_FORGE_NS`, `SCHEMA_VERSION`).
 - **`03-source-and-hashing.md`** — `locateSource`/`LocatedSource`, `sha256File`, `sha256Tree`,
   `listBundleFiles`, and the REQ-OPS-06 integrity check that yields `source: null` on a bad bundle.
-- **`05-manifest-and-uninstall.md`** — `readManifest`, `writeManifest`, `manifestPathFor`,
+- **`05-manifest-and-uninstall.md`** — `readManifest`, `writeManifest`, `manifestPath`,
   `planUninstall` (and the manifest-deletion path used by uninstall). `05` owns the uninstall
   POLICY: the pure, manifest-driven `planUninstall` that returns the all-`"remove"` plan; this doc
   owns the safe EXECUTION (`apply()` §5.3 / `removePath` / `removeEmptyDirsWithin`).

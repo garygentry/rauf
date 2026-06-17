@@ -215,10 +215,15 @@ Flags: -a|--agent <id>  -g|--global  --symlink  --force  --dry-run  -y|--yes
 
 ```ts
 export const AGENT_TARGETS: Record<AgentId, AgentTarget>;     // static table (§3.2)
+export function resolveRoots(opts?: ResolveOpts): { home: string; cwd: string };
 export function detectAgent(id: AgentId, opts?: ResolveOpts): DetectionResult;
 export function detectAgents(opts?: ResolveOpts): DetectionResult[];
 export const RAUF_PIN: string;                                // "rauf@0.6.0" (D1, single source of truth)
 ```
+
+> The **full, authoritative barrel** (the exact `src/index.ts` re-export set — adds `destinationFor`
+> and `formatZeroDetection`) is fixed in `01-architecture-layout.md` §4; this snippet shows the
+> headline surface, not the complete list.
 
 Plus the shell surface `feature-forge list --json` (same data) for `packaging-docs-ci`'s OS-matrix dry-runs and `forge-rauf-loop-default`.
 

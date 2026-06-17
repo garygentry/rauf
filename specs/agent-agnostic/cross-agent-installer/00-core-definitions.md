@@ -7,7 +7,7 @@
 > `AGENT_TARGETS` constant table). **Every other numbered spec references the types defined here and
 > does not redefine them.**
 >
-> **Stack:** TypeScript, strict (`strict: true`, `noUncheckedIndexedAccess: true`), **zero runtime
+> **Stack [D2]:** TypeScript, strict (`strict: true`, `noUncheckedIndexedAccess: true`), **zero runtime
 > dependencies** (only `node:` built-ins), compiled with `tsc`, tested with `node:test`. Named exports
 > only. Core functions return `Result<T, E>` and never throw for expected errors (project convention).
 > All code below is exact TypeScript, not pseudocode.
@@ -66,7 +66,7 @@ export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
 /** Manifest schema version; bumped only on a breaking manifest-shape change. */
 export const SCHEMA_VERSION = 1 as const;
 
-/** The single namespace directory name written inside each agent's install location. */
+/** The single namespace directory name written inside each agent's install location [D5]. */
 export const FEATURE_FORGE_NS = "feature-forge" as const;
 
 /** Filename prefix for the hidden parent-sibling manifest, completed by the scope (§3, §05). */
@@ -329,7 +329,7 @@ export type Result<T, E = InstallerError> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: E };
 
-/** Constructors (kept tiny; live in `src/types.ts` or a `result.ts` helper). */
+/** Constructors (kept tiny; live in `src/types.ts`, matching the 13-module map in `01` §1/§3). */
 export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
 export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 ```

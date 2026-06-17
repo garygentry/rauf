@@ -124,6 +124,7 @@
 ### User Decisions Required
 
 - **V-005 — `RegistryQuery`/`preflightRauf`: synchronous or asynchronous?** The integration cluster confirmed `06`'s preflight uses `spawnSync` (`npm view`), so **synchronous** (`(coordinate) => Result<string>`, `preflightRauf(opts?): Result<…>`) is the recommended canonical shape — it requires fixing `07` (drop `await`, options object) and `08` (sync mocks). Choosing **async** instead requires changing `06`'s canonical type to `Promise<Result<string>>` and keeping `07`'s `await`. Pick one before applying Step 3. All other steps are mechanical and need no decision.
+  - **[RESOLVED 2026-06-16]** **Synchronous.** Canonical: `06` `type RegistryQuery = (coordinate: string) => Result<string>` and `preflightRauf(opts?: { skip?; query? }): Result<{ raufPin: string | null }>` (unchanged — `06` is already sync via `spawnSync`). Step 3 fixes `07` (drop `await`, options object) and `08` (sync mocks importing the real type).
 
 ### Execution Steps
 
@@ -205,3 +206,20 @@
 - **Depends on:** none.
 
 > **Note:** Most fixes (V-001..V-005, V-010) re-converge the parallel-authored docs on the owner-defined contracts; the owners (`03`/`04`/`05`/`06`) are largely correct, and `07` (orchestrator) + `08` (tests) are the docs to bring into line, plus small surface/ambiguity fixes in `00`/`01`/`02`/tech-spec. The deterministic `validate-traceability.py` supplement was **skipped** (not installed); traceability was verified by reading (cross-reference cluster: REQ coverage clean).
+
+## Fix Progress
+
+- User Decision V-005: [RESOLVED] 2026-06-16 — **synchronous** `RegistryQuery`/`preflightRauf` (06 kept as-is; 07+08 aligned).
+- Step 2: [APPLIED] 2026-06-16 — V-001: `04` `manifestPathFor` → `manifestPath(agent, scope, {home,cwd})` (import, JSDoc, §9, Deps).
+- Step 1: [APPLIED] 2026-06-16 — V-002/V-003/V-004: `07` §3.2/§3.3 rewritten to `locateSource`+`plan(subcommand,PlanContext)`, `readManifest(manifestPath(...))`, full `ApplyContext` (incl. `agentRoot`), consumes `apply`→`AgentReport` directly; `env` threaded.
+- Step 3: [APPLIED] 2026-06-16 — V-005: `07` `preflightRauf({skip,query})` (no await); `08` imports real `RegistryQuery` + sync `ok/err` mocks; `06` unchanged.
+- Step 4: [APPLIED] 2026-06-16 — V-006: `05` imports `ResolveOpts` from `./types.js`.
+- Step 5: [APPLIED] 2026-06-16 — V-007: `03` §3.7 `LocatedSource` all `readonly`/`ReadonlyArray` (04 restatement aligned).
+- Step 6: [APPLIED] 2026-06-16 — V-008: `01` §4 barrel made authoritative (+`destinationFor`,`formatZeroDetection`); tech-spec §5.2 +`resolveRoots`+pointer; `02` Verification holds.
+- Step 7: [APPLIED] 2026-06-16 — V-009: `00` §7 constructors fixed to `src/types.ts` (dropped `result.ts` alternative).
+- Step 8: [APPLIED] 2026-06-16 — V-010: `08` coverage symbols → `resolveWithin` / `plan*`+`buildManifest`/`validateManifest` / `renderReport(report,{json})`.
+- Step 9: [APPLIED] 2026-06-16 — V-011: `08` §5 added test areas for SCALE-01/02, SEC-01, RAUF-04, SAFE-03.
+- Step 10: [APPLIED] 2026-06-16 — V-012: `08` §6 `WRITE_DENIED` deterministic via throwing write-seam; chmod test kept platform-gated.
+- Step 11: [APPLIED] 2026-06-16 — V-013: `[D2]`/`[D4]`/`[D5]` decision tags added (00, 01, 04, 08).
+
+All 13 findings applied; independent grep verification clean.

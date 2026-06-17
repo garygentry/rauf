@@ -54,7 +54,7 @@ feature-forge/
 └── AGENTS.md / README.md              — UNCHANGED here (install-section rewrite is packaging-docs-ci)
 ```
 
-## 2. Package manifest & build config
+## 2. Package manifest & build config [D2]
 
 ### `installer/package.json`
 
@@ -138,18 +138,24 @@ The feature exposes exactly two stable surfaces that downstream `forge-rauf-loop
 
 2. **`agent-detection-map`** — `src/agent-targets.ts`, re-exported via `src/index.ts`, consumable two
    ways (REQ-DET-05):
-   - **Importable:** `AGENT_TARGETS`, `detectAgent(id, opts?)`, `detectAgents(opts?)`, plus
+   - **Importable:** `AGENT_TARGETS`, `resolveRoots(opts?)`, `destinationFor(t, scope, opts?)`,
+     `detectAgent(id, opts?)`, `detectAgents(opts?)`, `formatZeroDetection(results, scope)`, plus
      `RAUF_PIN` (re-export from `rauf.ts`). Signatures in `02-agent-detection-map.md` / `06`.
    - **Shell:** `feature-forge list --json` — the same data for non-Node consumers and the OS-matrix
      CI dry-runs.
 
 ```typescript
-// src/index.ts — the library barrel (exact exports)
+// src/index.ts — the library barrel (exact, authoritative agent-detection-map surface).
+// This is the single source of truth for the externally-importable surface (tech-spec §5.2 and
+// 02 §4/Verification defer to this list); the six agent-targets functions below are all genuinely
+// importable (05/07 import destinationFor directly; formatZeroDetection is part of the surface).
 export {
   AGENT_TARGETS,
+  resolveRoots,
+  destinationFor,
   detectAgent,
   detectAgents,
-  resolveRoots,
+  formatZeroDetection,
 } from "./agent-targets.js";
 export { RAUF_PIN } from "./rauf.js";
 export type {
@@ -179,7 +185,7 @@ export type {
 - **No publish here.** Publishing the installer package (and rauf) is `packaging-docs-ci` (OQ-D, C-7);
   this feature produces a build- and test-clean, npx-runnable package.
 
-## 6. `scripts/validate.sh` extension — hard step 8 (C-2, C-4)
+## 6. `scripts/validate.sh` extension — hard step 8 (C-2, C-4) [D4]
 
 A new **top-level hard step "8. Installer build + test"** is appended **after step 7** (the last
 numbered step; the file is **204 lines**, `set -euo pipefail`, with a venv-provisioning precedent at

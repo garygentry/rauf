@@ -224,8 +224,8 @@ input — a localized, additive change.
 ## 4. Public API — `manifestPath`
 
 ```typescript
-import { type AgentId, type Scope, MANIFEST_PREFIX, AGENT_TARGETS } from "./types.js";
-import { destinationFor, type ResolveOpts } from "./agent-targets.js"; // §02
+import { type AgentId, type Scope, type ResolveOpts, MANIFEST_PREFIX, AGENT_TARGETS } from "./types.js";
+import { destinationFor } from "./agent-targets.js"; // §02
 
 /**
  * Absolute path of the hidden **parent-sibling** manifest for an agent + scope (§2, D6/D8):

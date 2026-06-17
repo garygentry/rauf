@@ -408,13 +408,13 @@ export function listBundleFiles(
  */
 export interface LocatedSource {
   /** Absolute path to the agent bundle root (e.g. `.../adapters/claude`). */
-  root: string;
+  readonly root: string;
   /** sha256 over the bundle's sorted-path file set — the drift anchor (`manifest.sourceHash`). */
-  sourceHash: string;
+  readonly sourceHash: string;
   /** Installed skill ids (the bundle's `skills/*` dir names) for `manifest.skills`. */
-  skills: string[];
+  readonly skills: readonly string[];
   /** Per-file inventory (`{ relpath, sha256 }`, sorted by POSIX relpath) — the set the planner walks. */
-  files: Array<{ relpath: string; sha256: string }>;
+  readonly files: ReadonlyArray<{ readonly relpath: string; readonly sha256: string }>;
 }
 
 /**

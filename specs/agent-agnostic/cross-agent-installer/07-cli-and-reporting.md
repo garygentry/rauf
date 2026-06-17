@@ -61,7 +61,7 @@ returning text; the caller (`main`) writes it to `stdout`/`stderr` and returns t
 **Out of scope here** (owned by sibling specs, cited but not re-specified):
 
 - Detection — `detectAgent`/`detectAgents`/`resolveRoots` ([`02-agent-detection-map.md`](./02-agent-detection-map.md)).
-- Bundle location & integrity — `locateBundle`/`checkIntegrity` ([`03-source-and-hashing.md`](./03-source-and-hashing.md)).
+- Bundle location, integrity & fingerprint — `locateSource` ([`03-source-and-hashing.md`](./03-source-and-hashing.md)).
 - Planning & applying — `plan`/`apply` ([`04-plan-and-apply.md`](./04-plan-and-apply.md)).
 - Manifest read & uninstall planning — `readManifest`/`planUninstall` ([`05-manifest-and-uninstall.md`](./05-manifest-and-uninstall.md)).
 - Rauf preflight — `preflightRauf`/`RAUF_PIN` ([`06-rauf-provisioning.md`](./06-rauf-provisioning.md)).
@@ -437,8 +437,8 @@ export async function main(argv: string[]): Promise<ExitCode> {
 
     report =
       subcommand === "list"
-        ? await runList(flags)
-        : await runMutation(subcommand, flags);
+        ? await runList(flags, {})            // {} = all-real env defaults (runCli injects the seam)
+        : await runMutation(subcommand, flags, {});
   } catch (e) {
     // Boundary catch: an UNEXPECTED exception (a bug, an unforeseen fs error) must never surface as
     // a bare stack alone (tech-spec §7). Print a one-line actionable message and exit 1.
@@ -536,6 +536,7 @@ loop (REQ-OBS-03). The `--dry-run` short-circuit guarantees no network and no wr
 the planning half).
 
 ```typescript
+import * as path from "node:path";
 import {
   type AgentId,
   type AgentReport,
@@ -547,12 +548,13 @@ import {
   type RunReport,
   type Scope,
   type Subcommand,
+  AGENT_TARGETS,
   EXIT,
 } from "./types.js";
 import { detectAgents, detectAgent, resolveRoots } from "./agent-targets.js"; // 02
-import { locateBundle, checkIntegrity } from "./source.js";                   // 03
-import { plan, apply } from "./plan.js";                                      // 04 (apply re-exported or from apply.js)
-import { readManifest, planUninstall } from "./manifest.js";                  // 05
+import { locateSource, type LocatedSource } from "./source.js";               // 03
+import { plan, apply, resolveMode, type ApplyContext } from "./plan.js";      // 04 (apply re-exported or from apply.js)
+import { readManifest, manifestPath, planUninstall } from "./manifest.js";    // 05
 import { preflightRauf, RAUF_PIN } from "./rauf.js";                          // 06
 
 /**
@@ -570,7 +572,8 @@ import { preflightRauf, RAUF_PIN } from "./rauf.js";                          //
  *     OPERATIONAL failure recorded on the run (it does NOT abort skill installs — REQ-RAUF/OBS-03):
  *     skills still install; the run's exitCode becomes FAILURE.
  *  4. Per agent (independent, REQ-OBS-03):
- *       a. install/update: locateBundle → checkIntegrity → plan(...) → (dry-run? stop : apply(...)).
+ *       a. install/update: locateSource (03 — locate+integrity+fingerprint) → readManifest (05) →
+ *          plan(subcommand, PlanContext) → (dry-run? stop : apply(planned, ApplyContext)).
  *       b. uninstall:      readManifest → planUninstall → (dry-run? stop : apply(removalPlan)).
  *     Any per-agent Err becomes a failed AgentReport (ok:false, error) — the loop continues.
  *  5. Assemble RunReport; exitCode = FAILURE if ANY agent failed OR the rauf preflight failed, else
@@ -578,14 +581,15 @@ import { preflightRauf, RAUF_PIN } from "./rauf.js";                          //
  *
  * @returns the assembled RunReport (never throws for expected per-agent errors).
  */
-async function runMutation(subcommand: Subcommand, flags: CliFlags): Promise<RunReport> {
+async function runMutation(subcommand: Subcommand, flags: CliFlags, env: CliEnv): Promise<RunReport> {
   const scope: Scope = flags.global ? "global" : "project";
-  const mode: Mode = flags.symlink ? "symlink" : "copy";
-  const roots = resolveRoots({ scope }); // 02 — injects home/cwd; tests override
+  // resolveMode (04) applies the Windows-always-copies rule; env.platform overrides for tests.
+  const mode: Mode = resolveMode(flags.symlink, (env.platform ?? process.platform) === "win32");
+  const ropts = { home: env.home, cwd: env.cwd, scope }; // 02 ResolveOpts; env injects sandbox roots
 
   const targets: AgentId[] = flags.agent
     ? [flags.agent]
-    : detectAgents({ scope }).filter((d) => d.detected).map((d) => d.agent);
+    : detectAgents(ropts).filter((d) => d.detected).map((d) => d.agent);
 
   const agentReports: AgentReport[] = [];
   let raufPin: string | null = flags.skipRauf ? null : RAUF_PIN;
@@ -593,7 +597,7 @@ async function runMutation(subcommand: Subcommand, flags: CliFlags): Promise<Run
 
   // Rauf preflight: install/update only, once, network only when not dry-run/skip (REQ-PERF-01).
   if ((subcommand === "install" || subcommand === "update") && !flags.skipRauf && !flags.dryRun) {
-    const pf = await preflightRauf(RAUF_PIN); // 06: read-only `npm view`, injectable for tests
+    const pf = preflightRauf({ skip: flags.skipRauf, query: env.registry }); // 06: sync, injectable
     if (!pf.ok) {
       raufError = pf.error;     // RAUF_UNRESOLVABLE — recorded, does NOT abort skill installs
       raufPin = null;           // not resolvable ⇒ no usable pin recorded this run
@@ -601,8 +605,8 @@ async function runMutation(subcommand: Subcommand, flags: CliFlags): Promise<Run
   }
 
   for (const agent of targets) {
-    const detection: DetectionResult = detectAgent(agent, { scope }); // 02
-    const r = await runOneAgent(subcommand, agent, detection, flags, scope, mode, raufPin);
+    const detection: DetectionResult = detectAgent(agent, ropts); // 02
+    const r = await runOneAgent(subcommand, agent, detection, flags, scope, mode, raufPin, env);
     agentReports.push(r);
   }
 
@@ -631,10 +635,18 @@ async function runOneAgent(
   scope: Scope,
   mode: Mode,
   raufPin: string | null,
+  env: CliEnv,
 ): Promise<AgentReport> {
+  // The hidden parent-sibling manifest path (05); env injects sandbox roots so tests never touch ~.
+  const mpath = manifestPath(agent, scope, { home: env.home, cwd: env.cwd }); // 05
+  // agentRoot is the REQ-SEC-02 containment boundary: <scopeRoot>/<configDirName>.
+  const roots = resolveRoots({ home: env.home, cwd: env.cwd, scope }); // 02
+  const scopeRoot = scope === "global" ? roots.home : roots.cwd;
+  const agentRoot = path.join(scopeRoot, AGENT_TARGETS[agent].configDirName);
+
   // uninstall path: manifest → planUninstall → apply.
   if (subcommand === "uninstall") {
-    const m = readManifest(agent, { scope }); // 05 → Result<InstallManifest | null>
+    const m = readManifest(mpath); // 05 → Result<InstallManifest | null>
     if (!m.ok) return failed(agent, detection.detected, m.error);
     if (m.value === null) {
       // Nothing installed for this agent: not an error — an "ok, no-op" report.
@@ -642,28 +654,39 @@ async function runOneAgent(
     }
     const rp = planUninstall(m.value); // 05 → Result<PlannedAction>
     if (!rp.ok) return failed(agent, detection.detected, rp.error);
-    return finishAgent(agent, detection.detected, rp.value, flags, raufPin);
+    const ctx: ApplyContext = {
+      agent, scope, mode: m.value.mode, agentRoot, destination: m.value.destination,
+      manifestPath: mpath, source: null, raufPin: null,
+      now: new Date().toISOString(), priorManifest: m.value,
+    };
+    return finishAgent(agent, detection.detected, rp.value, flags, raufPin, ctx);
   }
 
-  // install/update path: locate → integrity → plan → apply.
-  const located = locateBundle(agent, { source: flags.source }); // 03 → Result<string>
-  if (!located.ok) return failed(agent, detection.detected, located.error); // SOURCE_MISSING
+  // install/update path: locate+integrity+fingerprint (one call) → plan → apply.
+  const located = locateSource(agent, { source: flags.source }); // 03 → Result<LocatedSource>
+  if (!located.ok) return failed(agent, detection.detected, located.error); // SOURCE_MISSING/INVALID
 
-  const integ = checkIntegrity(located.value, agent); // 03 → Result<void>
-  if (!integ.ok) return failed(agent, detection.detected, integ.error); // SOURCE_INVALID
+  const prior = readManifest(mpath); // 05 → Result<InstallManifest | null>
+  if (!prior.ok) return failed(agent, detection.detected, prior.error); // MANIFEST_CORRUPT
 
-  const planned = plan({
-    subcommand,
+  const planned = plan(subcommand, {
     agent,
     scope,
     mode,
-    bundleDir: located.value,
     destination: detection.destination,
+    source: located.value,
+    priorManifest: prior.value,
     force: flags.force,
+    raufPin,
   }); // 04 → Result<PlannedAction>
   if (!planned.ok) return failed(agent, detection.detected, planned.error);
 
-  return finishAgent(agent, detection.detected, planned.value, flags, raufPin);
+  const ctx: ApplyContext = {
+    agent, scope, mode, agentRoot, destination: detection.destination,
+    manifestPath: mpath, source: located.value, raufPin,
+    now: new Date().toISOString(), priorManifest: prior.value,
+  };
+  return finishAgent(agent, detection.detected, planned.value, flags, raufPin, ctx);
 }
 
 /** Apply a plan unless --dry-run; build the agent's report either way. */
@@ -673,14 +696,15 @@ async function finishAgent(
   planned: PlannedAction,
   flags: CliFlags,
   raufPin: string | null,
+  ctx: ApplyContext,
 ): Promise<AgentReport> {
   if (flags.dryRun) {
     // Plan only: the actions shown are exactly what a real run performs (REQ-OPS-05). No writes.
     return { agent, detected, ok: true, actions: planned.files, raufPin };
   }
-  const applied = await apply(planned, { raufPin }); // 04 → Result<{ actions: FileAction[] }>
-  if (!applied.ok) return failed(agent, detected, applied.error); // e.g. WRITE_DENIED, PATH_ESCAPE
-  return { agent, detected, ok: true, actions: applied.value.actions, raufPin };
+  const report = await apply(planned, ctx); // 04 → AgentReport (top-level .ok/.actions/.error?)
+  if (!report.ok) return failed(agent, detected, report.error!); // e.g. WRITE_DENIED, PATH_ESCAPE
+  return { agent, detected, ok: true, actions: report.actions, raufPin };
 }
 
 /** A failed single-agent report (REQ-OBS-03): ok:false + the structured error. */
@@ -715,14 +739,15 @@ function attachRaufError(reports: AgentReport[], raufError: InstallerError): Age
 network call** (no rauf preflight) and **no build** (REQ-PERF-01).
 
 ```typescript
-import { sha256Tree } from "./hash.js"; // 03
+// list reuses the §3.2 imports (locateSource from 03, manifestPath/readManifest from 05);
+// it compares manifest.sourceHash against the fresh LocatedSource.sourceHash — no extra import.
 
 /**
  * Orchestrate the read-only `list` operation (REQ-OPS-04). For EVERY agent (detected or not — list
  * is informational across the whole table) compute:
  *   - detected?      → detection.detected (config-dir presence, REQ-DET-02)
  *   - installed?     → a manifest exists for the active scope (readManifest != null)
- *   - up to date?    → manifest.sourceHash === sha256Tree(located bundle) (drift anchor, §03/§04)
+ *   - up to date?    → manifest.sourceHash === locateSource(agent).sourceHash (drift anchor, §03/§04)
  *   - drift?         → any destination file locally modified — derived by planning in "list mode"
  *                      (a plan whose files contain a "skip-modified" action), still WITHOUT writing.
  *
@@ -733,14 +758,15 @@ import { sha256Tree } from "./hash.js"; // 03
  * @returns a RunReport whose AgentReport.actions encode the status (see renderReport §3.5 for the
  *          per-agent "detected/installed/up-to-date/drift" lines derived from this data).
  */
-async function runList(flags: CliFlags): Promise<RunReport> {
+async function runList(flags: CliFlags, env: CliEnv): Promise<RunReport> {
   const scope: Scope = flags.global ? "global" : "project";
+  const ropts = { home: env.home, cwd: env.cwd, scope }; // 02 ResolveOpts; env injects sandbox roots
   const targets: AgentId[] = flags.agent ? [flags.agent] : [...AGENT_IDS];
 
   const agentReports: AgentReport[] = [];
   for (const agent of targets) {
-    const detection = detectAgent(agent, { scope }); // 02
-    const r = listOneAgent(agent, detection, flags, scope);
+    const detection = detectAgent(agent, ropts); // 02
+    const r = listOneAgent(agent, detection, flags, scope, env);
     agentReports.push(r);
   }
 
@@ -761,8 +787,10 @@ function listOneAgent(
   detection: DetectionResult,
   flags: CliFlags,
   scope: Scope,
+  env: CliEnv,
 ): AgentReport {
-  const m = readManifest(agent, { scope }); // 05 → Result<InstallManifest | null>
+  const mpath = manifestPath(agent, scope, { home: env.home, cwd: env.cwd }); // 05
+  const m = readManifest(mpath); // 05 → Result<InstallManifest | null>
   if (!m.ok) return failed(agent, detection.detected, m.error); // MANIFEST_CORRUPT
 
   const installed = m.value !== null;
@@ -773,9 +801,9 @@ function listOneAgent(
   ];
 
   if (installed) {
-    const located = locateBundle(agent, { source: flags.source }); // 03
+    const located = locateSource(agent, { source: flags.source }); // 03
     if (located.ok) {
-      const current = sha256Tree(located.value); // 03 — local hash, no network
+      const current = located.value.sourceHash; // 03 — local hash from LocatedSource, no network
       const upToDate = current === m.value!.sourceHash;
       statusActions.push({ relpath: `up-to-date:${upToDate}`, action: "unchanged" });
     } else {
@@ -1039,8 +1067,8 @@ This document orchestrates the others; it must be implemented **after** the modu
   (`cli.ts` → everything → `types`).
 - [`02-agent-detection-map.md`](./02-agent-detection-map.md) — `detectAgent`, `detectAgents`,
   `resolveRoots`.
-- [`03-source-and-hashing.md`](./03-source-and-hashing.md) — `locateBundle`, `checkIntegrity`,
-  `sha256Tree` (for `list` up-to-date compare).
+- [`03-source-and-hashing.md`](./03-source-and-hashing.md) — `locateSource` (locate + integrity +
+  fingerprint; its `LocatedSource.sourceHash` is the `list` up-to-date compare).
 - [`04-plan-and-apply.md`](./04-plan-and-apply.md) — `plan`, `apply`.
 - [`05-manifest-and-uninstall.md`](./05-manifest-and-uninstall.md) — `readManifest`, `planUninstall`.
 - [`06-rauf-provisioning.md`](./06-rauf-provisioning.md) — `preflightRauf`, `RAUF_PIN`.
@@ -1077,7 +1105,7 @@ An implementation matches this spec iff:
       agent's skill `AgentReport.ok` is `true` and the summary contains the fixed rauf message
       (tech-spec §3.1).
 - [ ] `list` reports, per agent, detected / installed / up-to-date derived from detection +
-      `readManifest` + `sha256Tree` compare (REQ-OPS-04), with no apply call.
+      `readManifest` + `locateSource().sourceHash` compare (REQ-OPS-04), with no apply call.
 - [ ] `renderReport(report, { json: true })` returns parseable JSON equal to the `RunReport`;
       `{ json: false }` returns the human per-agent/per-skill summary with a final exit-code line
       (REQ-OBS-01) and actionable failure lines naming path + remedy (REQ-OBS-02).
