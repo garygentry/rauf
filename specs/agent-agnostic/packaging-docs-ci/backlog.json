@@ -88,8 +88,8 @@
         "Run from ../feature-forge: `bash scripts/validate.sh` exits 0 (claude CLI likely absent -> logged fallback PASS; no specs tree -> traceability SKIP)",
         "The existing steps and final tally are unchanged apart from the two insertions"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T21:57:48.270Z",
       "dependsOn": [
         "001"
       ],

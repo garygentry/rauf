@@ -37,3 +37,26 @@
 - **feature-forge changes accumulate UNCOMMITTED across items** — the loop commits in rauf, not the
   sibling repo. `git diff` in feature-forge shows item 001's edits + item 003's together; that's expected
   for this cross-repo epic, not stray work.
+
+## Item 004 (wire claude-plugin-validate step 3a + traceability step 8 into validate.sh)
+
+- Both insertions are byte-exact from spec 02 §4.1 (3a, after step 3) and §4.6 (8, before the final
+  tally). validate.sh stays shellcheck-clean (`shellcheck scripts/validate.sh` exits 0 with the
+  item-003 `.shellcheckrc`).
+- **feature-forge DOES carry a specs tree** (`specs/epic-orchestration/PRD.md`, 32 reqs / 6 spec
+  files) — so step 8 RAN and PASSED (not the SKIP branch). The non-fatal SKIP branch still exists for
+  repos with no specs tree, as specified. The item notes' "no specs tree -> SKIP" assumption was
+  stale; traceability is fully green here.
+- **The `claude` CLI IS present on this host** (item notes assumed it likely absent). So step 3a took
+  the CLI-present branch and `claude plugin validate --strict` reported errors — but only the
+  **item-012 marketplace desync** (`plugins[0].version 0.9.0` vs `plugin.json 0.10.0`) plus a
+  cosmetic "no marketplace description" warning (--strict treats warnings as errors). Item 012's
+  marketplace 0.9.0->0.10.0 reconcile clears the version warning. Confirmed independent of my edit by
+  running `claude plugin validate --strict .` by hand — same failure.
+- **validate.sh exits 1 overall**, from exactly two PRE-EXISTING/downstream causes, neither from my
+  insertions: (1) claude-validate's item-012 marketplace desync above; (2) step 6b adapters
+  regen-diff drift (gemini 0.0.0 + item-001 schema not yet regenerated into adapters/) — the same
+  accepted condition items 001/003 documented. Item 012 (+ adapters regen) flips both to green.
+- Net: AC1/AC2/AC4 hold; AC3's literal "exits 0" is gated on downstream item 012, mirroring the
+  items 001/003 precedent — the two insertions themselves are correct and behavior-neutral to all
+  other steps.
