@@ -3,12 +3,14 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T12:11:43Z",
+  "updatedAt": "2026-06-17T13:41:50Z",
   "currentStage": "forge-4-backlog",
   "stages": {
     "forge-3-specs": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
+      "completedAt": "2026-06-17T13:41:50Z",
+      "commitHash": "bc747529690a2b35f1e06db620606c22dccc9652",
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
       "artifacts": [
         "00-core-definitions.md",
