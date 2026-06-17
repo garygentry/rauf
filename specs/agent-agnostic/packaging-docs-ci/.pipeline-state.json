@@ -93,6 +93,13 @@
         "forge-3-specs": 1
       },
       "commitHash": "fa9d3876ac469eb8574135138363e866285d6f6c"
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-17.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-17T21:45:00Z",
+      "fixedAt": "2026-06-17T22:00:00Z"
     }
   }
 }

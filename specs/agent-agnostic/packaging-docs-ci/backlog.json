@@ -41,8 +41,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": [],
-      "notes": "The fail-before/pass-after contract with item 012 is SC-03. Wired as its own composite step in item 005. Keep the script ruff-clean (line-length 100) so item 003's ruff gate stays green.",
+      "dependsOn": [
+        "003"
+      ],
+      "notes": "The fail-before/pass-after contract with item 012 is SC-03. Wired as its own composite step in item 005. Keep the script ruff-clean (line-length 100) so item 003's ruff gate stays green. V-003 fix: depends on 003 so the ruff.toml floor exists when acceptanceCriteria[3]'s `ruff check` runs (mirrors item 005's 003 edge); no cycle/inversion (003 is P1, dep-free).",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -88,7 +90,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001"],
+      "dependsOn": [
+        "001"
+      ],
       "notes": "Depends on 001 because the claude-validate fallback is defined as 'the JSON checks (steps 1-3) PLUS the SKILL.md schema gate (step 6a)' — the schema must exist for that statement to hold. validate-traceability.py is standalone today; this makes it blocking where a specs tree exists. feature-forge's canon repo may carry no specs/*/PRD.md, so SKIP is the expected local outcome.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -101,18 +105,24 @@
       "type": "feature",
       "priority": 1,
       "title": "Add feature-forge ci.yml workflow + quality-gate composite action",
-      "description": "Files live in the ../feature-forge repo (which has no .github today). Stand up the per-PR blocking gate (REQ-CIINFRA-01/02, REQ-CONST-01, REQ-PERF-01, REQ-SEC-01/02).\n\n1. Create `.github/workflows/ci.yml` EXACTLY as in spec 02 §3.1: triggers `pull_request` + `push: branches:[main]`; `permissions: contents: read`; one `gate` job on ubuntu-latest that checks out (`actions/checkout@v5`, pinned) and `uses: ./.github/actions/quality-gate`.\n2. Create `.github/actions/quality-gate/action.yml` EXACTLY as in spec 02 §3.2: a composite that provisions Node 20 (`actions/setup-node@v4`) + Python 3.11 (`actions/setup-python@v5`), pip-installs ruff, best-effort-installs the claude CLI, pre-creates `.venv-adapters` from scripts/requirements-adapters.txt, ensures shellcheck, then runs in order: `bash scripts/validate.sh` -> `shellcheck scripts/*.sh` -> ruff (guarded `[ -d eval ]`) -> `python3 scripts/check-version-sync.py`.\n\nThird-party actions pinned to major tags; no `secrets:` anywhere. Done bar is authored shape, not a live green run — version-sync (item 002) still fails until item 012 reconciles, which is expected.",
+      "description": "Files live in the ../feature-forge repo (which has no .github today). Stand up the per-PR blocking gate (REQ-CIINFRA-01/02, REQ-CONST-01, REQ-PERF-01, REQ-SEC-01/02).\n\n1. Create `.github/workflows/ci.yml` EXACTLY as in spec 02 §3.1: triggers `pull_request` + `push: branches:[main]`; `permissions: contents: read`; one `gate` job on ubuntu-latest that checks out (`actions/checkout@v5`, pinned) and `uses: ./.github/actions/quality-gate`.\n2. Create `.github/actions/quality-gate/action.yml` EXACTLY as in spec 02 §3.2: a composite that provisions Node 20 (`actions/setup-node@v4`) + Python 3.11 (`actions/setup-python@v5`), pip-installs ruff AND pytest (pytest is REQUIRED — validate.sh step 7's anti-drift test soft-skips when pytest is absent, per spec 07 §2.2), best-effort-installs the claude CLI, pre-creates `.venv-adapters` from scripts/requirements-adapters.txt, ensures shellcheck, then runs in order: `bash scripts/validate.sh` -> `shellcheck scripts/*.sh` -> ruff (guarded `[ -d eval ]`) -> `python3 scripts/check-version-sync.py`.\n\nThird-party actions pinned to major tags; no `secrets:` anywhere. Done bar is authored shape, not a live green run — version-sync (item 002) still fails until item 012 reconciles, which is expected.",
       "acceptanceCriteria": [
         ".github/workflows/ci.yml exists: triggers pull_request + push(main), permissions contents:read, pins actions/checkout@v5, uses ./.github/actions/quality-gate",
         ".github/actions/quality-gate/action.yml exists: composite provisioning Node+Python+ruff+shellcheck+.venv-adapters, then validate.sh -> shellcheck -> ruff([ -d eval ] guard) -> check-version-sync.py in that order",
         "All third-party actions are pinned to a tag/SHA; no secrets referenced in either file",
         "Both YAML files parse (e.g. `python3 -c \"import yaml,sys; yaml.safe_load(open(f))\"` for each, if PyYAML available) with no syntax errors",
-        "Run from ../feature-forge: `bash scripts/validate.sh`, `shellcheck scripts/*.sh`, and `ruff check scripts/` each exit 0 (the gate's deterministic steps, version-sync excepted until item 012)"
+        "Run from ../feature-forge: `bash scripts/validate.sh`, `shellcheck scripts/*.sh`, and `ruff check scripts/` each exit 0 (the gate's deterministic steps, version-sync excepted until item 012)",
+        "The quality-gate composite installs pytest (`python3 -m pip install pytest`) so `validate.sh` step 7's schema↔checker anti-drift assertion is a HARD gate in CI and cannot soft-skip (spec 07 §2.2; REQ-CI-02 / REQ-CONST-03)"
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "002", "003", "004"],
-      "notes": "Mirrors rauf's ci.yml -> quality-gate composite pattern (pattern-reuse, not cross-repo `uses:`). The composite runs version-sync as its own step which exits 1 until item 012 — that's the SC-03 fail-before state, not a defect in this item. Validate YAML shape locally; CI green on real GitHub is post-merge (PRD §8).",
+      "dependsOn": [
+        "001",
+        "002",
+        "003",
+        "004"
+      ],
+      "notes": "Mirrors rauf's ci.yml -> quality-gate composite pattern (pattern-reuse, not cross-repo `uses:`). The composite runs version-sync as its own step which exits 1 until item 012 — that's the SC-03 fail-before state, not a defect in this item. Validate YAML shape locally; CI green on real GitHub is post-merge (PRD §8). V-002 fix: the composite's `bash scripts/validate.sh` step includes the pre-existing step 6b adapters regen-diff gate (`build-adapters.py --check`, spec 02 §4.4) — that is how REQ-CI-04 / REQ-CONST-04 are enforced per-PR; this capstone wires the runner, not the diff mechanism.",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [
@@ -183,7 +193,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["007"],
+      "dependsOn": [
+        "007"
+      ],
       "notes": "Depends on 007 (the workflow runs eval/run-eval.py). This is the ONLY feature-forge workflow that reads a secret; ci.yml and os-matrix.yml require none. Non-blocking by construction: separate workflow, no PR trigger, harness always exits 0.",
       "estimatedIterations": 1,
       "model": "sonnet",
@@ -239,7 +251,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["009"],
+      "dependsOn": [
+        "009"
+      ],
       "notes": "Depends on 009 so the table's five doc links resolve (SC-08 ls-confirms them). Marketplace coordinate garygentry/feature-forge and install coordinate feature-forge@feature-forge are verified real. Claude row leads with marketplace; npx -a claude shown parenthetically.",
       "estimatedIterations": 1,
       "model": "opus",
@@ -284,7 +298,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002"],
+      "dependsOn": [
+        "002"
+      ],
       "notes": "Coupled to item 002 by the fail-before/pass-after contract (SC-03): 002 authors the gate that fails on the live desync; this item makes it pass. gemini-extension.json is REGENERATED only via the generator constant (REQ-MAINT-01) — a hand-edit would be reverted by build-adapters.py --check.",
       "estimatedIterations": 1,
       "model": "sonnet",
@@ -350,8 +366,17 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": [],
-      "notes": "If some referenced subsections land after this item, include only the already-true ones — but all 16 items are part of this feature, so the full lists are accurate. The rauf changelog edit is plain Markdown; watch the check:docs triggers (item 011's notes).",
+      "dependsOn": [
+        "005",
+        "006",
+        "009",
+        "010",
+        "012",
+        "013",
+        "014",
+        "016"
+      ],
+      "notes": "If some referenced subsections land after this item, include only the already-true ones — but all 16 items are part of this feature, so the full lists are accurate. The rauf changelog edit is plain Markdown; watch the check:docs triggers (item 011's notes). V-004 fix: dependsOn the deliverable-producing items so the CHANGELOG is authored after the work it enumerates has landed (avoids claiming not-yet-true subsections).",
       "estimatedIterations": 1,
       "model": "sonnet",
       "specReferences": [

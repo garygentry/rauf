@@ -186,11 +186,17 @@ runs:
       with:
         python-version: "3.11"
 
-    - name: Install lint + (optional) claude CLI tooling
+    - name: Install lint + test + (optional) claude CLI tooling
       shell: bash
       run: |
         python3 -m pip install --upgrade pip
         python3 -m pip install ruff
+        # pytest is REQUIRED, not optional: validate.sh step 7 (the
+        # schema↔checker anti-drift test) SOFT-SKIPS non-fatally when pytest is
+        # absent, so CI MUST install it or the drift guard silently no-ops on the
+        # runner (07-testing-strategy.md §2.2). Without this line the gate is
+        # non-effective for REQ-CI-02 / REQ-CONST-03.
+        python3 -m pip install pytest
         # claude CLI is best-effort (REQ-CI-01 §4.1): install if a published
         # path exists on the runner; validate.sh falls back to the documented
         # equivalent when it is absent (never a no-op, never a silent skip).
