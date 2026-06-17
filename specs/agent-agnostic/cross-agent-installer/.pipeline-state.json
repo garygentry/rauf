@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T02:50:40Z",
+  "updatedAt": "2026-06-17T03:02:40Z",
   "currentStage": "forge-6-docs",
   "notes": "forge-3-specs must resolve OQ-A (IR-1: installed bundles miss forge-root.sh sentinels [scripts/epic-manifest.py + .claude-plugin/plugin.json] and epic-manifest.py is not copied into bundles, so non-Claude installs are not resolver-discoverable \u2014 coordinate with forge-agent-adapters-build; installer stays C-3-clean/read-only). IR-2/C-7: rauf is not yet npm-publishable (all packages private, bun shebang, GitHub-Release binaries) \u2014 RAUF_PIN=rauf@0.6.0 consumed via lazy npx + install-time resolvability preflight + a fixed unavailable-pin failure mode; publish work is owned by packaging-docs-ci. V-001: epic-manifest 'consumes' should be corrected to the published rauf bin, not agent-cli-registry. Stack: TypeScript / zero runtime deps / node:test / node:util.parseArgs in installer/, npm package bundles dist+adapters, hard validate.sh step 8 (npm ci/build/test). Install model: namespaced feature-forge/ dir per agent, parent-sibling .feature-forge.<scope>.json manifest with SHA-256 drift, plan-then-apply, symlink-whole-dir, gemini plain-copy.",
   "stages": {
@@ -124,10 +124,11 @@
       "commitHash": "a517002"
     },
     "forge-verify-impl": {
-      "status": "findings-reported",
+      "status": "findings-applied",
       "findingsFile": ".verification/VERIFY-impl-2026-06-17.md",
       "findingsCount": 10,
-      "verifiedAt": "2026-06-17T02:50:40Z"
+      "verifiedAt": "2026-06-17T02:50:40Z",
+      "fixedAt": "2026-06-17T03:02:40Z"
     }
   }
 }

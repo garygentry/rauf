@@ -1035,7 +1035,7 @@ const DEFAULT_REMEDY: Partial<Record<ErrorCode, string>> = {
 | Unknown subcommand/flag/agent, missing subcommand | `USAGE` | `parseCliArgs` → `main` | 2 | message + "run --help" |
 | Detected agent, no `adapters/<agent>/` | `SOURCE_MISSING` | `runOneAgent` (03) | 1 | names agent + expected source path + "run the adapters build" |
 | Bundle fails integrity check | `SOURCE_INVALID` | `runOneAgent` (03) | 1 | names agent + the missing required path |
-| Destination locally modified | `LOCALLY_MODIFIED` | `apply`/`plan` (04) | 1 | names agent + path + "re-run with --force" |
+| Destination locally modified (no `--force`) | `LOCALLY_MODIFIED` — **report-vocabulary only; never emitted as an `InstallerError`** | `apply`/`plan` (04) surfaces a `skip-modified` action | **0 (SUCCESS)** | agent stays `ok`; file left untouched + reported as skipped, with "re-run with --force" remedy (see 04 §"skip-modified") |
 | No write permission | `WRITE_DENIED` | `apply`/`fsutil` (04) | 1 | "no write permission to `<path>`" |
 | Resolved path escaped agent root | `PATH_ESCAPE` | `fsutil` (04) | 1 | names agent + path (sandbox violation) |
 | Pinned rauf not resolvable | `RAUF_UNRESOLVABLE` | `preflightRauf` (06) | 1 | fixed text (tech-spec §3.1); **skills still install** |

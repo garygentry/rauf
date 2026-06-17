@@ -135,3 +135,15 @@ Total findings: **10** — 1 error, 1 inconsistency, 5 gaps, 3 improvements. **N
 #### Step 4 — Code-quality cleanup (V-009)
 - **Files (feature-forge):** `installer/src/cli.ts`
 - Extract `buildParseOptions()` / surface meta-flags from `parseCliArgs` to remove the `rawParse` duplication and repeated argv parsing; keep §3.1 precedence and the help/version/no-subcommand tests green.
+
+## User Decisions (resolved)
+- **V-001:** RESOLVED — fix `cliOnPath` (real `which`/`where` resolver). Applied.
+- **V-002:** RESOLVED — implemented spec-04 skip-modified/SUCCESS behavior is canonical; spec-07 table aligned (doc-only). Applied.
+- **V-007:** RESOLVED — option (b): added the consolidated 0/1/2 triad test. Applied.
+- **V-008:** RESOLVED — applied (clean default-scope DET-03 test added).
+
+## Fix Progress
+- Step 1 (V-001 cliOnPath): [APPLIED] 2026-06-17T03:02:40Z — feature-forge `src/detect.ts` real PathResolver + tests. (commit eda1af8)
+- Step 2 (V-003,V-004,V-005,V-006,V-007,V-008 tests): [APPLIED] 2026-06-17T03:02:40Z — feature-forge test suite + listOneAgent drift + zero-detected preflight skip; 145/145 green. (commit eda1af8)
+- Step 3 (V-002,V-010 spec/doc): [APPLIED] 2026-06-17T03:02:40Z — rauf `07-cli-and-reporting.md` error-table row; feature-forge `types.ts`/`cli.ts` comments. (commits eda1af8 + rauf bookkeeping)
+- Step 4 (V-009 rawParse dedup): [APPLIED] 2026-06-17T03:02:40Z — feature-forge `src/cli.ts` buildParseOptions(). (commit eda1af8)
