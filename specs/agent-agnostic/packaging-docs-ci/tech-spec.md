@@ -123,7 +123,8 @@ The composite action runs, in order:
    - `claude plugin validate --strict` **(REQ-CI-01)** — *currently NOT in validate.sh; this feature
      adds it as a validate.sh step* (see §3.1.1).
    - SKILL.md schema validation **(REQ-CI-02)** via `check-spec-purity.py`, now schema-driven (§3.3).
-   - Adapters regenerate-and-diff **(REQ-CI-04)** via `build-adapters.py --check` (validate.sh step 6b).
+   - Adapters regenerate-and-diff **(REQ-CI-04, REQ-CONST-04)** via `build-adapters.py --check`
+     (validate.sh step 6b) — generated adapters are derived, never hand-edited; the diff gate enforces it.
    - Spec-purity + existing validators **(REQ-CI-06)**: `check-spec-purity.py`, marketplace/plugin
      JSON checks, agent-frontmatter checks, script-permission checks, installer `npm ci && build &&
      test`. **Also wire `validate-traceability.py`** into validate.sh (it is standalone today).
@@ -192,7 +193,7 @@ Author `references/skill-frontmatter.schema.json` — a JSON Schema (draft 2020-
 
 The 6-key allowed set is exactly the spec-pure set from `forge-skill-spec-purity`
 (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`). **No `version`
-key** — REQ-VER-03: versions live in manifests only, never SKILL.md. `additionalProperties:false`
+key** — REQ-VER-03 / REQ-CONS-02 (charter deviation): versions live in manifests only, never SKILL.md. `additionalProperties:false`
 mechanically enforces spec-purity (REQ-CONST-03).
 
 **Integration with the checker:** `check-spec-purity.py` is edited so its allowed/required key sets
@@ -214,6 +215,16 @@ A unit assertion (in the existing pytest suite) confirms the checker's loaded se
 - **ruff** over `feature-forge/scripts/*.py` (4 files) and `eval/*.py`. Config: `ruff.toml` with
   ruff's default rule set (`E`, `F`, `W`) as the floor; line-length 100. ruff is installed in the CI
   composite action (not added to `requirements-adapters.txt`, which is the PyYAML-only adapter venv).
+- **Pre-existing sibling scripts:** the `scripts/*.py` glob also matches `epic-manifest.py` and
+  `validate-traceability.py`, owned by sibling features — not authored here. The chosen floor MUST
+  be validated against all four files; pre-existing violations are resolved by minimal fixes or
+  scoped `# noqa: <rule>`, never by weakening the floor below `E`/`F`/`W` (mirrors the shellcheck
+  per-line-disable carve-out above).
+- **`eval/` ordering:** `eval/` is created by this feature (§3.8), so before that backlog item lands
+  the path does not exist. The ruff target must tolerate an absent `eval/` (a glob that matches zero
+  files cleanly, e.g. `ruff check scripts/ eval/ 2>/dev/null || ruff check scripts/`), or — preferred —
+  sequence the lint-gate backlog item AFTER the eval-harness item. This is a forge-4 backlog
+  dependency-ordering constraint.
 - **Scope:** feature-forge only (interview decision). rauf's 18 shell scripts are out of scope.
 - Both run inside the composite action so a local `shellcheck`/`ruff` reproduces CI.
 
@@ -224,7 +235,7 @@ A unit assertion (in the existing pytest suite) confirms the checker's loaded se
 - `plugin.json`: already `0.10.0` (confirm, no change).
 - `marketplace.json` (`plugins[0].version`): `0.9.0` → `0.10.0` (hand-edit; it is not generated).
 - `gemini-extension.json`: `0.0.0` → `0.10.0`, reconciled **at the generator** not by hand —
-  bump `GEMINI_EXTENSION_VERSION` in `scripts/build-adapters.py` (line ~298) to `"0.10.0"`, then
+  bump the `GEMINI_EXTENSION_VERSION` constant in `scripts/build-adapters.py` to `"0.10.0"`, then
   `python3 scripts/build-adapters.py` to regenerate. The file carries a DO-NOT-EDIT header
   (REQ-MAINT-01), so editing the constant + regenerating is the only sanctioned path (REQ-VER-02).
 
@@ -403,13 +414,13 @@ No programmatic API. The feature's interfaces are the **CLI/CI contracts** it co
   default (claude-cli)`. `validate` (forge-4/forge-verify) is agent-agnostic — never `--agent`.
 - The per-agent docs summarize this default-loop path (REQ-DOCS-04) and link the contract doc.
 
-### 6.3 `forge-agent-adapters-build` → REQ-CI-04 + REQ-VER-02 (consumes `adapters-output`)
+### 6.3 `forge-agent-adapters-build` → REQ-CI-04 + REQ-CONST-04 + REQ-VER-02 (consumes `adapters-output`)
 
 - **Generator:** `feature-forge/scripts/build-adapters.py`; `--check` is the drift-guard already
   wired into `validate.sh` step 6b. The capstone **does not build a new diff gate** — it stands up
   the workflow that runs `validate.sh`. (Confirmed: the regen-and-diff mechanism is delivered by
   `forge-agent-adapters-build`, not this capstone.)
-- **`GEMINI_EXTENSION_VERSION`** constant (line ~298) is the source for `gemini-extension.json`'s
+- **`GEMINI_EXTENSION_VERSION`** constant is the source for `gemini-extension.json`'s
   version → bump to `0.10.0` and regenerate (REQ-VER-02).
 - Adapter dirs: `adapters/{claude,codex,copilot,cursor,gemini}/` — drives the per-agent doc set and
   the README per-surface table rows.
