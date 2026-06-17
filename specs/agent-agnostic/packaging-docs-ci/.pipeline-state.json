@@ -3,9 +3,17 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-15T17:44:28Z",
-  "currentStage": "forge-1-prd",
+  "updatedAt": "2026-06-17T18:24:23Z",
+  "currentStage": "forge-2-tech",
   "stages": {
-    "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" }
+    "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
+    "forge-1-prd": {
+      "status": "in-progress",
+      "version": 1,
+      "artifacts": ["PRD.md"],
+      "startedAt": "2026-06-17T18:24:23Z",
+      "completedAt": "2026-06-17T18:24:23Z",
+      "basedOnVersions": {}
+    }
   }
 }
