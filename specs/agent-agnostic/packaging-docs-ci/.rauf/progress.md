@@ -60,3 +60,17 @@
 - Net: AC1/AC2/AC4 hold; AC3's literal "exits 0" is gated on downstream item 012, mirroring the
   items 001/003 precedent — the two insertions themselves are correct and behavior-neutral to all
   other steps.
+
+## Item 011 (rauf README cross-agent section)
+
+- Added a single `## Multi-agent / feature-forge` section to rauf/README.md between `## Features`
+  and `## Install`, verbatim from spec 05 §2.1 skeleton. No loop commands shown (sidesteps the
+  removed-grammar checks), no `ralph` token (links feature-forge's README, not ralph-loop-contract.md),
+  no version pin, no phantom subcommand. MIT badge + everything else untouched. No marketplace table.
+- **check:docs is GREEN** for the edit (`pnpm check:docs` → "check-docs clean: 22 doc file(s)
+  scanned"). That is the gate this item targets.
+- **`pnpm gate` fails only at `format:check`** on 20 PRE-EXISTING `docs/architecture/*` files
+  (cross-agent-installer, forge-agent-adapters-build, forge-rauf-loop-default, forge-skill-spec-purity,
+  rauf-agent-cli-adapters). Proven not-mine via `git stash` → identical 20-file failure on the clean
+  tree. These are prior forge-6-docs output drift, outside this item's scope (README-only edit). The
+  item's substantive bar (check:docs over README) passes.

@@ -49,6 +49,16 @@ Each iteration produces one of three exit signals:
 
 ---
 
+## Multi-agent / feature-forge
+
+Rauf is the default loop runner for [feature-forge](https://github.com/garygentry/feature-forge),
+an agent-agnostic spec-and-backlog pipeline that runs on Claude, Codex, Copilot, Cursor, and
+Gemini. feature-forge hands its generated backlog to a conforming runner; when no runner is
+configured it defaults to rauf. See feature-forge's README for the cross-agent install story and
+its per-agent setup docs.
+
+---
+
 ## Install
 
 **Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI and Git (rauf spawns a Claude Code session each iteration and commits the result). Building from source also needs [Bun](https://bun.sh/) 1.0+, [pnpm](https://pnpm.io/) 9+, and Node.js ≥ 22.

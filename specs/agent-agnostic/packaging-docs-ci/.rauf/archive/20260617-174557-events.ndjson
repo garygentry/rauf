@@ -369,3 +369,19 @@
 {"type":"llm_exited","timestamp":"2026-06-17T22:03:15.229Z","projectPath":"/home/gary/workspace/rauf","itemId":"010","provider":"claude-cli","exitCode":0,"timedOut":false,"durationMs":68477,"seq":368,"schemaVersion":"1"}
 {"type":"signal_parsed","timestamp":"2026-06-17T22:03:15.229Z","projectPath":"/home/gary/workspace/rauf","itemId":"010","signal":"done","seq":369,"schemaVersion":"1"}
 {"type":"item_completed","timestamp":"2026-06-17T22:03:15.231Z","projectPath":"/home/gary/workspace/rauf","itemId":"010","title":"Rewrite feature-forge README install-first (a)->(b)->(c) + per-surface table","seq":370,"schemaVersion":"1"}
+{"type":"iteration_start","timestamp":"2026-06-17T22:03:15.253Z","projectPath":"/home/gary/workspace/rauf","iteration":9,"maxIterations":24,"seq":371,"schemaVersion":"1"}
+{"type":"item_selected","timestamp":"2026-06-17T22:03:15.253Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","title":"Add labeled cross-agent section to the rauf README (keep loop-runner shape)","priority":1,"seq":372,"schemaVersion":"1"}
+{"type":"llm_spawned","timestamp":"2026-06-17T22:03:15.255Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","provider":"claude-cli","model":"opus","timeoutMinutes":60,"seq":373,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-17T22:03:18.657Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","inputTokens":16405,"outputTokens":5,"seq":374,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:20.073Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"Read","phase":"start","seq":375,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:20.073Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"unknown","phase":"end","seq":376,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:20.078Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"Read","phase":"start","seq":377,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:20.078Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"unknown","phase":"end","seq":378,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-17T22:03:25.007Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","inputTokens":4051,"outputTokens":1,"seq":379,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:25.008Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"Edit","phase":"start","seq":380,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:25.008Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"unknown","phase":"end","seq":381,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:28.135Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"Bash","phase":"start","seq":382,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:03:28.135Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"unknown","phase":"end","seq":383,"schemaVersion":"1"}
+{"type":"llm_token_update","timestamp":"2026-06-17T22:04:19.005Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","inputTokens":2,"outputTokens":2,"seq":384,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:04:20.475Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"Bash","phase":"start","seq":385,"schemaVersion":"1"}
+{"type":"llm_tool_activity","timestamp":"2026-06-17T22:04:20.476Z","projectPath":"/home/gary/workspace/rauf","itemId":"011","toolName":"unknown","phase":"end","seq":386,"schemaVersion":"1"}

@@ -273,8 +273,8 @@
         "`pnpm gate` passes (includes check:docs, which scans README.md)",
         "No marketplace-first table is added to the rauf README; the MIT badge is unchanged"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-06-17T22:04:59.185Z",
       "dependsOn": [],
       "notes": "rauf-side item — verified with `pnpm gate`. The loop-contract source file is named ralph-loop-contract.md; do NOT name it in the rauf README (the token would fail check:docs) — link feature-forge's README instead. Recommended section shows no loop commands at all, sidestepping the grammar checks.",
       "estimatedIterations": 1,
