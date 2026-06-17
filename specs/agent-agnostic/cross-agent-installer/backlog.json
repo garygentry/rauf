@@ -8,13 +8,14 @@
       "type": "feature",
       "priority": 1,
       "title": "Scaffold installer Node package and shared types (types.ts)",
-      "description": "Create feature-forge's first Node package under installer/. Files: (1) installer/package.json — name \"feature-forge\", version \"0.1.0\", type:\"module\", bin {\"feature-forge\":\"dist/cli.js\"}, exports {\".\":{\"types\":\"./dist/index.d.ts\",\"import\":\"./dist/index.js\"}}, files:[\"dist\",\"adapters\"], engines.node>=18, scripts {build:\"tsc -p tsconfig.json\", test:\"node --test\"}, dependencies {} (ZERO runtime deps), devDependencies typescript ^5.4.0 + @types/node ^20.0.0. (2) installer/tsconfig.json — target ES2022, module/moduleResolution NodeNext, outDir dist, rootDir src, declaration true, strict true, noUncheckedIndexedAccess true, esModuleInterop true, skipLibCheck true, include [\"src\"]. (3) installer/src/types.ts — export EVERY shared type/const from spec 00: AGENT_IDS (const tuple [\"claude\",\"codex\",\"copilot\",\"cursor\",\"gemini\"]) and AgentId derived from it; Scope, Mode, Subcommand; EXIT + ExitCode; SCHEMA_VERSION=1, FEATURE_FORGE_NS=\"feature-forge\", MANIFEST_PREFIX=\".feature-forge.\"; AgentTarget, ResolveOpts, DetectionResult, ManifestFile, InstallManifest, FileActionKind/FileAction/PlannedAction, AgentReport/RunReport; AGENT_TARGETS (5 rows: claude .claude/skills SKILL.md confirmed; codex .codex/skills; copilot .copilot/skills; cursor .cursor/rules; gemini .gemini/extensions — non-claude rows confidence \"best-known\"); BUNDLE_REQUIRED_PATHS (common [\"skills\",\"scripts/forge-root.sh\"], perAgent {gemini:[\"gemini-extension.json\"]}); ErrorCode union, InstallerError; Result<T,E> + ok + err; CliFlags. Named exports only, node: prefix where applicable, JSDoc on public types. Note InstallManifest.featureForgeVersion is string|null (null today). (4) Append to the feature-forge repo-root .gitignore: installer/node_modules/, installer/dist/, installer/adapters/. Do not create any other src module yet.",
+      "description": "Create feature-forge's first Node package under installer/. Files: (1) installer/package.json — name \"feature-forge\", version \"0.1.0\", type:\"module\", bin {\"feature-forge\":\"dist/cli.js\"}, exports {\".\":{\"types\":\"./dist/index.d.ts\",\"import\":\"./dist/index.js\"}}, files:[\"dist\",\"adapters\"], engines.node>=18, scripts {build:\"tsc -p tsconfig.json\", test:\"node --test\"}, dependencies {} (ZERO runtime deps), devDependencies typescript ^5.4.0 + @types/node ^20.0.0. (2) installer/tsconfig.json — target ES2022, module/moduleResolution NodeNext, outDir dist, rootDir src, declaration true, strict true, noUncheckedIndexedAccess true, esModuleInterop true, skipLibCheck true, include [\"src\"]. (3) installer/src/types.ts — export EVERY shared type/const from spec 00: AGENT_IDS (const tuple [\"claude\",\"codex\",\"copilot\",\"cursor\",\"gemini\"]) and AgentId derived from it; Scope, Mode, Subcommand; EXIT + ExitCode; SCHEMA_VERSION=1, FEATURE_FORGE_NS=\"feature-forge\", MANIFEST_PREFIX=\".feature-forge.\"; AgentTarget, ResolveOpts, DetectionResult, ManifestFile, InstallManifest, FileActionKind/FileAction/PlannedAction, AgentReport/RunReport; AGENT_TARGETS (5 rows: claude .claude/skills SKILL.md confirmed; codex .codex/skills; copilot .copilot/skills; cursor .cursor/rules; gemini .gemini/extensions — non-claude rows confidence \"best-known\"); BUNDLE_REQUIRED_PATHS (common [\"skills\",\"scripts/forge-root.sh\"], perAgent {gemini:[\"gemini-extension.json\"]}); ErrorCode union, InstallerError; Result<T,E> + ok + err; CliFlags. Named exports only, node: prefix where applicable, JSDoc on public types. Note InstallManifest.featureForgeVersion is string|null (null today). (4) Append to the feature-forge repo-root .gitignore: installer/node_modules/, installer/dist/, installer/adapters/. (5) installer/test/types.test.ts (node:test + node:assert/strict, importing ../dist/types.js) asserting the runtime data-shape invariants tsc cannot catch: AGENT_IDS deep-equals [\"claude\",\"codex\",\"copilot\",\"cursor\",\"gemini\"] (canonical determinism order, spec 08 §2); Object.keys(AGENT_TARGETS) covers exactly AGENT_IDS; EXIT === {SUCCESS:0,FAILURE:1,USAGE:2}; MANIFEST_PREFIX === \".feature-forge.\". Do not create any other src module yet.",
       "acceptanceCriteria": [
         "installer/package.json exists with bin {\"feature-forge\":\"dist/cli.js\"}, files:[\"dist\",\"adapters\"], engines.node>=18, empty dependencies, and devDeps typescript + @types/node",
         "installer/tsconfig.json has strict:true, noUncheckedIndexedAccess:true, module NodeNext, declaration:true, rootDir src, outDir dist",
         "installer/src/types.ts exports every type/const in spec 00 with the exact names; AgentId is derived from AGENT_IDS; AGENT_TARGETS has exactly the 5 documented rows",
         "feature-forge .gitignore contains installer/node_modules/, installer/dist/, and installer/adapters/",
-        "cd installer && npm ci && npm run build succeeds, emitting dist/types.js and dist/types.d.ts under strict + noUncheckedIndexedAccess"
+        "installer/test/types.test.ts asserts AGENT_IDS canonical order, Object.keys(AGENT_TARGETS) === AGENT_IDS, EXIT === {SUCCESS:0,FAILURE:1,USAGE:2}, and MANIFEST_PREFIX === \".feature-forge.\"",
+        "cd installer && npm ci && npm run build && node --test test/types.test.ts passes, emitting dist/types.js and dist/types.d.ts under strict + noUncheckedIndexedAccess"
       ],
       "status": "pending",
       "completedAt": null,
@@ -68,7 +69,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["002"],
-      "notes": "Verified ground truth: every adapters/<agent>/ bundle has skills/ (11 dirs), references/, scripts/forge-root.sh, agents/; gemini adds gemini-extension.json. Only the BUNDLE_REQUIRED_PATHS subset is gated. POSIX-normalize relpaths before hashing so digests match on Windows and POSIX (C-6).",
+      "notes": "Verified ground truth: every adapters/<agent>/ bundle has skills/ (11 dirs), references/, scripts/forge-root.sh, agents/; gemini adds gemini-extension.json. Only the BUNDLE_REQUIRED_PATHS subset is gated. POSIX-normalize relpaths before hashing so digests match on Windows and POSIX (C-6). hash.ts and source.ts import only types (001); the dependsOn 002 preserves the strict bottom-up build order, not an import.",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -87,6 +88,7 @@
         "preflightRauf({skip:true}) returns ok({raufPin:null}) and makes no network call (an injected throwing query is never invoked)",
         "preflightRauf with a resolvable injected query returns ok({raufPin:RAUF_PIN}); with an err query it returns err({code:\"RAUF_UNRESOLVABLE\"}) carrying the fixed spec-06 message regardless of the stub's message",
         "src/index.ts re-exports exactly the agent-detection-map surface + RAUF_PIN + the listed types; preflightRauf performs no filesystem write and never throws",
+        "preflightRauf only records RAUF_PIN and performs no filesystem write or runner-selection lock — it does not preclude an alternate loop runner (REQ-RAUF-05); the unresolvable and --skip-rauf paths still install skills",
         "cd installer && npm run build && node --test test/rauf.test.ts passes"
       ],
       "status": "pending",
@@ -117,7 +119,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["003"],
-      "notes": "planUninstall owns the removal POLICY (which paths); the safe EXECUTION (containment-checked removal, empty-dir prune, link-safe unlink, manifest-last deletion) is apply() in item 008 — do NOT implement an applyUninstall here. manifest.ts imports destinationFor (002) and the PlannedAction type (001); it does NOT import plan.ts.",
+      "notes": "planUninstall owns the removal POLICY (which paths); the safe EXECUTION (containment-checked removal, empty-dir prune, link-safe unlink, manifest-last deletion) is apply() in item 008 — do NOT implement an applyUninstall here. manifest.ts's only real import is destinationFor from agent-targets (002) + types (001); it does NOT import plan.ts. The dependsOn 003 keeps the strict linear build order — 003 exports nothing manifest imports, and the 002 import is reached transitively (005 -> 003 -> 002).",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -214,7 +216,7 @@
       "status": "pending",
       "completedAt": null,
       "dependsOn": ["008"],
-      "notes": "report.ts is pure (returns strings; the caller in cli.ts writes them). It only needs types (001); dependsOn 008 keeps the strict build order. The --json output IS the shell surface agent-detection-map consumers read (REQ-DET-05).",
+      "notes": "report.ts is pure (returns strings; the caller in cli.ts writes them). It only needs types (001); dependsOn 008 keeps the strict build order. The --json output IS the shell surface agent-detection-map consumers read (REQ-DET-05). DEFAULT_REMEDY is intentionally Partial over ErrorCode — UNEXPECTED is surfaced via the cli.ts boundary message (item 010, spec 07 §3.1/§4), not formatError, so it has no DEFAULT_REMEDY entry (spec 07 §3.6).",
       "estimatedIterations": 1,
       "model": "opus",
       "specReferences": [
@@ -255,7 +257,7 @@
       "acceptanceCriteria": [
         "The dry-run = real-run test asserts byte-identical destination before/after the dry-run AND deepEqual of dry vs real per-agent actions",
         "Idempotency, update reconcile (add/change/remove + multi-skill + manifest-scoped orphan), skip-modified+force, uninstall exactness, symlink (link + uninstall target-intact + Windows-copy via platform inject), source-integrity/partial-failure, gemini outcome, rauf 3 cases + RAUF-04, path sandbox, and list no-network are each covered by a passing test",
-        "coverage.test.ts asserts every public fn in 02–07 is reachable, every FileActionKind and every ErrorCode is produced by >=1 test (WRITE_DENIED via an injected throwing-write seam), and both modes + both scopes are exercised",
+        "coverage.test.ts asserts every public fn in 02–07 is reachable, every FileActionKind and every ErrorCode is produced by >=1 test (WRITE_DENIED via an injected throwing-write seam), and both modes + both scopes are exercised (authoritative public-function list: 08-testing-strategy.md §6)",
         "Every test is hermetic: a temp HOME under os.tmpdir() via withSandbox, a fixture bundle via makeFixtureBundle, and a mock RegistryQuery — no real ~, no real npm view, no network",
         "cd installer && npm run build && npm test runs the whole node:test suite with 0 failures"
       ],

@@ -73,6 +73,14 @@
       "basedOnVersions": { "forge-1-prd": 2, "forge-2-tech": 1, "forge-3-specs": 1 },
       "notes": "13 items, validated clean by rauf-stable backlog validate (valid:true, 0 findings). Bottom-up build order; verify gate is feature-forge bash scripts/validate.sh (step 8), NOT pnpm gate (C-2). Item 011 uses agentDelegation (4 e2e subtasks); 013 is the epic-level V-001 consumes fix (P2)."
     },
+    "forge-verify-backlog": {
+      "status": "passed",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-16.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-17T01:20:00Z",
+      "fixedAt": "2026-06-17T01:30:00Z",
+      "confirmedAt": "2026-06-17T01:30:00Z"
+    },
     "forge-verify-tech": {
       "status": "passed",
       "findingsFile": ".verification/VERIFY-tech-2026-06-16.md",
