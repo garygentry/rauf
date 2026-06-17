@@ -407,6 +407,39 @@
       "specReferences": [
         "specs/agent-agnostic/packaging-docs-ci/06-packaging-versioning-hygiene.md"
       ]
+    },
+    {
+      "id": "017",
+      "type": "bug",
+      "priority": 1,
+      "title": "Fix: regenerate minimal-canon fixture snapshot after GEMINI_EXTENSION_VERSION bump (broken pytest)",
+      "description": "Item 012 bumped scripts/build-adapters.py GEMINI_EXTENSION_VERSION from 0.0.0 to 0.10.0 in ../feature-forge. This constant is global, so a fresh build of the test fixture `tests/fixtures/minimal-canon/` now emits gemini-extension.json with version 0.10.0, but the committed `tests/fixtures/minimal-canon/expected-adapters/gemini/gemini-extension.json` still pins version 0.0.0. As a result `python3 -m pytest tests -q` fails at test_build_adapters.py::test_matches_committed_snapshot (REQ-DET-01). This violates item 001's acceptance criterion ('pytest tests -q passes') and, because item 005 wires the full pytest suite as a HARD gate (validate.sh step 7 runs `python3 -m pytest tests -q`; the quality-gate composite installs pytest), feature-forge's ci.yml gate would fail in CI. Fix in ../feature-forge: update tests/fixtures/minimal-canon/expected-adapters/gemini/gemini-extension.json version field 0.0.0 -> 0.10.0 (preserving the _generated header), OR regenerate the fixture's expected snapshot via the project's snapshot-update path. Do NOT lower the generator constant. Then confirm `python3 -m pytest tests -q` and `bash scripts/validate.sh` pass.",
+      "acceptanceCriteria": [
+        "From ../feature-forge: `python3 -m pytest tests -q` passes with 0 failures (test_build_adapters.py::test_matches_committed_snapshot green)",
+        "tests/fixtures/minimal-canon/expected-adapters/gemini/gemini-extension.json version == 0.10.0 with _generated header intact",
+        "`python3 scripts/build-adapters.py --check` still produces no diff",
+        "GEMINI_EXTENSION_VERSION remains 0.10.0 and no other version field is changed"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-17T22:16:39.075Z",
+      "source": "review",
+      "reviewBatch": "2026-06-17T22:15:59.224Z"
+    },
+    {
+      "id": "018",
+      "type": "bug",
+      "priority": 2,
+      "title": "Fix: rauf pnpm gate red — 20 committed docs/architecture files fail format:check",
+      "description": "`pnpm gate` in rauf fails at `format:check`: 20 committed files under docs/architecture/{cross-agent-installer,forge-agent-adapters-build,forge-rauf-loop-default,forge-skill-spec-purity,rauf-agent-cli-adapters} have prettier style issues. These are pre-existing forge-6-docs output drift (committed before items 011/014/015/016) and none of the reviewed items touched them — but items 011, 014, 015, and 016 each declare 'pnpm gate passes' as an acceptance criterion, which is objectively false on this branch. The whole branch gate is red. Fix: run `pnpm format` (prettier --write) over the offending docs/architecture files and commit, so `pnpm gate` is green end-to-end. Verify the formatting change is content-neutral (whitespace/wrapping only).",
+      "acceptanceCriteria": [
+        "From rauf: `pnpm gate` exits 0 (including format:check over docs/architecture/*)",
+        "The 20 docs/architecture files are reformatted with prettier --write only (no content changes)",
+        "check:docs still passes after reformatting"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "source": "review",
+      "reviewBatch": "2026-06-17T22:15:59.224Z"
     }
   ]
 }
