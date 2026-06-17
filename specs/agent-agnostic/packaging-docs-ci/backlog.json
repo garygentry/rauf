@@ -1,0 +1,384 @@
+{
+  "schemaVersion": "1",
+  "project": "packaging-docs-ci",
+  "description": "Capstone (6 of 6) of the agent-agnostic epic: finalize and gate the assembled cross-agent system across TWO repos. Stand up feature-forge's first CI (per-PR blocking gate, OS-matrix installer gate, advisory trigger-accuracy eval), rewrite both repos' install/docs surfaces, and align versioning/licensing/CHANGELOG/.gitattributes hygiene. This is CI-wiring + authoring, not new engines. The loop runs in the rauf repo; most files here live in the sibling ../feature-forge repo (REPO_ROOT in 00 §1). Done bar = 'authored + locally validated', NOT 'green on real GitHub' (PRD §8). feature-forge items verify from ../feature-forge with that repo's own tools (validate.sh / shellcheck / ruff / check-version-sync.py / build-adapters.py --check / pytest / installer dry-run); rauf items verify with `pnpm gate`.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add SKILL.md frontmatter JSON Schema + make check-spec-purity.py schema-driven (+ anti-drift pytest)",
+      "description": "All files live in the ../feature-forge repo. Establish the single declarative source of truth for spec-pure SKILL.md frontmatter and make the existing checker load its key sets from it (REQ-CI-02, REQ-CONST-03, REQ-VER-03).\n\n1. Create `references/skill-frontmatter.schema.json` EXACTLY as given in spec 00 §3 (JSON Schema draft 2020-12): `required: [name, description]`, `additionalProperties: false`, `properties` = the 6 keys name/description/license/compatibility/metadata/allowed-tools.\n2. Edit `scripts/check-spec-purity.py`: add `import json` to the stdlib imports; add `SCHEMA_REL_PATH = 'references/skill-frontmatter.schema.json'` and a `_load_frontmatter_key_sets(root)` helper (full body in 02 §4.2) that returns (REQUIRED, ALLOWED) frozensets from the schema's `required`/`properties`, raising SystemExit if the schema is missing/unparseable. In `main()`, after resolving `root`, set the module globals `REQUIRED_FRONTMATTER_KEYS`/`ALLOWED_FRONTMATTER_KEYS` from that loader. Drop the hard-coded `OPTIONAL_FRONTMATTER_KEYS` block. Leave the name==dir / residual-var / prelude / body-size checks untouched.\n3. Edit `tests/test_check_spec_purity.py`: add `test_loaded_keysets_match_schema` (full body in 02 §4.2) asserting the loaded ALLOWED/REQUIRED equal the schema's properties/required and the exact 6/2-key sets.\n\nDo NOT change any SKILL.md files. Do NOT alter the other purity checks.",
+      "acceptanceCriteria": [
+        "references/skill-frontmatter.schema.json exists and parses as valid JSON; properties has exactly the 6 keys, required is [name, description], additionalProperties is false",
+        "check-spec-purity.py loads ALLOWED/REQUIRED from the schema via _load_frontmatter_key_sets() and no longer hard-codes the key sets",
+        "Run from ../feature-forge: `python3 -m pytest tests -q` passes, including test_loaded_keysets_match_schema",
+        "Run from ../feature-forge: `bash scripts/validate.sh` step 6a (check-spec-purity) still passes for all 11 skills",
+        "Negative check: temporarily adding a `version:` key to any skills/*/SKILL.md makes check-spec-purity.py fail with a disallowed-key violation (revert after)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Foundation for the whole CI gate. The schema is consumed by item 004 (validate.sh claude-validate fallback) and item 005 (composite runs validate.sh step 6a). additionalProperties:false is what mechanically enforces spec-purity (no vendor/version keys). The quoted REQ-FM-01/REQ-VND-01 IDs inside check-spec-purity.py are forge-skill-spec-purity's IDs carried in source — leave them as-is.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/00-core-definitions.md",
+        "specs/agent-agnostic/packaging-docs-ci/02-ci-blocking-gates.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add version-sync gate scripts/check-version-sync.py (must fail on the live desync)",
+      "description": "File lives in the ../feature-forge repo. Author the within-repo version-sync gate (REQ-CI-05, REQ-OBS-01) over exactly three fields per the contract in 00 §5.\n\nCreate `scripts/check-version-sync.py` (stdlib `json`/`argparse` only) EXACTLY as given in spec 02 §4.5. It checks: `.claude-plugin/plugin.json` -> version, `.claude-plugin/marketplace.json` -> plugins[0].version, `adapters/gemini/gemini-extension.json` -> version. `installer/package.json` is EXCLUDED. Behavior: exit 0 if all three byte-equal; exit 1 printing each `CONFLICT <file> (<field>) = <value>` and the reconcile-to-0.10.0 remedy; exit 2 on a missing/unreadable/non-string field.\n\nThis gate is fails-then-passes by design: against the CURRENT tree (plugin 0.10.0 / marketplace 0.9.0 / gemini 0.0.0) it MUST exit 1. Item 012 reconciles all three to 0.10.0 and flips it to exit 0. Do NOT reconcile any version here — only author the gate. Do NOT add installer/package.json to the field set.",
+      "acceptanceCriteria": [
+        "scripts/check-version-sync.py exists, stdlib-only, checking exactly the three contract fields with installer/package.json excluded",
+        "Run from ../feature-forge: `python3 scripts/check-version-sync.py` exits 1 and prints all three conflicts (0.10.0 / 0.9.0 / 0.0.0) — the expected pre-reconciliation state",
+        "Reverting a field to make all three equal makes the script exit 0 (spot-check, then restore)",
+        "Run from ../feature-forge: `ruff check scripts/check-version-sync.py` reports no E/F/W violations (once ruff.toml from item 003 exists; otherwise the harness is written to that floor)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "The fail-before/pass-after contract with item 012 is SC-03. Wired as its own composite step in item 005. Keep the script ruff-clean (line-length 100) so item 003's ruff gate stays green.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/00-core-definitions.md",
+        "specs/agent-agnostic/packaging-docs-ci/02-ci-blocking-gates.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add lint floors (.shellcheckrc + ruff.toml) and fix pre-existing scripts/ violations",
+      "description": "Files live in the ../feature-forge repo. Stand up the shell + Python lint gates (REQ-CI-03, OQ-04) and bring the existing scripts up to the floor.\n\n1. Create `.shellcheckrc` EXACTLY as in spec 02 §4.3: `severity=warning`, `shell=bash`, `external-sources=true`.\n2. Create `ruff.toml` EXACTLY as in spec 02 §4.3: `line-length = 100`, `target-version = 'py310'`, `[lint] select = ['E','F','W']`.\n3. Run `shellcheck scripts/*.sh` over the 4 bundled scripts (validate.sh, forge-init.sh, forge-root.sh, session-check.sh) and fix every error/warning, OR add a justified per-line `# shellcheck disable=SCxxxx`. Do NOT raise severity to dodge findings.\n4. Run `ruff check scripts/` over the Python (build-adapters.py, check-spec-purity.py, epic-manifest.py, validate-traceability.py, and any check-version-sync.py present) and fix every E/F/W finding minimally, OR scope with `# noqa: <rule>`. Do NOT weaken the floor below E/F/W.\n\nThe `eval/` dir does not exist yet (item 007 creates it); lint only `scripts/` here. Do NOT modify script behavior beyond what the lint fixes require.",
+      "acceptanceCriteria": [
+        ".shellcheckrc and ruff.toml exist at the feature-forge root with the exact content from 02 §4.3",
+        "Run from ../feature-forge: `shellcheck scripts/*.sh` exits 0",
+        "Run from ../feature-forge: `ruff check scripts/` exits 0 (E/F/W, line-length 100)",
+        "Run from ../feature-forge: `bash scripts/validate.sh` still exits 0 (no behavior change from lint fixes)",
+        "No shellcheck rule globally disabled and no ruff rule removed from the E/F/W floor"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "epic-manifest.py and validate-traceability.py are sibling-owned but still in scope for ruff; fix minimally or scope with per-line noqa. The CI composite (item 005) guards the eval/ target with `[ -d eval ]`, so lint here is order-independent of the eval item.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/02-ci-blocking-gates.md",
+        "specs/agent-agnostic/packaging-docs-ci/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "Wire claude-plugin-validate + traceability steps into feature-forge validate.sh",
+      "description": "File lives in the ../feature-forge repo. Add the two genuinely-missing gate steps to `scripts/validate.sh` (REQ-CI-01, REQ-CI-06).\n\n1. claude-plugin-validate step (3a): insert after step 3, before step 4, the exact bash from spec 02 §4.1. It runs `claude plugin validate --strict \"$REPO_ROOT\"` when the `claude` CLI is present (increment ERRORS on failure); when absent, log the documented-equivalent fallback at INFO and count as PASS. Never a silent skip, never a no-op.\n2. Traceability step (8): insert before the final tally (after the installer step) the exact bash from spec 02 §4.6. It runs `scripts/validate-traceability.py <PRD> <specs-dir>` once per `specs/*/PRD.md` suite if present; SKIP (warning, non-fatal) when no specs tree is present. Surface the validator's diagnostic (no `2>/dev/null`).\n\nPreserve validate.sh's existing `set -euo pipefail`, ERRORS/WARNINGS tally, and all other steps byte-for-byte. Do NOT change steps 1–7 or the installer step.",
+      "acceptanceCriteria": [
+        "validate.sh contains the claude-plugin-validate step (3a) with the CLI-present and CLI-absent branches, logging the fallback rather than skipping silently",
+        "validate.sh contains the traceability step (8) iterating specs/*/PRD.md with a non-fatal SKIP when absent",
+        "Run from ../feature-forge: `bash scripts/validate.sh` exits 0 (claude CLI likely absent -> logged fallback PASS; no specs tree -> traceability SKIP)",
+        "The existing steps and final tally are unchanged apart from the two insertions"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001"],
+      "notes": "Depends on 001 because the claude-validate fallback is defined as 'the JSON checks (steps 1-3) PLUS the SKILL.md schema gate (step 6a)' — the schema must exist for that statement to hold. validate-traceability.py is standalone today; this makes it blocking where a specs tree exists. feature-forge's canon repo may carry no specs/*/PRD.md, so SKIP is the expected local outcome.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/02-ci-blocking-gates.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add feature-forge ci.yml workflow + quality-gate composite action",
+      "description": "Files live in the ../feature-forge repo (which has no .github today). Stand up the per-PR blocking gate (REQ-CIINFRA-01/02, REQ-CONST-01, REQ-PERF-01, REQ-SEC-01/02).\n\n1. Create `.github/workflows/ci.yml` EXACTLY as in spec 02 §3.1: triggers `pull_request` + `push: branches:[main]`; `permissions: contents: read`; one `gate` job on ubuntu-latest that checks out (`actions/checkout@v5`, pinned) and `uses: ./.github/actions/quality-gate`.\n2. Create `.github/actions/quality-gate/action.yml` EXACTLY as in spec 02 §3.2: a composite that provisions Node 20 (`actions/setup-node@v4`) + Python 3.11 (`actions/setup-python@v5`), pip-installs ruff, best-effort-installs the claude CLI, pre-creates `.venv-adapters` from scripts/requirements-adapters.txt, ensures shellcheck, then runs in order: `bash scripts/validate.sh` -> `shellcheck scripts/*.sh` -> ruff (guarded `[ -d eval ]`) -> `python3 scripts/check-version-sync.py`.\n\nThird-party actions pinned to major tags; no `secrets:` anywhere. Done bar is authored shape, not a live green run — version-sync (item 002) still fails until item 012 reconciles, which is expected.",
+      "acceptanceCriteria": [
+        ".github/workflows/ci.yml exists: triggers pull_request + push(main), permissions contents:read, pins actions/checkout@v5, uses ./.github/actions/quality-gate",
+        ".github/actions/quality-gate/action.yml exists: composite provisioning Node+Python+ruff+shellcheck+.venv-adapters, then validate.sh -> shellcheck -> ruff([ -d eval ] guard) -> check-version-sync.py in that order",
+        "All third-party actions are pinned to a tag/SHA; no secrets referenced in either file",
+        "Both YAML files parse (e.g. `python3 -c \"import yaml,sys; yaml.safe_load(open(f))\"` for each, if PyYAML available) with no syntax errors",
+        "Run from ../feature-forge: `bash scripts/validate.sh`, `shellcheck scripts/*.sh`, and `ruff check scripts/` each exit 0 (the gate's deterministic steps, version-sync excepted until item 012)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001", "002", "003", "004"],
+      "notes": "Mirrors rauf's ci.yml -> quality-gate composite pattern (pattern-reuse, not cross-repo `uses:`). The composite runs version-sync as its own step which exits 1 until item 012 — that's the SC-03 fail-before state, not a defect in this item. Validate YAML shape locally; CI green on real GitHub is post-merge (PRD §8).",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/01-architecture-layout.md",
+        "specs/agent-agnostic/packaging-docs-ci/02-ci-blocking-gates.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add feature-forge os-matrix.yml installer gate (ubuntu/macos/windows)",
+      "description": "File lives in the ../feature-forge repo. Stand up the separate, blocking OS-matrix installer gate (REQ-CI-07, REQ-CI-08, REQ-PERF-01, REQ-SEC-01/02).\n\nCreate `.github/workflows/os-matrix.yml` EXACTLY as in spec 03 §3: triggers `pull_request` + `push: branches:[main]`; `permissions: contents: read`; one `installer` job with `strategy.fail-fast: false` and `matrix.os = [ubuntu-latest, macos-latest, windows-latest]`. Steps: checkout (`actions/checkout@v5`), `actions/setup-node@v4` node 20, build (`working-directory: installer`, `npm ci && npm run build`), then three legs all with `shell: bash` and `set -euo pipefail`:\n- LEG 1: `node installer/dist/cli.js install --dry-run --skip-rauf --json | tee dry-run.json` then `node -e \"JSON.parse(require('node:fs').readFileSync('dry-run.json','utf8'))\"`.\n- LEG 2: `node installer/dist/cli.js uninstall -y --skip-rauf`.\n- LEG 3 (POSIX only, `if: runner.os != 'Windows'`): the `--symlink --dry-run` variant.\n\n`--skip-rauf` is mandatory on every leg (rauf unpublished). Windows MUST NOT pass `--symlink`. Verify the locally available (Linux) leg actually runs.",
+      "acceptanceCriteria": [
+        ".github/workflows/os-matrix.yml declares matrix.os = [ubuntu-latest, macos-latest, windows-latest] with fail-fast: false",
+        "Triggers are pull_request + push(main) (NOT schedule/workflow_dispatch); permissions contents:read; no secrets; actions pinned",
+        "Leg 3 (--symlink) is guarded by `if: runner.os != 'Windows'`; every leg using a pipe or set -euo pipefail declares shell: bash",
+        "Local Linux leg passes: from ../feature-forge run `cd installer && npm ci && npm run build && cd ..` then `node installer/dist/cli.js install --dry-run --skip-rauf --json` (exit 0, valid JSON) and `node installer/dist/cli.js uninstall -y --skip-rauf` (exit 0)",
+        "The os-matrix.yml file parses as valid YAML"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Consumes the cross-agent-installer CLI surface (00 §7); authors no installer behavior. The committed adapters/<agent>/ bundles must be present (they are). SC-05 done bar: local leg passes AND all three legs are declared; live three-OS green is post-merge.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/00-core-definitions.md",
+        "specs/agent-agnostic/packaging-docs-ci/03-os-matrix-installer-gate.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add trigger-accuracy eval harness eval/run-eval.py + two fixtures",
+      "description": "Files live in the ../feature-forge repo. Author the advisory trigger-accuracy eval (REQ-EVAL-01).\n\n1. Create `eval/run-eval.py` EXACTLY as in spec 04 §6: a Python >=3.10 harness (stdlib + lazy `import anthropic` only on the key-present path) that loads the skills/*/SKILL.md catalog, asks `claude-haiku-4-5-20251001` (MAX_TOKENS=64) to pick the best skill per prompt, and scores shouldTrigger/shouldNotTrigger per fixture. It MUST always exit 0 (low score or absent key both exit 0); only a harness bug / bad fixture is non-zero. Absent-key path prints 'skipped (no key)' before importing anthropic. Support `--json` emitting the EvalReport (04 §5).\n2. Create `eval/fixtures/forge-1-prd.json` and `eval/fixtures/forge-5-loop.json` EXACTLY as in spec 04 §4.1 (EvalFixture shape from 00 §4; each `skill` resolves to a real skills/<skill>/ dir; the two cross-discriminate).\n\nThe harness MUST be ruff-clean (E/F/W, line-length 100): no unused imports, no bare except, no over-100-col lines. Do NOT add a blocking accuracy threshold.",
+      "acceptanceCriteria": [
+        "eval/run-eval.py exists matching 04 §6; eval/fixtures/forge-1-prd.json and forge-5-loop.json exist matching 04 §4.1 (valid EvalFixture, skill resolves to a skills/ dir)",
+        "Run from ../feature-forge with NO ANTHROPIC_API_KEY: `python3 eval/run-eval.py` prints 'skipped (no key)' and exits 0 (`echo $?` is 0)",
+        "Run from ../feature-forge: `python3 eval/run-eval.py --json` with no key emits a valid EvalReport JSON (skipped:true) and exits 0",
+        "Run from ../feature-forge: `ruff check eval/` reports no E/F/W violations",
+        "The harness contains no blocking accuracy threshold (advisory only)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Model pin claude-haiku-4-5-20251001 + MAX_TOKENS 64 bound cost (OQ-D). Two-fixture coverage is the deliberate SC-06 floor; full-catalog coverage is out of scope. Creating eval/ here is what the CI composite's `[ -d eval ]` ruff guard anticipates — no ordering constraint with item 003.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/00-core-definitions.md",
+        "specs/agent-agnostic/packaging-docs-ci/04-trigger-accuracy-eval.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add feature-forge eval.yml advisory workflow (dispatch + weekly, never on PR)",
+      "description": "File lives in the ../feature-forge repo. Author the advisory eval workflow (REQ-EVAL-02, REQ-SEC-01/02, OQ-03).\n\nCreate `.github/workflows/eval.yml` EXACTLY as in spec 04 §7: triggers `workflow_dispatch: {}` + `schedule: cron '0 6 * * 1'` and NEVER `pull_request`; `permissions: contents: read`; one `eval` job on ubuntu-latest that checks out (`actions/checkout@v5`, pinned), sets up Python 3.12 (`actions/setup-python@v5`, pinned), `pip install --quiet anthropic`, then runs `python3 eval/run-eval.py` with `env: ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}`.\n\nThe key is only ever an env on the run step (never echoed). On forks the secret is empty and the harness skips+exits 0. Do NOT add a `pull_request` trigger and do NOT make this a required check.",
+      "acceptanceCriteria": [
+        ".github/workflows/eval.yml triggers on workflow_dispatch + schedule(cron '0 6 * * 1') and has NO pull_request trigger",
+        "permissions: contents: read; ANTHROPIC_API_KEY is read from secrets into the step env only, never echoed",
+        "Third-party actions (checkout, setup-python) are pinned to tags",
+        "The eval.yml file parses as valid YAML",
+        "The pinned model referenced by the harness is the current Haiku id (claude-haiku-4-5-20251001) with a small max_tokens"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["007"],
+      "notes": "Depends on 007 (the workflow runs eval/run-eval.py). This is the ONLY feature-forge workflow that reads a secret; ci.yml and os-matrix.yml require none. Non-blocking by construction: separate workflow, no PR trigger, harness always exits 0.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/04-trigger-accuracy-eval.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "Author five per-agent setup docs (docs/agents/*.md) incl. claude.md default-loop section",
+      "description": "Files live in the ../feature-forge repo (docs/agents/ does not exist yet). Author exactly five per-agent setup docs (REQ-DOCS-01/02/03/04) following the template in spec 05 §3.2, one per SUPPORTED_AGENTS member: docs/agents/{claude,codex,copilot,cursor,gemini}.md.\n\nEvery doc MUST cover: Install (`npx feature-forge install -a <agent>` + reference to adapters/<agent>/), a First-use check (`npx feature-forge list -a <agent>` + one concrete skill-invocation line), the install-path-derivation note (derive non-Claude destinations from `--dry-run --json`, never assert a config-dir convention), and the installed-bundle self-location 'Known gap' callout (flag, do not fix). claude.md additionally leads with the marketplace block AND hosts the full `## The default loop runner` section (spec 05 §4): forge-5-loop defaults to rauf; the precedence `item (rauf backlog) > run (forge --agent) > project (loopRunner.defaultAgent) > rauf default (claude-cli)`; `validate` is agent-agnostic; the rauf 0.6.0 floor; and link `../../references/ralph-loop-contract.md`. The other four docs link to `claude.md#the-default-loop-runner` rather than duplicating it. Any `npx rauf@0.6.0` mention MUST carry the literal label 'available once rauf 0.6.0 is published'.",
+      "acceptanceCriteria": [
+        "All five docs exist: `ls docs/agents/{claude,codex,copilot,cursor,gemini}.md` (run from ../feature-forge) succeeds",
+        "Each doc covers Install (npx feature-forge install -a <agent> + adapters/<agent>/) and a First-use check (list -a <agent> + a skill-invocation line)",
+        "Each non-Claude doc derives the install destination from `--dry-run --json` and carries the installed-bundle self-location 'Known gap' callout",
+        "docs/agents/claude.md leads with the marketplace block and contains a `## The default loop runner` section stating the rauf default, the item>run>project>default precedence, agent-agnostic validate, the 0.6.0 floor, and a link to ../../references/ralph-loop-contract.md",
+        "Any rauf@0.6.0 npm reference is labeled 'available once rauf 0.6.0 is published' (grep confirms each hit is on/near that label)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Required before item 010 so the README per-surface table links resolve. Path-derivation: only Claude's ~/.claude is treated as well-known; codex/copilot/cursor/gemini config dirs are best-known-but-unverified, so docs read them from the installer plan. feature-forge has no check:docs gate, but avoid the `ralph` token where practical (refer to 'the loop-runner contract').",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "agentDelegation": {
+        "recommendedConcurrency": 3,
+        "strategy": "Split by file; all five docs share the 05 §3.2 template and one verification (ls + grep). claude.md is its own subtask because it carries the marketplace block and the full default-loop section; the other four are near-identical and link to claude.md's anchor (a stable target, no ordering dependency).",
+        "subtasks": [
+          "Author docs/agents/claude.md per 05 §3.2 AND §4: marketplace-first install block, the per-doc Install + First-use sections, the install-path note, the self-location Known-gap callout, and the full `## The default loop runner` section (rauf default, item>run>project>default precedence, agent-agnostic validate, rauf 0.6.0 floor, link ../../references/ralph-loop-contract.md). Label any npx rauf@0.6.0 mention 'available once rauf 0.6.0 is published'.",
+          "Author docs/agents/codex.md and docs/agents/copilot.md per the 05 §3.2 template (substitute <agent>=codex / copilot): Install (npx feature-forge install -a <agent> + adapters/<agent>/), First-use check (list -a <agent> + an invocation line), install-path derivation from --dry-run --json, the self-location Known-gap callout, and a link to claude.md#the-default-loop-runner for the loop runner.",
+          "Author docs/agents/cursor.md and docs/agents/gemini.md per the 05 §3.2 template (substitute <agent>=cursor / gemini): same sections as the codex/copilot subtask, linking claude.md#the-default-loop-runner for the loop runner."
+        ]
+      },
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/00-core-definitions.md",
+        "specs/agent-agnostic/packaging-docs-ci/05-readme-and-agent-docs.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "feature",
+      "priority": 1,
+      "title": "Rewrite feature-forge README install-first (a)->(b)->(c) + per-surface table",
+      "description": "File lives in the ../feature-forge repo. Rewrite README.md so the install story leads (REQ-README-01, REQ-DOCS-02, REQ-README-03), per spec 05 §1.\n\nBefore the FIRST non-install `##`-level heading after the title, present in order: (a) the Claude-preferred marketplace install (`/plugin marketplace add garygentry/feature-forge` then `/plugin install feature-forge@feature-forge`); (b) the universal one-liner (`npx feature-forge install`, with `-a` and `--dry-run --json` variants); (c) a per-surface table with EXACTLY five rows in canonical order claude/codex/copilot/cursor/gemini, each row an Install cell (Claude = marketplace coordinate, others = `npx feature-forge install -a <agent>`) and a relative link to docs/agents/<agent>.md. Use the single `## Install` umbrella with `###` sub-blocks (preferred). The existing one-line pitch under the title MAY remain. Everything after (c) (Overview, Pipeline, etc.) is retained UNCHANGED in content — only its position moves below the install story.\n\nThe only aspirational command allowed is `npx rauf@0.6.0`, which MUST carry 'available once rauf 0.6.0 is published'; every other command must resolve today. Verify via the 05 §5 recipe (installer dry-run for each -a value + ls each linked doc/adapter dir).",
+      "acceptanceCriteria": [
+        "README presents (a) marketplace -> (b) one-liner -> (c) per-surface table, in order, before the first non-install ## heading",
+        "The per-surface table has exactly five rows (claude/codex/copilot/cursor/gemini) with resolving relative links to docs/agents/<agent>.md",
+        "All prior non-install content (Overview, Pipeline, etc.) is retained verbatim, only repositioned below the install story",
+        "Run from ../feature-forge §5 recipe: `cd installer && npm ci && npm run build` then for each agent `node dist/cli.js install -a <agent> --dry-run --skip-rauf --json` exits 0 with valid JSON; `ls docs/agents/<agent>.md` and `ls -d adapters/<agent>/` succeed",
+        "Any npx rauf@0.6.0 reference is labeled 'available once rauf 0.6.0 is published'; all other commands resolve today"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["009"],
+      "notes": "Depends on 009 so the table's five doc links resolve (SC-08 ls-confirms them). Marketplace coordinate garygentry/feature-forge and install coordinate feature-forge@feature-forge are verified real. Claude row leads with marketplace; npx -a claude shown parenthetically.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/05-readme-and-agent-docs.md"
+      ]
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add labeled cross-agent section to the rauf README (keep loop-runner shape)",
+      "description": "File lives in THIS repo (rauf). Per REQ-README-02 / REQ-CONS-01, rauf keeps its loop-runner product README shape entirely — this is an EDIT that ADDS one clearly labeled section and changes nothing else (no marketplace-first rewrite, no per-surface table).\n\nAdd a `## Multi-agent / feature-forge` section (recommended placement: after `## Features`, around `## Install`) cross-linking feature-forge's cross-agent install story, per the skeleton in spec 05 §2.1. State that rauf is the default loop runner for feature-forge and point readers to feature-forge's README/per-agent docs.\n\nThe section MUST pass rauf's `check:docs` gate (05 §2.2): do NOT use removed grammar (`loop start`, `loop watch`, `loop follow`, `status --watch`, bare `--watch`) — the recommended section shows NO rauf loop commands at all; do NOT write the `ralph` token anywhere (link to feature-forge's README, not the `ralph-loop-contract.md` filename); do NOT hard-code a v0.[0-3].x version pin; do NOT invent a rauf subcommand. The MIT badge stays unchanged.",
+      "acceptanceCriteria": [
+        "rauf README.md gains a single labeled `## Multi-agent / feature-forge` section linking feature-forge; the rest of the README is unchanged",
+        "The section contains no removed grammar, no `ralph` token, no v0.[0-3].x version pin, and no phantom rauf subcommand",
+        "`pnpm gate` passes (includes check:docs, which scans README.md)",
+        "No marketplace-first table is added to the rauf README; the MIT badge is unchanged"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "rauf-side item — verified with `pnpm gate`. The loop-contract source file is named ralph-loop-contract.md; do NOT name it in the rauf README (the token would fail check:docs) — link feature-forge's README instead. Recommended section shows no loop commands at all, sidestepping the grammar checks.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/05-readme-and-agent-docs.md"
+      ]
+    },
+    {
+      "id": "012",
+      "type": "chore",
+      "priority": 1,
+      "title": "Reconcile feature-forge version fields to 0.10.0 (flips the version-sync gate to pass)",
+      "description": "Files live in the ../feature-forge repo. Execute the within-repo version reconciliation (REQ-VER-02, REQ-MAINT-01) per spec 06 §2. Target value 0.10.0 (highest of the desynced trio).\n\n1. Confirm `.claude-plugin/plugin.json` version == 0.10.0 (already correct; no edit unless it differs).\n2. Hand-edit `.claude-plugin/marketplace.json` plugins[0].version 0.9.0 -> 0.10.0. Change ONLY that value; leave name/source/description and top-level keys untouched.\n3. Bump the generator constant at `scripts/build-adapters.py:298` `GEMINI_EXTENSION_VERSION` 0.0.0 -> 0.10.0, then run `python3 scripts/build-adapters.py` to REGENERATE adapters/gemini/gemini-extension.json (version -> 0.10.0, _generated header preserved). NEVER hand-edit the gemini JSON.\n\nDo NOT touch installer/package.json (0.1.0, excluded). Do NOT add a version field to any SKILL.md. After this, the item-002 version-sync gate exits 0 and the adapters regen-diff is clean.",
+      "acceptanceCriteria": [
+        "marketplace.json plugins[0].version == 0.10.0 (hand-edited); plugin.json == 0.10.0 (confirmed); build-adapters.py:298 reads GEMINI_EXTENSION_VERSION = '0.10.0'",
+        "After `python3 scripts/build-adapters.py`, adapters/gemini/gemini-extension.json version == 0.10.0 with its _generated header intact",
+        "Run from ../feature-forge: `python3 scripts/check-version-sync.py` now exits 0 (all three agree at 0.10.0)",
+        "Run from ../feature-forge: `python3 scripts/build-adapters.py --check` produces no diff (SC-04)",
+        "installer/package.json version is unchanged (0.1.0); no SKILL.md gained a version field"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002"],
+      "notes": "Coupled to item 002 by the fail-before/pass-after contract (SC-03): 002 authors the gate that fails on the live desync; this item makes it pass. gemini-extension.json is REGENERATED only via the generator constant (REQ-MAINT-01) — a hand-edit would be reverted by build-adapters.py --check.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/00-core-definitions.md",
+        "specs/agent-agnostic/packaging-docs-ci/06-packaging-versioning-hygiene.md"
+      ]
+    },
+    {
+      "id": "013",
+      "type": "chore",
+      "priority": 2,
+      "title": "Add MIT LICENSE to feature-forge",
+      "description": "File lives in the ../feature-forge repo (no LICENSE today). Add `LICENSE` with the full MIT text, copyright holder 'Gary Gentry', year 2026 (matching plugin.json author.name and marketplace.json owner.name), EXACTLY as given in spec 06 §3.1.\n\nThis is the deliberate divergence from the charter's Apache-2.0 mandate (REQ-CONS-03): MIT for both repos, docs share the code license, no separate docs-license file, no per-file SPDX header sweep. rauf already ships MIT and is NOT touched by this item.",
+      "acceptanceCriteria": [
+        "feature-forge/LICENSE exists with the full MIT text and 'Copyright (c) 2026 Gary Gentry'",
+        "No separate docs-license file is added and no per-file SPDX headers are introduced",
+        "rauf/LICENSE is not modified by this item"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "feature-forge and rauf intentionally keep different copyright holder strings (Gary Gentry vs Ralph Contributors) — both MIT, satisfying REQ-LIC-01. Docs are covered by the single root LICENSE (REQ-LIC-02).",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/06-packaging-versioning-hygiene.md"
+      ]
+    },
+    {
+      "id": "014",
+      "type": "chore",
+      "priority": 2,
+      "title": "Add .gitattributes (LF + export-ignore) to both repos",
+      "description": "One file in THIS repo (rauf) and one in the ../feature-forge repo (neither has a .gitattributes today). Add cross-OS hygiene (REQ-OS-01, REQ-OS-02) per spec 06 §5.\n\n1. feature-forge/.gitattributes EXACTLY as in 06 §5.1: `* text=auto eol=lf`, `*.png binary`, `*.jpg binary`, and export-ignore for `specs/ tests/ .github/ eval/ plans/`.\n2. rauf/.gitattributes EXACTLY as in 06 §5.2: `* text=auto eol=lf`, `*.png binary`, `*.jpg binary`, and export-ignore for `specs/ tests/ .github/ test-sandbox/`.\n\nNeither file may contain a `* -text` blanket (it would disable normalization and risk the executable-bit handling). The mode bit is tracked separately in the tree object, so `eol=lf` does not strip +x — do not add any chmod automation.",
+      "acceptanceCriteria": [
+        "feature-forge/.gitattributes exists with `* text=auto eol=lf`, the two binary lines, and export-ignore for specs/ tests/ .github/ eval/ plans/",
+        "rauf/.gitattributes exists with `* text=auto eol=lf`, the two binary lines, and export-ignore for specs/ tests/ .github/ test-sandbox/",
+        "Neither .gitattributes contains a `* -text` blanket",
+        "`pnpm gate` (rauf) still passes after adding rauf/.gitattributes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "export-ignore only affects `git archive` output, not the working tree or clone. The per-repo export-ignore tree lists differ (eval/ + plans/ for feature-forge; test-sandbox/ for rauf). REQ-OS-02 (exec bits) is already enforced by feature-forge validate.sh's permission check — no new tooling.",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/06-packaging-versioning-hygiene.md"
+      ]
+    },
+    {
+      "id": "015",
+      "type": "chore",
+      "priority": 2,
+      "title": "Add CHANGELOG entries to both repos",
+      "description": "One file in THIS repo (rauf) and one in the ../feature-forge repo. Record this capstone's changes (REQ-CHANGELOG-01) per spec 06 §4, preserving each file's existing Keep-a-Changelog format.\n\n1. feature-forge/CHANGELOG.md: append the capstone's Added/Changed subsections UNDER the existing `## [0.10.0] — 2026-06-13` heading (do NOT introduce a new version heading) — CI gates, schema, lint gates, eval harness, per-agent docs, MIT LICENSE, .gitattributes under Added; README install-first rewrite and version reconciliation to 0.10.0 under Changed. Content per 06 §4.1.\n2. rauf/CHANGELOG.md: add the rauf-side Added/Changed UNDER `## Unreleased` (rauf is NOT version-bumped) — .gitattributes, npm-publishability prep, optional npm-publish.yml under Added; the README cross-agent section under Changed. Content per 06 §4.2. Do NOT disturb the following `## 0.6.0` block — leave it byte-intact.\n\nThe rauf section is plain Markdown that MUST pass check:docs (no `ralph` token, no removed grammar, no stale version pins).",
+      "acceptanceCriteria": [
+        "feature-forge/CHANGELOG.md records the capstone's Added/Changed items under the existing [0.10.0] heading (no new version heading introduced)",
+        "rauf/CHANGELOG.md records the rauf-side items under ## Unreleased; the ## 0.6.0 block is intact and unchanged",
+        "`pnpm gate` (rauf) passes, including check:docs over the new Unreleased content",
+        "Both files preserve their existing Keep-a-Changelog format (### Added / ### Changed under a heading)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "If some referenced subsections land after this item, include only the already-true ones — but all 16 items are part of this feature, so the full lists are accurate. The rauf changelog edit is plain Markdown; watch the check:docs triggers (item 011's notes).",
+      "estimatedIterations": 1,
+      "model": "sonnet",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/06-packaging-versioning-hygiene.md"
+      ]
+    },
+    {
+      "id": "016",
+      "type": "chore",
+      "priority": 2,
+      "title": "rauf npm-publishability prep + optional npm-publish.yml (no publish; flag OQ-A)",
+      "description": "Files live in THIS repo (rauf). Make rauf publishable WITHOUT executing any publish (tech-spec §3.13 / decision 1) per spec 06 §7.\n\n1. On the ONE package that will become the published unscoped `rauf` (the target the installer's `RAUF_PIN = rauf@0.6.0` resolves — see OQ-A below), add npm-publish metadata: remove `private: true`, add `publishConfig: { access: public }`, `files: ['dist']`, and `bin: { rauf: 'dist/index.js' }` (already present on @rauf/cli). Do NOT change ANY `version` field — every workspace manifest must stay 0.6.0 so `pnpm version:check` stays green. Do NOT run `npm publish`.\n2. Optionally add `.github/workflows/npm-publish.yml` as `workflow_dispatch`-only machinery per the 06 §7.2 skeleton, with the actual `npm publish` step left COMMENTED. Outside the PR gate; not run by this feature.\n3. OQ-A (rauf distribution form: Bun-required npm package vs compiled-binary-via-thin-wrapper) is UNRESOLVED — surface this choice to the maintainer in the item output / notes rather than silently picking one.",
+      "acceptanceCriteria": [
+        "The package targeted by the rauf@0.6.0 pin has publishConfig/files/bin set and is no longer private, with NO version field changed anywhere",
+        "`pnpm version:check` (and full `pnpm gate`) still passes — all six manifests remain 0.6.0",
+        "No `npm publish` is executed; if npm-publish.yml is added it triggers on workflow_dispatch only and its publish step is commented out",
+        "OQ-A (Bun-required npm package vs compiled-binary wrapper) is explicitly surfaced to the maintainer, not silently decided"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "rauf-side item — verified with `pnpm gate`. @rauf/cli is name '@rauf/cli', private:true, bin rauf -> dist/index.js; root manifest is name 'rauf', private:true, no bin. Which becomes the published `rauf` is the deferred OQ-A; the prep must be compatible with either resolution. The CLI uses a Bun shebang, so a plain npx needs Bun present — exactly why OQ-A is open. Docs (items 009/010) already label the npx rauf@0.6.0 path 'available once rauf 0.6.0 is published'.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/packaging-docs-ci/06-packaging-versioning-hygiene.md"
+      ]
+    }
+  ]
+}
