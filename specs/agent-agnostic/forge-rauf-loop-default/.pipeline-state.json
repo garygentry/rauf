@@ -7,11 +7,19 @@
   "currentStage": "forge-5-loop",
   "stages": {
     "forge-4-backlog": {
-      "status": "in-progress",
+      "status": "complete",
       "version": 1,
       "startedAt": "2026-06-17T15:32:01Z",
-      "artifacts": ["backlog.json"],
-      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 },
+      "completedAt": "2026-06-17T15:32:01Z",
+      "commitHash": "60c0ec40ebc78a21d9928ff3676d1853fde84f36",
+      "artifacts": [
+        "backlog.json"
+      ],
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
       "notes": "5 items. Cross-repo: implementation lands in feature-forge; gate is bash scripts/validate.sh (CON-05), NOT rauf's pnpm gate. author-backlog skill unavailable in this install, so authored inline against .rauf/backlog.schema.json. Validated green (valid:true, 0 findings) via rauf-stable 0.6.0 backlog validate. Items: 001 schema (3 loopRunner fields + 0.6.0 floor + dual installHint), 002 executable spec loop-agent-selection.py, 003 mock-rauf fixture + pytest, 004 forge-5-loop skill edits (selector/precheck/version-wording/observability), 005 ralph-loop-contract.md expose."
     },
     "forge-3-specs": {
@@ -19,7 +27,10 @@
       "version": 1,
       "completedAt": "2026-06-17T13:41:50Z",
       "commitHash": "bc747529690a2b35f1e06db620606c22dccc9652",
-      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 },
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
       "artifacts": [
         "00-core-definitions.md",
         "01-architecture-layout.md",
@@ -31,15 +42,21 @@
         "07-testing-strategy.md",
         "TRACEABILITY.md"
       ],
-      "notes": "8 numbered docs + TRACEABILITY. Resolved OQ-01 (floor 0.6.0, source-pinned), OQ-02 (flat presence-gated fields), OQ-T1 (executable spec is test-only + doc, not adapter-wired), OQ-T2 (installHint names `npx feature-forge install`). render_launch canonicalized in 03 §3.4 (parallel-author gap fixed). All 29 PRD REQs traced."
+      "notes": "8 numbered docs + TRACEABILITY. Resolved OQ-01 (floor 0.6.0, source-pinned), OQ-02 (flat presence-gated fields), OQ-T1 (executable spec is test-only + doc, not adapter-wired), OQ-T2 (installHint names `npx feature-forge install`). render_launch canonicalized in 03 \u00a73.4 (parallel-author gap fixed). All 29 PRD REQs traced."
     },
-    "forge-0-epic": { "status": "complete", "version": 1, "completedAt": "2026-06-15T17:44:28Z" },
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
     "forge-1-prd": {
       "status": "complete",
       "version": 1,
       "completedAt": "2026-06-17T03:48:42Z",
       "basedOnVersions": {},
-      "artifacts": ["PRD.md"],
+      "artifacts": [
+        "PRD.md"
+      ],
       "commitHash": "e0cf1e50470039bee6456aec0ac6c226c0cc6041"
     },
     "forge-verify-prd": {
@@ -55,8 +72,12 @@
       "version": 1,
       "completedAt": "2026-06-17T12:11:43Z",
       "commitHash": "cebaa27159dfffe455b3511f91a1a30021eafd44",
-      "basedOnVersions": { "forge-1-prd": 1 },
-      "artifacts": ["tech-spec.md"],
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "artifacts": [
+        "tech-spec.md"
+      ],
       "notes": "Resolved PRD OQ-01 (version floor=0.6.0) and OQ-02 (flat tokenized loopRunner fields, presence-gated on agentArgument). Implementation targets feature-forge; gate is bash scripts/validate.sh (CON-05), not rauf's pnpm gate."
     },
     "forge-verify-tech": {
