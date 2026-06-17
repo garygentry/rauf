@@ -3,7 +3,7 @@
   "epic": "agent-agnostic",
   "pipelineStatus": "active",
   "createdAt": "2026-06-15T17:44:28Z",
-  "updatedAt": "2026-06-17T15:32:01Z",
+  "updatedAt": "2026-06-17T00:00:00Z",
   "currentStage": "forge-5-loop",
   "stages": {
     "forge-4-backlog": {
@@ -95,6 +95,14 @@
       "verifiedAt": "2026-06-17T13:55:00Z",
       "fixedAt": "2026-06-17T14:10:00Z",
       "commitHash": "78bd3c4d08f499daaddae6ba5c8834ce11f6e5e9"
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-17.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-06-17T00:00:00Z",
+      "fixedAt": "2026-06-17T00:00:00Z",
+      "commitHash": "46b90e2b11811967264d53ee7c40c79d124e2f31"
     }
   }
 }

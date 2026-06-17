@@ -13,7 +13,7 @@
         "loopRunner.properties.agentArgument exists with type \"string\" and default \"--agent {agent}\"; agentsProbeCommand exists with type \"string\" and default \"{bin} agents --json\"; defaultAgent exists with type \"string\" and default \"\" -- all three byte-faithful to spec 02 section 4",
         "loopRunner.minRunnerVersion.default == \"0.6.0\" (bumped from \"0.5.0\") and its description names 0.6.0 as the agent-surface floor (the --agent flag / `rauf agents` probe / preset registry), not the 0.5.0 grammar flip (spec 02 section 5)",
         "loopRunner.installHint.default contains BOTH \"npx feature-forge install\" AND the verbatim \"install-binary.sh | bash\" one-liner; its description names the two distinct binary-provisioning paths; setupHint is unchanged (spec 05 section 4.3)",
-        "references/forge-config-schema.json still parses as valid JSON Schema draft-07 ($schema unchanged) and no loopRunner property other than minRunnerVersion + installHint is altered",
+        "references/forge-config-schema.json still parses as valid JSON Schema draft-07 ($schema unchanged) and no loopRunner property other than minRunnerVersion + installHint is altered (confirm via a git diff of references/forge-config-schema.json touching only the three added properties + minRunnerVersion + installHint)",
         "python3 scripts/build-adapters.py was run and adapters/*/references/forge-config-schema.json reflect the edits; python3 scripts/build-adapters.py --check passes (no drift, no hand-edited adapters)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
@@ -78,7 +78,7 @@
         "001",
         "002"
       ],
-      "notes": "Depends on 001 (the 3.5 schema-default assertions read the edited forge-config-schema.json) and 002 (imports the executable spec). The fixture is a test asset under tests/fixtures/ -- exempt from the spec-purity guard and not adapter-wired, so no regeneration is needed. argv capture uses a temp file via MOCK_RAUF_ARGV_LOG, NOT a mocking library (no new deps, spec 07 section 1). Probe-failure handling (3.6) lives in the caller/integrated flow per spec 04 section 5 -- classify itself never sees malformed output; assert the choose-another/abort path, not an exception.",
+      "notes": "Depends on 001 (the 3.5 schema-default assertions read the edited forge-config-schema.json) and 002 (imports the executable spec). The fixture is a test asset under tests/fixtures/ -- exempt from the spec-purity guard and not adapter-wired, so no regeneration is needed. argv capture uses a temp file via MOCK_RAUF_ARGV_LOG, NOT a mocking library (no new deps, spec 07 section 1). Probe-failure handling (3.6) lives in the caller/integrated flow per spec 04 section 5 -- classify itself never sees malformed output; assert the choose-another/abort path, not an exception. Do NOT run build-adapters.py for this item (test-only, not adapter-wired).",
       "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
@@ -100,7 +100,7 @@
         "The verdict handling is present and correct: UNKNOWN hard-rejects before any loop side-effect listing the sorted valid ids with NO proceed-anyway; UNAVAILABLE warns with detail and offers proceed-anyway OR choose-another; a probe failure offers choose-another/abort and never launches the non-default agent unvalidated (spec 04 sections 4.1/4.2/5)",
         "runner-contract.md has a new \"## Agent selection\" section (precedence + run-layer mapping, probe + unknown/unavailable disambiguation, capability gate, cross-refs to 02/03/04), \"--agent <id>\" as the first entry of the optional-flags catalog, and the \"Coding agent: ... (source: ...)\" line (+ the proceed-anyway audit variant) in the Step 3c inform-user template (spec 03 sections 2.2/4/6.2)",
         "No new event-type string is added and the Step 3d Monitor filter is unchanged (grep clean) (REQ-OBS-02, spec 03 section 6.3)",
-        "With loopRunner.agentArgument absent, Step 2d and Step 3c render byte-identically to today -- no selector, no probe, no agent line (REQ-PLUG-02, REQ-COMPAT-01)",
+        "With loopRunner.agentArgument absent, Step 2d and Step 3c render byte-identically to today -- no selector, no probe, no agent line (REQ-PLUG-02, REQ-COMPAT-01) (verified by the section 3.4 gating assertions in item 003 and by reading the gated-off render path)",
         "python3 scripts/build-adapters.py was run; python3 scripts/build-adapters.py --check passes (adapters/*/skills/forge-5-loop/** reflect the canonical edits with no drift)",
         "bash scripts/validate.sh passes end-to-end from the feature-forge repo root"
       ],
@@ -109,7 +109,7 @@
         "001",
         "002"
       ],
-      "notes": "Depends on 001 (the prose references the agentArgument gate, defaultAgent, and the 0.6.0 floor it just landed) and 002 (the resolve/classify/render_launch algorithm the prose prescribes -- keep prose and executable spec coherent; the skill does NOT import the .py, it restates the rule). Both edited files live under skills/forge-5-loop/** and are copied into adapters -- this is the one item in the feature that must regenerate the forge-5-loop adapter; run build-adapters.py and never hand-edit adapters/**. Spec 03 sections 2.1/2.2 quote the exact current Step 2d optional-flags block to amend; spec 05 section 2.2/2.3 quote the exact Step 1c wording to amend. forge-4-backlog and forge-verify are NOT touched here -- they remain agent-agnostic (validate-only).",
+      "notes": "Depends on 001 (the prose references the agentArgument gate, defaultAgent, and the 0.6.0 floor it just landed) and 002 (the resolve/classify/render_launch algorithm the prose prescribes -- keep prose and executable spec coherent; the skill does NOT import the .py, it restates the rule). Both edited files live under skills/forge-5-loop/** and are copied into adapters -- this is the one item in the feature that must regenerate the forge-5-loop adapter; run build-adapters.py and never hand-edit adapters/**. Spec 03 sections 2.1/2.2 quote the exact current Step 2d optional-flags block to amend; spec 05 section 2.2/2.3 quote the exact Step 1c wording to amend. forge-4-backlog and forge-verify are NOT touched here -- they remain agent-agnostic (validate-only). Apply the Step 2d {a-f} changes in order against the spec 03 section 2.2 verbatim block before regenerating adapters, so a partial edit is not committed.",
       "estimatedIterations": 2,
       "model": "opus",
       "specReferences": [
