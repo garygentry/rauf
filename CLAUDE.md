@@ -193,6 +193,15 @@ This project uses `.rauf/backlog.json` as the persistent task queue for the rauf
 
 This repository IS a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop run --detached` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into OTHER projects. Do not confuse them.
 
+## Publishing & Releasing
+
+Two separate, **manual, owner-gated** flows — a routine merge to `main` never publishes anything:
+
+- **Binary release** (the `rauf` CLI binaries + GitHub Release): tag-driven. Run `pnpm release:prepare X.Y.Z` (bumps all eight version locations, rolls the changelog, commits, tags `vX.Y.Z`, pushes); the `v*` tag triggers `release.yml`. Full mechanics in `docs/RELEASING.md`.
+- **npm launcher** (`@garygentry/rauf` — the `npx @garygentry/rauf` shim in `npm-dist/`): published by `.github/workflows/npm-publish.yml`, whose **only** trigger is `workflow_dispatch` (Actions → "npm Publish (manual)"). The published version is `npm-dist/package.json`'s version, kept in lockstep with the binary release by the version guards — so publish the launcher **after** the matching `vX.Y.Z` GitHub release exists, so `npx @garygentry/rauf@X.Y.Z` resolves to that release's binary.
+
+**Agent guidance — offer, don't act.** When merged changes are user-facing and worth getting to end users, proactively **suggest** the appropriate release/publish and outline the steps; never tag, `npm publish`, or dispatch a publish yourself. These are deliberate, owner-only acts.
+
 ---
 
 <!-- rauf:start -->
