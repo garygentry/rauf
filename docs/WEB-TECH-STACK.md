@@ -141,12 +141,12 @@ export default defineConfig({
 });
 ```
 
-### Dev Mode — Dual-Process Launcher
+### Dev Mode: Dual-Process Launcher
 
 A single `bun run src/dev.ts` starts both processes:
 
-- **API server** on port `5173` — Hono serving API routes
-- **Vite dev server** on port `5174` — React SPA with HMR, proxying `/api/*` to 5173
+- **API server** on port `5173`: Hono serving API routes
+- **Vite dev server** on port `5174`: React SPA with HMR, proxying `/api/*` to 5173
 
 The launcher uses `Bun.spawn` for both processes, pipes their stdout/stderr with color-coded prefixes (`[api]` in cyan, `[vite]` in magenta), and handles clean shutdown on SIGINT/SIGTERM. If either process exits unexpectedly, the other is killed.
 
@@ -184,12 +184,12 @@ The build script chains four steps:
 vite build && bun run scripts/generate-embedded-assets.ts && prettier --write src/server/embedded-assets.ts && tsc
 ```
 
-| Step              | Command                                       | Output                                                   |
-| ----------------- | --------------------------------------------- | -------------------------------------------------------- |
-| 1. Bundle SPA     | `vite build`                                  | `build/` — `index.html` + `assets/*.js` + `assets/*.css` |
-| 2. Embed assets   | `bun run scripts/generate-embedded-assets.ts` | `src/server/embedded-assets.ts`                          |
-| 3. Format         | `prettier --write`                            | Clean up generated file                                  |
-| 4. Compile server | `tsc`                                         | `dist/` — compiled server + type declarations            |
+| Step              | Command                                       | Output                                                  |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------- |
+| 1. Bundle SPA     | `vite build`                                  | `build/`: `index.html` + `assets/*.js` + `assets/*.css` |
+| 2. Embed assets   | `bun run scripts/generate-embedded-assets.ts` | `src/server/embedded-assets.ts`                         |
+| 3. Format         | `prettier --write`                            | Clean up generated file                                 |
+| 4. Compile server | `tsc`                                         | `dist/`: compiled server + type declarations            |
 
 ### Embedded Assets Pattern
 
@@ -209,7 +209,7 @@ export function getAssetMimeType(assetPath: string): string {
 }
 ```
 
-This makes the server binary fully self-contained — it serves the SPA from memory without needing the `build/` directory at runtime.
+This makes the server binary fully self-contained: it serves the SPA from memory without needing the `build/` directory at runtime.
 
 ---
 
@@ -382,10 +382,10 @@ if (root) {
 
 **Provider nesting order** (outermost → innermost):
 
-1. `StrictMode` — React 19 development checks
-2. `ThemeProvider` — dark/light/system theme context
-3. `QueryClientProvider` — TanStack Query cache
-4. `RouterProvider` — TanStack Router
+1. `StrictMode`: React 19 development checks
+2. `ThemeProvider`: dark/light/system theme context
+3. `QueryClientProvider`: TanStack Query cache
+4. `RouterProvider`: TanStack Router
 
 The theme provider wraps everything so any component (including router-rendered views) can access theme state. The query provider wraps the router so route components can use `useQuery`/`useMutation`.
 
@@ -458,7 +458,7 @@ declare module "@tanstack/react-router" {
 ### Key Patterns
 
 - **Root layout**: `createRootRoute` renders a shell (sidebar + main) with `<Outlet />` for child routes
-- **Redirects**: `beforeLoad` + `throw redirect(...)` — no component rendered
+- **Redirects**: `beforeLoad` + `throw redirect(...)` (no component rendered)
 - **Dynamic params**: `$id` in the path string, accessed via `params.id`
 - **Flat route tree**: all routes are children of the root (no deep nesting)
 
@@ -672,7 +672,7 @@ useEffect(() => {
 
 ### Tailwind CSS v4 Setup
 
-Tailwind v4 uses the Vite plugin — **no `tailwind.config.js` file**. Design tokens are declared with `@theme` directly in CSS:
+Tailwind v4 uses the Vite plugin, with **no `tailwind.config.js` file**. Design tokens are declared with `@theme` directly in CSS:
 
 ```css
 /* src/client/index.css */
@@ -909,7 +909,7 @@ function StatusBadge({ status }: { status: string }) {
 
 ### Form Handling (Controlled State, No Form Library)
 
-Forms use plain React `useState` — no form libraries (React Hook Form, Formik, etc.):
+Forms use plain React `useState`, with no form libraries (React Hook Form, Formik, etc.):
 
 ```tsx
 function FilterSelect({
@@ -998,8 +998,8 @@ export async function apiFetchJson<T>(url: string, options?: RequestInit): Promi
 
 **Design decisions:**
 
-- The CSRF header (`X-Request: true`) is injected on **every** request (including GETs). This is harmless for reads and avoids needing to track which calls are mutations.
-- `apiFetchJson<T>` returns the unwrapped `data` field directly, so consumers see `T` — not `{ data: T }`.
+- The CSRF header (`X-Request: true`) is injected on every request (including GETs). This is harmless for reads and avoids needing to track which calls are mutations.
+- `apiFetchJson<T>` returns the unwrapped `data` field directly, so consumers see `T`, not `{ data: T }`.
 - Error messages are extracted from the envelope's `error.message` field, falling back to the HTTP status code.
 
 ---
@@ -1010,7 +1010,7 @@ export async function apiFetchJson<T>(url: string, options?: RequestInit): Promi
 
 - All POST/PUT/DELETE requests require the `X-Request: true` header
 - Enforced by app-level Hono middleware (not per-route)
-- No CORS headers are set — the browser blocks cross-origin requests by default
+- No CORS headers are set; the browser blocks cross-origin requests by default
 - The custom header adds defense-in-depth: browsers won't send custom headers from `<form>` submissions or simple cross-origin requests
 
 ### Path Sandboxing
@@ -1093,7 +1093,7 @@ describe("GET /api/items", () => {
 });
 ```
 
-Hono's `app.request()` method lets you send requests directly without HTTP — fast, deterministic, no port conflicts.
+Hono's `app.request()` method lets you send requests directly without HTTP: fast, deterministic, no port conflicts.
 
 ### NPM Scripts
 

@@ -23,7 +23,7 @@ The server maintains a `LoopManager` singleton (`packages/web/src/server/loop-ma
 - Creates `LoopRunner` instances from `@rauf/loop`, subscribes to all 20 event types
 - Fans events out to SSE clients via `subscribe(projectPath, listener)`
 - Recovers stale loops on startup by scanning discovered projects and resetting stalled `in_progress` items to `pending`
-- Handles graceful shutdown (`shutdownAll()`) — cancels all active loops and waits for completion
+- Handles graceful shutdown (`shutdownAll()`): cancels all active loops and waits for completion
 
 ### CSRF Middleware
 
@@ -176,10 +176,10 @@ GET    /api/projects/:id/backlog/validate
 
 Event types:
 
-- `log` — new log line(s) (data: JSON array of strings)
-- `status` — loop state change detected (data: DerivedStatus JSON)
-- `loop_event` — LoopEvent from the loop runner (data: JSON-encoded LoopEvent, see SCHEMAS.md)
-- `heartbeat` — sent every 30s (data: ISO timestamp)
+- `log`: new log line(s) (data: JSON array of strings)
+- `status`: loop state change detected (data: DerivedStatus JSON)
+- `loop_event`: LoopEvent from the loop runner (data: JSON-encoded LoopEvent, see SCHEMAS.md)
+- `heartbeat`: sent every 30s (data: ISO timestamp)
 
 Implementation:
 
@@ -289,7 +289,7 @@ All API calls go through this wrapper.
 ### Styling
 
 - Tailwind CSS (utility-first)
-- No component library dependency — custom components
+- No component library dependency; custom components
 - Responsive: works at 1024px+ width
 - Light/dark theme support
 

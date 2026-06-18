@@ -1,11 +1,11 @@
 ---
 title: Artifact Templates
-description: Canonical template files installed into target projects — RAUF.md, CLAUDE.md blocks, backlog schema.
+description: Canonical template files installed into target projects (RAUF.md, CLAUDE.md blocks, backlog schema).
 ---
 
 Reference: `artifacts/variants/backlog-json/`
 
-These are the canonical template files that get installed into target projects. They live in the rauf tool's repo under `artifacts/variants/backlog-json/` and are embedded into the compiled binary.
+These are the canonical template files installed into target projects. They live in the rauf tool's repo under `artifacts/variants/backlog-json/` and are embedded into the compiled binary.
 
 ## File Inventory
 
@@ -23,7 +23,7 @@ artifacts/variants/backlog-json/
 
 ## .gitignore Entries
 
-During `install()` and `update()`, the installer appends rauf runtime entries to the target project's `.gitignore` (idempotently — never duplicated). The set mirrors `RUNTIME_EXCLUDE_PATHSPECS` in `packages/loop/src/git-commit.ts`:
+During `install()` and `update()`, the installer appends rauf runtime entries to the target project's `.gitignore` (idempotently, never duplicated). The set mirrors `RUNTIME_EXCLUDE_PATHSPECS` in `packages/loop/src/git-commit.ts`:
 
 ```
 **/.rauf/.loop.lock
@@ -35,7 +35,7 @@ During `install()` and `update()`, the installer appends rauf runtime entries to
 **/backlog.json.bak
 ```
 
-These cover the root `.rauf/` directory as well as nested backlog dirs (`specs/<feature>/.rauf/`). The intentionally-tracked files (`backlog.json`, `progress.md`, `RAUF.md`, `REVIEW.md`, `archive/`) are **not** listed.
+These cover the root `.rauf/` directory as well as nested backlog dirs (`specs/<feature>/.rauf/`). The intentionally tracked files (`backlog.json`, `progress.md`, `RAUF.md`, `REVIEW.md`, `archive/`) are **not** listed.
 
 > **Already tracking a runtime file?** If a runtime file was committed before the `.gitignore` was in place (common for projects installed before rauf's `.gitignore` deployment), untrack it once. The most commonly tracked files are `state.json` (written on every loop run) and `.loop.lock` (written while a loop is active):
 >
@@ -50,16 +50,16 @@ These cover the root `.rauf/` directory as well as nested backlog dirs (`specs/<
 
 The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner class, replacing the legacy shell scripts. The loop is started via:
 
-- **`rauf loop run --detached`** — server mode (via LoopManager)
-- **`rauf loop run`** — direct mode (in-process, no server)
+- **`rauf loop run --detached`**: server mode (via LoopManager)
+- **`rauf loop run`**: direct mode (in-process, no server)
 
 ### Design Principle: Loop Runner Owns Status
 
-**The loop runner manages ALL backlog status transitions.** Claude does NOT modify `backlog.json`. This is the fundamental design decision that enables safe concurrent access — the manager tool can add items to backlog.json while the loop runs, because the loop uses core's `updateItem()` for atomic status transitions.
+**The loop runner manages ALL backlog status transitions.** Claude does NOT modify `backlog.json`. This is the design decision that enables safe concurrent access: the manager tool can add items to backlog.json while the loop runs, because the loop uses core's `updateItem()` for atomic status transitions.
 
 ### Critical Requirements
 
-1. **Atomic writes for status management:** The loop runner selects items, marks them `in_progress`, runs Claude, then marks them `done`/`blocked` based on the exit signal. Each write goes through core's `updateItem()` which uses atomic write (write .tmp → rename) with .bak backup.
+1. **Atomic writes for status management:** The loop runner selects items, marks them `in_progress`, runs Claude, then marks them `done`/`blocked` based on the exit signal. Each write goes through core's `updateItem()`, which uses atomic write (write .tmp → rename) with .bak backup.
 
 2. **state.json writes:** Write `.rauf/state.json` on every major state change via `writeLoopState()`.
 
@@ -78,7 +78,7 @@ The autonomous loop is implemented in `packages/loop` as a TypeScript LoopRunner
    > **Signal placement (canon §4.5):** the runner scans **backwards from the end**
    > of Claude's stdout and uses the **last** signal line, so trailing summaries or
    > commit text after the signal do not break detection (`signal-parser.ts:27-69`).
-   > A signal must be the whole trimmed line. **No signal is not auto-blocked** — the
+   > A signal must be the whole trimmed line. **No signal is not auto-blocked**: the
    > outcome is classified by exit context (clean / non-zero / timeout / usage-limit)
    > and already-committed work is reconciled (`runner.ts:677-705`).
 
@@ -119,12 +119,12 @@ Auto-sweep behavior:
 
 MarkerOptions fields:
 
-- `autoSweep?: boolean` — default `false`
-- `sweepMinAgeDays?: number` — default `0` (sweep all done items)
+- `autoSweep?: boolean`: default `false`
+- `sweepMinAgeDays?: number`: default `0` (sweep all done items)
 
 ### Session Timeout
 
-Claude sessions can stall indefinitely — the process stays alive but stops making progress. The loop runner wraps the `claude -p` invocation with a configurable timeout.
+Claude sessions can stall indefinitely: the process stays alive but stops making progress. The loop runner wraps the `claude -p` invocation with a configurable timeout.
 
 ```
 Session timeout behavior:
@@ -146,7 +146,7 @@ When a timeout fires:
 
 MarkerOptions field:
 
-- `sessionTimeout?: number` — default `60` (minutes). Must be a positive integer.
+- `sessionTimeout?: number`: default `60` (minutes). Must be a positive integer.
 
 ### Graceful Cancel
 
@@ -180,13 +180,13 @@ Review lifecycle:
   - Runner methods: runReviewPass(), startReviewOnly(), buildReviewPrompt()
 ```
 
-### REVIEW.md.tmpl — Post-Loop Review Prompt
+### REVIEW.md.tmpl: Post-Loop Review Prompt
 
 Template for the review pass sent to Claude after the main loop completes.
 
 - **Template variables:** `verifyCommand`, `completedItemsDetail`, `gitDiff`, `progressContent`
 - **User-customizable:** if `.rauf/REVIEW.md` exists locally, it's used instead of the embedded template
-- **Expected outputs:** `RAUF_DONE` (clean — no issues) or `RAUF_REVIEW:{json}` (issues found, JSON matches `ReviewPayload` schema)
+- **Expected outputs:** `RAUF_DONE` (clean, no issues) or `RAUF_REVIEW:{json}` (issues found, JSON matches `ReviewPayload` schema)
 - **Installed during:** `install()` and re-rendered during `update()`, removed during `uninstall()`
 
 ### Usage Limit Handling
@@ -216,7 +216,7 @@ CANCEL during sleep:
   - rauf loop stop triggers cancel which aborts the sleep
 ```
 
-## CLAUDE_ADDON.md — Merge Block
+## CLAUDE_ADDON.md: Merge Block
 
 The content between sentinels that gets merged into an existing CLAUDE.md:
 
@@ -272,7 +272,7 @@ The runner picks the model by precedence (highest wins):
 <!-- rauf:end -->
 ```
 
-## CLAUDE_GREENFIELD.md.tmpl — Full Template
+## CLAUDE_GREENFIELD.md.tmpl: Full Template
 
 For greenfield projects where no CLAUDE.md exists:
 
@@ -358,7 +358,7 @@ The runner picks the model by precedence (highest wins):
 <!-- rauf:end -->
 ```
 
-## RAUF.md.tmpl — Per-Iteration Prompt
+## RAUF.md.tmpl: Per-Iteration Prompt
 
 Contains two sections: managed (tool-updated) and user-customizable.
 
@@ -430,7 +430,7 @@ The runner resolves which model drives an iteration by this precedence
 <!-- Add custom instructions below this line — they survive rauf update -->
 ```
 
-## backlog.json — Empty Template
+## backlog.json: Empty Template
 
 ```json
 {
@@ -440,7 +440,7 @@ The runner resolves which model drives an iteration by this precedence
 }
 ```
 
-## progress.md — Empty Template
+## progress.md: Empty Template
 
 ```markdown
 # Progress & Learnings

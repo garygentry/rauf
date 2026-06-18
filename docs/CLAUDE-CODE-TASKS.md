@@ -7,7 +7,7 @@ description: How rauf's backlog.json relates to Claude Code's native Tasks syste
 
 ## Background
 
-Claude Code v2.1.16+ (January 2026) introduced a native **Tasks** system that replaced the older Todos. Tasks persist to `~/.claude/tasks/<task-list-id>/` and support dependencies, multi-session coordination, and DAG-based execution ordering.
+Claude Code v2.1.16+ (January 2026) introduced a native Tasks system that replaced the older Todos. Tasks persist to `~/.claude/tasks/<task-list-id>/` and support dependencies, multi-session coordination, and DAG-based execution ordering.
 
 ## How Tasks Work
 
@@ -19,7 +19,7 @@ Claude Code v2.1.16+ (January 2026) introduced a native **Tasks** system that re
 
 ## Rauf's Backlog vs Claude Code Tasks
 
-These are **complementary, not competing** systems:
+These are complementary, not competing, systems:
 
 | Aspect             | rauf backlog.json                    | Claude Code Tasks                  |
 | ------------------ | ------------------------------------ | ---------------------------------- |
@@ -58,7 +58,7 @@ Let each `claude -p` session use its default ephemeral task scope.
 
 ### RAUF.md Should NOT Reference Tasks API
 
-The per-iteration prompt (RAUF.md) instructs the agent to read backlog.json. It should NOT instruct the agent to create Claude Code Tasks from backlog items — that would be redundant. The agent may naturally use Tasks internally for its own decomposition, which is fine.
+The per-iteration prompt (RAUF.md) instructs the agent to read backlog.json. It should NOT instruct the agent to create Claude Code Tasks from backlog items. That would be redundant. The agent may naturally use Tasks internally for its own decomposition, which is fine.
 
 ### Do NOT Disable Tasks
 
@@ -66,11 +66,11 @@ Setting `CLAUDE_CODE_ENABLE_TASKS=false` is unnecessary. Tasks and backlog.json 
 
 ## Potential Friction Points
 
-1. **Agent confusion:** An agent might try to "sync" backlog.json items into Tasks. RAUF.md should clarify: "backlog.json is your source of truth. Do not modify it — the loop runner manages status updates."
+1. **Agent confusion:** An agent might try to "sync" backlog.json items into Tasks. RAUF.md should clarify: "backlog.json is your source of truth. Do not modify it; the loop runner manages status updates."
 
-2. **Duplicate tracking:** The agent might track the same work in both Tasks and as mental notes. This is harmless — Tasks are ephemeral and disappear after the session.
+2. **Duplicate tracking:** The agent might track the same work in both Tasks and as mental notes. This is harmless: Tasks are ephemeral and disappear after the session.
 
-3. **Status mismatch:** Tasks might show "completed" internally while the backlog item is still "in_progress" (because the loop hasn't processed the exit signal yet). This is expected — the loop runner is the authority on backlog status.
+3. **Status mismatch:** Tasks might show "completed" internally while the backlog item is still "in_progress" (because the loop hasn't processed the exit signal yet). This is expected: the loop runner is the authority on backlog status.
 
 ## For Self-Hosting (rauf building rauf)
 

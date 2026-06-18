@@ -1,7 +1,7 @@
 ---
 title: "Backlog-Tool / Loop-Runner Contract"
 description: The protocol a ralph-style loop runner exposes so a pipeline tool can drive it (Part A), plus rauf's LLM-agnostic execution architecture (Part B). rauf is the default and reference implementation.
-status: Part A — STABLE (current surface); Part B — DRAFT (provider refactor)
+status: Part A is STABLE (current surface); Part B is DRAFT (provider refactor)
 ---
 
 # SPEC: Backlog-Tool / Loop-Runner Contract
@@ -9,33 +9,33 @@ status: Part A — STABLE (current surface); Part B — DRAFT (provider refactor
 This spec is the single authority for two **orthogonal** axes. Keep them
 distinct:
 
-- **Part A — Backlog-Tool / Loop-Runner Contract.** WHICH backlog tool / loop
+- **Part A, Backlog-Tool / Loop-Runner Contract.** WHICH backlog tool / loop
   runner a pipeline talks to: the backlog schema, the signal protocol, the
   state-directory layout, and the CLI verbs a conforming runner exposes. This
   is the surface a pipeline (e.g. `feature-forge`) depends on. **rauf is the
   default and reference implementation.**
-- **Part B — LLM-Agnostic Execution Architecture.** WHICH LLM drives a single
-  rauf iteration (Claude Code, Codex, Gemini, …) — the _provider_ axis.
+- **Part B, LLM-Agnostic Execution Architecture.** WHICH LLM drives a single
+  rauf iteration (Claude Code, Codex, Gemini, and so on): the _provider_ axis.
 
-> **Not to be confused.** "Loop runner" (Part A) ≠ "provider" (Part B). Swapping
-> the runner (rauf → some other ralph tool) is a Part-A concern; swapping the
-> LLM that the runner spawns is a Part-B concern. The word "provider" refers
-> only to the Part-B axis. The state-directory layout and `.rauf.json` marker
-> are defined **once**, authoritatively, in Part A §A.3; Part B references that
-> definition rather than restating it.
+> **Not to be confused.** "Loop runner" (Part A) is not "provider" (Part B).
+> Swapping the runner (rauf for some other ralph tool) is a Part-A concern;
+> swapping the LLM that the runner spawns is a Part-B concern. The word
+> "provider" refers only to the Part-B axis. The state-directory layout and
+> `.rauf.json` marker are defined **once**, authoritatively, in Part A §A.3;
+> Part B references that definition rather than restating it.
 
 ---
 
-# Part A — Backlog-Tool / Loop-Runner Contract
+# Part A: Backlog-Tool / Loop-Runner Contract
 
 A conforming loop runner consumes a `backlog.json`, executes work items, emits
 signals, maintains a state directory, and exposes a small set of CLI verbs. A
-pipeline tool drives the runner entirely through this contract — it never reads
+pipeline tool drives the runner entirely through this contract; it never reads
 the runner's internals. rauf is the reference implementation; an alternative
 ralph-style runner conforms by supplying its own implementation of this surface
 (its own schema + `validate` verb, signal vocabulary, and CLI verbs).
 
-## A.1 Data surface — the backlog schema
+## A.1 Data surface: the backlog schema
 
 - **Canonical JSON Schema:** [`schemas/backlog.schema.json`](https://github.com/garygentry/rauf/blob/main/schemas/backlog.schema.json),
   published with
@@ -44,13 +44,13 @@ ralph-style runner conforms by supplying its own implementation of this surface
   schema in `packages/core/src/schemas.ts` by
   `scripts/generate-json-schemas.ts`. A CI drift guard
   (`pnpm schema:check`) fails the build if the committed copies diverge from the
-  Zod source — there is no hand-maintained schema copy.
+  Zod source; there is no hand-maintained schema copy.
 - **`schemaVersion`:** top-level optional string, **default `"1"`**, stamped on
   read. It is intentionally _not_ in the JSON Schema `required` array, so
   backlogs written before the field existed keep validating.
 - **Item `type`:** `bug | bugfix | refactor | feature | chore | test`.
 - **Item `status`:** `pending | in_progress | done | blocked`.
-  (Note: `complete`, `in-progress`, `docs` are **not** valid — a runner-agnostic
+  (Note: `complete`, `in-progress`, `docs` are **not** valid. A runner-agnostic
   pipeline must author to these exact values.)
 - Full field shape: see the JSON Schema and `docs/SCHEMAS.md`.
 
@@ -59,19 +59,19 @@ ralph-style runner conforms by supplying its own implementation of this surface
 A work item's execution communicates its outcome by emitting a signal token
 **on a line by itself**. The runner scans the output **backwards from the end**
 and uses the **last** such signal line, so the signal should be the agent's
-final meaningful output — but **trailing text after it (commit messages,
+final meaningful output, but **trailing text after it (commit messages,
 summaries, tool epilogues) does not break detection**. The token must be the
 entire trimmed content of its line (e.g. a bare `RAUF_DONE`, or
 `RAUF_BLOCKED:<reason>` / `RAUF_NEEDS_HUMAN:<reason>` / `RAUF_REVIEW:<json>` with
 no other text on that line). Blank lines are ignored. If multiple signal lines
 appear, the last one wins.
 
-| Signal                      | Meaning                                                              |
-| --------------------------- | -------------------------------------------------------------------- |
-| `RAUF_DONE`                 | All acceptance criteria pass; mark the item done.                    |
-| `RAUF_BLOCKED:<reason>`     | Cannot proceed (missing dependency, unclear requirement).            |
-| `RAUF_NEEDS_HUMAN:<reason>` | Human input required (API key, design decision).                     |
-| `RAUF_REVIEW:<json>`        | Review pass output — a JSON `ReviewPayload` of new items to enqueue. |
+| Signal                      | Meaning                                                             |
+| --------------------------- | ------------------------------------------------------------------- |
+| `RAUF_DONE`                 | All acceptance criteria pass; mark the item done.                   |
+| `RAUF_BLOCKED:<reason>`     | Cannot proceed (missing dependency, unclear requirement).           |
+| `RAUF_NEEDS_HUMAN:<reason>` | Human input required (API key, design decision).                    |
+| `RAUF_REVIEW:<json>`        | Review pass output: a JSON `ReviewPayload` of new items to enqueue. |
 
 These tokens are part of the contract; an alternative runner that reuses rauf's
 artifacts MUST emit the same tokens (or supply its own artifact templates).
@@ -80,11 +80,11 @@ artifacts MUST emit the same tokens (or supply its own artifact templates).
 
 A runner keeps per-backlog state in a **state directory**, resolved as follows:
 
-- **Default root:** `<project>/.rauf/` — used when no `--backlog` is given.
+- **Default root:** `<project>/.rauf/`, used when no `--backlog` is given.
 - **Per-feature root:** with `--backlog <dir>`, the backlog root is
   `<project>/<dir>` and its state directory is `<dir>/.rauf/` (unless `<dir>`
   itself is named `.rauf`, in which case it is used directly). **State is
-  isolated per backlog dir** — two `--backlog` targets (or a per-feature loop
+  isolated per backlog dir:** two `--backlog` targets (or a per-feature loop
   and the project's own loop) never collide on state.
 
 Files within a state directory:
@@ -128,14 +128,14 @@ where each finding has `{ severity, code, message, itemId?, path? }`.
 root (so a ref may point inside or outside the specs dir, e.g.
 `docs/SPEC-CORE.md`); a ref that is absolute or escapes the project root is a
 `SPEC_PATH_INVALID` error. The existence check runs **only** when `--specs-dir`
-is provided — its presence is the gate, not a resolution base — so the
+is provided (its presence is the gate, not a resolution base), so the
 repo-wide ad-hoc flow (no `--specs-dir`) is never failed for it.
 
 ## A.5 Versioning & conformance
 
 - The runner reports its version via `rauf version --json` as a bare semver
   string (no `v` prefix). Consumers semver-compare this against a required
-  minimum — they MUST NOT string-compare.
+  minimum; they MUST NOT string-compare.
 - `rauf backlog validate` and backlog `schemaVersion` first ship in **rauf
   0.2.0**. A consumer that depends on them MUST require `>= 0.2.0`
   (`minRunnerVersion`).
@@ -146,7 +146,7 @@ The runner is obtained as a **self-contained compiled binary**, distinct from
 any per-project artifact install:
 
 - rauf compiles via `bun build --compile` to a single `rauf-bin` that bundles
-  its runtime — the installed `rauf` needs **neither this repo nor Bun/Node**.
+  its runtime: the installed `rauf` needs **neither this repo nor Bun/Node**.
 - Distribution channel: **GitHub Releases** + an install script
   (`scripts/install-binary.sh` → `~/.local/bin/rauf`; supports `--local` to
   install a freshly-built binary from a clone). npm / Homebrew may layer on top
@@ -164,18 +164,18 @@ pipeline may parse and rely on: the `--ndjson` event stream from `rauf loop run`
 and the `--json` output of `rauf status`. They are part of the stable Part-A
 contract and carry the **additive-only / versioned** compatibility promise of
 §A.5. The canonical _shapes_ (TypeScript/Zod) live in `docs/SCHEMAS.md`; this
-section is the _promise_ — the field/event/enum names below match
+section is the _promise_: the field/event/enum names below match
 `packages/core/src/schemas.ts` exactly.
 
-### A.7.1 NDJSON event stream — `rauf loop run … --ndjson`
+### A.7.1 NDJSON event stream: `rauf loop run … --ndjson`
 
 With `--ndjson`, `rauf loop run` emits one JSON object per line to stdout for
 every `LoopEvent`, then a trailing JSON line for the final `LoopResult` (the
-result object has `completedCount`/`blockedCount` and **no** `type` field — that
+result object has `completedCount`/`blockedCount` and **no** `type` field; that
 absence distinguishes it from event lines). The human renderer and status line
 are suppressed; stdout is a clean NDJSON stream (implies `--no-color`).
 
-**Base fields** — every event object carries:
+**Base fields**, every event object carries:
 
 | Field         | Type     | Meaning                                |
 | ------------- | -------- | -------------------------------------- |
@@ -183,7 +183,7 @@ are suppressed; stdout is a clean NDJSON stream (implies `--no-color`).
 | `timestamp`   | `string` | ISO-8601 emission time.                |
 | `projectPath` | `string` | Absolute path to the project.          |
 
-**Event `type` vocabulary** (the full discriminated union — consumers MUST
+**Event `type` vocabulary** (the full discriminated union; consumers MUST
 ignore any `type` they do not recognize, per the promise below):
 
 `loop_started`, `iteration_start`, `item_selected`, `llm_spawned`,
@@ -194,7 +194,7 @@ ignore any `type` they do not recognize, per the promise below):
 `review_failed`, `llm_tool_activity`, `llm_token_update`,
 `llm_stuck_warning`.
 
-**Consumer-critical event payloads** (fields beyond the base three):
+**Consumer-critical event payloads** (fields beyond the base three) follow:
 
 | Event               | Payload fields                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------ |
@@ -213,7 +213,7 @@ ignore any `type` they do not recognize, per the promise below):
 1. **`signal_parsed.signal` distinguishes `review`.** As of v0.5.0 the
    on-the-wire `signal` enum is `done | blocked | needs_human | review | none`. A
    `RAUF_REVIEW` review-pass signal is reported as `signal === "review"`
-   (previously it was collapsed to `"done"` — that collapse is removed). A
+   (previously it was collapsed to `"done"`; that collapse is removed). A
    `review` value indicates the item emitted a review-pass payload; consult the
    review-pass handling (not item completion) to interpret it.
 2. **A circuit-breaker halt is emitted as `loop_error`.** There is **no**
@@ -228,53 +228,53 @@ it aside (as always: status `blocked` + `needsHuman`) **and then halts** in the
 resumable `paused_human` state instead of continuing to other items. On this
 stream the order is: the `needs_human` event (`itemId`, `reason`), then a
 `loop_paused` event (`reason: "needs_human"`, `itemId`). `loop run` then exits
-with code **`3`** (`NEEDS_HUMAN`). Without the flag, the default is unchanged —
+with code **`3`** (`NEEDS_HUMAN`). Without the flag, the default is unchanged:
 the item is set aside and the loop keeps running, so no `loop_paused` is emitted.
 A supervisor resolves the pause with `rauf resume --answer <id> "<text>"`, which
 re-queues the item with the answer and relaunches the loop.
 
-> **Note — one unified exit-code scheme (v0.5.0).** `rauf status` and `rauf loop
+> **Note, one unified exit-code scheme (v0.5.0).** `rauf status` and `rauf loop
 run` share the single exit-code table (§A.7.2): a needs-human state is `3`
 > (NEEDS_HUMAN) on **both**. The only status-exclusive code is `6` (RUNNING), a
 > query-time state a `loop run` never terminates with. Branch on the same codes
 > regardless of which command you ran.
 
 **Supervisor pattern:** run `rauf loop run . --ndjson --pause-on-needs-human`;
-on a `loop_paused` (or `needs_human`) event — or on the exit code `3` (NEEDS_HUMAN) — gather
+on a `loop_paused` (or `needs_human`) event, or on the exit code `3` (NEEDS_HUMAN), gather
 the human's answer and call `rauf resume . --answer <id> "<answer>"` to inject
 it and continue.
 
-### A.7.2 Canonical status surface — `rauf status … --json`
+### A.7.2 Canonical status surface: `rauf status … --json`
 
-`rauf status --json` emits a `DerivedStatus` object — the canonical,
+`rauf status --json` emits a `DerivedStatus` object: the canonical,
 file-derived snapshot of a backlog root's loop state (no subprocesses are
 invoked to derive it). Its fields:
 
-- **`loopState`** — one of `IDLE`, `RUNNING`, `REVIEWING`, `PAUSED`, `COMPLETE`,
+- **`loopState`**: one of `IDLE`, `RUNNING`, `REVIEWING`, `PAUSED`, `COMPLETE`,
   `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `LIMIT_REACHED`, `ERROR`, `NOT_INSTALLED`,
   `SLEEPING_LIMIT`, `WEEKLY_LIMIT`.
-- **`stateSource`** — `state.json` | `log-parsing` | `none`.
+- **`stateSource`**: `state.json` | `log-parsing` | `none`.
 - **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
-  **`startedAt`**, **`elapsed`** — progress fields (nullable).
-- **`backlogSummary`** — `{ pending, inProgress, blocked, needsHuman?,
+  **`startedAt`**, **`elapsed`**: progress fields (nullable).
+- **`backlogSummary`**: `{ pending, inProgress, blocked, needsHuman?,
 deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
   `blocked`; **`needsHuman`** (blocked on a human decision) and **`deferred`**
   (a runner "false block") are **distinct, disjoint subsets** of it. Treat the
   three as separate: a genuine agent block, a needs-human block, and a deferred
   block are not interchangeable.
-- **`lock?`** — `LockSummary` (`present`, `pid`, `startedAt`, `alive`, `stale`):
+- **`lock?`**: `LockSummary` (`present`, `pid`, `startedAt`, `alive`, `stale`):
   lock-file liveness for this backlog root.
-- **`sleepUntil?`** — ISO timestamp, present when `loopState` is
+- **`sleepUntil?`**: ISO timestamp, present when `loopState` is
   `SLEEPING_LIMIT` or `WEEKLY_LIMIT`.
 
-**Exit-code table** (the unified v0.5.0 scheme — `rauf status` and `rauf loop
+**Exit-code table** (the unified v0.5.0 scheme; `rauf status` and `rauf loop
 run` share it so a supervisor can branch without parsing JSON):
 
 | Exit code | Meaning                                             | `loopState` (from `rauf status`)                                        |
 | --------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| `0`       | Success — clean terminal                            | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
+| `0`       | Success (clean terminal)                            | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
 | `1`       | Error                                               | `ERROR`                                                                 |
-| `2`       | Usage error (bad args / IO)                         | —                                                                       |
+| `2`       | Usage error (bad args / IO)                         | (none)                                                                  |
 | `3`       | Needs human                                         | `PAUSED_HUMAN`                                                          |
 | `4`       | Limit / usage-paused / sleeping                     | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
 | `5`       | Blocked (clean terminal with genuine blocked items) | `IDLE`/`COMPLETE`/`PAUSED` when `backlogSummary` has genuine blocks     |
@@ -291,15 +291,16 @@ runner version of §A.5:
   `DerivedStatus` / `backlogSummary` fields MAY be added in a minor release.
 - Existing event-type discriminator values and their documented fields, the
   `signal` enum, the `loopState` enum values, and the exit-code mapping are
-  **stable within a major** — they are not renamed or removed.
+  **stable within a major**: they are not renamed or removed.
 - Consumers MUST therefore **ignore unknown event types and unknown fields**
   rather than failing on them, and MUST gate on `rauf version` (§A.5) when they
   depend on a field or event added in a specific release.
 
 **`events.ndjson` versioning discipline.** The persisted `events.ndjson` log
-(the file-backed counterpart of the `--ndjson` stream — same `LoopEvent` shapes,
-plus a `seq` + `schemaVersion` envelope) follows an **additive-only-within-a-major**
-discipline, stamped with `EVENTS_SCHEMA_VERSION` (`packages/core/src/schemas.ts`):
+(the file-backed counterpart of the `--ndjson` stream, with the same `LoopEvent`
+shapes plus a `seq` + `schemaVersion` envelope) follows an
+**additive-only-within-a-major** discipline, stamped with
+`EVENTS_SCHEMA_VERSION` (`packages/core/src/schemas.ts`):
 
 1. **Additive-only within a major.** No event `type` discriminator value is
    renamed or removed, and no documented field is removed, within a major version.
@@ -319,20 +320,20 @@ remain version `"1"` and inter-readable.
 
 | Surface                          | Audience | Parse programmatically?                               |
 | -------------------------------- | -------- | ----------------------------------------------------- |
-| `rauf loop run … --ndjson`       | machine  | **Yes** — stable contract                             |
-| `rauf status … --json`           | machine  | **Yes** — stable contract                             |
-| `rauf follow`                    | human    | **No** — formatted for display                        |
-| `rauf log` / `rauf log --follow` | human    | **No** — formatted for display                        |
-| `rauf.log` (file)                | human    | **No** — append-only human log / status fallback only |
+| `rauf loop run … --ndjson`       | machine  | **Yes** (stable contract)                             |
+| `rauf status … --json`           | machine  | **Yes** (stable contract)                             |
+| `rauf follow`                    | human    | **No** (formatted for display)                        |
+| `rauf log` / `rauf log --follow` | human    | **No** (formatted for display)                        |
+| `rauf.log` (file)                | human    | **No** (append-only human log / status fallback only) |
 
 `rauf follow`, `rauf log --follow`, and the `rauf.log` file are
-**human-formatted** (colors, icons, prose) and carry **no** stability promise —
+**human-formatted** (colors, icons, prose) and carry **no** stability promise;
 a supervisor MUST NOT parse them. Use `--ndjson` for events and `status --json`
 for state.
 
 ---
 
-# Part B — LLM-Agnostic Execution Architecture
+# Part B: LLM-Agnostic Execution Architecture
 
 > This part is the **provider** axis (which LLM drives an iteration) and remains
 > a DRAFT refactor plan. The state-directory layout and `.rauf.json` marker it
@@ -342,20 +343,20 @@ for state.
 
 Rauf's loop runner is currently hard-coupled to Claude Code CLI. The coupling exists in five concentrated areas:
 
-1. **Process spawning** — `packages/loop/src/claude-process.ts` spawns the `claude` binary with Claude-specific flags (`-p`, `--dangerously-skip-permissions`, `--output-format text`)
-2. **Credential reading** — `packages/core/src/config.ts` reads `~/.config/claude-code/credentials.json` and extracts `claudeAiOauth.accessToken`
-3. **Usage limit API** — `packages/loop/src/usage-checker.ts` calls `https://api.anthropic.com/api/oauth/usage` with Anthropic-specific headers
-4. **Event naming** — `claude_spawned` and `claude_exited` events in schemas, runner, CLI formatter, loop manager, and web frontend
-5. **Template language** — `RAUF.md.tmpl` references "Task tool" and "Claude Code Tasks"; `CLAUDE_ADDON.md` and `CLAUDE_GREENFIELD.md.tmpl` are named for Claude
+1. **Process spawning:** `packages/loop/src/claude-process.ts` spawns the `claude` binary with Claude-specific flags (`-p`, `--dangerously-skip-permissions`, `--output-format text`)
+2. **Credential reading:** `packages/core/src/config.ts` reads `~/.config/claude-code/credentials.json` and extracts `claudeAiOauth.accessToken`
+3. **Usage limit API:** `packages/loop/src/usage-checker.ts` calls `https://api.anthropic.com/api/oauth/usage` with Anthropic-specific headers
+4. **Event naming:** `claude_spawned` and `claude_exited` events in schemas, runner, CLI formatter, loop manager, and web frontend
+5. **Template language:** `RAUF.md.tmpl` references "Task tool" and "Claude Code Tasks"; `CLAUDE_ADDON.md` and `CLAUDE_GREENFIELD.md.tmpl` are named for Claude
 
-The core business logic — backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOCKED`/`RAUF_NEEDS_HUMAN`), git operations, state management, discovery, status derivation — is already LLM-agnostic.
+The core business logic (backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOCKED`/`RAUF_NEEDS_HUMAN`), git operations, state management, discovery, status derivation) is already LLM-agnostic.
 
 ### Why Change
 
-- **Vendor lock-in** — Users cannot use Rauf with any other coding agent
-- **Cost inflexibility** — Claude Code subscription is the only billing option; some users want API billing, local models, or alternative providers
-- **Ecosystem growth** — OpenAI Codex CLI, Google Gemini CLI, Aider, and other coding agents are mature enough to drive autonomous loops
-- **Future-proofing** — The adapter pattern enables new providers without touching core loop logic
+- **Vendor lock-in:** Users cannot use Rauf with any other coding agent
+- **Cost inflexibility:** Claude Code subscription is the only billing option; some users want API billing, local models, or alternative providers
+- **Ecosystem growth:** OpenAI Codex CLI, Google Gemini CLI, Aider, and other coding agents are mature enough to drive autonomous loops
+- **Future-proofing:** The adapter pattern enables new providers without touching core loop logic
 
 ---
 
@@ -363,20 +364,20 @@ The core business logic — backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOC
 
 ### 2.1 Functional Requirements
 
-| ID    | Requirement                                                                                                                                                                                                                                       | Priority |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| FR-1  | Rauf MUST support multiple LLM providers through a common interface                                                                                                                                                                               | P0       |
-| FR-2  | The `claude-cli` provider MUST replicate current behavior exactly (zero regression)                                                                                                                                                               | P0       |
-| FR-3  | A `generic-cli` provider MUST allow users to configure any CLI agent via `.rauf.json` or `~/.rauf/config.json`                                                                                                                                    | P0       |
-| FR-4  | A `claude-sdk` provider MUST support the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) with API key auth                                                                                                                                    | P1       |
-| FR-5  | Provider selection MUST be configurable at three levels: per-item, per-project, and global default                                                                                                                                                | P1       |
-| FR-6  | The signal protocol (`RAUF_DONE`, `RAUF_BLOCKED`, `RAUF_NEEDS_HUMAN`) MUST remain the standard completion mechanism for all CLI-based providers                                                                                                   | P0       |
-| FR-7  | SDK-based providers MAY use structured signal capture (e.g., MCP tool call) as a more reliable alternative to text parsing                                                                                                                        | P1       |
-| FR-8  | Each provider MUST be able to report usage/rate limits in a normalized format                                                                                                                                                                     | P1       |
-| FR-9  | Each provider MUST validate that required credentials exist before starting a loop                                                                                                                                                                | P0       |
-| FR-10 | SDK-based providers SHOULD stream progress events (tool use, thinking) for live dashboard visibility                                                                                                                                              | P2       |
-| FR-11 | Additional providers (`openai-codex`, `gemini-cli`) SHOULD be implementable without modifying core loop logic                                                                                                                                     | P1       |
-| FR-12 | The CLI MUST accept a `--provider` flag on `rauf loop run` (and the detached `--detached` form). _Note: `loop start` was removed in v0.5.0 — this deferred Part-B FR predates that and should be re-scoped to `loop run` when Part-B is specced._ | P1       |
+| ID    | Requirement                                                                                                                                                                                                                                      | Priority |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| FR-1  | Rauf MUST support multiple LLM providers through a common interface                                                                                                                                                                              | P0       |
+| FR-2  | The `claude-cli` provider MUST replicate current behavior exactly (zero regression)                                                                                                                                                              | P0       |
+| FR-3  | A `generic-cli` provider MUST allow users to configure any CLI agent via `.rauf.json` or `~/.rauf/config.json`                                                                                                                                   | P0       |
+| FR-4  | A `claude-sdk` provider MUST support the Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) with API key auth                                                                                                                                   | P1       |
+| FR-5  | Provider selection MUST be configurable at three levels: per-item, per-project, and global default                                                                                                                                               | P1       |
+| FR-6  | The signal protocol (`RAUF_DONE`, `RAUF_BLOCKED`, `RAUF_NEEDS_HUMAN`) MUST remain the standard completion mechanism for all CLI-based providers                                                                                                  | P0       |
+| FR-7  | SDK-based providers MAY use structured signal capture (e.g., MCP tool call) as a more reliable alternative to text parsing                                                                                                                       | P1       |
+| FR-8  | Each provider MUST be able to report usage/rate limits in a normalized format                                                                                                                                                                    | P1       |
+| FR-9  | Each provider MUST validate that required credentials exist before starting a loop                                                                                                                                                               | P0       |
+| FR-10 | SDK-based providers SHOULD stream progress events (tool use, thinking) for live dashboard visibility                                                                                                                                             | P2       |
+| FR-11 | Additional providers (`openai-codex`, `gemini-cli`) SHOULD be implementable without modifying core loop logic                                                                                                                                    | P1       |
+| FR-12 | The CLI MUST accept a `--provider` flag on `rauf loop run` (and the detached `--detached` form). _Note: `loop start` was removed in v0.5.0; this deferred Part-B FR predates that and should be re-scoped to `loop run` when Part-B is specced._ | P1       |
 
 ### 2.2 Non-Functional Requirements
 
@@ -389,12 +390,12 @@ The core business logic — backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOC
 
 ### 2.3 Out of Scope (Deferred)
 
-| Item                                                       | Reason                                                                                                                                                                |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Raw LLM providers (OpenRouter chat completion, Ollama raw) | These are not coding agents — they lack file/shell tools. Supporting them would require Rauf to implement its own tool layer and agent loop. Massive scope expansion. |
-| Per-item provider routing                                  | Schema field added in Phase 1, but runtime routing deferred to Phase 4                                                                                                |
-| Rauf-provided tool layer                                   | Building Read/Write/Edit/Bash tools within Rauf for raw LLMs                                                                                                          |
-| Multi-provider parallel execution                          | Running the same item against multiple providers simultaneously                                                                                                       |
+| Item                                                       | Reason                                                                                                                                                             |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Raw LLM providers (OpenRouter chat completion, Ollama raw) | These are not coding agents; they lack file/shell tools. Supporting them would require Rauf to implement its own tool layer and agent loop. Large scope expansion. |
+| Per-item provider routing                                  | Schema field added in Phase 1, but runtime routing deferred to Phase 4                                                                                             |
+| Rauf-provided tool layer                                   | Building Read/Write/Edit/Bash tools within Rauf for raw LLMs                                                                                                       |
+| Multi-provider parallel execution                          | Running the same item against multiple providers simultaneously                                                                                                    |
 
 ---
 
@@ -418,19 +419,19 @@ The core business logic — backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOC
 
 ### 3.2 Already Generic (No Change Needed)
 
-| File                                                                             | What It Does                                                                          |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `packages/loop/src/signal-parser.ts`                                             | Parses `RAUF_DONE`/`RAUF_BLOCKED`/`RAUF_NEEDS_HUMAN` from stdout — works with any LLM |
-| `packages/loop/src/git-commit.ts`                                                | `git add -A && git commit` — LLM-agnostic                                             |
-| `packages/loop/src/events.ts`                                                    | `TypedEventEmitter` — generic wrapper, driven by schema types                         |
-| `packages/core/src/backlog.ts`                                                   | Backlog CRUD — no LLM references                                                      |
-| `packages/core/src/discovery.ts`                                                 | Project scanning — no LLM references                                                  |
-| `packages/core/src/status.ts`                                                    | Status derivation — reads files only                                                  |
-| `packages/core/src/installer.ts`                                                 | Artifact installation — no LLM references                                             |
-| `packages/core/src/profile.ts`                                                   | Tech stack detection — no LLM references                                              |
-| `packages/core/src/template.ts`                                                  | Template rendering — no LLM references                                                |
-| `packages/core/src/fs-utils.ts`                                                  | Atomic writes — no LLM references                                                     |
-| `packages/loop/src/usage-checker.ts` (`interruptibleSleep`, `computeRetryAfter`) | Utility functions — generic                                                           |
+| File                                                                             | What It Does                                                                         |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `packages/loop/src/signal-parser.ts`                                             | Parses `RAUF_DONE`/`RAUF_BLOCKED`/`RAUF_NEEDS_HUMAN` from stdout; works with any LLM |
+| `packages/loop/src/git-commit.ts`                                                | `git add -A && git commit`; LLM-agnostic                                             |
+| `packages/loop/src/events.ts`                                                    | `TypedEventEmitter`; generic wrapper, driven by schema types                         |
+| `packages/core/src/backlog.ts`                                                   | Backlog CRUD; no LLM references                                                      |
+| `packages/core/src/discovery.ts`                                                 | Project scanning; no LLM references                                                  |
+| `packages/core/src/status.ts`                                                    | Status derivation; reads files only                                                  |
+| `packages/core/src/installer.ts`                                                 | Artifact installation; no LLM references                                             |
+| `packages/core/src/profile.ts`                                                   | Tech stack detection; no LLM references                                              |
+| `packages/core/src/template.ts`                                                  | Template rendering; no LLM references                                                |
+| `packages/core/src/fs-utils.ts`                                                  | Atomic writes; no LLM references                                                     |
+| `packages/loop/src/usage-checker.ts` (`interruptibleSleep`, `computeRetryAfter`) | Utility functions; generic                                                           |
 
 ---
 
@@ -440,7 +441,7 @@ The core business logic — backlog CRUD, signal parsing (`RAUF_DONE`/`RAUF_BLOC
 
 LLM coding agents exist in two forms:
 
-**CLI Agents** — External binaries spawned as subprocesses. Rauf pipes a prompt via stdin or args, captures stdout/stderr, parses signals from output text.
+**CLI Agents:** External binaries spawned as subprocesses. Rauf pipes a prompt via stdin or args, captures stdout/stderr, parses signals from output text.
 
 - Claude Code (`claude -p`)
 - OpenAI Codex (`codex`)
@@ -448,7 +449,7 @@ LLM coding agents exist in two forms:
 - Aider (`aider`)
 - Any configurable binary
 
-**SDK/API Agents** — In-process programmatic invocation. Rauf calls a function, iterates structured messages, captures results directly.
+**SDK/API Agents:** In-process programmatic invocation. Rauf calls a function, iterates structured messages, captures results directly.
 
 - Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` `query()`)
 - OpenAI Agents SDK (future)
@@ -596,7 +597,7 @@ const execResult = await this.provider.execute(promptResult.value, {
 
 ## 5. Provider Specifications
 
-### 5.1 `claude-cli` — Claude Code CLI (Default)
+### 5.1 `claude-cli`: Claude Code CLI (Default)
 
 **Behavior:** Identical to current implementation. Wraps existing `spawnClaude()`.
 
@@ -610,7 +611,7 @@ const execResult = await this.provider.execute(promptResult.value, {
 | Billing     | Claude Code subscription (OAuth)                                                        |
 | Progress    | None (batch output only)                                                                |
 
-### 5.2 `claude-sdk` — Claude Agent SDK
+### 5.2 `claude-sdk`: Claude Agent SDK
 
 **Behavior:** In-process execution via `@anthropic-ai/claude-agent-sdk` `query()`.
 
@@ -644,29 +645,29 @@ const raufSignal = tool(
 );
 ```
 
-### 5.3 `openai-codex` — OpenAI Codex CLI
+### 5.3 `openai-codex`: OpenAI Codex CLI
 
 | Aspect      | Detail                                            |
 | ----------- | ------------------------------------------------- |
 | Binary      | `codex`                                           |
-| Flags       | TBD — headless mode, auto-approve                 |
+| Flags       | TBD (headless mode, auto-approve)                 |
 | Credentials | `OPENAI_API_KEY` env var                          |
 | Signal      | Text parsing from stdout (`RAUF_DONE` convention) |
 | Usage       | OpenAI rate limit headers / API errors            |
 | Billing     | OpenAI API (pay-per-token)                        |
 
-### 5.4 `gemini-cli` — Google Gemini CLI
+### 5.4 `gemini-cli`: Google Gemini CLI
 
 | Aspect      | Detail                                            |
 | ----------- | ------------------------------------------------- |
 | Binary      | `gemini`                                          |
-| Flags       | TBD — `--permissive-open` for headless            |
+| Flags       | TBD: `--permissive-open` for headless             |
 | Credentials | Google account or `GOOGLE_AI_STUDIO_KEY` env var  |
 | Signal      | Text parsing from stdout (`RAUF_DONE` convention) |
 | Usage       | Gemini API rate limits                            |
 | Billing     | Free tier available, or Google AI Studio key      |
 
-### 5.5 `generic-cli` — Configurable CLI Agent
+### 5.5 `generic-cli`: Configurable CLI Agent
 
 **Purpose:** Catch-all adapter that lets users configure ANY CLI agent without writing code.
 
@@ -694,9 +695,9 @@ const raufSignal = tool(
 
 **Prompt delivery modes:**
 
-- `"stdin"` (default) — Pipe prompt to stdin, close stdin
-- `"file"` — Write prompt to temp file, pass path as `{{prompt_file}}` arg
-- `"arg"` — Pass prompt as `{{prompt}}` arg (for short prompts only)
+- `"stdin"` (default): Pipe prompt to stdin, close stdin
+- `"file"`: Write prompt to temp file, pass path as `{{prompt_file}}` arg
+- `"arg"`: Pass prompt as `{{prompt}}` arg (for short prompts only)
 
 ---
 
@@ -765,7 +766,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
 
 ### 6.4 Full Configuration Examples
 
-**Per-project — Claude CLI (default, backward compatible):**
+**Per-project, Claude CLI (default, backward compatible):**
 
 ```json
 {
@@ -779,7 +780,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
 }
 ```
 
-**Per-project — Claude Agent SDK:**
+**Per-project, Claude Agent SDK:**
 
 ```json
 {
@@ -794,7 +795,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
 }
 ```
 
-**Per-project — Generic CLI (Aider):**
+**Per-project, Generic CLI (Aider):**
 
 ```json
 {
@@ -815,7 +816,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
 }
 ```
 
-**Global — Default provider + provider configs:**
+**Global, default provider + provider configs:**
 
 ```json
 {
@@ -937,9 +938,9 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
    - Template variables: `{{model}}`, `{{prompt_file}}`, `{{prompt}}`
    - Prompt delivery modes: stdin, file, arg
 2. Add `--provider` flag to CLI commands
-3. Update prompt builder — generalize "Task tool" references
+3. Update prompt builder: generalize "Task tool" references
 4. Rename artifact templates: `CLAUDE_ADDON.md` → `AGENT_ADDON.md`, etc.
-5. Update `.rauf/RAUF.md.tmpl` — remove "Claude Code Tasks" reference
+5. Update `.rauf/RAUF.md.tmpl`: remove "Claude Code Tasks" reference
 
 **Verification:** Configure a mock agent (simple shell script that echoes `RAUF_DONE`). Run `rauf loop run --provider generic-cli`. Loop completes successfully.
 
@@ -1000,14 +1001,14 @@ There is **no non-commercial exception**. This is why `claude-cli` (which spawns
 
 ## 11. Risks
 
-| Risk                                                                                                                                                            | Mitigation                                                                                                                                  |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Signal protocol fragility** — Non-Claude agents must be taught RAUF_DONE via prompt instructions; some may not reliably produce it                            | Accept as inherent to text-based protocol; SDK providers use structured signals; document signal requirements prominently in RAUF.md        |
-| **Lowest-common-denominator interface** — Different agents have vastly different capabilities (subagents, MCP, context windows); the interface may oversimplify | Keep interface minimal; provider-specific capabilities exposed via `providerConfig`; don't try to normalize advanced features               |
-| **Maintenance surface** — Each adapter needs testing against real provider behavior; provider APIs change                                                       | Phase 1-2 are low maintenance (CLI spawning is stable); SDK adapters (Phase 3+) tracked as separate backlog items; community can contribute |
-| **Raw LLM confusion** — Users may expect OpenRouter/Ollama to work like a coding agent                                                                          | Clear documentation: "coding agent" vs "raw LLM" distinction; `generic-cli` docs list known-compatible agents                               |
-| **Event rename breaking change** — `claude_spawned` → `llm_spawned` breaks SSE consumers                                                                        | Do it in Phase 1 while user base is small; coordinate with frontend update                                                                  |
-| **SDK maturity** — Claude Agent SDK is v0.2.x; API surface may change                                                                                           | Phase 3 is isolated; SDK adapter can be updated independently; `claude-cli` remains the stable default                                      |
+| Risk                                                                                                                                                           | Mitigation                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Signal protocol fragility:** Non-Claude agents must be taught RAUF_DONE via prompt instructions; some may not reliably produce it                            | Accept as inherent to text-based protocol; SDK providers use structured signals; document signal requirements prominently in RAUF.md        |
+| **Lowest-common-denominator interface:** Different agents have vastly different capabilities (subagents, MCP, context windows); the interface may oversimplify | Keep interface minimal; provider-specific capabilities exposed via `providerConfig`; don't try to normalize advanced features               |
+| **Maintenance surface:** Each adapter needs testing against real provider behavior; provider APIs change                                                       | Phase 1-2 are low maintenance (CLI spawning is stable); SDK adapters (Phase 3+) tracked as separate backlog items; community can contribute |
+| **Raw LLM confusion:** Users may expect OpenRouter/Ollama to work like a coding agent                                                                          | Clear documentation: "coding agent" vs "raw LLM" distinction; `generic-cli` docs list known-compatible agents                               |
+| **Event rename breaking change:** `claude_spawned` → `llm_spawned` breaks SSE consumers                                                                        | Do it in Phase 1 while user base is small; coordinate with frontend update                                                                  |
+| **SDK maturity:** Claude Agent SDK is v0.2.x; API surface may change                                                                                           | Phase 3 is isolated; SDK adapter can be updated independently; `claude-cli` remains the stable default                                      |
 
 ---
 
@@ -1015,7 +1016,7 @@ There is **no non-commercial exception**. This is why `claude-cli` (which spawns
 
 | Phase | Test                              | Method                                                           |
 | ----- | --------------------------------- | ---------------------------------------------------------------- |
-| 1     | All existing tests pass           | `pnpm test` — green                                              |
+| 1     | All existing tests pass           | `pnpm test` (green)                                              |
 | 1     | `rauf loop run` works identically | Manual E2E with real Claude Code CLI                             |
 | 1     | New event names render correctly  | CLI + web frontend show `llm_spawned`/`llm_exited`               |
 | 2     | Generic CLI with mock agent       | Shell script echoing `RAUF_DONE` completes a loop                |
@@ -1025,5 +1026,5 @@ There is **no non-commercial exception**. This is why `claude-cli` (which spawns
 | 3     | SDK streaming                     | `llm_progress` events reach web dashboard                        |
 | 3     | SDK credential validation         | Missing `ANTHROPIC_API_KEY` → clear error before loop starts     |
 | 4     | Multi-provider project            | Two items with different `provider` values complete successfully |
-| All   | Type checking                     | `pnpm typecheck` — clean                                         |
-| All   | Lint                              | `pnpm lint` — clean                                              |
+| All   | Type checking                     | `pnpm typecheck` (clean)                                         |
+| All   | Lint                              | `pnpm lint` (clean)                                              |

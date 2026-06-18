@@ -5,7 +5,7 @@ description: High-level system diagram, data flow, and architectural principles 
 
 ## Package Dependency Graph
 
-![Package dependency graph — cli and web depend on loop and core; loop depends on core; core is standalone](images/package-graph.svg)
+![Package dependency graph: cli and web depend on loop and core; loop depends on core; core is standalone](images/package-graph.svg)
 
 ```
 packages/web  ──imports──►  packages/loop  ──imports──►  packages/core
@@ -23,21 +23,21 @@ packages/core ──imports──►  (nothing — standalone)
 
 All filesystem operations and business logic. Zero UI or CLI concerns.
 
-| Module            | Responsibility                                                                                                                                                                 |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `discovery.ts`    | Scan ROOT_DIRECTORY for .rauf.json files, return project list                                                                                                                  |
-| `config.ts`       | Read/write .rauf.json marker files, read/write ~/.rauf/config.json                                                                                                             |
-| `profile.ts`      | Tech-stack detection heuristics, profile management                                                                                                                            |
-| `template.ts`     | Render .tmpl files with {{variable}} interpolation, sentinel block handling                                                                                                    |
-| `installer.ts`    | Orchestrate artifact installation (existing projects)                                                                                                                          |
-| `greenfield.ts`   | Orchestrate greenfield project initialization                                                                                                                                  |
-| `backlog.ts`      | CRUD operations on backlog.json, validation, atomic writes                                                                                                                     |
-| `status.ts`       | Derive loop state from state.json (primary) or rauf.log (fallback); lock liveness                                                                                              |
-| `state-labels.ts` | Single source of truth for human-readable labels and UI tone per `LoopStateEnum` — consumed by CLI (`colorLoopState`) and web (`StateBadge`); no parallel label maps elsewhere |
-| `fs-utils.ts`     | Atomic write, JSON read with error handling, path validation, hash computation                                                                                                 |
-| `schemas.ts`      | Zod schemas + TypeScript types for all data structures                                                                                                                         |
-| `errors.ts`       | Result type, error codes, structured error types                                                                                                                               |
-| `budget.ts`       | Derive right-sized iteration cap from backlog pending work (`computeMaxIterations`)                                                                                            |
+| Module            | Responsibility                                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `discovery.ts`    | Scan ROOT_DIRECTORY for .rauf.json files, return project list                                                                                                                 |
+| `config.ts`       | Read/write .rauf.json marker files, read/write ~/.rauf/config.json                                                                                                            |
+| `profile.ts`      | Tech-stack detection heuristics, profile management                                                                                                                           |
+| `template.ts`     | Render .tmpl files with {{variable}} interpolation, sentinel block handling                                                                                                   |
+| `installer.ts`    | Orchestrate artifact installation (existing projects)                                                                                                                         |
+| `greenfield.ts`   | Orchestrate greenfield project initialization                                                                                                                                 |
+| `backlog.ts`      | CRUD operations on backlog.json, validation, atomic writes                                                                                                                    |
+| `status.ts`       | Derive loop state from state.json (primary) or rauf.log (fallback); lock liveness                                                                                             |
+| `state-labels.ts` | Single source of truth for human-readable labels and UI tone per `LoopStateEnum`, consumed by CLI (`colorLoopState`) and web (`StateBadge`); no parallel label maps elsewhere |
+| `fs-utils.ts`     | Atomic write, JSON read with error handling, path validation, hash computation                                                                                                |
+| `schemas.ts`      | Zod schemas + TypeScript types for all data structures                                                                                                                        |
+| `errors.ts`       | Result type, error codes, structured error types                                                                                                                              |
+| `budget.ts`       | Derive right-sized iteration cap from backlog pending work (`computeMaxIterations`)                                                                                           |
 
 ### packages/loop
 
@@ -45,15 +45,15 @@ Loop runner engine. Orchestrates the autonomous coding loop lifecycle.
 
 | Module               | Responsibility                                                                                         |
 | -------------------- | ------------------------------------------------------------------------------------------------------ |
-| `runner.ts`          | LoopRunner class — main loop lifecycle, iteration management, exit classification, circuit breaker     |
-| `events.ts`          | TypedEventEmitter — typed wrapper around EventEmitter for LoopEvent                                    |
+| `runner.ts`          | LoopRunner class: main loop lifecycle, iteration management, exit classification, circuit breaker      |
+| `events.ts`          | TypedEventEmitter: typed wrapper around EventEmitter for LoopEvent                                     |
 | `claude-process.ts`  | Spawn `claude -p` as child process with timeout and cancellation                                       |
 | `signal-parser.ts`   | Parse RAUF_DONE/BLOCKED/NEEDS_HUMAN/RAUF_REVIEW from Claude stdout                                     |
 | `prompt-builder.ts`  | Build the prompt string from RAUF.md, item, backlog, and progress; build review prompts from REVIEW.md |
 | `usage-checker.ts`   | Check Claude API usage limits, interruptible sleep                                                     |
 | `git-commit.ts`      | Run `git add -A && git commit` after successful iterations                                             |
 | `git-exec.ts`        | Shared `execGit(cwd, args)` helper used by all git operations in the loop package                      |
-| `git-reconcile.ts`   | `findItemCommit` and `isTreeClean` — detect committed-but-unrecorded work for recovery                 |
+| `git-reconcile.ts`   | `findItemCommit` and `isTreeClean`: detect committed-but-unrecorded work for recovery                  |
 | `exit-classifier.ts` | Pure classifier: `classifyExit` maps a finished spawn to an `ExitClass`; exports `hasUsageLimitInText` |
 | `review-hooks.ts`    | `REVIEW_HOOK_SUPPRESSION_ENV` map and `resolveChildEnv` for single-gate review suppression             |
 
@@ -66,10 +66,10 @@ Command-line interface. Parses arguments, calls core functions, formats output.
 - `rauf loop run` creates a LoopRunner in-process (no server required)
 - `rauf loop run --detached`/`loop stop`/`follow`/`loop review` route through the server API or run directly
 - `recovery.ts` provides shared helpers (`reconcileAndRequeue`, `guardLoopLock`, `recoverInterruptedLoop`) used by both `rauf reset` and `rauf resume`
-- `rauf loop run` is the **unattended-safe mode** — the loop runs in the CLI process, so `rauf server stop`/`restart` cannot kill it. `rauf loop run --detached` routes through the server daemon and is interruptible.
+- `rauf loop run` is the **unattended-safe mode**: the loop runs in the CLI process, so `rauf server stop`/`restart` cannot kill it. `rauf loop run --detached` routes through the server daemon and is interruptible.
 - `maxIterations` bounds a **single process run** of `rauf loop run`, not the cumulative work across restarts. The iteration counter resets to zero each time the process starts. `rauf resume` applies a fresh budget for each continuation.
 - Outputs human-readable by default, `--json` for machine-readable
-- Exit codes: unified scheme — SUCCESS(0)/ERROR(1)/USAGE(2)/NEEDS_HUMAN(3)/LIMIT(4)/BLOCKED(5)/RUNNING(6); REVIEWING maps to RUNNING(6), PAUSED_USAGE_LIMIT maps to LIMIT(4)
+- Exit codes: unified scheme. SUCCESS(0)/ERROR(1)/USAGE(2)/NEEDS_HUMAN(3)/LIMIT(4)/BLOCKED(5)/RUNNING(6); REVIEWING maps to RUNNING(6), PAUSED_USAGE_LIMIT maps to LIMIT(4)
 
 ### packages/web
 
@@ -262,5 +262,5 @@ Priority order:
 
 - Manager tool: atomic writes (write .tmp → rename)
 - Loop runner: uses core's updateItem() for status transitions (atomic writes with .bak backup)
-- No file locking — last-write-wins is acceptable for single-developer use
+- No file locking: last-write-wins is acceptable for single-developer use
 - Backup on every backlog write (.rauf/backlog.json.bak)
