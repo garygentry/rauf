@@ -1,11 +1,19 @@
 ---
 title: Installation
-description: Install the rauf CLI from source, verify it, and get a project ready to run its first loop.
+description: Install the rauf CLI from npm or source, verify it, and get a project ready to run its first loop.
 ---
 
 Rauf is a CLI (plus an optional web dashboard) that installs and drives autonomous coding
-loops in your existing projects. Rauf is currently installed by **building from source**: you
-clone the repo, build it once, and symlink the `rauf` command onto your `PATH`.
+loops in your existing projects. The quickest way to install it is from npm; you can also
+**build from source** when you want the current development version.
+
+```bash
+npm install -g @garygentry/rauf   # the installed command is still `rauf`
+npx @garygentry/rauf status .      # or one-off, no install
+```
+
+The package is scoped (`@garygentry/rauf`) because the bare `rauf` name is blocked by npm's
+name-similarity filter; the installed command remains `rauf`.
 
 This page covers the prerequisites, the build-from-source steps, verifying the install, adding
 rauf to a project, and the common first-run snags.

@@ -63,9 +63,22 @@ its per-agent setup docs.
 
 **Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI and Git (rauf spawns a Claude Code session each iteration and commits the result). Building from source also needs [Bun](https://bun.sh/) 1.0+, [pnpm](https://pnpm.io/) 9+, and Node.js ≥ 22.
 
-### From source (recommended)
+### Via npm
 
-Building from source gives you the current version and is the supported path today:
+The quickest way to get `rauf` is from npm — no clone, no build:
+
+```bash
+npm install -g @garygentry/rauf   # the installed command is still `rauf`
+npx @garygentry/rauf status .      # or one-off, no install
+```
+
+The package is scoped (`@garygentry/rauf`) because the bare `rauf` name is blocked by npm's
+name-similarity filter; the installed command remains `rauf`. The npm launcher fetches the
+matching self-contained binary for your platform on first run.
+
+### From source
+
+Building from source gives you the current version (it may run ahead of the latest npm release):
 
 ```bash
 git clone https://github.com/garygentry/rauf.git

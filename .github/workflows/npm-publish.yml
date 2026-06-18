@@ -30,9 +30,9 @@ jobs:
         working-directory: npm-dist
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           registry-url: "https://registry.npmjs.org"
       # Trusted publishing (OIDC) requires npm >= 11.5.1; setup-node ships npm 10.x.
       - run: npm install -g npm@latest
