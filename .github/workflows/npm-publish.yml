@@ -1,6 +1,6 @@
 name: npm Publish (manual)
 
-# Publishes the `rauf` npm launcher (npm-dist/) to npm via npm Trusted Publishing
+# Publishes the `@garygentry/rauf` npm launcher (npm-dist/) to npm via npm Trusted Publishing
 # (OIDC) — no token, no secret. Manual-only, outside the PR gate. Requires a
 # Trusted Publisher configured on the npm package pointing at this repo + this
 # workflow filename, and publishing-access set to "require 2FA, disallow tokens".
