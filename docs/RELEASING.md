@@ -83,6 +83,24 @@ The `v*` tag push triggers `.github/workflows/release.yml`, which:
 Prereleases (`0.3.0-rc.1`) are marked **prerelease** and never become
 `latest`; stable versions are published as `latest`.
 
+### 2.1 Publishing the npm launcher (`@garygentry/rauf`)
+
+The `npx @garygentry/rauf` launcher (`npm-dist/`) is published **separately and
+manually**, after the binary release above — it is _not_ part of the tag-driven
+flow and has no automatic trigger:
+
+1. Confirm the `vX.Y.Z` GitHub release exists (the launcher downloads that
+   release's platform binary on first run).
+2. Trigger `.github/workflows/npm-publish.yml` — **Actions → "npm Publish
+   (manual)" → Run workflow** (optionally set a `dist-tag`; default `latest`).
+
+`release:prepare` already bumped `npm-dist/package.json` to `X.Y.Z` (one of the
+eight version locations), so the launcher publishes in lockstep with the binary
+release: `npx @garygentry/rauf@X.Y.Z` resolves to the `vX.Y.Z` binary. Publishing
+uses npm Trusted Publishing (OIDC) — no token, owner-dispatched only.
+Re-publishing an already-published version is rejected by npm, so a new publish
+always follows a new release/version bump.
+
 ---
 
 ## 3. Installing Rauf (end users)
