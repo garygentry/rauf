@@ -3,7 +3,7 @@
  *
  * Run via `pnpm release:prepare <X.Y.Z[-pre]> [--dry-run] [--no-push]`.
  * Validates repo state (five guards, ALL before any mutation — REQ-PREP-07),
- * bumps all seven version locations, rolls the changelog, commits, tags, and
+ * bumps all eight version locations, rolls the changelog, commits, tags, and
  * pushes branch-first so the tagged commit is on origin/main before the tag
  * (the workflow trigger) arrives. Supersedes the removed legacy bump script.
  *
@@ -177,7 +177,8 @@ function main(): void {
   const vtsPath = path.join(repoRoot, VERSION_TS_PATH);
   fs.writeFileSync(vtsPath, setVersionTs(fs.readFileSync(vtsPath, "utf8"), version));
 
-  // §3.2 — all six package.json (corrects the packages/docs drift, REQ-VER-05).
+  // §3.2 — all seven package.json (corrects the packages/docs drift, REQ-VER-05;
+  // includes npm-dist so the npm launcher bumps in lockstep with the binary release).
   for (const rel of PACKAGE_JSON_PATHS) {
     const p = path.join(repoRoot, rel);
     fs.writeFileSync(p, setPackageJsonVersion(fs.readFileSync(p, "utf8"), version));

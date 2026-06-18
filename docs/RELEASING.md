@@ -37,10 +37,10 @@ Verification: Settings → Rules shows an **Active** `release-tags` ruleset, and
 Run through this once before the **first** release (items 1–2 are blockers):
 
 - [ ] **[blocker]** Create the `release-tags` tag ruleset (§1.1 above).
-- [ ] **[blocker]** Confirm `packages/core/src/version.ts` and all six
+- [ ] **[blocker]** Confirm `packages/core/src/version.ts` and all seven
       `package.json` files (root, `packages/core`, `packages/cli`,
-      `packages/loop`, `packages/web`, `packages/docs`) agree on the version.
-      The first `pnpm release:prepare` run corrects the historical
+      `packages/loop`, `packages/web`, `packages/docs`, `npm-dist`) agree on the
+      version. The first `pnpm release:prepare` run corrects the historical
       `packages/docs` `0.1.0` drift automatically — but verify the result.
 - [ ] Confirm `.bun-version` exists at the repo root and CI is green on the
       pinned Bun version.
@@ -62,7 +62,7 @@ pnpm release:prepare 0.3.0 --no-push  # do everything locally, push manually lat
 `release:prepare` guards against unsafe states (wrong branch, dirty tree,
 behind/ahead of origin, existing tag, non-incrementing version, empty
 changelog — each failure prints a distinct `refusing: …` line and leaves the
-repo untouched), then bumps all seven version locations, renames
+repo untouched), then bumps all eight version locations, renames
 `## Unreleased` to `## X.Y.Z` in the changelog, commits, tags `vX.Y.Z`, and
 pushes branch-first so the tagged commit is on `origin/main` before the tag
 arrives.
@@ -71,7 +71,7 @@ The `v*` tag push triggers `.github/workflows/release.yml`, which:
 
 1. Verifies the actor is the repository owner (defense-in-depth behind the
    ruleset).
-2. Runs preflight: the tag must match `version.ts` and all six `package.json`
+2. Runs preflight: the tag must match `version.ts` and all seven `package.json`
    versions exactly — any drift fails the run before any build.
 3. Runs the full quality gate (build, schema:check, typecheck, lint,
    format:check, test).

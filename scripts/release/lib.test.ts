@@ -261,10 +261,10 @@ describe("extractSection", () => {
 describe("readVersionLocations", () => {
   afterEach(cleanupRepoFixtures);
 
-  it("reads all seven locations with version.ts canonical at index 0", () => {
+  it("reads all eight locations with version.ts canonical at index 0", () => {
     const dir = makeRepoFixture("0.2.0");
     const locs = readVersionLocations(dir);
-    expect(locs).toHaveLength(7);
+    expect(locs).toHaveLength(8);
     expect(locs[0]).toEqual({ file: VERSION_TS_PATH, version: "0.2.0", canonical: true });
     expect(locs.filter((l) => l.canonical)).toHaveLength(1);
     expect(locs.map((l) => l.file)).toEqual([VERSION_TS_PATH, ...PACKAGE_JSON_PATHS]);
@@ -276,7 +276,7 @@ describe("readVersionLocations", () => {
     const locs = readVersionLocations(dir);
     const docs = locs.find((l) => l.file === "packages/docs/package.json");
     expect(docs?.version).toBe("0.1.0");
-    expect(locs.filter((l) => l.version === "0.2.0")).toHaveLength(6);
+    expect(locs.filter((l) => l.version === "0.2.0")).toHaveLength(7);
   });
 
   it("throws when an expected file is missing", () => {

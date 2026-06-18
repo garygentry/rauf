@@ -1,0 +1,38 @@
+{
+  "name": "rauf",
+  "version": "0.7.0",
+  "description": "Install and run the rauf autonomous coding-loop CLI. Downloads the matching prebuilt binary from GitHub Releases on first run — no Bun or repo checkout required.",
+  "type": "module",
+  "bin": {
+    "rauf": "rauf.mjs"
+  },
+  "files": [
+    "rauf.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/garygentry/rauf.git",
+    "directory": "npm-dist"
+  },
+  "homepage": "https://github.com/garygentry/rauf#readme",
+  "bugs": {
+    "url": "https://github.com/garygentry/rauf/issues"
+  },
+  "keywords": [
+    "rauf",
+    "cli",
+    "autonomous",
+    "coding-agent",
+    "agentic",
+    "loop"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

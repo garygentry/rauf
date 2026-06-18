@@ -24,7 +24,7 @@ if (!match) {
 }
 const expected = match[1];
 
-// Every workspace package.json + the root manifest must agree.
+// Every workspace package.json + the root manifest + the npm launcher must agree.
 const manifests = [
   "package.json",
   "packages/core/package.json",
@@ -32,6 +32,7 @@ const manifests = [
   "packages/loop/package.json",
   "packages/web/package.json",
   "packages/docs/package.json",
+  "npm-dist/package.json",
 ];
 
 const mismatches: string[] = [];

@@ -26,7 +26,7 @@ declare const Bun: { semver: { order(a: string, b: string): number } } | undefin
 /**
  * A single resolved version location: a file plus the version string
  * currently recorded in it. `version.ts` is location index 0 (canonical,
- * REQ-VER-03); the six package.json files follow. The drift guard
+ * REQ-VER-03); the seven package.json files follow. The drift guard
  * (REQ-TRIGGER-02) holds when every `version` here equals the canonical one.
  */
 export interface VersionLocation {
@@ -84,11 +84,13 @@ export interface PreparePlan {
 export const VERSION_TS_PATH = "packages/core/src/version.ts";
 
 /**
- * The six lockstep package.json files (REQ-VER-01). Order is stable for
+ * The seven lockstep package.json files (REQ-VER-01). Order is stable for
  * deterministic output. NOTE the inclusion of packages/docs — the legacy
  * bump script (replaced by `pnpm release:prepare`) omitted it, which is why
  * docs drifted to 0.1.0 while everything else is 0.2.0 (REQ-VER-05). This set
- * corrects that.
+ * corrects that. `npm-dist/package.json` is the published npm launcher (name
+ * `rauf`); it bumps in lockstep so `npx rauf@X.Y.Z` always maps to the vX.Y.Z
+ * binary release.
  */
 export const PACKAGE_JSON_PATHS = [
   "package.json",
@@ -97,6 +99,7 @@ export const PACKAGE_JSON_PATHS = [
   "packages/loop/package.json",
   "packages/web/package.json",
   "packages/docs/package.json",
+  "npm-dist/package.json",
 ] as const;
 
 /**
@@ -153,7 +156,7 @@ export function fail(message: string): never {
 // ── Version locations ──────────────────────────────────────────────────────
 
 /**
- * Read the canonical version (version.ts, index 0) and all six package.json
+ * Read the canonical version (version.ts, index 0) and all seven package.json
  * versions, in the order of PACKAGE_JSON_PATHS. Throws if any expected file
  * is missing or unparseable — a malformed repo must not silently pass the
  * drift guard. `repoRoot` is an absolute path to the rauf repo root.
