@@ -24,8 +24,8 @@ docs, and (d) finalize `.gitattributes`, MIT licensing, and version reconciliati
 > - **feature-forge** (`../feature-forge`): `.github/workflows/{ci,os-matrix,eval}.yml`,
 >   `.github/actions/quality-gate/action.yml`, `references/skill-frontmatter.schema.json`,
 >   `scripts/check-version-sync.py`, `ruff.toml`, `.shellcheckrc`, `eval/run-eval.py`
->   + `eval/fixtures/`, `docs/agents/{claude,codex,copilot,cursor,gemini}.md`,
->   `README.md`, `LICENSE`, `.gitattributes`, `CHANGELOG.md`.
+>   - `eval/fixtures/`, `docs/agents/{claude,codex,copilot,cursor,gemini}.md`,
+>     `README.md`, `LICENSE`, `.gitattributes`, `CHANGELOG.md`.
 > - **rauf** (this repo): `.gitattributes`, `README.md` cross-agent section,
 >   `.github/workflows/npm-publish.yml` (manual-dispatch publish machinery),
 >   `CHANGELOG.md`.
@@ -80,23 +80,23 @@ node dist/cli.js install --dry-run --skip-rauf --json   # plan only, no rauf pre
   reintroduce vendor keys or a `version` field into a canonical `SKILL.md`. The
   SKILL.md schema's `additionalProperties: false` mechanically enforces this;
   versions live in manifests only.
-- **Machinery, not a release.** This feature ships the *ability* to publish (npm
+- **Machinery, not a release.** This feature ships the _ability_ to publish (npm
   packaging prep + a manual `npm-publish.yml`) and to install via `npx rauf@0.6.0`,
   but it does **not** run a publish. CI uses `--skip-rauf` because rauf is still
   unpublished.
 
 ## What is gated
 
-| Gate | Workflow | Blocking? | Requirement |
-|---|---|---|---|
-| `claude plugin validate --strict` (or documented equivalent) | `ci.yml` → `validate.sh` | yes | REQ-CI-01 |
-| SKILL.md schema validation (`name`/`description`, `name == dir`) | `ci.yml` → `validate.sh` | yes | REQ-CI-02 |
-| shellcheck + ruff | `ci.yml` | yes | REQ-CI-03 |
-| Adapters regenerate-and-diff | `ci.yml` → `validate.sh` (`build-adapters.py --check`) | yes | REQ-CI-04 |
-| Version-sync (3 fields → `0.10.0`) | `ci.yml` → `check-version-sync.py` | yes | REQ-CI-05 |
-| Existing spec-purity / traceability / installer build+test | `ci.yml` → `validate.sh` | yes | REQ-CI-06 |
-| Installer `--dry-run` + `uninstall` on Ubuntu/macOS/Windows | `os-matrix.yml` | yes | REQ-CI-07/08 |
-| Trigger-accuracy eval | `eval.yml` | **no (advisory)** | REQ-EVAL-01/02 |
+| Gate                                                             | Workflow                                               | Blocking?         | Requirement    |
+| ---------------------------------------------------------------- | ------------------------------------------------------ | ----------------- | -------------- |
+| `claude plugin validate --strict` (or documented equivalent)     | `ci.yml` → `validate.sh`                               | yes               | REQ-CI-01      |
+| SKILL.md schema validation (`name`/`description`, `name == dir`) | `ci.yml` → `validate.sh`                               | yes               | REQ-CI-02      |
+| shellcheck + ruff                                                | `ci.yml`                                               | yes               | REQ-CI-03      |
+| Adapters regenerate-and-diff                                     | `ci.yml` → `validate.sh` (`build-adapters.py --check`) | yes               | REQ-CI-04      |
+| Version-sync (3 fields → `0.10.0`)                               | `ci.yml` → `check-version-sync.py`                     | yes               | REQ-CI-05      |
+| Existing spec-purity / traceability / installer build+test       | `ci.yml` → `validate.sh`                               | yes               | REQ-CI-06      |
+| Installer `--dry-run` + `uninstall` on Ubuntu/macOS/Windows      | `os-matrix.yml`                                        | yes               | REQ-CI-07/08   |
+| Trigger-accuracy eval                                            | `eval.yml`                                             | **no (advisory)** | REQ-EVAL-01/02 |
 
 ## Configuration
 

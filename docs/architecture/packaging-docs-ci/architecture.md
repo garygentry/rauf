@@ -84,7 +84,7 @@ The two composite actions are **structurally parallel** — one entry point per 
 that runs the repo's canonical gate. True cross-repo factoring
 (`uses: garygentry/rauf/.github/workflows/…`) was rejected: rauf's gate is not
 transferable to feature-forge's stack, and extracting a public action repo is a
-heavy lift for a P1 *SHOULD*. Parallel composites are the practical "factored, not
+heavy lift for a P1 _SHOULD_. Parallel composites are the practical "factored, not
 duplicated inline in every workflow."
 
 ## Blocking vs. advisory, and why each lives in its own workflow
@@ -114,7 +114,7 @@ graph LR
 ```
 
 The JSON Schema (`additionalProperties: false`, the 6-key allowed set, no `version`
-key) is the single source of truth for *which keys are allowed*. `check-spec-purity.py`
+key) is the single source of truth for _which keys are allowed_. `check-spec-purity.py`
 loads that set instead of hard-coding it. The two checks JSON Schema can't express —
 `name == <directory name>` and the `${CLAUDE_PLUGIN_ROOT}` / portable-prelude / size
 rules — stay in Python. A pytest case asserts the checker's loaded set equals the
@@ -142,13 +142,13 @@ Three feature-forge fields were desynced (`plugin.json 0.10.0` /
 conflicting files+values on mismatch. `installer/package.json` is **excluded** — it
 is a separately npm-published sub-package with its own release cadence.
 
-## What this feature deliberately does *not* do
+## What this feature deliberately does _not_ do
 
 - **No live release.** No `npm publish` of rauf, no git tag/release cut. The
   `npm-publish.yml` workflow is `workflow_dispatch`-only machinery; rauf's
   `package.json` gets publishability metadata but no version change.
 - **No new product features.** No new installer flags, adapter formats, or loop
-  capabilities — it documents and gates the *existing* assembled system.
+  capabilities — it documents and gates the _existing_ assembled system.
 - **No blocking eval threshold.** Trigger-accuracy is advisory by design.
 - **No relicensing churn.** A top-level MIT `LICENSE` per repo; no per-file SPDX
   sweep.

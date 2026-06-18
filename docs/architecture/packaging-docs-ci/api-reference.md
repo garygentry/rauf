@@ -35,14 +35,14 @@ The composite action (`.github/actions/quality-gate/action.yml`) runs, in order:
 The single source of truth contributors run locally and CI runs verbatim. It
 delivers, in one call:
 
-| Step | Gate | Requirement |
-|---|---|---|
-| `claude plugin validate --strict` (or documented JSON+schema equivalent) | plugin manifest validity | REQ-CI-01 |
-| `check-spec-purity.py` | SKILL.md schema purity + `name == dir` | REQ-CI-02 |
-| `build-adapters.py --check` | adapters regenerate-and-diff (no drift from canon) | REQ-CI-04 |
-| marketplace/plugin JSON checks, agent-frontmatter, script perms | existing validators | REQ-CI-06 |
-| `validate-traceability.py` | spec traceability | REQ-CI-06 |
-| `installer/`: `npm ci && build && test` | installer build+test | REQ-CI-06 |
+| Step                                                                     | Gate                                               | Requirement |
+| ------------------------------------------------------------------------ | -------------------------------------------------- | ----------- |
+| `claude plugin validate --strict` (or documented JSON+schema equivalent) | plugin manifest validity                           | REQ-CI-01   |
+| `check-spec-purity.py`                                                   | SKILL.md schema purity + `name == dir`             | REQ-CI-02   |
+| `build-adapters.py --check`                                              | adapters regenerate-and-diff (no drift from canon) | REQ-CI-04   |
+| marketplace/plugin JSON checks, agent-frontmatter, script perms          | existing validators                                | REQ-CI-06   |
+| `validate-traceability.py`                                               | spec traceability                                  | REQ-CI-06   |
+| `installer/`: `npm ci && build && test`                                  | installer build+test                               | REQ-CI-06   |
 
 **`claude plugin validate --strict` (REQ-CI-01):** attempted first (the composite
 action installs the CLI). If the CLI cannot be installed on the runner, REQ-CI-01's
@@ -95,15 +95,15 @@ JSON Schema draft 2020-12:
 {
   "type": "object",
   "required": ["name", "description"],
-  "additionalProperties": false,        // mechanically enforces spec-purity
+  "additionalProperties": false, // mechanically enforces spec-purity
   "properties": {
-    "name":          { "type": "string" },
-    "description":   { "type": "string" },
-    "license":       { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "license": { "type": "string" },
     "compatibility": {},
-    "metadata":      { "type": "object" },
-    "allowed-tools": {}
-  }
+    "metadata": { "type": "object" },
+    "allowed-tools": {},
+  },
 }
 ```
 
@@ -121,11 +121,11 @@ Asserts feature-forge's three version fields are byte-equal (REQ-CI-05).
 
 **Synced fields:**
 
-| File | Accessor |
-|---|---|
-| `.claude-plugin/plugin.json` | `version` |
-| `.claude-plugin/marketplace.json` | `plugins[0].version` |
-| `adapters/gemini/gemini-extension.json` | `version` |
+| File                                    | Accessor             |
+| --------------------------------------- | -------------------- |
+| `.claude-plugin/plugin.json`            | `version`            |
+| `.claude-plugin/marketplace.json`       | `plugins[0].version` |
+| `adapters/gemini/gemini-extension.json` | `version`            |
 
 **Excluded:** `installer/package.json` (independent release line).
 
@@ -152,7 +152,7 @@ Advisory trigger-accuracy harness. For each `eval/fixtures/<skill>.json`:
 it asks a pinned low-cost model (`claude-haiku-4-5-20251001`, `max_tokens` 64) to
 route the prompt to one skill from the canonical `skills/*/SKILL.md` descriptions,
 then scores a should-trigger case correct when the expected skill is chosen and a
-should-not-trigger case correct when it is *not*.
+should-not-trigger case correct when it is _not_.
 
 **Usage:**
 
@@ -170,14 +170,14 @@ absent-key path dependency-free.
 
 These commands are owned by upstream features; this capstone runs and documents them.
 
-| Command | Purpose | Owning contract |
-|---|---|---|
-| `bash scripts/validate.sh` | feature-forge aggregate gate | existing |
-| `python3 scripts/build-adapters.py [--check]` | regen / drift-guard | `adapters-output` |
-| `node installer/dist/cli.js install --dry-run --skip-rauf --json` | OS-matrix plan | `cross-agent-installer-cli` |
-| `node installer/dist/cli.js uninstall -y --skip-rauf` | OS-matrix uninstall | `cross-agent-installer-cli` |
-| `python3 scripts/check-spec-purity.py` | schema/purity gate | `spec-pure-skills` |
-| `pnpm gate` / `pnpm version:check` (rauf) | rauf gate (unchanged) | existing |
+| Command                                                           | Purpose                      | Owning contract             |
+| ----------------------------------------------------------------- | ---------------------------- | --------------------------- |
+| `bash scripts/validate.sh`                                        | feature-forge aggregate gate | existing                    |
+| `python3 scripts/build-adapters.py [--check]`                     | regen / drift-guard          | `adapters-output`           |
+| `node installer/dist/cli.js install --dry-run --skip-rauf --json` | OS-matrix plan               | `cross-agent-installer-cli` |
+| `node installer/dist/cli.js uninstall -y --skip-rauf`             | OS-matrix uninstall          | `cross-agent-installer-cli` |
+| `python3 scripts/check-spec-purity.py`                            | schema/purity gate           | `spec-pure-skills`          |
+| `pnpm gate` / `pnpm version:check` (rauf)                         | rauf gate (unchanged)        | existing                    |
 
 ### Installer flags exercised
 
@@ -194,10 +194,10 @@ cursor→`~/.cursor`, gemini→`~/.gemini`.
 
 ## Cross-OS & packaging artifacts
 
-| Artifact | Repo(s) | Notes |
-|---|---|---|
-| `.gitattributes` | both | `* text=auto eol=lf`; `*.png`/`*.jpg` binary; `export-ignore` for `specs/`, `tests/`, `.github/` (+ `eval/`,`plans/` in feature-forge; `test-sandbox/` in rauf) |
-| `LICENSE` (MIT) | both | feature-forge net-new; rauf already MIT |
-| `CHANGELOG.md` | both | feature-forge `[0.10.0]`; rauf `## Unreleased` |
-| `.github/workflows/npm-publish.yml` | rauf | `workflow_dispatch`-only publish machinery; **no live publish** |
-| `package.json` publishability prep | rauf | metadata only (`publishConfig`/`files`/`bin`); no `version` change |
+| Artifact                            | Repo(s) | Notes                                                                                                                                                           |
+| ----------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.gitattributes`                    | both    | `* text=auto eol=lf`; `*.png`/`*.jpg` binary; `export-ignore` for `specs/`, `tests/`, `.github/` (+ `eval/`,`plans/` in feature-forge; `test-sandbox/` in rauf) |
+| `LICENSE` (MIT)                     | both    | feature-forge net-new; rauf already MIT                                                                                                                         |
+| `CHANGELOG.md`                      | both    | feature-forge `[0.10.0]`; rauf `## Unreleased`                                                                                                                  |
+| `.github/workflows/npm-publish.yml` | rauf    | `workflow_dispatch`-only publish machinery; **no live publish**                                                                                                 |
+| `package.json` publishability prep  | rauf    | metadata only (`publishConfig`/`files`/`bin`); no `version` change                                                                                              |

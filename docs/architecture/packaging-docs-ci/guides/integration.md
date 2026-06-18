@@ -54,7 +54,7 @@ to feature-forge:
 # .github/actions/quality-gate/action.yml — add as the last step
 - name: my-new-gate
   shell: bash
-  run: python3 scripts/my-new-gate.py    # exits non-zero + prints the conflict on failure
+  run: python3 scripts/my-new-gate.py # exits non-zero + prints the conflict on failure
 ```
 
 Mirror the same shape in rauf's `.github/actions/quality-gate` if the gate applies
@@ -154,11 +154,11 @@ this feature documents the marketplace install but does not submit the entry.
 
 **Do NOT reach for it when:**
 
-- You are changing a *skill's behavior* — edit the canonical `skills/*/SKILL.md`
+- You are changing a _skill's behavior_ — edit the canonical `skills/*/SKILL.md`
   (owned by `forge-skill-spec-purity`); the gates here will validate it.
-- You are changing *adapter output* — edit the generator
+- You are changing _adapter output_ — edit the generator
   (`forge-agent-adapters-build`); never hand-edit `adapters/`, the regen-diff gate
   will reject it.
-- You are changing *installer behavior* — that is `cross-agent-installer`; this
+- You are changing _installer behavior_ — that is `cross-agent-installer`; this
   feature only exercises the installer in CI.
-- You want to *publish* — that is a deliberate manual step, not part of the gate.
+- You want to _publish_ — that is a deliberate manual step, not part of the gate.

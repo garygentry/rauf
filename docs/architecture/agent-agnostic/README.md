@@ -3,7 +3,7 @@
 This document describes the **assembled cross-agent system** produced by the
 `agent-agnostic` epic: six pipeline-sized features, spanning two repos, that
 together make both the **rauf** loop runner and the **feature-forge** skill/pipeline
-repo operate under *any* coding agent — Claude Code, OpenAI Codex, GitHub Copilot,
+repo operate under _any_ coding agent — Claude Code, OpenAI Codex, GitHub Copilot,
 Cursor, Gemini CLI — and be packageable and installable with minimal configuration.
 
 It is written for someone who understands one piece and needs to see how the whole
@@ -148,16 +148,16 @@ licensing, version reconciliation (three fields → `0.10.0`), and CHANGELOGs.
 The epic is acyclic; each feature consumes only its **direct** dependencies'
 exposed contracts:
 
-| Contract | Exposed by | Consumed by |
-|---|---|---|
-| `spec-pure-skills` | forge-skill-spec-purity | forge-agent-adapters-build, packaging-docs-ci |
-| `portable-skill-root-resolver` | forge-skill-spec-purity | forge-agent-adapters-build |
-| `adapters-output` | forge-agent-adapters-build | cross-agent-installer, packaging-docs-ci |
-| `AgentAdapter` / `agent-cli-registry` | rauf-agent-cli-adapters | (rauf-internal; bundled by installer) |
-| `loop-agent-selection` | rauf-agent-cli-adapters | forge-rauf-loop-default |
-| `cross-agent-installer-cli` | cross-agent-installer | forge-rauf-loop-default, packaging-docs-ci |
-| `forge-loop-runner-contract` | forge-rauf-loop-default | packaging-docs-ci |
-| `release-and-ci-gates` | packaging-docs-ci | (terminal — the shippable surface) |
+| Contract                              | Exposed by                 | Consumed by                                   |
+| ------------------------------------- | -------------------------- | --------------------------------------------- |
+| `spec-pure-skills`                    | forge-skill-spec-purity    | forge-agent-adapters-build, packaging-docs-ci |
+| `portable-skill-root-resolver`        | forge-skill-spec-purity    | forge-agent-adapters-build                    |
+| `adapters-output`                     | forge-agent-adapters-build | cross-agent-installer, packaging-docs-ci      |
+| `AgentAdapter` / `agent-cli-registry` | rauf-agent-cli-adapters    | (rauf-internal; bundled by installer)         |
+| `loop-agent-selection`                | rauf-agent-cli-adapters    | forge-rauf-loop-default                       |
+| `cross-agent-installer-cli`           | cross-agent-installer      | forge-rauf-loop-default, packaging-docs-ci    |
+| `forge-loop-runner-contract`          | forge-rauf-loop-default    | packaging-docs-ci                             |
+| `release-and-ci-gates`                | packaging-docs-ci          | (terminal — the shippable surface)            |
 
 ## End-to-end: what a user actually does
 
