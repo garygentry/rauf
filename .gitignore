@@ -41,3 +41,6 @@ plans/
 packages/docs/.astro/
 packages/docs/src/content/docs/images/
 packages/docs/public/images/
+
+# npm pack output (local verification artifacts)
+npm-dist/*.tgz

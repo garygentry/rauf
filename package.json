@@ -2,15 +2,8 @@
   "name": "rauf",
   "version": "0.7.0",
   "description": "Management tool for rauf autonomous coding loops",
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist"
-  ],
-  "bin": {
-    "rauf": "dist/index.js"
-  },
+  "private": true,
+  "//publish": "The published `rauf` npm package is the launcher in npm-dist/ (a thin binary bootstrapper). This workspace root is NOT published; its version is kept in lockstep (scripts/check-versions.ts + scripts/release/lib.ts) only as the canonical monorepo version.",
   "repository": {
     "type": "git",
     "url": "https://github.com/garygentry/rauf.git"

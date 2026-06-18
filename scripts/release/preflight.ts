@@ -4,7 +4,7 @@
  *
  * Invoked by release.yml step 5 via `bun run scripts/release/preflight.ts`.
  * Machine-side enforcement of REQ-TRIGGER-02: the tag, the canonical
- * version.ts, and all six package.json versions must agree — a single
+ * version.ts, and all seven package.json versions must agree — a single
  * mismatch exits nonzero BEFORE any build or publish step. Every failure
  * message carries the greppable `drift: ` prefix.
  *

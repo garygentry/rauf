@@ -42,9 +42,9 @@ export function makeChangelog(opts: {
 const createdFixtures: string[] = [];
 
 /**
- * Write a temp-dir repo fixture containing version.ts plus the six
+ * Write a temp-dir repo fixture containing version.ts plus the seven
  * package.json files and return its absolute path. `versions` is either a
- * single version applied to all seven locations, or a map keyed by location
+ * single version applied to all eight locations, or a map keyed by location
  * file path (VERSION_TS_PATH or a PACKAGE_JSON_PATHS entry) with "*" as the
  * default for unspecified files — divergent maps drive the drift tests.
  *

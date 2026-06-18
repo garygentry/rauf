@@ -1,22 +1,42 @@
 name: npm Publish (manual)
+
+# Publishes the `rauf` npm launcher (npm-dist/) to npm via npm Trusted Publishing
+# (OIDC) — no token, no secret. Manual-only, outside the PR gate. Requires a
+# Trusted Publisher configured on the npm package pointing at this repo + this
+# workflow filename, and publishing-access set to "require 2FA, disallow tokens".
+#
+# The launcher is a zero-dependency shim (npm-dist/rauf.mjs); there is no build
+# step. The published version is npm-dist/package.json's `version` at the checked-
+# out ref — kept in lockstep with the binary release by the version guards, so
+# `npx rauf@X.Y.Z` resolves to the vX.Y.Z GitHub-release binary.
+
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Existing vX.Y.Z tag to publish to npm"
-        required: true
+      dist-tag:
+        description: "npm dist-tag to publish under"
+        required: false
+        default: "latest"
+
 permissions:
-  contents: read # least-privilege; NPM_TOKEN injected as a secret at publish time
+  contents: read
+  id-token: write # required for OIDC trusted publishing + npm provenance
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: npm-dist
     steps:
       - uses: actions/checkout@v5
-      - uses: oven-sh/setup-bun@v2
-      - uses: pnpm/action-setup@v6
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      # NOTE: npm publish is intentionally NOT wired by this feature (PRD §6).
-      # A maintainer fills in the publish step + NPM_TOKEN secret when cutting the release.
-      # - run: npm publish --access public --provenance
-      #   env: { NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+      # Trusted publishing (OIDC) requires npm >= 11.5.1; setup-node ships npm 10.x.
+      - run: npm install -g npm@latest
+      # OIDC: no token env — npm detects the trusted-publisher OIDC context in Actions.
+      - run: npm publish --access public --provenance --tag "$DIST_TAG"
+        env:
+          DIST_TAG: ${{ inputs.dist-tag }}
