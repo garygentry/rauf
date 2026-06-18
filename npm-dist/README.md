@@ -5,12 +5,15 @@ rauf loops across your local software projects.
 
 ## Install
 
+The package is published as **`@garygentry/rauf`** (the unscoped `rauf` name is
+blocked by npm's similarity filter). The installed command is still `rauf`.
+
 ```bash
 # one-off, no install
-npx rauf@latest status .
+npx @garygentry/rauf status .
 
 # or install globally
-npm install -g rauf
+npm install -g @garygentry/rauf
 rauf --version
 ```
 
@@ -27,7 +30,7 @@ launcher:
    the release `SHA256SUMS`,
 3. caches it under `~/.cache/rauf/bin/<version>/` and execs it.
 
-So `npx rauf@0.7.0` always runs the `v0.7.0` binary — **no Bun or repo checkout
+So `npx @garygentry/rauf@0.7.0` always runs the `v0.7.0` binary — **no Bun or repo checkout
 required**, just Node ≥ 18. Subsequent runs use the cached binary.
 
 ### Environment overrides
