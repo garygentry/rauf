@@ -5,6 +5,7 @@
 // Other commands are registered as stubs — future items add handlers.
 
 import { VERSION } from "@rauf/core";
+import { getAgentDescriptors } from "@rauf/loop";
 import type { GlobalFlags } from "./parser.js";
 import { c, print, outputJson, renderTable } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
@@ -41,7 +42,7 @@ import {
   handleServerStatus,
   handleServerLogs,
 } from "./server-commands.js";
-import { handleLoopStop, handleLoopRun, handleLoopReview } from "./loop-commands.js";
+import { handleLoopStop, handleLoopRun, handleLoopReview, handleAgents } from "./loop-commands.js";
 import { handleMigrate } from "./migrate-commands.js";
 import { handleReset } from "./reset-commands.js";
 import { handleResume } from "./resume-commands.js";
@@ -117,6 +118,16 @@ export const REMOVED_SUBCOMMAND_MESSAGES: Record<string, Record<string, string>>
 // All commands from SPEC-CLI.md are listed. Commands without handlers
 // will show "not yet implemented" when invoked.
 
+/**
+ * Supported agent ids enumerated for the `loop run --agent` help text (REQ-DISC-01).
+ * Computed once at module load from the SYNC, no-I/O descriptor enumeration — after
+ * @rauf/loop's side-effect registration of all built-in adapters has run. Availability
+ * (PATH probing) is the job of `rauf agents`, never the help path.
+ */
+const SUPPORTED_AGENT_IDS = getAgentDescriptors()
+  .map((d) => d.id)
+  .join(", ");
+
 export const COMMANDS: CommandDef[] = [
   {
     name: "version",
@@ -183,6 +194,10 @@ export const COMMANDS: CommandDef[] = [
             description: "Per-iteration session timeout in minutes (default: 60)",
           },
           { name: "--model <name>", description: "Claude model to use" },
+          {
+            name: "--agent <id>",
+            description: `Coding agent CLI that drives iterations (default: claude-cli). Supported: ${SUPPORTED_AGENT_IDS}. See \`rauf agents\` for live availability.`,
+          },
           { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
           {
             name: "--ndjson",
@@ -390,6 +405,13 @@ export const COMMANDS: CommandDef[] = [
         handler: handleProjectsStatus,
       },
     ],
+  },
+  {
+    name: "agents",
+    description: "List supported coding agents and whether each is available on this machine",
+    usage: "rauf agents [--json]",
+    flags: [{ name: "--json", description: "Emit the agent availability list as JSON" }],
+    handler: handleAgents,
   },
 ];
 

@@ -1,0 +1,153 @@
+{
+  "feature": "cross-agent-installer",
+  "epic": "agent-agnostic",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-15T17:44:28Z",
+  "updatedAt": "2026-06-17T03:17:24Z",
+  "currentStage": "complete",
+  "notes": "forge-3-specs must resolve OQ-A (IR-1: installed bundles miss forge-root.sh sentinels [scripts/epic-manifest.py + .claude-plugin/plugin.json] and epic-manifest.py is not copied into bundles, so non-Claude installs are not resolver-discoverable \u2014 coordinate with forge-agent-adapters-build; installer stays C-3-clean/read-only). IR-2/C-7: rauf is not yet npm-publishable (all packages private, bun shebang, GitHub-Release binaries) \u2014 RAUF_PIN=rauf@0.6.0 consumed via lazy npx + install-time resolvability preflight + a fixed unavailable-pin failure mode; publish work is owned by packaging-docs-ci. V-001: epic-manifest 'consumes' should be corrected to the published rauf bin, not agent-cli-registry. Stack: TypeScript / zero runtime deps / node:test / node:util.parseArgs in installer/, npm package bundles dist+adapters, hard validate.sh step 8 (npm ci/build/test). Install model: namespaced feature-forge/ dir per agent, parent-sibling .feature-forge.<scope>.json manifest with SHA-256 drift, plan-then-apply, symlink-whole-dir, gemini plain-copy.",
+  "stages": {
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 2,
+      "artifacts": [
+        "PRD.md"
+      ],
+      "startedAt": "2026-06-16T21:24:55Z",
+      "completedAt": "2026-06-16T21:40:00Z",
+      "commitHash": "50cf5d4fa33776c44769e243611bb687ddc310f2",
+      "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-16T21:34:00Z",
+      "fixedAt": "2026-06-16T21:40:00Z",
+      "commitHash": "50cf5d4fa33776c44769e243611bb687ddc310f2"
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "tech-spec.md"
+      ],
+      "startedAt": "2026-06-16T22:10:00Z",
+      "completedAt": "2026-06-16T22:12:00Z",
+      "commitHash": "34be7420d4e8733964520531097d578b80db29e2",
+      "basedOnVersions": {
+        "forge-1-prd": 2
+      }
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "startedAt": "2026-06-16T22:50:00Z",
+      "completedAt": "2026-06-16T23:15:00Z",
+      "commitHash": "2b84135",
+      "basedOnVersions": {
+        "forge-1-prd": 2,
+        "forge-2-tech": 1
+      },
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-agent-detection-map.md",
+        "03-source-and-hashing.md",
+        "04-plan-and-apply.md",
+        "05-manifest-and-uninstall.md",
+        "06-rauf-provisioning.md",
+        "07-cli-and-reporting.md",
+        "08-testing-strategy.md",
+        "TRACEABILITY.md"
+      ]
+    },
+    "forge-verify-specs": {
+      "status": "passed",
+      "findingsFile": ".verification/VERIFY-specs-2026-06-16.md",
+      "findingsCount": 13,
+      "verifiedAt": "2026-06-16T23:35:00Z",
+      "fixedAt": "2026-06-16T23:55:00Z",
+      "commitHash": "bcc7621",
+      "confirmedAt": "2026-06-17T00:10:00Z"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "backlog.json"
+      ],
+      "startedAt": "2026-06-17T00:45:00Z",
+      "completedAt": "2026-06-17T01:05:00Z",
+      "commitHash": "638d976",
+      "basedOnVersions": {
+        "forge-1-prd": 2,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "notes": "13 items, validated clean by rauf-stable backlog validate (valid:true, 0 findings). Bottom-up build order; verify gate is feature-forge bash scripts/validate.sh (step 8), NOT pnpm gate (C-2). Item 011 uses agentDelegation (4 e2e subtasks); 013 is the epic-level V-001 consumes fix (P2)."
+    },
+    "forge-verify-backlog": {
+      "status": "passed",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-16.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-17T01:20:00Z",
+      "fixedAt": "2026-06-17T01:30:00Z",
+      "confirmedAt": "2026-06-17T01:30:00Z",
+      "commitHash": "0a02cda"
+    },
+    "forge-verify-tech": {
+      "status": "passed",
+      "findingsFile": ".verification/VERIFY-tech-2026-06-16.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-16T22:20:00Z",
+      "fixedAt": "2026-06-16T22:30:00Z",
+      "confirmedAt": "2026-06-16T22:40:00Z",
+      "commitHash": "012a9ca"
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-17T01:43:29Z",
+      "completedAt": "2026-06-17T02:26:15Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "backlog.json"
+      ],
+      "notes": "Cross-repo run: impl committed to feature-forge branch forge/cross-agent-installer as [rauf] 001-012 (13 items, all done; item 013 was the rauf-side epic-manifest V-001 consumes fix). Loop ran natively in feature-forge via staged .forge-loop backlog; verify=bash scripts/validate.sh. 14 iterations/20.",
+      "commitHash": "a517002"
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-impl-2026-06-17.md",
+      "findingsCount": 10,
+      "verifiedAt": "2026-06-17T02:50:40Z",
+      "fixedAt": "2026-06-17T03:02:40Z"
+    },
+    "forge-6-docs": {
+      "status": "complete",
+      "version": 1,
+      "startedAt": "2026-06-17T03:17:24Z",
+      "completedAt": "2026-06-17T03:17:24Z",
+      "basedOnVersions": {
+        "forge-1-prd": 2,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "docs/architecture/cross-agent-installer/README.md",
+        "docs/architecture/cross-agent-installer/architecture.md",
+        "docs/architecture/cross-agent-installer/api-reference.md",
+        "docs/architecture/cross-agent-installer/guides/integration.md"
+      ],
+      "commitHash": "d600cd2"
+    }
+  }
+}

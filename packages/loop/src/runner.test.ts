@@ -1,12 +1,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
-import { EVENTS_SCHEMA_VERSION } from "@rauf/core";
+import { EVENTS_SCHEMA_VERSION, ok } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
+import { registerAgent, getAgentDescriptors } from "./providers/registry.js";
+import type { LLMProvider, ExecuteOptions } from "./providers/types.js";
 
 // ─── Test Helpers ────────────────────────────────────────────────────
 
@@ -1344,6 +1347,363 @@ fi`,
       expect(fs.existsSync(capture)).toBe(true);
       // Var is unset → empty string captured.
       expect(fs.readFileSync(capture, "utf-8")).toBe("");
+    });
+  });
+
+  describe("agent routing (item 009)", () => {
+    interface FakeAgentState {
+      constructCount: number;
+      disposeCount: number;
+      execEnvs: Array<Record<string, string> | undefined>;
+      outputFormats: Array<ExecuteOptions["outputFormat"]>;
+    }
+
+    /**
+     * Register a fake agent whose factory returns a controllable LLMProvider, and return a state
+     * object instrumenting construction / dispose / execute options. Registered with last-write-wins
+     * so re-registering the same id in another test is safe (module-level registry persists).
+     */
+    function registerFakeAgent(id: string, stdout = "RAUF_DONE\n"): FakeAgentState {
+      const state: FakeAgentState = {
+        constructCount: 0,
+        disposeCount: 0,
+        execEnvs: [],
+        outputFormats: [],
+      };
+      registerAgent({
+        id,
+        displayName: id,
+        // A real adapter is detectable; without this, item 010's pre-loop fail-fast
+        // detection (no checkUsage on these fakes) would abort the run.
+        detect: async () => ({ available: true }),
+        factory: (): LLMProvider => {
+          state.constructCount++;
+          return {
+            id,
+            displayName: id,
+            async execute(_prompt: string, options: ExecuteOptions) {
+              state.execEnvs.push(options.env);
+              state.outputFormats.push(options.outputFormat);
+              return ok({
+                stdout,
+                stderr: "",
+                exitCode: 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            },
+            validateCredentials() {
+              return ok(undefined);
+            },
+            async dispose() {
+              state.disposeCount++;
+            },
+          };
+        },
+      });
+      return state;
+    }
+
+    it("emits llm_spawned/llm_exited with the real provider.id (codex → 'codex')", async () => {
+      registerFakeAgent("codex");
+      setupProject(tmpDir, [pendingItem("001", "Codex run")]);
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "codex" });
+      runner.on("llm_spawned", (e) => events.push(e));
+      runner.on("llm_exited", (e) => events.push(e));
+
+      await runner.start();
+
+      const spawned = events.find((e) => e.type === "llm_spawned") as Extract<
+        LoopEvent,
+        { type: "llm_spawned" }
+      >;
+      const exited = events.find((e) => e.type === "llm_exited") as Extract<
+        LoopEvent,
+        { type: "llm_exited" }
+      >;
+      expect(spawned.provider).toBe("codex");
+      expect(exited.provider).toBe("codex");
+    });
+
+    it("emits provider 'claude-cli' for a default (claude) run", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Claude run")]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("llm_spawned", (e) => events.push(e));
+
+      await runner.start();
+
+      const spawned = events.find((e) => e.type === "llm_spawned") as Extract<
+        LoopEvent,
+        { type: "llm_spawned" }
+      >;
+      expect(spawned.provider).toBe("claude-cli");
+    });
+
+    it("caches one provider instance per distinct agent id across iterations, then disposes it", async () => {
+      const state = registerFakeAgent("cache-agent");
+      setupProject(tmpDir, [pendingItem("001", "First"), pendingItem("002", "Second")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "cache-agent" });
+      await runner.start();
+
+      // Two iterations, same resolved id → constructed exactly once and disposed once.
+      expect(state.constructCount).toBe(1);
+      expect(state.disposeCount).toBe(1);
+    });
+
+    it("constructs a second instance when a per-item override selects a different agent", async () => {
+      const runState = registerFakeAgent("run-agent");
+      const itemState = registerFakeAgent("item-agent");
+      setupProject(tmpDir, [
+        pendingItem("001", "Run-level"),
+        pendingItem("002", "Item override", { provider: "item-agent" }),
+      ]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "run-agent" });
+      await runner.start();
+
+      expect(runState.constructCount).toBe(1);
+      expect(itemState.constructCount).toBe(1);
+      // Both distinct ids disposed on exit.
+      expect(runState.disposeCount).toBe(1);
+      expect(itemState.disposeCount).toBe(1);
+    });
+
+    it("passes the runner childEnv via ExecuteOptions.env to the provider", async () => {
+      const state = registerFakeAgent("env-agent");
+      setupProject(tmpDir, [pendingItem("001", "Env")]);
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "env-agent",
+        suppressIterationReview: true,
+      });
+      await runner.start();
+
+      expect(state.execEnvs.length).toBeGreaterThan(0);
+      // suppressIterationReview resolves to a childEnv carrying the suppression var.
+      expect(state.execEnvs[0]).toMatchObject({ ENABLE_CODE_SECURITY_REVIEW: "0" });
+    });
+
+    it("uses outputFormat 'stream-json' for the work iteration", async () => {
+      const state = registerFakeAgent("fmt-agent");
+      setupProject(tmpDir, [pendingItem("001", "Fmt")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "fmt-agent" });
+      await runner.start();
+
+      expect(state.outputFormats[0]).toBe("stream-json");
+    });
+
+    it("turns an unknown agent id into a Result error listing supported ids (no throw)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Unknown")]);
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "no-such-agent" });
+      runner.on("loop_error", (e) => errors.push(e.error));
+
+      // Must not throw — the unknown id is surfaced as a Result error.
+      await runner.start();
+
+      const supportedIds = getAgentDescriptors().map((d) => d.id);
+      const errMsg = errors.find((m) => m.includes("no-such-agent"));
+      expect(errMsg).toBeDefined();
+      // The error enumerates the supported ids (claude-cli is always registered).
+      expect(errMsg).toContain("Supported agents:");
+      expect(supportedIds).toContain("claude-cli");
+      // The item is reset to pending (not left in_progress / blocked) by the per-item backstop.
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]!.status).toBe("pending");
+    });
+
+    it("runner.ts contains no direct spawnClaude( call site", () => {
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
+      expect(src).not.toMatch(/spawnClaude\(/);
+    });
+  });
+
+  describe("usage gating + fail-fast + neutralization (item 010)", () => {
+    interface FakeState {
+      constructCount: number;
+      execCount: number;
+    }
+
+    /**
+     * Register a fake agent. `opts.checkUsage` adds a (no-op limited:false) usage
+     * capability so the runner treats it like claude for usage-gating. `opts.available`
+     * controls its pre-loop detection (default true). `opts.exitCode`/`opts.stdout`
+     * shape the single execute() result.
+     */
+    function registerFake(
+      id: string,
+      opts: {
+        stdout?: string;
+        exitCode?: number;
+        checkUsage?: boolean;
+        available?: boolean;
+      } = {},
+    ): FakeState {
+      const state: FakeState = { constructCount: 0, execCount: 0 };
+      registerAgent({
+        id,
+        displayName: id,
+        binaryName: id,
+        detect: async () => ({ available: opts.available ?? true }),
+        factory: (): LLMProvider => {
+          state.constructCount++;
+          const provider: LLMProvider = {
+            id,
+            displayName: id,
+            async execute() {
+              state.execCount++;
+              return ok({
+                stdout: opts.stdout ?? "RAUF_DONE\n",
+                stderr: "",
+                exitCode: opts.exitCode ?? 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            },
+            validateCredentials() {
+              return ok(undefined);
+            },
+          };
+          if (opts.checkUsage) {
+            provider.checkUsage = async () => ({ limited: false });
+          }
+          return provider;
+        },
+      });
+      return state;
+    }
+
+    it("does NOT classify a non-checkUsage agent printing 'rate limit' as usage_limited (no error)", async () => {
+      // exitCode 1 + 'rate limit' in output: with checkUsage this would trip the
+      // pre-signal banner scan. Without checkUsage the scan is skipped, so the
+      // RAUF_DONE signal is honored and the item completes — no spurious limit.
+      registerFake("rl-plain", {
+        stdout: "Note: hit a rate limit in the example docs\nRAUF_DONE\n",
+        exitCode: 1,
+      });
+      setupProject(tmpDir, [pendingItem("001", "Plain")]);
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "rl-plain" });
+      runner.on("loop_error", (e) => errors.push(e.error));
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+      expect(result.limitReached).toBeFalsy();
+      expect(errors).toHaveLength(0);
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).not.toContain("Usage limit detected");
+    });
+
+    it("skips the OAuth preflight for a non-claude run-level provider", async () => {
+      registerFake("no-preflight", { stdout: "RAUF_DONE\n" });
+      setupProject(tmpDir, [pendingItem("001", "NoPreflight")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "no-preflight" });
+      await runner.start();
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      // A claude run with no credentials would log this from runUsagePreflight;
+      // a non-claude (no checkUsage) run must skip the preflight entirely.
+      expect(log).not.toContain("OAuth token unavailable");
+    });
+
+    it("still runs the usage path for a checkUsage (claude-like) provider", async () => {
+      // checkUsage present → pre-signal banner scan fires on exitCode 1 + 'rate
+      // limit'; with sleepOnLimit:false the runner halts cleanly (limitReached).
+      registerFake("rl-usage", {
+        stdout: "hit a rate limit\nRAUF_DONE\n",
+        exitCode: 1,
+        checkUsage: true,
+      });
+      setupProject(tmpDir, [pendingItem("001", "Usage")]);
+
+      const origHome = process.env.HOME;
+      process.env.HOME = tmpDir; // no credentials → token-unavailable path
+      try {
+        const runner = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          provider: "rl-usage",
+          sleepOnLimit: false,
+        });
+        const result = await runner.start();
+
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).toContain("Usage limit detected in claude output");
+        expect(result.limitReached).toBe(true);
+      } finally {
+        process.env.HOME = origHome;
+      }
+    });
+
+    it("fails fast (before iteration 1) when a selected agent is unavailable — no state, no mutation, no fallback", async () => {
+      const state = registerFake("ff-missing", { available: false });
+      setupProject(tmpDir, [pendingItem("001", "FailFast")]);
+
+      const errors: string[] = [];
+      const spawned: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "ff-missing" });
+      runner.on("loop_error", (e) => errors.push(e.error));
+      runner.on("llm_spawned", (e) => spawned.push(e));
+      const result = await runner.start();
+
+      // Returned the zero-iteration LoopResult.
+      expect(result).toMatchObject({ completedCount: 0, blockedCount: 0, cancelled: false });
+      // The agent never ran (no spawn, no execute).
+      expect(spawned).toHaveLength(0);
+      expect(state.execCount).toBe(0);
+
+      // Error names the agent + remediation + supported ids.
+      const errMsg = errors.find((m) => m.includes("ff-missing"));
+      expect(errMsg).toBeDefined();
+      expect(errMsg).toContain("Install it or ensure");
+      expect(errMsg).toContain("Supported agents:");
+      // No silent fallback to claude.
+      expect(errMsg).not.toMatch(/fall(ing)? back to claude/i);
+
+      // No state.json written.
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "state.json"))).toBe(false);
+      // Backlog item status unchanged (still pending).
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]!.status).toBe("pending");
+    });
+
+    it("applies neutralizeForDetection before parseSignal at both work and review sites", () => {
+      const here = path.dirname(fileURLToPath(import.meta.url));
+      const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
+      // Work iteration (signalText) and review pass (stdout).
+      expect(src).toMatch(/parseSignal\(neutralizeForDetection\(signalText\)\)/);
+      expect(src).toMatch(/parseSignal\(neutralizeForDetection\(stdout\)\)/);
+      // The log-preview redactSignalTokens use is retained.
+      expect(src).toMatch(/redactSignalTokens\(/);
+    });
+
+    it("preserves a genuine standalone signal through neutralization (real RAUF_DONE still completes)", async () => {
+      // Output quotes the token inline (defused) but also emits a real final-line
+      // signal, which neutralization must leave intact.
+      registerFake("neutral-ok", {
+        stdout: 'Quoting the rule: "RAUF_DONE" is the done token.\nRAUF_DONE\n',
+      });
+      setupProject(tmpDir, [pendingItem("001", "Neutral")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "neutral-ok" });
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
     });
   });
 

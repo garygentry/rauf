@@ -6,6 +6,7 @@ import type {
   LoopEvent,
   LoopState,
   Backlog,
+  BacklogItem,
   IterationStatus,
   PersistedEvent,
 } from "@rauf/core";
@@ -22,6 +23,7 @@ import {
   updateItem,
   addItem,
   readMarkerFile,
+  readToolConfig,
   readClaudeOAuthToken,
   writeLoopState,
   appendLog,
@@ -40,11 +42,18 @@ import {
   type BacklogPaths,
   type InstructionPaths,
   type Result,
+  type RaufError,
   ok,
+  err,
+  ErrorCodes,
 } from "@rauf/core";
 
 import { TypedEventEmitter } from "./events.js";
-import { spawnClaude } from "./claude-process.js";
+// Import from the providers barrel (not registry.js directly) so the side-effect
+// registrations of claude-cli + presets + generic-cli run before createProvider is called.
+import { createProvider, getAgentDescriptors, detectAgent } from "./providers/index.js";
+import type { LLMProvider } from "./providers/types.js";
+import { resolveAgentId } from "./agent-selection.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
@@ -54,7 +63,7 @@ import { gitCommit } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
-import { redactSignalTokens } from "./signal-redactor.js";
+import { redactSignalTokens, neutralizeForDetection } from "./signal-redactor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -76,6 +85,14 @@ export interface LoopResult {
    * Analogous to `pausedReason` — a clearly-named optional carrier, not a shape change.
    */
   limitReached?: boolean;
+  /**
+   * Set by {@link failRunSetup} when pre-loop setup aborts the run before any
+   * iteration (fail-fast agent detection or run-level provider resolution). Maps
+   * to ExitCode.ERROR so an unavailable agent surfaces a NON-zero exit (REQ-DET-02,
+   * SC-3). The human-readable error is on the emitted `loop_error` event; this is
+   * just the carrier the CLI exit mapping keys on — analogous to `limitReached`.
+   */
+  setupFailed?: boolean;
 }
 
 /** Result of a review pass */
@@ -126,6 +143,18 @@ export class LoopRunner extends TypedEventEmitter {
   private eventSeq = 0;
   /** Last wall-clock ms an llm_token_update was persisted to FILE (coalescing window). */
   private lastTokenPersistMs = 0;
+  /** One provider instance per distinct resolved agent id, for the lifetime of one run (REQ-PERF-01). */
+  private readonly providerCache = new Map<string, LLMProvider>();
+  /** Project-level agent id, read once at loop start alongside projectModel (04 §5.1). */
+  private projectProvider?: string;
+  /** Global default agent id, read once at loop start (04 §5.1). */
+  private globalProvider?: string;
+  /**
+   * Project-level generic adapter config (MarkerOptions.providerConfig, schemas.ts:149),
+   * read once at loop start. Threaded into createProvider so the reserved `generic-cli`
+   * id (and any config-driven factory) resolves its binary from the marker (03 §7.2).
+   */
+  private projectProviderConfig?: Record<string, unknown>;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -237,7 +266,13 @@ export class LoopRunner extends TypedEventEmitter {
         autoSweep = opts.autoSweep ?? false;
         sweepMinAgeDays = opts.sweepMinAgeDays ?? 0;
         projectModel = opts.model;
+        this.projectProvider = opts.provider; // MarkerOptions.provider (schemas.ts:148)
+        this.projectProviderConfig = opts.providerConfig; // MarkerOptions.providerConfig (schemas.ts:149)
       }
+      // Read the global default agent once (ToolConfig.defaultProvider, schemas.ts:222).
+      // Hoisted out of the iteration loop — it does not vary per item.
+      const toolConfig = readToolConfig();
+      this.globalProvider = toolConfig.ok ? toolConfig.value.defaultProvider : undefined;
 
       // (3) Auto-sweep if enabled
       if (autoSweep) {
@@ -245,18 +280,41 @@ export class LoopRunner extends TypedEventEmitter {
         sweepBacklog(this.paths, { minAgeDays: sweepMinAgeDays });
       }
 
+      // Pre-loop fail-fast detection (REQ-DET-02, SC-3). Runs FIRST — before any
+      // state is written and before the usage preflight — so an unavailable agent
+      // ends the run with no state.json, no backlog mutation, and no fallback to
+      // claude. Read the (post-sweep) pending items for the per-item candidate set.
+      const detectBacklog = readBacklog(this.paths);
+      const pendingItems = detectBacklog.ok
+        ? detectBacklog.value.items.filter((i) => i.status === "pending")
+        : [];
+      const detection = await this.detectAllCandidateAgents(pendingItems);
+      if (!detection.ok) {
+        return this.failRunSetup(detection.error);
+      }
+
+      // Resolve the run-level provider once (no per-item context). Loop-level usage
+      // paths (preflight + between-iterations) gate on its checkUsage capability.
+      const runProviderResult = this.resolveRunLevelProvider();
+      if (!runProviderResult.ok) {
+        return this.failRunSetup(runProviderResult.error);
+      }
+      const runProvider = runProviderResult.value;
+
       // Write initial state
       this.writeState("starting", null);
 
-      // (4) Pre-loop usage limit preflight
-      const preflightResult = await this.runUsagePreflight();
-      if (preflightResult === "exit") {
-        return {
-          completedCount: 0,
-          blockedCount: 0,
-          cancelled: false,
-          ...(this.limitTerminal ? { limitReached: true } : {}),
-        };
+      // (4) Pre-loop usage limit preflight — claude-only (gated on checkUsage).
+      if (runProvider.checkUsage) {
+        const preflightResult = await this.runUsagePreflight();
+        if (preflightResult === "exit") {
+          return {
+            completedCount: 0,
+            blockedCount: 0,
+            cancelled: false,
+            ...(this.limitTerminal ? { limitReached: true } : {}),
+          };
+        }
       }
 
       // Emit loop_started
@@ -302,7 +360,7 @@ export class LoopRunner extends TypedEventEmitter {
 
         // Between iterations: check usage limits and cancellation
         if (this.iterationCount < this.options.maxIterations) {
-          const betweenResult = await this.checkBetweenIterations();
+          const betweenResult = await this.checkBetweenIterations(!!runProvider.checkUsage);
           if (betweenResult === "exit") {
             return {
               completedCount: this.completedCount,
@@ -328,7 +386,7 @@ export class LoopRunner extends TypedEventEmitter {
 
             // Between iterations check
             if (this.iterationCount < this.options.maxIterations) {
-              const betweenResult = await this.checkBetweenIterations();
+              const betweenResult = await this.checkBetweenIterations(!!runProvider.checkUsage);
               if (betweenResult === "exit") break;
             }
           }
@@ -396,7 +454,153 @@ export class LoopRunner extends TypedEventEmitter {
       // with releaseLock. A hard SIGKILL that skips this finally leaves a stale
       // entry that the next listActiveLoops() self-heals (dead pid).
       deregisterLoop(this.paths.stateDir);
+
+      // Dispose every cached provider (REQ-PERF-01 lifecycle). dispose? is optional
+      // (LLMProvider): claude-cli MAY implement it; CliAgent does NOT. Best-effort
+      // and awaited; a rejecting dispose must never mask the original run outcome.
+      for (const provider of this.providerCache.values()) {
+        try {
+          await provider.dispose?.();
+        } catch {
+          // best-effort: a failing dispose never changes the run's result or rethrows
+        }
+      }
+      this.providerCache.clear();
     }
+  }
+
+  /**
+   * Resolve and construct the provider for one iteration. Per-item agent wins
+   * (REQ-SEL-04), then run-level, then project, then global, then DEFAULT_AGENT_ID
+   * (resolveAgentId, 04). Caches one instance per distinct agent id (REQ-PERF-01).
+   * Wraps createProvider's throw-on-unknown-id into a Result error listing the
+   * supported ids — never throws for an expected (mistyped/unknown) id.
+   */
+  private resolveProviderForItem(item: BacklogItem): Result<LLMProvider> {
+    return this.resolveProvider(item);
+  }
+
+  /**
+   * Resolve the run-level provider (no BacklogItem). Item-less sibling of
+   * resolveProviderForItem: same precedence (minus itemProvider), same per-id
+   * cache, same createProvider-throw → Result wrapping. Never throws.
+   */
+  private resolveRunLevelProvider(): Result<LLMProvider> {
+    return this.resolveProvider();
+  }
+
+  /** Shared body for the per-item and run-level resolves (the two differ only in itemProvider). */
+  private resolveProvider(item?: BacklogItem): Result<LLMProvider> {
+    const agentId = resolveAgentId({
+      itemProvider: item?.provider,
+      runProvider: this.options.provider,
+      projectProvider: this.projectProvider,
+      globalProvider: this.globalProvider,
+    });
+
+    const cached = this.providerCache.get(agentId);
+    if (cached) return ok(cached);
+
+    try {
+      // Pass the marker providerConfig so the config-driven `generic-cli` factory
+      // (and any named config-driven factory) resolves its binary (03 §7.2). The
+      // preset/claude factories ignore the config arg, so this is safe for all ids.
+      const provider = createProvider(agentId, this.projectProviderConfig); // may throw on unknown id
+      this.providerCache.set(agentId, provider);
+      return ok(provider);
+    } catch (e) {
+      const ids = getAgentDescriptors()
+        .map((d) => d.id)
+        .join(", ");
+      return err({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message:
+          `Unknown agent "${agentId}": ${e instanceof Error ? e.message : String(e)}. ` +
+          `Supported agents: ${ids || "(none)"}.`,
+      });
+    }
+  }
+
+  /**
+   * Probe every agent id that could drive this run (REQ-DET-02, SC-3). The
+   * candidate set is the run-level resolved id PLUS every distinct per-item
+   * provider among the pending backlog items. If ANY is unavailable, return an
+   * AgentUnavailableError-shaped Result error (FILE_NOT_FOUND) naming the agent +
+   * remediation + supported ids — WITHOUT writing state and with NO fallback to
+   * claude. `detectAgent` never throws (an absent CLI is data).
+   */
+  private async detectAllCandidateAgents(
+    pendingItems: readonly BacklogItem[],
+  ): Promise<Result<void>> {
+    const candidateIds = new Set<string>([
+      resolveAgentId({
+        runProvider: this.options.provider,
+        projectProvider: this.projectProvider,
+        globalProvider: this.globalProvider,
+      }),
+    ]);
+    for (const item of pendingItems) {
+      candidateIds.add(
+        resolveAgentId({
+          itemProvider: item.provider,
+          runProvider: this.options.provider,
+          projectProvider: this.projectProvider,
+          globalProvider: this.globalProvider,
+        }),
+      );
+    }
+
+    for (const id of candidateIds) {
+      const result = await detectAgent(id); // never throws
+      if (result.available) continue;
+
+      // Unavailable. Discriminate by capability (not by id), matching item 010's
+      // usage-gating philosophy: an agent that owns its runtime usage/credential
+      // handling (checkUsage present, e.g. claude-cli) degrades gracefully at loop
+      // time (reactive banner detection when credentials are absent), so a
+      // detect-unavailable here is NON-fatal — preserving committed behavior
+      // (SC-2). A binary-gated CLI adapter (no checkUsage) that is unavailable is
+      // a genuine fail-fast: its CLI is absent from PATH (REQ-DET-02, SC-3).
+      let ownsUsage = false;
+      try {
+        ownsUsage = !!createProvider(id).checkUsage;
+      } catch {
+        ownsUsage = false; // unknown/unconstructable id → treat as fatal below
+      }
+      if (ownsUsage) {
+        appendLog(
+          this.paths,
+          `Agent "${id}" reported unavailable (${result.detail ?? "no detail"}); ` +
+            `continuing with runtime degradation`,
+        );
+        continue;
+      }
+
+      const ids = getAgentDescriptors()
+        .map((d) => d.id)
+        .join(", ");
+      const descriptor = getAgentDescriptors().find((d) => d.id === id);
+      const binary = descriptor?.binaryName ?? id;
+      return err({
+        code: ErrorCodes.FILE_NOT_FOUND,
+        message:
+          `Agent "${id}" is not available: ${result.detail ?? "not detected"}. ` +
+          `Install it or ensure "${binary}" is on PATH. Supported agents: ${ids || "(none)"}.`,
+      });
+    }
+    return ok(undefined);
+  }
+
+  /**
+   * Abort the run during setup, before iteration 1 and before any state write
+   * (REQ-DET-02, SC-3). Emits loop_error with the message and returns the
+   * zero-iteration LoopResult. Writes NO state (no writeState, no backlog
+   * mutation), so a failed setup leaves the project untouched.
+   */
+  private failRunSetup(error: RaufError): LoopResult {
+    appendLog(this.paths, error.message);
+    this.emitEvent("loop_error", { error: error.message });
+    return { completedCount: 0, blockedCount: 0, cancelled: false, setupFailed: true };
   }
 
   /**
@@ -506,16 +710,27 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    // Spawn claude with streaming
+    // Resolve the provider for this iteration (per-item agent wins, REQ-SEL-04).
+    const providerResult = this.resolveProviderForItem(item);
+    if (!providerResult.ok) {
+      appendLog(this.paths, `Failed to resolve agent: ${providerResult.error.message}`);
+      updateItem(this.paths, item.id, { status: "pending" });
+      this.currentItemId = null;
+      this.emitEvent("loop_error", { error: providerResult.error.message });
+      return "continue";
+    }
+    const provider = providerResult.value;
+
+    // Spawn the agent with streaming
     this.emitEvent("llm_spawned", {
       itemId: item.id,
-      provider: "claude-cli",
+      provider: provider.id,
       model: resolvedModel,
       timeoutMinutes: this.options.sessionTimeoutMinutes,
     });
     appendLog(
       this.paths,
-      `Spawning claude for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
+      `Spawning ${provider.id} for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
     );
 
     // Set up iteration status tracking
@@ -606,31 +821,30 @@ export class LoopRunner extends TypedEventEmitter {
       }
     };
 
-    const claudeResult = await spawnClaude(promptResult.value, {
-      sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
-      model: resolvedModel,
-      signal: this.abortController.signal,
+    const execResult = await provider.execute(promptResult.value, {
       outputFormat: "stream-json",
       onStreamEvent,
+      signal: this.abortController.signal,
+      model: resolvedModel,
+      timeoutMinutes: this.options.sessionTimeoutMinutes,
       ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
     clearInterval(stuckTimer);
     clearIterationStatus(this.paths);
 
-    if (!claudeResult.ok) {
-      appendLog(this.paths, `Failed to spawn claude: ${claudeResult.error.message}`);
+    if (!execResult.ok) {
+      appendLog(this.paths, `Failed to spawn ${provider.id}: ${execResult.error.message}`);
       updateItem(this.paths, item.id, { status: "pending" });
       this.currentItemId = null;
-      this.emitEvent("loop_error", { error: claudeResult.error.message });
+      this.emitEvent("loop_error", { error: execResult.error.message });
       return "break";
     }
 
-    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } =
-      claudeResult.value;
+    const { exitCode, stdout, stderr, timedOut, durationMs, reconstructedText } = execResult.value;
     this.emitEvent("llm_exited", {
       itemId: item.id,
-      provider: "claude-cli",
+      provider: provider.id,
       exitCode,
       timedOut,
       durationMs,
@@ -648,7 +862,11 @@ export class LoopRunner extends TypedEventEmitter {
     // arrive in EITHER stderr OR the reconstructed stdout stream (the session-limit
     // banner lands in the stream), so scan BOTH. Otherwise a fast usage-limit
     // death falls through to signal 'none' and is wrongly retried then blocked.
-    if (exitCode !== 0 && (hasUsageLimitInText(stderr) || hasUsageLimitInText(signalText))) {
+    if (
+      provider.checkUsage &&
+      exitCode !== 0 &&
+      (hasUsageLimitInText(stderr) || hasUsageLimitInText(signalText))
+    ) {
       appendLog(this.paths, "Usage limit detected in claude output");
       // Reset item to pending
       updateItem(this.paths, item.id, { status: "pending" });
@@ -667,7 +885,10 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    const parsed = parseSignal(signalText);
+    // Neutralize any quoted/inline RAUF_* tokens before detection so they cannot
+    // be mis-parsed as a real completion signal; a genuine final-line signal is
+    // preserved (REQ-SEC-02).
+    const parsed = parseSignal(neutralizeForDetection(signalText));
     this.emitEvent("signal_parsed", {
       itemId: item.id,
       signal: parsed.signal,
@@ -800,7 +1021,14 @@ export class LoopRunner extends TypedEventEmitter {
         // item blocked — classify WHY the spawn produced no signal and route on
         // that. usage_limited/infra_error are environmental deaths (item stays
         // pending); only a clean genuine_retry exhaustion DEFERS the item.
-        const exitClass = classifyExit(claudeResult.value, parsed);
+        // Downgrade a usage_limited classification to genuine_retry when the
+        // iteration provider has no usage semantics (no checkUsage): a
+        // "usage_limited" verdict there can only be a false substring match on
+        // plain-text output, and must never route into the claude OAuth pause
+        // path (REQ-USAGE-02). classifyExit/ExitClass themselves stay unchanged.
+        const rawExitClass = classifyExit(execResult.value, parsed);
+        const exitClass =
+          !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
         switch (exitClass) {
           case "usage_limited": {
             // Belt-and-suspenders with the pre-signal usage check (item 005):
@@ -963,27 +1191,38 @@ export class LoopRunner extends TypedEventEmitter {
     const projectModel = markerResult.ok ? markerResult.value.options.model : undefined;
     const resolvedModel = this.options.model ?? projectModel;
 
-    appendLog(this.paths, "Spawning claude for review pass");
+    // Resolve the run-level provider for the review pass (no per-item context).
+    const providerResult = this.resolveRunLevelProvider();
+    if (!providerResult.ok) {
+      const reason = `Failed to resolve agent for review: ${providerResult.error.message}`;
+      appendLog(this.paths, reason);
+      this.emitEvent("review_failed", { reason });
+      return "failed";
+    }
+    const provider = providerResult.value;
 
-    // Spawn Claude with review prompt
-    const claudeResult = await spawnClaude(promptResult.value, {
-      sessionTimeoutMinutes: this.options.sessionTimeoutMinutes,
-      model: resolvedModel,
+    appendLog(this.paths, `Spawning ${provider.id} for review pass`);
+
+    // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
+    // preserves today's text review behavior (tech-spec §3.2, SC-2).
+    const execResult = await provider.execute(promptResult.value, {
       signal: this.abortController.signal,
+      model: resolvedModel,
+      timeoutMinutes: this.options.sessionTimeoutMinutes,
       ...(this.childEnv ? { env: this.childEnv } : {}),
     });
 
-    if (!claudeResult.ok) {
-      const reason = `Failed to spawn claude for review: ${claudeResult.error.message}`;
+    if (!execResult.ok) {
+      const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
       appendLog(this.paths, reason);
       this.emitEvent("review_failed", { reason });
       return "failed";
     }
 
-    const { stdout } = claudeResult.value;
+    const { stdout } = execResult.value;
 
-    // Parse signal from review output
-    const parsed = parseSignal(stdout);
+    // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
+    const parsed = parseSignal(neutralizeForDetection(stdout));
 
     if (parsed.signal === "done") {
       appendLog(this.paths, "Review pass: clean — no issues found");
@@ -1573,15 +1812,25 @@ export class LoopRunner extends TypedEventEmitter {
     return "continue";
   }
 
-  /** Check usage limits between iterations */
-  private async checkBetweenIterations(): Promise<"continue" | "exit"> {
-    // Check cancellation
+  /**
+   * Check usage limits between iterations. The cancellation check is ALWAYS run
+   * (cancellation must work for every agent). The Anthropic usage portion is gated
+   * on `checkUsage` — the run-level provider's capability (REQ-USAGE-02): a
+   * non-claude run skips the OAuth read and usage check entirely.
+   */
+  private async checkBetweenIterations(checkUsage: boolean): Promise<"continue" | "exit"> {
+    // Check cancellation (NOT gated — orthogonal to usage)
     if (this.isCancelled()) {
       appendLog(this.paths, "Loop cancelled between iterations");
       this.emitEvent("loop_cancelled", {});
       this.writeState("paused", null);
       writeDoneFile(this.paths, "cancel");
       return "exit";
+    }
+
+    // Non-claude run-level agent: no usage semantics — skip cleanly.
+    if (!checkUsage) {
+      return "continue";
     }
 
     const tokenResult = readClaudeOAuthToken();

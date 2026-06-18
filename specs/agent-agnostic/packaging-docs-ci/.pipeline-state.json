@@ -1,0 +1,148 @@
+{
+  "feature": "packaging-docs-ci",
+  "epic": "agent-agnostic",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-15T17:44:28Z",
+  "updatedAt": "2026-06-17T23:31:26Z",
+  "currentStage": "complete",
+  "notes": "Capstone is mostly CI-wiring + authoring, not new engines: validate.sh (feature-forge) and pnpm gate (rauf) already run the substantive validators. 7 interview decisions recorded in tech-spec \u00a71. rauf-on-npm reconciled as machinery+documented-gap (--skip-rauf in CI); version-sync = 3 fields -> 0.10.0, installer independent.",
+  "stages": {
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "PRD.md"
+      ],
+      "startedAt": "2026-06-17T18:24:23Z",
+      "completedAt": "2026-06-17T18:24:23Z",
+      "basedOnVersions": {},
+      "commitHash": "64c60341d832428b1977ccb776c90fe6a5a9d567"
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-17.md",
+      "findingsCount": 5,
+      "verifiedAt": "2026-06-17T18:30:00Z",
+      "fixedAt": "2026-06-17T18:34:00Z"
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "tech-spec.md"
+      ],
+      "startedAt": "2026-06-17T19:53:44Z",
+      "completedAt": "2026-06-17T19:53:44Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "commitHash": "df900472afd6e539dc5a2a0b40d2b017a9067ba4"
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-tech-2026-06-17.md",
+      "findingsCount": 5,
+      "verifiedAt": "2026-06-17T19:53:44Z",
+      "fixedAt": "2026-06-17T19:53:44Z"
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-ci-blocking-gates.md",
+        "03-os-matrix-installer-gate.md",
+        "04-trigger-accuracy-eval.md",
+        "05-readme-and-agent-docs.md",
+        "06-packaging-versioning-hygiene.md",
+        "07-testing-strategy.md",
+        "TRACEABILITY.md"
+      ],
+      "startedAt": "2026-06-17T20:00:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
+      "completedAt": "2026-06-17T20:30:00Z",
+      "commitHash": "31b07a8f9475ae938b8919ad81b029c14b1fdd13"
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-06-17.md",
+      "findingsCount": 11,
+      "verifiedAt": "2026-06-17T20:45:00Z",
+      "fixedAt": "2026-06-17T21:05:00Z"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "backlog.json"
+      ],
+      "startedAt": "2026-06-17T21:30:00Z",
+      "completedAt": "2026-06-17T21:30:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "commitHash": "fa9d3876ac469eb8574135138363e866285d6f6c"
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-17-reverify.md",
+      "findingsCount": 1,
+      "verifiedAt": "2026-06-17T22:15:00Z",
+      "fixedAt": "2026-06-17T22:20:00Z",
+      "priorRound": {
+        "findingsFile": ".verification/VERIFY-backlog-2026-06-17.md",
+        "findingsCount": 4,
+        "fixedAt": "2026-06-17T22:00:00Z"
+      }
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-17T21:44:37Z",
+      "completedAt": "2026-06-17T22:19:43Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "specs/agent-agnostic/packaging-docs-ci/.rauf/state.json"
+      ]
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-impl-2026-06-17.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-17T22:32:22Z",
+      "fixedAt": "2026-06-17T22:37:09Z"
+    },
+    "forge-6-docs": {
+      "status": "complete",
+      "version": 1,
+      "commitHash": "71c91d380b17e4129507150bd192ef924c2c0e54",
+      "startedAt": "2026-06-17T23:31:26Z",
+      "completedAt": "2026-06-17T23:31:26Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "docs/architecture/packaging-docs-ci/README.md",
+        "docs/architecture/packaging-docs-ci/architecture.md",
+        "docs/architecture/packaging-docs-ci/api-reference.md",
+        "docs/architecture/packaging-docs-ci/guides/integration.md",
+        "docs/architecture/agent-agnostic/README.md"
+      ]
+    }
+  }
+}

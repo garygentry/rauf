@@ -1,0 +1,148 @@
+{
+  "feature": "forge-skill-spec-purity",
+  "epic": "agent-agnostic",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-15T17:44:28Z",
+  "updatedAt": "2026-06-16T16:10:40Z",
+  "currentStage": "complete",
+  "notes": "Backlog v1 complete: 9 items, validated green via rauf-stable (valid:true, 0 findings). C-1 cross-repo: ALL impl lands in feature-forge (/home/gary/workspace/feature-forge); specs/backlog/loop run from rauf. No TypeScript/pnpm here (Bash+Python3+Markdown) \u2014 ignore rauf pnpm gate; per-item verify uses python3 scripts/check-spec-purity.py, python3 -m pytest tests, bash scripts/validate.sh from the feature-forge root. Item ordering: tooling-first (001 resolver+prelude+tests, 002 checker+fixtures) \u2192 003 frontmatter, 004 routing \u2192 005/006/007 body reductions (parallel-eligible, all dep 004) \u2192 008 inventory \u2192 009 wire-checker-into-validate.sh + completion gate. validate.sh wiring deliberately last (wiring early would red the gate for all mid-stream items); mid-stream items assert SCOPED checker rules, only 009 requires checker exit 0 + validate.sh e2e. No agentDelegation (routing kept cohesive for prelude byte-identity). Manual Claude behavioral smoke (REQ-COMPAT-01/02/03) is a 009 maintainer follow-up \u2014 not loop-automatable. Decisions D1 \u2264300ln/\u22645000w, D2 single Bash forge-root.sh, D3 hooks.json out-of-canon, D4 stdlib checker. Deferred non-blocking: TQ-1 (prelude\u2286resolver, manual), TQ-2 (exact line-split, impl time). Pre-existing out-of-scope: plugin.json 0.10.0 vs marketplace.json 0.9.0 (flag for packaging-docs-ci).",
+  "stages": {
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-16T01:47:06Z",
+      "basedOnVersions": {},
+      "artifacts": [
+        "PRD.md"
+      ],
+      "commit": "9d38caf"
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
+      "findingsCount": 2,
+      "verifiedAt": "2026-06-16T02:39:00Z",
+      "fixedAt": "2026-06-16T02:42:00Z",
+      "previousVerification": {
+        "findingsFile": ".verification/VERIFY-prd-2026-06-15.md",
+        "findingsCount": 7,
+        "verifiedAt": "2026-06-16T02:06:00Z",
+        "fixedAt": "2026-06-16T02:11:00Z",
+        "resolved": 7
+      }
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-16T03:18:05Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "artifacts": [
+        "tech-spec.md"
+      ],
+      "commitHash": "2d79b4e"
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-tech-2026-06-16.md",
+      "findingsCount": 7,
+      "verifiedAt": "2026-06-16T03:20:00Z",
+      "fixedAt": "2026-06-16T03:24:00Z"
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-16T03:53:00Z",
+      "commitHash": "91b70c0",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-frontmatter-purity-and-inventory.md",
+        "03-portable-root-resolver.md",
+        "04-body-size-discipline.md",
+        "05-spec-purity-checker.md",
+        "06-testing-strategy.md",
+        "TRACEABILITY.md"
+      ]
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-06-16.md",
+      "findingsCount": 22,
+      "verifiedAt": "2026-06-16T12:20:00Z",
+      "fixedAt": "2026-06-16T12:35:00Z"
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-16T13:46:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "artifacts": [
+        "backlog.json"
+      ],
+      "commitHash": "ee34313"
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-16.md",
+      "findingsCount": 6,
+      "verifiedAt": "2026-06-16T13:55:00Z",
+      "fixedAt": "2026-06-16T13:58:00Z"
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-16T14:41:01Z",
+      "completedAt": "2026-06-16T15:11:44Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        ".forge-loop/.rauf/state.json (feature-forge; loop state, gitignored)"
+      ],
+      "implementedIn": "feature-forge @ branch forge/skill-spec-purity (9 commits ae9c205..264507c)"
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-impl-2026-06-16.md",
+      "findingsCount": 7,
+      "verifiedAt": "2026-06-16T15:28:54Z",
+      "fixedAt": "2026-06-16T15:46:30Z",
+      "resolved": 6,
+      "accepted": 1,
+      "reVerifiedAt": "2026-06-16T15:59:10Z",
+      "reVerifyResult": "clean (0 open findings; RT-001 closed)"
+    },
+    "forge-6-docs": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-16T16:10:40Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/forge-skill-spec-purity/README.md",
+        "docs/architecture/forge-skill-spec-purity/architecture.md",
+        "docs/architecture/forge-skill-spec-purity/api-reference.md",
+        "docs/architecture/forge-skill-spec-purity/guides/integration.md"
+      ]
+    }
+  }
+}

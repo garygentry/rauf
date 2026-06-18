@@ -58,6 +58,12 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | [projects list](#rauf-projects-list)     | Discover and list all rauf-enabled projects under root |
 | [projects status](#rauf-projects-status) | Show loop state and backlog summary for all projects   |
 
+### [agents](#agents) — List supported coding agents and availability
+
+| Command                | Description                                                |
+| ---------------------- | ---------------------------------------------------------- |
+| [agents](#rauf-agents) | List supported coding agents and whether each is available |
+
 ### [install / update / uninstall / init / migrate](#installation) — Install and manage rauf in a project
 
 | Command                           | Description                                            |
@@ -159,6 +165,7 @@ Run the loop. Without `--detached`, runs directly in-process — the **unattende
 - `--follow` / `-f`: with `--detached`, attach the `follow` view after the server accepts the job. Ctrl-C detaches the view only — the loop keeps running server-side.
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override
+- `--agent <id>`: coding-agent CLI that drives iterations (default: `claude-cli`). Supported built-ins: `claude-cli`, `codex`, `gemini`, `copilot`, `cursor`, `generic-cli`. The id is the user-facing alias for the internal `provider` option; an unknown/absent agent is surfaced by the runner's fail-fast (no state written). See [`rauf agents`](#rauf-agents) for live availability.
 - `--timeout N`: session timeout in minutes (default: 60)
 - `--review`: enable a post-loop review pass after all items complete
 - `--review-only`: run review only — create fix items but do not process them (implies `--review`)
@@ -382,6 +389,20 @@ Show loop state and backlog progress for all discovered projects.
 - Use `--root <path>` global flag to override the root
 - Output: table with Name, State, Backlog Progress, Path
 - Derives status for each project independently by reading its files directly (no subprocesses)
+
+---
+
+## agents
+
+### rauf agents
+
+List every supported coding agent and whether its CLI is available on this machine.
+
+- Output: a table with columns **ID**, **NAME**, **AVAILABLE** (`yes`/`no`), and **DETAIL** (PATH location, "not found", or credential/configurable status)
+- `--json`: emit the availability list as `{ agents: AgentAvailability[] }` (`{ id, displayName, binaryName?, available, detail? }`)
+- Availability is derived by a PATH stat / credential read only — **never** spawns an agent subprocess (status reads files, not subprocesses)
+- Always exits `0` for a successful listing, even when every agent is unavailable
+- Built-ins listed: `claude-cli`, `codex`, `gemini`, `copilot`, `cursor`, and the reserved configurable `generic-cli`
 
 ---
 

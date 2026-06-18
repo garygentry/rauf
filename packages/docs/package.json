@@ -1,6 +1,6 @@
 {
   "name": "@rauf/docs",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "scripts": {
     "predev": "bun run ../../scripts/generate-diagrams.ts && bash ../../scripts/setup-docs.sh",

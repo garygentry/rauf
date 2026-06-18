@@ -1,0 +1,351 @@
+{
+  "schemaVersion": "1",
+  "project": "rauf-agent-cli-adapters",
+  "description": "Coding-agent CLI adapter layer for the rauf loop runner (epic agent-agnostic). Lets a single loop iteration be driven by any supported agent CLI — claude (default, first-class), codex, gemini, copilot, cursor, and a config-driven generic-cli — via the committed LLMProvider seam, with detection/fail-fast, agent selection precedence, and a CLI surface. Additive: the claude path stays behaviorally unchanged (SC-2). Implements PRD v2 / tech-spec v2 across spec docs 00-07; acceptance gate is `pnpm gate`.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add shared adapter types (AgentAdapter, AgentDescriptor, DetectionResult, ExecuteOptions.env) + constants",
+      "description": "Foundation type system for the adapter layer in packages/loop. No runtime symbols yet — types + two constants only.\n\n1. EDIT packages/loop/src/providers/types.ts: add `export type AgentAdapter = LLMProvider;` (charter alias, 00 §2 — structurally identical, do NOT rename LLMProvider). Add `AgentDescriptor` and `DetectionResult` interfaces exactly per 00 §3.3 (DetectionResult: { available: boolean; detail?: string }; AgentDescriptor: { id; displayName; binaryName?; factory: ProviderFactory; detect?: () => Promise<DetectionResult> }). Extend the existing `ExecuteOptions` interface with one new optional field `env?: Record<string, string>` (00 §3.4) — do not touch its other fields.\n2. NEW packages/loop/src/constants.ts: `export const DEFAULT_AGENT_ID = \"claude-cli\";` and `export const GENERIC_AGENT_ID = \"generic-cli\";` (00 §6).\n3. Re-export the new TYPES from packages/loop/src/providers/index.ts (`AgentAdapter`, `AgentDescriptor`, `DetectionResult`) and from the package barrel packages/loop/src/index.ts.\n\nDo NOT redefine any reused contract listed in 00 §7. Do NOT add SIGNAL_TOKENS here (item 008 owns it in signal-redactor.ts). No registry/engine/selection code in this item.",
+      "acceptanceCriteria": [
+        "providers/types.ts exports `AgentAdapter` (= LLMProvider alias), `AgentDescriptor`, and `DetectionResult` matching 00 §3.3",
+        "ExecuteOptions has a new optional `env?: Record<string, string>` field and all prior fields unchanged",
+        "packages/loop/src/constants.ts exports DEFAULT_AGENT_ID === \"claude-cli\" and GENERIC_AGENT_ID === \"generic-cli\"",
+        "AgentAdapter, AgentDescriptor, DetectionResult are re-exported from providers/index.ts and the package barrel index.ts",
+        "No type in 00 §7 (LLMProvider, ProviderFactory, etc.) is redeclared",
+        "pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T22:55:50.241Z",
+      "dependsOn": [],
+      "notes": "AgentAdapter must be structurally assignable to/from LLMProvider (an alias, not a fork). The runner that consumes ExecuteOptions.env lands in item 009; this item only adds the field. Trust `pnpm gate`, not the editor (run pnpm build first — project-references monorepo).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/00-core-definitions.md",
+        "specs/agent-agnostic/rauf-agent-cli-adapters/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Extract process-group.ts; delegate claude-process.ts to it (behavior unchanged)",
+      "description": "Extract the shared spawn/timeout/kill/group machinery out of claude-process.ts so CliAgent (item 004) and the claude path share one implementation. Pure internal refactor — SC-2 demands claude behavior is byte-for-byte unchanged.\n\n1. NEW packages/loop/src/process-group.ts exporting (03 §5.1): `GRACE_PERIOD_MS = 30_000`; `SpawnProcessGroupOptions` { timeoutMs; signal?; cwd?; env?; stdin?; onStdout? }; `ProcessGroupResult` { exitCode; stdout; stderr; timedOut; durationMs }; `spawnProcessGroup(cmd, args, options): Promise<Result<ProcessGroupResult>>`; `killTree(proc, signal)`.\n2. Move the existing claude-process.ts behavior VERBATIM (03 §5.2): `detached: true`, stdio pipes, env-merge-only-when-supplied, synchronous-spawn try/catch → err(FILE_NOT_FOUND), async proc.on('error') → err(FILE_NOT_FOUND), single-`resolved` guard, SIGTERM→GRACE_PERIOD_MS→SIGKILL on the NEGATIVE pid (whole group), abort → group SIGTERM (incl. already-aborted), EPIPE-tolerant stdin write/end, exitCode = code ?? 1 on close.\n3. Refactor claude-process.ts to delegate to spawnProcessGroup: keep building the claude argv and the StreamParser/reconstructedText logic, but feed line-splitting via the new `onStdout` hook and remove the inlined timeout/kill/abort/stdin plumbing. Import GRACE_PERIOD_MS and killTree from process-group.ts. `spawnClaude`'s public signature, SpawnClaudeOptions, SpawnClaudeResult, and behavior stay byte-for-byte identical.\n\nNo caller of spawnClaude changes (claude-cli.ts:14, index.ts:12 re-export).",
+      "acceptanceCriteria": [
+        "packages/loop/src/process-group.ts exists and exports spawnProcessGroup, killTree, GRACE_PERIOD_MS, SpawnProcessGroupOptions, ProcessGroupResult",
+        "process-group.ts reproduces the detached-group spawn, SIGTERM→30s→SIGKILL-on-negative-PID escalation, abort handling, and EPIPE-tolerant stdin from the original claude-process.ts",
+        "claude-process.ts delegates to spawnProcessGroup; spawnClaude's signature and behavior are unchanged; GRACE_PERIOD_MS and killTree are no longer declared in claude-process.ts",
+        "claude-process.test.ts passes UNCHANGED (not edited)",
+        "pnpm gate passes (all existing claude scenarios behaviorally preserved)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T22:59:26.054Z",
+      "dependsOn": [],
+      "notes": "SC-2 guardrail: if any assertion in claude-process.test.ts requires editing to pass, the refactor has regressed the claude path — revert and re-extract. The whole point of extraction (vs duplicating) is to keep the kill/timeout routine in lockstep across agents.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/03-cli-agent-engine-and-presets.md",
+        "specs/agent-agnostic/rauf-agent-cli-adapters/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Registry descriptor layer + detection primitives (registerAgent/detectAgent/listAgents)",
+      "description": "Layer an enumerable + probeable descriptor map over the existing factory map, and migrate claude-cli's registration. No type redefinition — import AgentDescriptor/DetectionResult from item 001.\n\n1. EDIT packages/loop/src/providers/registry.ts (02 §3-5): add a parallel module-level `descriptors = new Map<string, AgentDescriptor>()`. Add `registerAgent(d)` (writes BOTH factories+descriptors, last-write-wins). Make `registerProvider(id, factory)` ALSO synthesize a descriptor `{ id, displayName: id, binaryName: id, factory }` (only if not already present) — back-compat. Make `clearProviders()` clear BOTH maps. Add `getAgentDescriptors(): AgentDescriptor[]` (sync, registration order, no `available`, no I/O). Add internal `probeBinaryOnPath(binaryName)` (fs.access X_OK over process.env.PATH split on node:path delimiter; absolute path probed directly; returns { available, detail: 'found at <path>' | 'binary \"<b>\" not found on PATH' }; never throws, never spawns). Add `detectAgent(id): Promise<DetectionResult>` (descriptor.detect if present else default probe; unknown id → { available:false, detail:'Unknown agent \"<id>\". Supported agents: <ids>.' }; catches a throwing detect → unavailable). Add `listAgents(): Promise<AgentAvailability[]>` and the `AgentAvailability` interface { id; displayName; binaryName?; available; detail? }. createProvider/getAvailableProviders signatures unchanged (createProvider still THROWS on unknown id).\n2. EDIT providers/claude-cli.ts: change the bottom-of-file registration from registerProvider to `registerAgent({ id:\"claude-cli\", displayName:\"Claude Code (CLI)\", binaryName:\"claude\", factory: createClaudeCliProvider, detect: detectClaudeCli })`; add async `detectClaudeCli()` reusing createClaudeCliProvider().validateCredentials() (credentials present ⇒ available). The ClaudeCliProvider class body and createClaudeCliProvider are UNCHANGED.\n3. EDIT providers/index.ts: re-export registerAgent, getAgentDescriptors, listAgents, detectAgent, and the AgentAvailability type. Keep ONLY the existing claude-cli side-effect import (do NOT import presets/generic-cli yet — those modules arrive in 005/006).\n4. EDIT registry.test.ts: cover descriptor registration/enumeration, sync getAgentDescriptors (no available field), async listAgents (never rejects, even when a detect throws), default PATH probe found/not-found (controlled PATH tmp dir, restore in afterEach), claude credential override, unknown-id non-throwing detectAgent, back-compat registerProvider synthesis, clearProviders clears both maps.",
+      "acceptanceCriteria": [
+        "registry.ts has parallel `factories` and `descriptors` maps; registerProvider/createProvider/getAvailableProviders keep their exact signatures",
+        "registerAgent populates both maps (last-write-wins); registerProvider also synthesizes a descriptor; clearProviders clears both",
+        "getAgentDescriptors() is synchronous with no `available` field; its id set equals getAvailableProviders()",
+        "detectAgent never throws/never spawns; default probe uses fs.access X_OK over PATH; unknown id resolves { available:false, 'Unknown agent...' }",
+        "listAgents() returns AgentAvailability[] with availability resolved and never rejects",
+        "claude-cli registered via registerAgent with binaryName 'claude' + credential detect; ClaudeCliProvider class body unchanged",
+        "providers/index.ts re-exports registerAgent/getAgentDescriptors/listAgents/detectAgent/AgentAvailability and imports ONLY claude-cli as a side effect",
+        "registry.test.ts covers the cases above and pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:03:16.767Z",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "Do NOT add `import \"./presets.js\"` / `import \"./generic-cli.js\"` to providers/index.ts in this item — those files don't exist yet and would break the build. They are added in 005/006. AgentAvailability is a registry-local DTO (not a @rauf/core schema type). PATH probe is a stat, not an invocation (CLAUDE.md rule 6).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/02-agent-registry-and-detection.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 1,
+      "title": "CliAgent config-driven engine (providers/cli-agent.ts)",
+      "description": "The single config-driven engine backing every non-claude CLI adapter. Declares the 00 §3.2 config types (they live in THIS file) and the CliAgent class.\n\n1. NEW packages/loop/src/providers/cli-agent.ts. Declare and export `PromptDelivery = \"stdin\"|\"arg\"|\"file\"`, `BuildArgsContext { model?; promptFile? }`, and `CliAgentConfig` { id; displayName; binary; buildArgs(ctx); promptDelivery; nonInteractive: string[]; modelFlag?(m); env?; parsesStream?: false } exactly per 00 §3.2.\n2. `export class CliAgent implements LLMProvider` exposing ONLY `id`, `displayName`, `execute`, `validateCredentials` — NO `checkUsage`, NO `dispose` (load-bearing: the runner gates usage on checkUsage being defined). Constructor takes a CliAgentConfig.\n3. execute(prompt, options) per 03 §4: build argv = [...buildArgs(ctx), ...nonInteractive, ...(options.model && config.modelFlag ? config.modelFlag(options.model) : [])]; for promptDelivery 'arg' append prompt LAST; 'stdin' pass prompt as spawnProcessGroup stdin; 'file' write the prompt to a temp file INSIDE the cwd/ROOT_DIRECTORY, set ctx.promptFile, pass no stdin, and unlink it in a `finally` on every exit path (REQ-SEC-01). Pass timeoutMs = options.timeoutMinutes*60*1000, signal = options.signal, env = (config.env||options.env ? { ...config.env, ...options.env } : undefined) — options.env merged OVER config.env. Delegate to spawnProcessGroup (item 002). Return ok(ExecutionResult) with stdout/stderr/exitCode/timedOut/durationMs carried through and reconstructedText/parsedSignal/progressEvents UNSET. Nonzero exit and timedOut are DATA (ok). Spawn failure propagates err(FILE_NOT_FOUND); temp-file write failure returns err(IO_ERROR) before spawn.\n4. validateCredentials() returns ok(undefined) without spawning or probing PATH.\n5. Export CliAgent (value) + the three config types from providers/index.ts and the package barrel.\n6. NEW cli-agent.test.ts: mock ../process-group.js (vi.fn spawnProcessGroup) and assert recorded (cmd,args,opts) for arg/stdin/file delivery; model-flag present/absent; nonInteractive always present; argv order; timeoutMs/signal forwarding; plain-text result (telemetry unset); nonzero & timedOut as ok-data; spawn-failure as err; file delivery unlinks temp even on spawn error; absence of checkUsage and dispose.",
+      "acceptanceCriteria": [
+        "cli-agent.ts declares PromptDelivery/BuildArgsContext/CliAgentConfig (00 §3.2) and class CliAgent implements LLMProvider",
+        "CliAgent exposes exactly id/displayName/execute/validateCredentials — no checkUsage, no dispose",
+        "execute assembles argv as buildArgs → nonInteractive → modelFlag, appends prompt last only for 'arg' delivery, and merges options.env over config.env",
+        "file delivery writes the temp prompt file inside the cwd/ROOT_DIRECTORY and unlinks it in finally on every exit path (incl. spawn error)",
+        "ExecutionResult leaves reconstructedText/parsedSignal/progressEvents unset; nonzero exit and timeout are returned as ok-data; spawn failure is err(FILE_NOT_FOUND); temp-write failure is err(IO_ERROR)",
+        "CliAgent and the config types are exported from providers/index.ts and the package barrel",
+        "cli-agent.test.ts covers prompt delivery × model flag × non-interactive × plain-text result × kill/timeout forwarding × error paths",
+        "pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:07:01.117Z",
+      "dependsOn": [
+        "001",
+        "002"
+      ],
+      "notes": "Reuse spawnProcessGroup from item 002 — do not re-implement spawning. Omitting checkUsage is intentional and is what makes the runner skip Anthropic usage paths for non-claude agents (REQ-USAGE-02). Temp file name e.g. .rauf-prompt-<pid-or-random>.txt; swallow unlink failures.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/03-cli-agent-engine-and-presets.md",
+        "specs/agent-agnostic/rauf-agent-cli-adapters/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 1,
+      "title": "Preset adapters: codex / gemini / copilot / cursor",
+      "description": "The four shipped named presets as CliAgentConfig literals + their registration. Plain data over the item-004 engine — no new orchestration code (REQ-SCALE-01).\n\n1. NEW packages/loop/src/providers/presets.ts exporting `PRESET_CONFIGS: readonly CliAgentConfig[]` and `getPresetConfig(id): CliAgentConfig | undefined`. The four configs (03 §6): codex { binary:'codex', promptDelivery:'arg', buildArgs:()=>['exec'], nonInteractive:['--full-auto'], modelFlag:(m)=>['--model',m] }; gemini { binary:'gemini', promptDelivery:'stdin', buildArgs:()=>[], nonInteractive:['--yolo'], modelFlag:(m)=>['-m',m] }; copilot { binary:'copilot', promptDelivery:'stdin', buildArgs:()=>[], nonInteractive:['--allow-all-tools'], modelFlag:(m)=>['--model',m] }; cursor { binary:'cursor-agent' (NOTE: differs from id), promptDelivery:'arg', buildArgs:()=>[], nonInteractive:['--force'], modelFlag:(m)=>['--model',m] }. parsesStream omitted on all (plain-text). Include the OQ-2 WARNING comment: these non-interactive/model flags are best-known correctable literals; SC-1 proves the mechanism with mocks, not the real flags.\n2. EDIT providers/index.ts: add the side-effect import `import \"./presets.js\";`. In presets.ts (or index.ts), register each preset via registerAgent({ id: c.id, displayName: c.displayName, binaryName: c.binary, factory: () => new CliAgent(c) }) so each gets a descriptor with a real binaryName + default PATH probe.\n\nUnit coverage for the engine itself is in item 004; this item's gate proves the presets register, enumerate, and construct.",
+      "acceptanceCriteria": [
+        "presets.ts exports PRESET_CONFIGS (codex/gemini/copilot/cursor) and getPresetConfig(id)",
+        "cursor's binary is 'cursor-agent' (distinct from its id 'cursor')",
+        "Each preset is registered via registerAgent with binaryName = config.binary and factory () => new CliAgent(config); getAgentDescriptors() includes all four ids",
+        "The OQ-2 WARNING comment is present noting the flags are best-known correctable literals",
+        "providers/index.ts imports ./presets.js as a side effect",
+        "pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:08:40.614Z",
+      "dependsOn": [
+        "003",
+        "004"
+      ],
+      "notes": "Do not validate the real CLI flags here (OQ-2) — wrong flags are a one-line config fix, not an engine change. SC-1 exercises these via mock agents in the sandbox (items 012/013).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/03-cli-agent-engine-and-presets.md",
+        "specs/agent-agnostic/rauf-agent-cli-adapters/02-agent-registry-and-detection.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 1,
+      "title": "generic-cli adapter + config normalization (configToCliAgentConfig)",
+      "description": "The reserved config-driven adapter plus the record→config normalizer that serves both the reserved generic-cli id and arbitrary named ToolConfig.providers entries (REQ-ADP-04, REQ-SCALE-01).\n\n1. NEW packages/loop/src/providers/generic-cli.ts (03 §7):\n - `configToCliAgentConfig(id, raw: Record<string, unknown>): Result<CliAgentConfig>`: require non-empty string `binary` else err({ code: ErrorCodes.VALIDATION_ERROR, message naming the field }); promptDelivery defaults 'stdin', reject any value outside stdin|arg|file with VALIDATION_ERROR; args defaults [] → buildArgs:()=>[...args]; nonInteractive defaults []; optional modelFlagTemplate string → modelFlag:(m)=>[template,m] (omit when absent); optional env; displayName from raw.displayName else id; never set parsesStream to anything but false/omitted.\n - `createGenericCliProvider: ProviderFactory = (config) => { const parsed = configToCliAgentConfig(GENERIC_AGENT_ID, config ?? {}); if (!parsed.ok) throw new Error(parsed.error.message); return new CliAgent(parsed.value); }` (the throw is the inherited createProvider contract; the runner wraps it later).\n - `detectGenericCli`: custom detect — no providerConfig ⇒ { available:true, detail:'configurable; binary resolved from providerConfig at run time' }; a providerConfig carrying a `binary` ⇒ PATH-probe it via the registry's probeBinaryOnPath.\n - Register the reserved descriptor via registerAgent({ id: GENERIC_AGENT_ID, displayName:'Generic CLI agent (configurable)', factory: createGenericCliProvider, detect: detectGenericCli }) with NO binaryName.\n2. EDIT providers/index.ts: add `import \"./generic-cli.js\";` (side effect) and re-export createGenericCliProvider/configToCliAgentConfig if useful.\n3. NEW generic-cli.test.ts: configToCliAgentConfig valid record → ok with static buildArgs + modelFlag-from-template + displayName default; missing/empty binary → err(VALIDATION_ERROR); invalid promptDelivery ('socket') → err; defaults applied; reserved-id factory path (mock spawnProcessGroup, assert configured binary/args/promptDelivery honored); named-config path (a ToolConfig.providers-shaped record builds a CliAgent whose binary equals the config's binary).",
+      "acceptanceCriteria": [
+        "generic-cli.ts exports configToCliAgentConfig (returns Result) and createGenericCliProvider (ProviderFactory)",
+        "configToCliAgentConfig rejects missing/empty binary and invalid promptDelivery with err(VALIDATION_ERROR), and applies defaults (args [], promptDelivery 'stdin', nonInteractive [])",
+        "The reserved generic-cli descriptor is registered with NO binaryName and a custom detect that reports available/configurable with no providerConfig and PATH-probes a supplied binary",
+        "createGenericCliProvider builds a CliAgent from a valid providerConfig and throws on a malformed one",
+        "providers/index.ts imports ./generic-cli.js as a side effect",
+        "generic-cli.test.ts covers valid/missing-binary/invalid-promptDelivery/defaults + reserved-id factory + named-config path",
+        "pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:12:02.507Z",
+      "dependsOn": [
+        "001",
+        "003",
+        "004"
+      ],
+      "notes": "ErrorCodes has VALIDATION_ERROR and IO_ERROR but NO INVALID_INPUT (confirmed packages/core/src/errors.ts). GENERIC_AGENT_ID comes from constants.ts (item 001 — direct dependsOn edge), re-exported via agent-selection in 007 but importable directly from ./constants.js here.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/03-cli-agent-engine-and-presets.md",
+        "specs/agent-agnostic/rauf-agent-cli-adapters/02-agent-registry-and-detection.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "feature",
+      "priority": 1,
+      "title": "Agent-selection resolver + `agent` alias normalization at load boundaries",
+      "description": "The loop-agent-selection charter contract: a pure precedence resolver and the additive `agent`→`provider` input-alias fold applied at the @rauf/core load boundaries.\n\n1. NEW packages/loop/src/agent-selection.ts (04 §3):\n - `resolveAgentId(input: { itemProvider?; runProvider?; projectProvider?; globalProvider? }): string` — pure, total, never throws; left-to-right coalesce with a `pick` that trims and treats empty/whitespace as unset; falls through to DEFAULT_AGENT_ID. Must satisfy the precedence matrix rows 1-9 (item > run > project > global > default).\n - `normalizeAgentAlias<T extends { provider?: string; agent?: string }>(raw, onWarn?): Omit<T,'agent'> & { provider?: string }` — folds `agent`→`provider`; if BOTH present, `provider` wins and onWarn is called once; the output never contains an `agent` key; passes through untouched when no `agent` key.\n - Re-export DEFAULT_AGENT_ID and GENERIC_AGENT_ID from ./constants.js. Package barrel re-exports resolveAgentId + both constants.\n2. Apply the alias fold BEFORE Zod validation at each load site (04 §3.3) in @rauf/core: the backlog item parse (BacklogItem.provider — first VERIFY the exact parse site in packages/core/src/backlog.ts per the 04 §3.3 WARNING), readMarkerFile (MarkerOptions.provider), and readToolConfig (the `defaultAgent`→`defaultProvider` one-line variant fold). Additive and non-breaking: no schema field added or renamed; keep packages/core free of any cli/web import (the pure helper imports nothing beyond an optional onWarn sink).\n3. NEW agent-selection.test.ts: all 9 precedence rows including row-5 keystone (`{}` → equals imported DEFAULT_AGENT_ID, not a literal) and row-8 whitespace-skip; totality (non-empty string for a representative input sweep, never throws); the four normalizeAgentAlias cases including `{ provider, agent }` → provider-wins with onWarn called once.",
+      "acceptanceCriteria": [
+        "agent-selection.ts exports resolveAgentId and normalizeAgentAlias; resolveAgentId is pure/total and returns DEFAULT_AGENT_ID for {}",
+        "resolveAgentId satisfies all 9 precedence rows (item > run > project > global > default) incl. empty/whitespace skip",
+        "normalizeAgentAlias folds agent→provider, makes provider win + calls onWarn when both are set, and never emits an `agent` key",
+        "The alias fold is applied before Zod parse at the backlog item / readMarkerFile / readToolConfig load sites with no schema field added/renamed and no cli/web import added to @rauf/core",
+        "DEFAULT_AGENT_ID and GENERIC_AGENT_ID are re-exported via agent-selection and the package barrel re-exports resolveAgentId + the constants",
+        "agent-selection.test.ts covers the full precedence matrix (incl. row-5 keystone and row-8) and the four alias cases",
+        "pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:16:58.113Z",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "04 §3.3 WARNING: the exact backlog item-loading function in packages/core/src/backlog.ts was not line-verified in the spec — confirm the BacklogItemSchema.parse site before inserting the fold. The global file uses `defaultAgent`→`defaultProvider` (not provider), so apply the analogous one-line fold there. resolveAgentId must NOT know the registry (unknown ids are a consumer concern, item 009/010).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/04-agent-selection.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "Signal-token neutralization before detection (neutralizeForDetection)",
+      "description": "Generalize the RAUF_* signal-token defusing so a quoted/inline token in any agent's output cannot be mis-parsed as a real completion signal (REQ-SEC-02, SC-6).\n\n1. EDIT packages/loop/src/signal-redactor.ts (05 §4.4): widen the module's `SIGNAL_TOKENS` to ['RAUF_DONE','RAUF_BLOCKED','RAUF_NEEDS_HUMAN','RAUF_REVIEW'] (the prior set omits RAUF_REVIEW). Keep `redactSignalTokens(text)` exactly as-is (unconditional, log-only) but operating on the widened set. Add `export function neutralizeForDetection(text: string): string`: split into lines; for each line, if its TRIMMED content is exactly a token OR starts with `<token>:` (the reason/json forms), leave the line UNTOUCHED (legitimate standalone final-line signal); otherwise replace every token occurrence on that line via `tok.replace('_','·')`. Rejoin with '\\n'. This neutralizes only NON-signal-line occurrences and preserves a genuine final-line signal.\n2. EDIT signal-redactor.test.ts (SC-6): inline/quoted token (e.g. `prefix RAUF_DONE suffix`, `\"RAUF_DONE\" in a comment`) → after neutralizeForDetection, parseSignal returns 'none'; a standalone final-line `RAUF_DONE` / `RAUF_BLOCKED:reason` / `RAUF_NEEDS_HUMAN:reason` / `RAUF_REVIEW:{...}` is preserved → parseSignal returns the real type; RAUF_REVIEW both inline-neutralized and final-line-preserved (proving the token set widened); multiple inline tokens on one line all neutralized; the existing redactSignalTokens tests stay green.\n\nThis item only adds the function + tests; wiring it into the runner's two parseSignal sites is item 010.",
+      "acceptanceCriteria": [
+        "signal-redactor.ts SIGNAL_TOKENS includes RAUF_REVIEW and both redactSignalTokens and neutralizeForDetection use the widened set",
+        "neutralizeForDetection leaves a standalone trimmed-line signal (token or token:payload) intact and neutralizes quoted/inline occurrences",
+        "parseSignal(neutralizeForDetection(inline-token-text)) returns 'none'; parseSignal(neutralizeForDetection(final-line-signal)) returns the real type",
+        "signal-redactor.test.ts covers inline/quoted neutralization, final-line preservation, RAUF_REVIEW (both forms), and multiple inline tokens; redactSignalTokens tests stay green",
+        "pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:22:16.800Z",
+      "dependsOn": [],
+      "notes": "parseSignal matches whole-line signals scanning backward, so line-awareness is the correct discriminator: a token sharing its line with other text is never a real signal. Keep redactSignalTokens (log-preview) and neutralizeForDetection (pre-detection) as two distinct functions.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/05-runner-wiring.md",
+        "specs/agent-agnostic/rauf-agent-cli-adapters/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "Runner wiring: route both exec paths through provider.execute (events, model, childEnv, cache/dispose)",
+      "description": "Convert runner.ts from a hardcoded-claude driver to one that drives every agent through the resolved LLMProvider, with the claude path behaviorally unchanged (SC-2). This item is the routing/lifecycle half; usage-gating + fail-fast are item 010.\n\nEDIT packages/loop/src/runner.ts (05 §3.1-3.3, §3.8, §4.1, §4.2):\n1. Add `private readonly providerCache = new Map<string, LLMProvider>()` and `private projectProvider?`/`private globalProvider?`. Read projectProvider from the project-marker read at loop start (alongside the existing projectModel) and globalProvider once via readToolConfig().defaultProvider — both hoisted out of the iteration loop.\n2. Add `resolveProviderForItem(item)` and `resolveRunLevelProvider()`: call resolveAgentId (item 007) with the appropriate layers, return a cached provider or construct via createProvider (item 003), wrapping the unknown-id throw into err({ code: VALIDATION_ERROR, message listing getAgentDescriptors() ids }). One instance per distinct agent id.\n3. Replace BOTH spawnClaude call sites with `provider.execute(...)`: the work iteration keeps outputFormat 'stream-json' + onStreamEvent; the review pass OMITS outputFormat (preserves today's text behavior). Map sessionTimeoutMinutes → timeoutMinutes; pass model: resolvedModel; pass childEnv via `...(this.childEnv ? { env: this.childEnv } : {})`. Keep the downstream destructure and the !result.ok spawn-failure guard identical (rename local to execResult). Remove the now-unused `spawnClaude` import from runner.ts (index.ts:12 re-export and claude-cli.ts caller are RETAINED).\n4. Set the llm_spawned and llm_exited event `provider` field to `provider.id` (was hardcoded 'claude-cli').\n5. In the existing run() finally, dispose every cached provider (best-effort, await, swallow rejects) then clear the cache.\n6. EDIT providers/claude-cli.ts execute(): forward options.env into spawnClaude's SpawnClaudeOptions.env (SC-2 childEnv/review-hook suppression) — without this, routing through execute silently drops childEnv.\nKeep runner.ts:494 model precedence (item.model ?? options.model ?? projectModel) UNTOUCHED.\n\nEDIT runner.test.ts: per-iteration resolve + per-id cache (two iterations same id construct once; a per-item override constructs a second) + dispose-on-every-cached-id on normal/abort/error exit; llm_spawned/llm_exited carry the real provider.id (codex→'codex', claude→'claude-cli'); childEnv passed via ExecuteOptions.env reaches spawnClaude's SpawnClaudeOptions.env; a grep-style guard that runner.ts contains no `spawnClaude(` call site.",
+      "acceptanceCriteria": [
+        "Both runner exec paths call provider.execute(...) (work: outputFormat stream-json + onStreamEvent; review: no outputFormat); runner.ts no longer imports or calls spawnClaude (index.ts:12 re-export retained)",
+        "Provider is resolved per iteration via resolveAgentId + createProvider, cached one instance per distinct agent id, and an unknown id becomes a Result error listing supported ids (no throw escaping)",
+        "llm_spawned and llm_exited emit provider: provider.id (codex run → 'codex'; claude run → 'claude-cli'); event shape unchanged",
+        "this.childEnv is passed via ExecuteOptions.env at both sites and ClaudeCliProvider.execute forwards options.env into spawnClaude's SpawnClaudeOptions.env",
+        "Every cached provider is dispose()d (best-effort) in the run() finally on normal/abort/error exit and the cache is cleared",
+        "runner.ts:494 model precedence is unmodified and resolvedModel is handed to provider.execute",
+        "runner.test.ts covers resolve/cache/dispose, real event id, childEnv forwarding, and the no-spawnClaude-call-site guard; pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:32:09.697Z",
+      "dependsOn": [
+        "001",
+        "003",
+        "004",
+        "007"
+      ],
+      "notes": "After this item only the claude path is exercised by the gate, so SC-2 (all existing claude scenarios green) is the regression check. Usage gating is NOT yet applied here — the existing claude usage touchpoints remain unconditional and correct for claude; item 010 gates them for non-claude. The spawnClaude grep guard must target runner.ts ONLY (not the package) to avoid flagging the retained index.ts re-export and claude-cli.ts caller.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/05-runner-wiring.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "feature",
+      "priority": 1,
+      "title": "Runner usage-gating + pre-loop fail-fast detection + neutralization sites",
+      "description": "Make the routed runner correct and safe for non-claude agents: gate all Anthropic usage handling, add pre-loop fail-fast detection, and apply signal neutralization at both detection sites. Builds on item 009.\n\nEDIT packages/loop/src/runner.ts (05 §3.6, §3.7, §4.3, §4.5):\n1. Usage gating (REQ-USAGE-01/02): gate ALL Anthropic usage handling on `provider.checkUsage` being defined (not on id===claude-cli). Resolve the run-level provider first; run the pre-loop usage preflight (runUsagePreflight) and the between-iterations usage check only when the run-level provider exposes checkUsage (its cancellation check stays UNgated). Wrap the mid-iteration pre-signal usage-banner scan (hasUsageLimitInText on stderr/signalText) inside `if (provider.checkUsage)`. For the post-signal classification, when the iteration provider has NO checkUsage, downgrade a `usage_limited` classification to `genuine_retry` so handleStderrUsageLimit (claude OAuth) is never called. classifyExit/ExitClass themselves stay unchanged.\n2. Pre-loop fail-fast (REQ-DET-02, SC-3): add `detectAllCandidateAgents(pendingItems)` — candidate set = run-level resolved id + every distinct per-item provider among pending items; detectAgent each; on any unavailable return an AgentUnavailableError-shaped err({ code: FILE_NOT_FOUND, message naming the agent + 'Install it or ensure \"<binary>\" is on PATH' + 'Supported agents: <ids>' }). Add `failRunSetup(error)` returning the zero-iteration LoopResult ({ completedCount:0, blockedCount:0, cancelled:false }) after emitting loop_error. Call detection FIRST in run()'s try — BEFORE writeState('starting', null) and before the usage preflight — and early-return on failure with NO state written and NO fallback to claude.\n3. Neutralization sites (REQ-SEC-02): apply `neutralizeForDetection` (item 008) immediately before parseSignal at BOTH sites — work iteration on signalText, review pass on raw stdout. Keep the existing redactSignalTokens log-preview use unchanged. Add neutralizeForDetection to runner.ts's import from ./signal-redactor.js.\n\nEDIT runner.test.ts: a non-checkUsage provider whose stdout contains 'rate limit' is NOT classified usage_limited and raises no error; no preflight/OAuth read for a non-claude run-level provider; a checkUsage provider (claude fake) still runs the usage paths; fail-fast — detectAgent → { available:false } makes the runner return the AgentUnavailableError-shaped error before iteration 1 with the state-writer seam NOT invoked, no backlog status mutation, and the message naming agent + remediation + supported ids; neutralizeForDetection applied at both parseSignal sites.",
+      "acceptanceCriteria": [
+        "Pre-loop preflight, between-iterations usage check, mid-iteration pre-signal banner scan, and post-signal usage_limited arm are all gated on provider.checkUsage (cancellation check NOT gated)",
+        "A non-claude (no checkUsage) agent printing 'rate limit'/'usage limit' in normal output is NOT classified usage_limited and raises no error; claude-cli still runs every usage path exactly as today (SC-2)",
+        "detectAllCandidateAgents probes the run-level id + every distinct per-item provider and returns an AgentUnavailableError-shaped error (FILE_NOT_FOUND) naming the agent + remediation + supported ids on any unavailable",
+        "Fail-fast runs before writeState('starting', null) and before the usage preflight; on failure NO state.json is written, NO backlog status mutates, and there is NO fallback to claude",
+        "neutralizeForDetection is applied immediately before parseSignal at both the work (signalText) and review (stdout) sites; the redactSignalTokens log-preview use is retained",
+        "runner.test.ts covers usage-gating skip (no spurious usage_limited), claude usage paths preserved, fail-fast with no-state-written, and both neutralization sites; pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:45:27.667Z",
+      "dependsOn": [
+        "008",
+        "009"
+      ],
+      "notes": "The cleaner alternative for the post-signal arm: `const exitClass = provider.checkUsage ? classifyExit(...) : downgradeUsageLimited(classifyExit(...))` where downgradeUsageLimited maps usage_limited→genuine_retry. failRunSetup must return the committed zero-iteration LoopResult shape (runner.ts) — the contract is 'zero iterations, no state write', error surfaced via the loop_error event. Detection must run after the item-009 project/global reads.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/05-runner-wiring.md"
+      ]
+    },
+    {
+      "id": "011",
+      "type": "feature",
+      "priority": 1,
+      "title": "CLI surface: --agent flag, --help enumeration, and `rauf agents` command",
+      "description": "The operator-facing CLI in packages/cli — additive, thin, no registry coupling beyond consuming the loop barrel exports.\n\n1. EDIT packages/cli/src/loop-commands.ts (06 §3-4):\n - In handleLoopRun, read `const agent = extractStringFlag(ctx.flags, \"agent\") ?? undefined;` (beside the existing model read) and add `provider: agent` to the LoopStartOptionsSchema.parse({...}) assembly. Omitting --agent must leave provider undefined (identical to today).\n - In runDetached, read `const agent = extractStringFlag(ctx.flags, \"agent\");` (string|null, NOT coalesced — distinct from the in-process `?? undefined` read above) and `if (agent !== null) body.provider = agent;` mirroring the existing body.model send.\n - Add exported `handleAgents(ctx): Promise<number>`: await listAgents() (catch defensively → error + ExitCode.ERROR); for --json (ctx.globalFlags.json) outputJson({ agents: rows }); else render a renderTable with columns ID/NAME/AVAILABLE/DETAIL where available is c.green('yes')/c.yellow('no') and detail is r.detail ?? ''. Return ExitCode.SUCCESS (0) even when all agents are unavailable; spawn no agent subprocess.\n2. EDIT packages/cli/src/commands.ts (06 §3.2-3.3): import getAgentDescriptors from @rauf/loop; compute `const SUPPORTED_AGENT_IDS = getAgentDescriptors().map(d=>d.id).join(\", \")` once at module load; add a `--agent <id>` FlagDef to the `loop run` flags array whose description enumerates SUPPORTED_AGENT_IDS and points to `rauf agents`; add a top-level `agents` CommandDef (name 'agents', usage 'rauf agents [--json]', a --json FlagDef, handler: handleAgents, no subcommands) plus the handleAgents import.\n3. EDIT loop-commands.test.ts: `rauf loop run --agent codex` sets options.provider === 'codex' (in-process) and body.provider === 'codex' (detached); `rauf loop run --help` enumerates ids from getAgentDescriptors() (sync, no PATH probe); `rauf agents` lists each descriptor's id/displayName/available from listAgents() and --json emits { agents: [...] }; the llm_spawned/llm_exited formatter is unchanged.\n4. EDIT packages/cli/src/commands.test.ts (06 §Verification): assert the `loop run` command's flags array contains a `--agent` FlagDef whose description enumerates SUPPORTED_AGENT_IDS, and that a top-level `agents` CommandDef (name 'agents', handler handleAgents, a --json FlagDef, no subcommands) is registered. This is the registration-side test, distinct from loop-commands.test.ts (behavior).",
+      "acceptanceCriteria": [
+        "rauf loop run [path] --agent <id> sets options.provider (in-process) and body.provider (detached); omitting --agent leaves provider undefined",
+        "A --agent <id> FlagDef is registered on `loop run` with a description enumerating SUPPORTED_AGENT_IDS from getAgentDescriptors() (computed once at module load, synchronously)",
+        "`rauf agents` is a top-level command (handler handleAgents, no subcommands) printing an ID/NAME/AVAILABLE/DETAIL table from listAgents(), returning exit 0 even when agents are unavailable and spawning no subprocess",
+        "`rauf agents --json` emits { agents: AgentAvailability[] }",
+        "The llm_spawned/llm_exited formatter is unchanged (already prints event.provider)",
+        "commands.test.ts covers the --agent FlagDef registration on `loop run` and the `agents` CommandDef registration (06 §Verification)",
+        "loop-commands.test.ts covers --agent plumbing (both paths), --help enumeration, and the agents listing/--json; pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-15T23:55:37.544Z",
+      "dependsOn": [
+        "005",
+        "006",
+        "009"
+      ],
+      "notes": "06 §3.1.2 WARNING: confirm the web start route deserializes body.provider into LoopStartOptionsSchema before relying on the detached path (provider is a committed schema field, so it should). The CLI does NOT pre-validate the id against the registry — unknown/absent ids are surfaced by the runner's fail-fast/per-iteration resolve (items 009/010). getAgentDescriptors enumerates built-ins only (claude-cli + 4 presets + generic-cli) — depends on 005/006 having registered them.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/06-cli-surface.md"
+      ]
+    },
+    {
+      "id": "012",
+      "type": "test",
+      "priority": 2,
+      "title": "Generalize test-sandbox harness + add plain-text mock agents",
+      "description": "Generalize the test-sandbox so a loop can be driven end-to-end through each mock agent, while keeping every existing claude scenario unchanged (SC-2). Bash only — no production code.\n\n1. Add plain-text mock dispatchers alongside test-sandbox/claude (07 §4.2): test-sandbox/codex, test-sandbox/gemini, test-sandbox/copilot, and test-sandbox/cursor-agent (binary name is cursor-agent, matching the preset). Each is a tiny dispatcher (like claude) that resolves the scenario from MOCK_AGENT_SCENARIO (fallback MOCK_CLAUDE_SCENARIO, then stream-done) and execs the scenario script in PLAIN-TEXT mode (export MOCK_AGENT_FORMAT=plain).\n2. Add test-sandbox/mock-generic-agent.sh — the target for the reserved generic-cli adapter, driven via a providerConfig ({ binary: <abs path>, promptDelivery: 'stdin', nonInteractive: ['--auto-approve'] }); emits plain text + a final-line RAUF_DONE.\n3. EDIT test-sandbox/scenarios/*.sh to emit EITHER stream-json (claude) OR plain text, selected by MOCK_AGENT_FORMAT. Prefer a shared scenarios/_emit.sh helper (emit_done/emit_blocked/emit_needs_human branching on MOCK_AGENT_FORMAT) so the stream-json and plain-text forms carry the SAME signal on the final non-empty line. In plain mode emit no message_start/content_block_*/message_delta JSON (so no token/tool telemetry exists).\n4. EDIT test-sandbox/claude dispatcher: resolve the scenario as MOCK_AGENT_SCENARIO first, falling back to MOCK_CLAUDE_SCENARIO then stream-done (so every existing MOCK_CLAUDE_SCENARIO usage keeps working).\n5. EDIT test-sandbox/run.sh: add an agent selector + a `run_agent_scenario <agent> <scenario>` helper (the cross-agent sibling of run_scenario) that resets the sandbox, exports the scenario env, puts the chosen mock binary first on PATH, and runs `rauf loop run \"$SANDBOX_DIR\" --iterations 1 --timeout 1 --agent <id>`. For <agent>=claude (or no --agent) behavior is exactly today's path.\n\nThis item adds the harness + mocks; the per-agent assertions live in item 013.",
+      "acceptanceCriteria": [
+        "test-sandbox/{codex,gemini,copilot,cursor-agent} and test-sandbox/mock-generic-agent.sh exist, drain stdin, emit plain text + a final-line RAUF_* signal, and emit no stream-json telemetry in plain mode",
+        "scenarios/*.sh emit stream-json (claude) or plain text selected by MOCK_AGENT_FORMAT, carrying the same signal in both forms",
+        "test-sandbox/claude resolves the scenario via MOCK_AGENT_SCENARIO with a MOCK_CLAUDE_SCENARIO fallback; existing MOCK_CLAUDE_SCENARIO usage is unchanged",
+        "run.sh exposes a run_agent_scenario helper that puts the chosen mock first on PATH and runs `rauf loop run ... --agent <id>`",
+        "Running an existing claude scenario via the generalized run.sh behaves exactly as before",
+        "pnpm gate passes (the unit suites are unaffected by the sandbox changes)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T00:04:11.467Z",
+      "dependsOn": [
+        "010",
+        "011"
+      ],
+      "notes": "The sandbox redirects git to a throwaway repo (GIT_DIR/GIT_WORK_TREE) so commits stay out of the parent repo. verify.sh is NOT part of pnpm gate — this item's gate is just the unit suites; the sandbox is validated by item 013 via `bash test-sandbox/verify.sh`. Reuse over duplication: one signal source of truth per scenario across both formats.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/07-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "013",
+      "type": "test",
+      "priority": 2,
+      "title": "verify.sh per-agent + fail-fast + SC-2 regression assertions",
+      "description": "Add the cross-agent integration assertions to test-sandbox/verify.sh, proving SC-1/SC-3/SC-4 end-to-end and SC-2 regression. Builds on the harness from item 012.\n\nEDIT test-sandbox/verify.sh (07 §4.3, §5, §6):\n1. Add `assert_event_provider <id>`: jq over .rauf/events.ndjson asserting some llm_spawned/llm_exited event has provider == <id>, AND no llm_spawned/llm_exited event carries 'claude-cli' for a non-claude run.\n2. For each of codex, gemini, copilot, cursor (via cursor-agent), and generic-cli (via providerConfig→mock-generic-agent.sh): run the stream-done scenario (plain mode) through run_agent_scenario and assert — item 001 done (assert_item_status), DONE file exists, state limit_reached, exactly one [rauf] 001: commit (assert_dogfood_commit), assert_event_provider <id>, NO 'Usage limit detected' line in .rauf/rauf.log (preflight skipped, REQ-USAGE-02), and NO token-count / llm_tool_activity events (telemetry gracefully absent), with no error.\n3. Add one non-claude stream-blocked run (e.g. codex) asserting item 001 status 'blocked' (plain-text RAUF_BLOCKED parsing, REQ-SIG-02).\n4. Add a fail-fast row: `rauf loop run \"$SANDBOX_DIR\" --iterations 1 --timeout 1 --agent codex` with NO codex mock on PATH, on a fresh sandbox — assert non-zero exit naming codex + how to install/PATH, assert_file_not_exists .rauf/state.json, item 001 still at its pre-run status (no backlog mutation), no [rauf] commit since baseline, and the output does NOT mention falling back to claude.\n5. Confirm all existing claude scenarios (stream-done, stream-blocked, stream-tools, slow-stream, stream-needs-human, usage-limit-stdout, commit-no-signal, fast-infra-death, pause-resume-needs-human, multi-backlog/compat) still pass unchanged.\n\nThe deliverable is `bash test-sandbox/verify.sh` green across all rows (it is a manual integration check, not part of pnpm gate).",
+      "acceptanceCriteria": [
+        "assert_event_provider <id> exists and asserts the real agent id in llm_spawned/llm_exited and the absence of 'claude-cli' for non-claude runs",
+        "Each of codex/gemini/copilot/cursor/generic-cli runs stream-done (plain) and asserts item 001 done + commit + provider==<id> + no 'Usage limit detected' log + no token/llm_tool_activity telemetry + no error",
+        "One non-claude stream-blocked run asserts item 001 'blocked' (plain-text RAUF_BLOCKED)",
+        "A fail-fast row (--agent codex, no codex on PATH, fresh sandbox) exits non-zero naming codex, writes no state.json, mutates no backlog status, makes no commit, and never mentions claude fallback",
+        "All existing claude scenarios still pass unchanged (SC-2)",
+        "bash test-sandbox/verify.sh is green across all rows, and pnpm gate passes"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T00:24:02.876Z",
+      "dependsOn": [
+        "012"
+      ],
+      "notes": "Reuse the exact existing marker the usage-limit-stdout case greps for: `! grep -q \"Usage limit detected\" \"$SANDBOX_DIR/.rauf/rauf.log\"` as the no-preflight assertion. 'No state written' is concretely (a) no .rauf/state.json, (b) no backlog item status change, (c) no per-item commit. WARNING: pnpm gate does NOT invoke verify.sh today — confirm whether CI wires the cross-agent sandbox separately before assuming the rows run automatically.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/agent-agnostic/rauf-agent-cli-adapters/07-testing-strategy.md"
+      ]
+    }
+  ]
+}

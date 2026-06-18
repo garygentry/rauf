@@ -41,13 +41,25 @@ import {
   execGit,
   gitCommit,
   RUNTIME_EXCLUDE_PATHSPECS,
+  listAgents,
 } from "@rauf/loop";
-import type { LoopResult } from "@rauf/loop";
+import type { LoopResult, AgentAvailability } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
-import { c, info, print, error, warn, success, outputJson, configureOutput } from "./formatter.js";
+import {
+  c,
+  info,
+  print,
+  error,
+  warn,
+  success,
+  outputJson,
+  configureOutput,
+  renderTable,
+  type TableColumn,
+} from "./formatter.js";
 import { StatusLine } from "./status-line.js";
 import {
   readServerState,
@@ -367,6 +379,7 @@ async function runDetached(ctx: CommandContext): Promise<number> {
   const iterations = extractNumberFlag(ctx.flags, "iterations");
   const retries = extractNumberFlag(ctx.flags, "retries");
   const model = extractStringFlag(ctx.flags, "model");
+  const agent = extractStringFlag(ctx.flags, "agent");
   const timeout = extractNumberFlag(ctx.flags, "timeout");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
   // Resolve maxIterations CLI-side (flag > .rauf.json > computed) and log the
@@ -383,6 +396,7 @@ async function runDetached(ctx: CommandContext): Promise<number> {
   }
   if (retries !== null) body.maxRetries = retries;
   if (model !== null) body.model = model;
+  if (agent !== null) body.provider = agent;
   if (timeout !== null) body.sessionTimeoutMinutes = timeout;
   if (backlogFlag !== null) body.backlogRoot = backlogFlag;
   if (suppressIterationReview) body.suppressIterationReview = true;
@@ -670,6 +684,9 @@ function isLimitTerminal(result: LoopResult): boolean {
  * RUNNING(6) is NEVER returned here — a finished run is not running.
  */
 export function loopRunExitCode(result: LoopResult): ExitCode {
+  if (result.setupFailed) {
+    return ExitCode.ERROR; // 1 — pre-loop setup aborted (e.g. agent unavailable, REQ-DET-02/SC-3)
+  }
   const needsHuman = (result.needsHumanCount ?? 0) > 0 || result.pausedReason === "needs_human";
   if (needsHuman) {
     return ExitCode.NEEDS_HUMAN; // 3
@@ -800,6 +817,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const iterations = resolveLoopMaxIterations(projectPath, paths, iterationsFlag);
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
   const model = extractStringFlag(ctx.flags, "model") ?? undefined;
+  const agent = extractStringFlag(ctx.flags, "agent") ?? undefined; // REQ-SEL-01 (00 §4: agent → provider)
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
   const reviewOnly = extractBoolFlag(ctx.flags, "review-only");
   const review = extractBoolFlag(ctx.flags, "review") || reviewOnly;
@@ -814,6 +832,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     maxIterations: iterations,
     maxRetries: retries,
     model,
+    provider: agent, // NEW — REQ-SEL-01; lands in LoopStartOptions.provider (schemas.ts:377)
     sessionTimeoutMinutes: timeout,
     review,
     reviewOnly,
@@ -1153,6 +1172,49 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
   }
+}
+
+// ─── handleAgents ────────────────────────────────────────────────────
+
+/**
+ * `rauf agents` — list every registered coding agent and whether its CLI is
+ * available on this machine (REQ-DISC-02). Pure read + PATH/credential probe
+ * only: NO agent subprocess is spawned (availability derivation is
+ * `listAgents()` → per-descriptor `detect`). Never fails on an unavailable
+ * agent: an absent CLI is reported as `available: false`, not an error.
+ *
+ * @param ctx - CLI command context (honors `--json` via ctx.globalFlags.json).
+ * @returns ExitCode.SUCCESS (0) on success; ExitCode.ERROR (1) only on an
+ *          unexpected internal failure (listAgents never rejects, so defensive).
+ */
+export async function handleAgents(ctx: CommandContext): Promise<number> {
+  let rows: AgentAvailability[];
+  try {
+    rows = await listAgents(); // never rejects; unavailable agents are data, not errors
+  } catch (e) {
+    error(`Failed to list agents: ${e instanceof Error ? e.message : String(e)}`);
+    return ExitCode.ERROR;
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson({ agents: rows });
+    return ExitCode.SUCCESS;
+  }
+
+  const columns: TableColumn[] = [
+    { header: "ID", key: "id" },
+    { header: "NAME", key: "name" },
+    { header: "AVAILABLE", key: "available" },
+    { header: "DETAIL", key: "detail" },
+  ];
+  const tableRows = rows.map((r) => ({
+    id: r.id,
+    name: r.displayName,
+    available: r.available ? c.green("yes") : c.yellow("no"),
+    detail: r.detail ?? "",
+  }));
+  print(renderTable(columns, tableRows));
+  return ExitCode.SUCCESS;
 }
 
 // ─── Event Formatting ───────────────────────────────────────────────

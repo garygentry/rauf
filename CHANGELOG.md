@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+## 0.7.0
+
+The agent-agnostic epic — rauf's loop runner is no longer Claude-only. A pluggable
+provider layer (`packages/loop/src/providers/`) lets the loop drive any CLI coding
+agent via presets + a generic adapter, with agent selection, availability
+pre-checks, and a hardened process-group lifecycle. Additive minor bump.
+
+### Added
+
+- **LLM-agnostic provider architecture** in `packages/loop` — `providers/`
+  (registry, presets, generic-CLI + CLI-agent adapters, shared types), an
+  `agent-selection` resolver, and a `process-group` lifecycle for clean
+  child-process teardown. The runner resolves and launches the configured agent
+  by precedence and classifies its outcome provider-agnostically.
+- **`.gitattributes`** — LF normalization (`* text=auto eol=lf`) + `export-ignore`
+  for dev-only trees (`specs/`, `tests/`, `.github/`, `test-sandbox/`).
+- **npm-publishability prep** on the packages the installer's `rauf@0.6.0` pin
+  targets (`publishConfig` / `files` / `bin`) — machinery only; **no publish** is
+  executed (the `npx rauf@0.6.0` path is documented as "available once rauf 0.6.0
+  is published").
+- **Optional `npm-publish.yml`** — `workflow_dispatch`-only publish machinery,
+  outside the PR gate (not run by this feature).
+
+### Changed
+
+- **README** — added a labeled cross-agent section linking feature-forge's
+  cross-agent install story (loop-runner framing retained).
+
 ## 0.6.0
 
 Phase 4 of the rauf UX/DX overhaul — web/CLI recovery parity, a shared status

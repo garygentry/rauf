@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "epic": "agent-agnostic",
+  "description": "Make both the rauf loop runner and the feature-forge skill/pipeline repo operate optimally under any coding agent (Claude Code, Codex, Copilot, Cursor, Gemini CLI, and the broader Agent Skills ecosystem) and be packageable/installable for multiple agents with minimal configuration. In rauf this means a coding-agent CLI adapter layer so loop iterations can be driven by any agent CLI (default: claude). In feature-forge it means the full runbook treatment: spec-pure SKILL.md canon, generated per-agent adapters, AGENTS.md, a universal installer, and hardened packaging/docs/CI. Because the loop is integral to the feature-forge lifecycle, feature-forge defaults to rauf, ships it as part of its multi-agent install, and still supports alternate loop runners. Spans structure, operation, packaging/installation, and documentation across both repos.",
+  "status": "active",
+  "narrativeDoc": "EPIC.md",
+  "createdAt": "2026-06-15T17:44:28Z",
+  "updatedAt": "2026-06-15T17:44:28Z",
+  "features": [
+    {
+      "name": "rauf-agent-cli-adapters",
+      "charter": "Target repo: rauf. Give the loop runner a coding-agent CLI adapter layer so a single loop iteration can be executed by any coding-agent CLI (claude, codex, gemini, copilot, cursor, ...), not just `claude`, with claude remaining the default. Introduce an AgentAdapter abstraction (spawn the agent process, parse its stream, detect loop signals) and an agent-cli registry that maps each supported agent to its invocation/stream/signal configuration plus a detection probe. Surface agent selection through the runner (e.g. a `--agent` option / config) following the existing model-selection precedence. Must keep the claude path first-class and not degrade existing loop behavior. Exposes the adapter interface, the registry, and the agent-selection surface that the installer bundles and that feature-forge's loop integration drives.",
+      "dependsOn": [],
+      "exposes": [
+        {
+          "name": "AgentAdapter",
+          "kind": "type",
+          "summary": "Abstraction for driving a coding-agent CLI through one loop iteration: process spawn, stream parse, signal detection."
+        },
+        {
+          "name": "agent-cli-registry",
+          "kind": "module",
+          "summary": "Registry + runtime detection of supported agent CLIs with per-agent invocation/stream/signal config."
+        },
+        {
+          "name": "loop-agent-selection",
+          "kind": "module",
+          "summary": "Runner surface (e.g. --agent / config) selecting the coding agent for a loop run; defaults to claude."
+        }
+      ],
+      "consumes": []
+    },
+    {
+      "name": "forge-skill-spec-purity",
+      "charter": "Target repo: feature-forge. Establish the spec-pure canonical core: audit every skills/*/SKILL.md, reduce frontmatter to the spec-sanctioned set (name + description, plus optional license/compatibility/metadata/allowed-tools), and relocate every vendor-only key (Claude hook wiring, Codex invocation policy, Copilot invocation flags) out of the canonical body. Replace ${CLAUDE_PLUGIN_ROOT} inside bundled scripts with a portable multi-root resolver that probes the candidate skill roots. Keep skill bodies within the recommended size, pushing detail into references/. This feature owns the single source of truth from which all per-agent adapters are later generated; it changes no per-agent output itself. Exposes the spec-pure skill set and the portable resolver that the build step consumes.",
+      "dependsOn": [],
+      "exposes": [
+        {
+          "name": "spec-pure-skills",
+          "kind": "module",
+          "summary": "Canonical skills/*/SKILL.md reduced to spec-sanctioned frontmatter \u2014 the single source of truth for adapter generation."
+        },
+        {
+          "name": "portable-skill-root-resolver",
+          "kind": "function",
+          "summary": "Script-side resolver replacing ${CLAUDE_PLUGIN_ROOT} with multi-root probing across agent skill dirs."
+        }
+      ],
+      "consumes": []
+    },
+    {
+      "name": "forge-agent-adapters-build",
+      "charter": "Target repo: feature-forge. Add the canonical-to-per-agent build step: a generator that walks the spec-pure canonical skills, parses frontmatter, and emits per-agent artifacts (Codex mirror + optional agents/openai.yaml, Copilot copy with Copilot frontmatter, Cursor .mdc, gemini-extension.json) into adapters/, each carrying a DO-NOT-EDIT generated header. Author the canonical AGENTS.md cross-agent project instructions (documenting build/test/conventions and install priority). Wire a CI regenerate-and-diff so generated adapters can never drift from canon. Consumes the spec-pure skills and portable resolver as read-only inputs. Exposes the generator, AGENTS.md, and the generated adapters/ tree that the installer ships.",
+      "dependsOn": [
+        "forge-skill-spec-purity"
+      ],
+      "exposes": [
+        {
+          "name": "build-adapters",
+          "kind": "function",
+          "summary": "Generator deriving per-agent artifacts (claude/codex/copilot/cursor/gemini) from the canonical skills."
+        },
+        {
+          "name": "AGENTS.md",
+          "kind": "module",
+          "summary": "Canonical cross-agent project instructions: build/test, conventions, and install-path priority."
+        },
+        {
+          "name": "adapters-output",
+          "kind": "module",
+          "summary": "Generated adapters/ tree (per-agent skill mirrors + manifests) consumed by the installer and CI diff."
+        }
+      ],
+      "consumes": [
+        {
+          "from": "forge-skill-spec-purity",
+          "name": "spec-pure-skills",
+          "summary": "Read-only canonical input the generator derives all per-agent adapters from."
+        },
+        {
+          "from": "forge-skill-spec-purity",
+          "name": "portable-skill-root-resolver",
+          "summary": "Resolver copied into the generated per-agent script mirrors."
+        }
+      ]
+    },
+    {
+      "name": "cross-agent-installer",
+      "charter": "Target repo: feature-forge (bundles rauf). Ship a cross-platform, zero-config CLI installer that detects installed coding agents by probing their config dirs and installs the generated per-agent skills idempotently \u2014 supporting add/update/uninstall/list, --dry-run, --global/-g, --agent/-a, --symlink (opt-in; copy by default on Windows), and -y for CI. The installer also bundles rauf as the default loop runner so a multi-agent install yields a working loop out of the box. Consumes the generated adapters output and rauf's agent adapter layer/binary. Exposes the installer CLI and its per-agent detection map that packaging/docs and the forge loop integration rely on.",
+      "dependsOn": [
+        "forge-agent-adapters-build"
+      ],
+      "exposes": [
+        {
+          "name": "cross-agent-installer-cli",
+          "kind": "module",
+          "summary": "npx-style installer: detect agents, copy/symlink skills, dry-run/update/uninstall/list; bundles rauf."
+        },
+        {
+          "name": "agent-detection-map",
+          "kind": "function",
+          "summary": "Per-agent config-dir map + detection used to target installs and CI dry-runs."
+        }
+      ],
+      "consumes": [
+        {
+          "from": "forge-agent-adapters-build",
+          "name": "adapters-output",
+          "summary": "The generated per-agent artifacts the installer copies/symlinks into each agent's dir."
+        }
+      ]
+    },
+    {
+      "name": "forge-rauf-loop-default",
+      "charter": "Target repo: feature-forge (integration with rauf). Wire the feature-forge loop stage (forge-5-loop) to default to rauf as its loop runner while still supporting alternate runners through the existing loopRunner config, and to drive iterations across coding agents via rauf's agent adapter layer. Ensure forge locates/ships rauf through the installer so the default path works after a multi-agent install. This feature owns the forge<->rauf seam: the loop-runner contract, the default-to-rauf-but-pluggable behavior, and agent selection flowing from forge through rauf. Consumes rauf's adapter layer and the installer; exposes the forge loop-runner contract that packaging/docs documents.",
+      "dependsOn": [
+        "rauf-agent-cli-adapters",
+        "cross-agent-installer"
+      ],
+      "exposes": [
+        {
+          "name": "forge-loop-runner-contract",
+          "kind": "module",
+          "summary": "forge-5-loop drives rauf by default, supports alternate runners, and selects the coding agent per run."
+        }
+      ],
+      "consumes": [
+        {
+          "from": "rauf-agent-cli-adapters",
+          "name": "loop-agent-selection",
+          "summary": "Agent selection surface forge passes through when invoking rauf across coding agents."
+        },
+        {
+          "from": "cross-agent-installer",
+          "name": "cross-agent-installer-cli",
+          "summary": "Locates/ships the bundled rauf so the default loop path works post-install."
+        }
+      ]
+    },
+    {
+      "name": "packaging-docs-ci",
+      "charter": "Target repos: both (capstone). Finalize and gate the assembled cross-agent system. Rewrite both repos' READMEs to lead with the Claude-preferred marketplace install then the universal one-liner and a per-surface table; add per-agent setup docs. Stand up CI gates: claude plugin validate --strict, SKILL.md schema validation (name/description, name==dir), shellcheck/ruff, trigger-accuracy evals, an OS matrix running the installer --dry-run + uninstall, and the adapters regenerate-and-diff. Handle cross-OS concerns (.gitattributes LF/export-ignore safety, executable bits) and align versioning/licensing (semver + CHANGELOG, synced version headers across plugin.json/gemini-extension.json/SKILL.md, Apache-2.0 + docs license). Consumes the installer, the forge loop contract, the adapters output, and the spec-pure skills as the things it documents and gates.",
+      "dependsOn": [
+        "cross-agent-installer",
+        "forge-rauf-loop-default",
+        "forge-agent-adapters-build",
+        "forge-skill-spec-purity"
+      ],
+      "exposes": [
+        {
+          "name": "release-and-ci-gates",
+          "kind": "module",
+          "summary": "READMEs/per-agent docs + CI gates (validate --strict, schema, lint, evals, OS matrix, regen-diff) + versioning/licensing/.gitattributes across both repos."
+        }
+      ],
+      "consumes": [
+        {
+          "from": "cross-agent-installer",
+          "name": "cross-agent-installer-cli",
+          "summary": "Exercised by the OS-matrix dry-run/uninstall CI and documented in the install sections."
+        },
+        {
+          "from": "forge-rauf-loop-default",
+          "name": "forge-loop-runner-contract",
+          "summary": "Documented as the default forge<->rauf loop path in the per-agent docs."
+        },
+        {
+          "from": "forge-agent-adapters-build",
+          "name": "adapters-output",
+          "summary": "Gated by the CI regenerate-and-diff check."
+        },
+        {
+          "from": "forge-skill-spec-purity",
+          "name": "spec-pure-skills",
+          "summary": "Gated by the SKILL.md schema / spec-purity CI check."
+        }
+      ]
+    }
+  ]
+}

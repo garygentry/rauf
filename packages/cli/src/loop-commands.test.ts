@@ -3,7 +3,7 @@ import path from "node:path";
 import * as os from "node:os";
 import * as http from "node:http";
 import { execSync } from "node:child_process";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import type { LoopEvent } from "@rauf/core";
 import { LoopEventSchema, defaultBacklogPaths } from "@rauf/core";
@@ -18,9 +18,12 @@ import {
   createLoopBranch,
   buildPreconditionRemediation,
   handleLoopRun,
+  handleAgents,
   loopRunExitCode,
 } from "./loop-commands.js";
 import type { LoopResult } from "@rauf/loop";
+import { LoopRunner, getAgentDescriptors, listAgents } from "@rauf/loop";
+import { err, ErrorCodes } from "@rauf/core";
 import { SERVER_STATE_FILE, writeServerState, removeServerState } from "./server-commands.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -141,6 +144,16 @@ describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)",
       name: "limit precedes blocked (order)",
       result: { ...base, blockedCount: 1, limitReached: true },
       expected: ExitCode.LIMIT,
+    },
+    {
+      name: "setupFailed → ERROR(1) (fail-fast agent unavailable, REQ-DET-02/SC-3)",
+      result: { ...base, setupFailed: true },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "setupFailed precedes every other terminal (highest priority)",
+      result: { ...base, setupFailed: true, completedCount: 5, limitReached: true },
+      expected: ExitCode.ERROR,
     },
   ];
 
@@ -1173,6 +1186,187 @@ describe("loop run --detached", () => {
       removeServerState();
       await close();
     }
+  });
+
+  it("forwards --agent <id> as body.provider in the POST body (REQ-SEL-01)", async () => {
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj-agent");
+      fs.mkdirSync(proj, { recursive: true });
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["agent", "codex"],
+        ]),
+      });
+
+      let code = -1;
+      await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+      expect((startCalls[0]!.body as Record<string, unknown>).provider).toBe("codex");
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+});
+
+// ─── --agent flag plumbing + `rauf agents` (item 011, 06 §3-4) ──────────
+
+describe("loop run --agent plumbing (in-process)", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-agent-"));
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function git(cwd: string, args: string): void {
+    execSync(`git ${args}`, { cwd, stdio: "ignore" });
+  }
+
+  /** A minimal runnable rauf project on a non-protected branch. */
+  function makeProject(): string {
+    const projectDir = path.join(tmpDir, "proj");
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(raufDir, "backlog.json"),
+      JSON.stringify(
+        {
+          schemaVersion: "1",
+          project: "p",
+          description: "d",
+          items: [
+            {
+              id: "001",
+              type: "feature",
+              priority: 1,
+              title: "Item 001",
+              description: "d",
+              acceptanceCriteria: ["Tests pass"],
+              status: "pending",
+              completedAt: null,
+              dependsOn: [],
+            },
+          ],
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    fs.writeFileSync(path.join(raufDir, "RAUF.md"), "# Test RAUF.md\nVerification: true\n");
+    git(projectDir, "-c init.defaultBranch=main init");
+    git(projectDir, 'config user.email "test@test.com"');
+    git(projectDir, 'config user.name "Test"');
+    git(projectDir, "add -A");
+    git(projectDir, 'commit -m "baseline"');
+    git(projectDir, "switch -c feat/agent");
+    return projectDir;
+  }
+
+  it("--agent codex sets options.provider === 'codex'", async () => {
+    const proj = makeProject();
+    // Short-circuit before the loop actually runs: capture the options handed to
+    // LoopRunner.create and return an err so handleLoopRun returns early.
+    let captured: Record<string, unknown> | undefined;
+    vi.spyOn(LoopRunner, "create").mockImplementation((_path, options) => {
+      captured = options as unknown as Record<string, unknown>;
+      return err({ code: ErrorCodes.IO_ERROR, message: "stop" });
+    });
+
+    const ctx = makeCtx({
+      args: [proj],
+      flags: new Map<string, string | true>([["agent", "codex"]]),
+    });
+    await captureOutput(async () => {
+      await handleLoopRun(ctx);
+    });
+
+    expect(captured?.provider).toBe("codex");
+  });
+
+  it("omitting --agent leaves options.provider undefined", async () => {
+    const proj = makeProject();
+    let captured: Record<string, unknown> | undefined;
+    vi.spyOn(LoopRunner, "create").mockImplementation((_path, options) => {
+      captured = options as unknown as Record<string, unknown>;
+      return err({ code: ErrorCodes.IO_ERROR, message: "stop" });
+    });
+
+    const ctx = makeCtx({ args: [proj] });
+    await captureOutput(async () => {
+      await handleLoopRun(ctx);
+    });
+
+    expect(captured?.provider).toBeUndefined();
+  });
+});
+
+describe("loop run --agent help enumeration (06 §3.2)", () => {
+  it("the --agent FlagDef description enumerates getAgentDescriptors() ids (sync, no probe)", () => {
+    const run = findCommand("loop")!.subcommands!.find((s) => s.name === "run")!;
+    const agentFlag = run.flags!.find((f) => f.name.startsWith("--agent"));
+    expect(agentFlag).toBeDefined();
+    const ids = getAgentDescriptors().map((d) => d.id);
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(agentFlag!.description).toContain(id);
+    }
+  });
+});
+
+describe("rauf agents command (06 §3.3)", () => {
+  beforeEach(() => {
+    configureOutput({ noColor: true, quiet: false, json: false });
+  });
+
+  it("lists each registered descriptor's id/displayName/availability", async () => {
+    const ctx = makeCtx();
+    let code = -1;
+    const out = await captureOutput(async () => {
+      code = await handleAgents(ctx);
+    });
+    expect(code).toBe(ExitCode.SUCCESS);
+    const rows = await listAgents();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(out.stdout).toContain(r.id);
+      expect(out.stdout).toContain(r.displayName);
+    }
+    // Header columns present.
+    expect(out.stdout).toContain("AVAILABLE");
+    expect(out.stdout).toContain("DETAIL");
+  });
+
+  it("--json emits { agents: AgentAvailability[] }", async () => {
+    configureOutput({ noColor: true, quiet: false, json: true });
+    const ctx = makeCtx({
+      globalFlags: { json: true, noColor: true, quiet: false, root: null },
+    });
+    let code = -1;
+    const out = await captureOutput(async () => {
+      code = await handleAgents(ctx);
+    });
+    configureOutput({ noColor: true, quiet: false, json: false });
+    expect(code).toBe(ExitCode.SUCCESS);
+    const parsed = JSON.parse(out.stdout) as { agents: Array<{ id: string; available: boolean }> };
+    expect(Array.isArray(parsed.agents)).toBe(true);
+    const expected = await listAgents();
+    expect(parsed.agents.map((a) => a.id)).toEqual(expected.map((a) => a.id));
+    expect(parsed.agents[0]).toHaveProperty("available");
   });
 });
 

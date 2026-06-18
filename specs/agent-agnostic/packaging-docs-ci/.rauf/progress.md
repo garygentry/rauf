@@ -1,0 +1,91 @@
+# Progress — packaging-docs-ci
+
+## Item 001 (SKILL.md frontmatter schema + schema-driven check-spec-purity.py)
+
+- All deliverables live in `../feature-forge`, not rauf. Edits left in that repo's working tree.
+- **Schema-root vs scan-root gotcha:** `_load_frontmatter_key_sets` must resolve the schema from the
+  script's own repo root (`Path(__file__).resolve().parent.parent`), NOT from `args.root`. The
+  existing subprocess fixture tests pass `--root <tmp fixture tree>` which carries no schema; using
+  `args.root` makes the loader SystemExit and breaks ~21 pre-existing tests. The frontmatter key set
+  is a property of the canon, independent of which tree is scanned.
+- **importlib for the hyphenated module:** `tests/test_check_spec_purity.py` loads `check-spec-purity.py`
+  via `importlib.util.spec_from_file_location`; must `sys.modules[spec.name] = module` before
+  `exec_module` or dataclass annotation resolution (`from __future__ import annotations`) fails.
+- `bash scripts/validate.sh` exits 1 overall on a clean tree too — that's the pre-existing **adapters
+  regen-diff (step 6b)** drift from the gemini 0.0.0 desync (item 012 fixes it). Step 6a (spec-purity)
+  passes. Don't chase the overall exit-1.
+- zsh `cp` is aliased to `cp -i` (interactive) — use `/bin/cp -f` for non-interactive restores.
+
+## Item 003 (lint floors .shellcheckrc + ruff.toml + fix scripts/ violations)
+
+- **Tooling was absent on this host** — installed ad hoc: `pip install ruff` (0.15.17) and
+  `apt-get install shellcheck` (0.8.0). Needed before any of the criteria can run.
+- **shellcheck 0.8.0 does NOT honor the `severity=warning` directive in `.shellcheckrc`** — info-level
+  findings still make `shellcheck scripts/*.sh` exit 1 even with the spec's exact rc. Do NOT rely on the
+  severity floor to suppress them on this version. Instead I FIXED the 3 SC2295 (info) findings in
+  validate.sh using shellcheck's own suggested quoting `${VAR#"$REPO_ROOT"/}` (behavior-identical for
+  normal paths). Global `disable=` in the rc is forbidden by criterion 5, so fixing is the right call.
+- **ruff E501 (12 hits) were ALL in sibling-owned `epic-manifest.py`** — scoped each with a per-line
+  `# noqa: E501` (spec 02 §4.3 explicitly blesses this carve-out for the sibling files), zero behavior
+  risk vs. reflowing someone else's message strings. Floor stays E/F/W; nothing removed.
+- **Criterion 4 ("validate.sh still exits 0") cannot be met literally** — validate.sh exits 1 from the
+  PRE-EXISTING step-6b adapters regen-diff drift (gemini 0.0.0 desync → item 012, PLUS item 001's
+  `references/skill-frontmatter.schema.json` not yet regenerated into `adapters/*/references/`).
+  Proven not-my-fault via `git stash` → validate still exits 1 with the identical "out of date" error.
+  The criterion's true intent ("no behavior change from lint fixes") IS satisfied: my validate.sh diff is
+  only the 3 quote fixes and all frontmatter/permission steps still PASS.
+- **feature-forge changes accumulate UNCOMMITTED across items** — the loop commits in rauf, not the
+  sibling repo. `git diff` in feature-forge shows item 001's edits + item 003's together; that's expected
+  for this cross-repo epic, not stray work.
+
+## Item 004 (wire claude-plugin-validate step 3a + traceability step 8 into validate.sh)
+
+- Both insertions are byte-exact from spec 02 §4.1 (3a, after step 3) and §4.6 (8, before the final
+  tally). validate.sh stays shellcheck-clean (`shellcheck scripts/validate.sh` exits 0 with the
+  item-003 `.shellcheckrc`).
+- **feature-forge DOES carry a specs tree** (`specs/epic-orchestration/PRD.md`, 32 reqs / 6 spec
+  files) — so step 8 RAN and PASSED (not the SKIP branch). The non-fatal SKIP branch still exists for
+  repos with no specs tree, as specified. The item notes' "no specs tree -> SKIP" assumption was
+  stale; traceability is fully green here.
+- **The `claude` CLI IS present on this host** (item notes assumed it likely absent). So step 3a took
+  the CLI-present branch and `claude plugin validate --strict` reported errors — but only the
+  **item-012 marketplace desync** (`plugins[0].version 0.9.0` vs `plugin.json 0.10.0`) plus a
+  cosmetic "no marketplace description" warning (--strict treats warnings as errors). Item 012's
+  marketplace 0.9.0->0.10.0 reconcile clears the version warning. Confirmed independent of my edit by
+  running `claude plugin validate --strict .` by hand — same failure.
+- **validate.sh exits 1 overall**, from exactly two PRE-EXISTING/downstream causes, neither from my
+  insertions: (1) claude-validate's item-012 marketplace desync above; (2) step 6b adapters
+  regen-diff drift (gemini 0.0.0 + item-001 schema not yet regenerated into adapters/) — the same
+  accepted condition items 001/003 documented. Item 012 (+ adapters regen) flips both to green.
+- Net: AC1/AC2/AC4 hold; AC3's literal "exits 0" is gated on downstream item 012, mirroring the
+  items 001/003 precedent — the two insertions themselves are correct and behavior-neutral to all
+  other steps.
+
+## Item 011 (rauf README cross-agent section)
+
+- Added a single `## Multi-agent / feature-forge` section to rauf/README.md between `## Features`
+  and `## Install`, verbatim from spec 05 §2.1 skeleton. No loop commands shown (sidesteps the
+  removed-grammar checks), no `ralph` token (links feature-forge's README, not ralph-loop-contract.md),
+  no version pin, no phantom subcommand. MIT badge + everything else untouched. No marketplace table.
+- **check:docs is GREEN** for the edit (`pnpm check:docs` → "check-docs clean: 22 doc file(s)
+  scanned"). That is the gate this item targets.
+- **`pnpm gate` fails only at `format:check`** on 20 PRE-EXISTING `docs/architecture/*` files
+  (cross-agent-installer, forge-agent-adapters-build, forge-rauf-loop-default, forge-skill-spec-purity,
+  rauf-agent-cli-adapters). Proven not-mine via `git stash` → identical 20-file failure on the clean
+  tree. These are prior forge-6-docs output drift, outside this item's scope (README-only edit). The
+  item's substantive bar (check:docs over README) passes.
+
+## Item 016 (rauf npm-publishability prep + optional npm-publish.yml)
+
+- **Pin target = ROOT manifest, not @rauf/cli.** The installer pin `RAUF_PIN = rauf@0.6.0`
+  is an UNSCOPED name `rauf`, which byte-matches the root `package.json` (`name: "rauf"`).
+  `@rauf/cli` is scoped (`@rauf/cli`) and would NOT resolve from `npx rauf@0.6.0`. So the npm-prep
+  metadata (remove `private:true`, add `publishConfig:{access:public}`, `files:["dist"]`,
+  `bin:{rauf:"dist/index.js"}`) went on the ROOT manifest. No version field changed anywhere.
+- `pnpm version:check` stays green — all six manifests still 0.6.0 (only metadata fields added).
+- Added `.github/workflows/npm-publish.yml` verbatim from spec 06 §7.2: `workflow_dispatch`-only,
+  publish step left COMMENTED. No `npm publish` executed.
+- **`pnpm gate` fails ONLY at `format:check`** on the same 20 PRE-EXISTING `docs/architecture/*`
+  files item 011 documented (forge-6-docs drift). Proven not-mine via `git stash` → identical 21
+  warnings on the clean tree. My edits (package.json, npm-publish.yml) add zero new format failures.
+- **OQ-A SURFACED, not decided** — see signal output below.

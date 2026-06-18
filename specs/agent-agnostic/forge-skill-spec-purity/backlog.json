@@ -1,0 +1,251 @@
+{
+  "schemaVersion": "1",
+  "project": "forge-skill-spec-purity",
+  "description": "Make the feature-forge skill suite a vendor-neutral, spec-pure canonical source of truth (epic agent-agnostic, epic root). A mechanical, behavior-preserving refactor: reduce every SKILL.md frontmatter to the Agent Skills allowed key set (relocate argument-hint -> metadata), replace all canonical ${CLAUDE_PLUGIN_ROOT} usages with a portable Bash resolver + bootstrap prelude, bring three oversized skill bodies within a 300-line / 5000-word budget, and deliver a stdlib-only spec-purity checker that hard-gates the canon. CRITICAL (constraint C-1): ALL implementation lands in the feature-forge repo at /home/gary/workspace/feature-forge; these specs/backlog/loop run from the rauf repo. The loop iteration MUST operate against the feature-forge working tree and MUST NOT modify the rauf repo. This feature ships Bash + Python 3 (stdlib only) + Markdown -- there is NO TypeScript and NO pnpm here; ignore rauf's pnpm gate. Per-item verification runs from the feature-forge repo root using python3 scripts/check-spec-purity.py, python3 -m pytest tests, and bash scripts/validate.sh. Completion gate (REQ-VER-03): the checker exits 0 against all 11 final skills AND scripts/validate.sh passes end-to-end.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add portable root resolver (forge-root.sh) + canonical prelude doc + resolver tests",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1); specs live in the rauf repo at specs/agent-agnostic/forge-skill-spec-purity/. This item is purely ADDITIVE -- do not edit any SKILL.md yet.\n\n1. Create scripts/forge-root.sh (mode 0755) -- the exposed portable-skill-root-resolver. Copy the complete script verbatim from spec 03 section 2: #!/usr/bin/env bash + set -euo pipefail; is_root() tests BOTH sentinel files (scripts/epic-manifest.py AND .claude-plugin/plugin.json); the exact 4-step resolution order: (1) self-location via cd/pwd -P of the script's parent dir, (2) candidate-root probe ($HOME/.claude/skills/feature-forge and $HOME/.claude/plugins/*/feature-forge), (3) env fallback ${CLAUDE_PLUGIN_ROOT:-} (the single sanctioned residual), (4) actionable failure to stderr + exit 1. It only printf's a directory -- never sources/executes a discovered path (REQ-SEC-01).\n\n2. Create references/portable-root.md -- the single canonical home of the bootstrap prelude (per spec 03 section 4): purpose paragraph, the canonical 2-line prelude in a ```bash block byte-identical to BOOTSTRAP_PRELUDE in spec 00 section 3, a usage subsection with a worked example, the three invariants, and a pointer to forge-root.sh.\n\n3. Create tests/test_forge_root.py (pytest driving bash forge-root.sh as a subprocess) covering the four cases in spec 06 section 3: (a) self-location, (b) total failure, (c) env fallback, (d) candidate probe. Cases (b)/(c)/(d) MUST run with a redirected HOME (env HOME=tmp empty-home, CLAUDE_PLUGIN_ROOT='') so the maintainer's live ~/.claude dev symlink cannot leak in and false-pass.\n\nDo NOT wire anything into validate.sh here. Do NOT create check-spec-purity.py here (item 002).",
+      "acceptanceCriteria": [
+        "scripts/forge-root.sh exists, is mode 0755, starts with #!/usr/bin/env bash and set -euo pipefail, and implements the exact 4-step resolution order (self-location -> candidate probe -> env fallback -> actionable failure) from spec 03 section 2",
+        "is_root() checks both sentinel files (scripts/epic-manifest.py AND .claude-plugin/plugin.json); the resolver never sources or executes a discovered path (only printf's a directory)",
+        "With no discoverable root and CLAUDE_PLUGIN_ROOT unset, forge-root.sh writes exactly 'feature-forge: cannot locate plugin root. Set CLAUDE_PLUGIN_ROOT or run from an installed skill dir.' to stderr and exits 1",
+        "references/portable-root.md exists and its bash prelude block is byte-identical to the canonical BOOTSTRAP_PRELUDE in spec 00 section 3",
+        "tests/test_forge_root.py covers cases (a) self-location, (b) total failure, (c) env fallback, (d) candidate probe per spec 06 section 3: cases (a)/(c)/(d) assert exit 0 AND stdout equals the expected absolute root; case (b) asserts exit 1 AND stderr contains the exact message from acceptance criterion #3; HOME redirected for cases (b)/(c)/(d); python3 -m pytest tests/test_forge_root.py passes from the feature-forge repo root",
+        "bash scripts/validate.sh passes end-to-end from the feature-forge repo root (the script-permission step enforces forge-root.sh's 0755 bit)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T14:42:59.776Z",
+      "dependsOn": [],
+      "notes": "All paths are in /home/gary/workspace/feature-forge. The prelude string is owned by spec 00 section 3 and reproduced byte-identically in spec 03 sections 3-4; copy from there. Globs that match nothing expand to themselves, so the is_root test must reject literal unexpanded globs. pwd -P (not realpath) is used deliberately for portability. This file is copied verbatim into per-agent mirrors downstream, so keep it dependency-free.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/03-portable-root-resolver.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/00-core-definitions.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/01-architecture-layout.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add spec-purity checker (check-spec-purity.py) + pytest suite + fixtures",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Additive -- do not edit any SKILL.md, and do NOT wire the checker into validate.sh (that is item 009).\n\n1. Create scripts/check-spec-purity.py (mode 0755) -- pure Python 3 stdlib, NO pyyaml (match epic-manifest.py). Implement exactly per spec 05: the CLI `check-spec-purity.py [--root DIR]` (default root = parent of the script dir); the hand-rolled frontmatter reader (spec 05 section 2 / contract spec 00 section 4); the five rules (1 frontmatter-keys incl. malformed-block, 2 name-matches-dir, 3 no-residual-var over CANONICAL_SURFACES, 4 body-size HARD FAIL <=300 lines AND <=5000 words, 5 prelude byte-identity); collect_violations sorted by (path, rule, reason); report() printing a human-readable summary + one 'file: reason' line per violation. Exit 0 clean / 1 violations / 2 argparse usage (spec 00 section 7). Use the canonical reason-string tokens from spec 00 section 5; do not re-type literals inline.\n\n2. Create tests/test_check_spec_purity.py + tests/fixtures/ trees following conftest.py conventions (fixture_copy, subprocess runner with --root). Cover per spec 06 section 2: clean-skills (exit 0); one impure fixture per rule (bad-disallowed-key, bad-missing-desc, bad-name-mismatch, bad-residual-var, bad-oversized-body, bad-prelude-drift); the rule-4 word-limit (bad-oversized-words) and both-limbs (bad-oversized-both -> body-size=2) cases; both-direction prelude (clean passes + drift fails); all six reader-robustness fixtures (reader-colon-value, reader-folded-scalar, reader-nested-metadata, reader-blank-lines, reader-crlf clean; reader-malformed reported). Each reader fixture is a full skills/<name>/SKILL.md with valid name(==dir)+description.",
+      "acceptanceCriteria": [
+        "scripts/check-spec-purity.py exists, is python3 stdlib only (no pyyaml import), exposes CLI 'check-spec-purity.py [--root DIR]', and exits 0 (clean) / 1 (violations) / 2 (argparse usage) per spec 00 section 7",
+        "All five rules from spec 05 are implemented (frontmatter-keys, name-matches-dir, no-residual-var, body-size hard-fail at <=300 lines AND <=5000 words, prelude-identity) plus the malformed-block-is-a-violation reader contract (REQ-FM-04, no crash)",
+        "Violations render as 'file: reason' using the canonical tokens from spec 00 section 5; output is sorted by (path, rule, reason) so repeated runs over the same tree are byte-identical",
+        "tests/test_check_spec_purity.py + tests/fixtures cover: clean canon (exit 0); one impure fixture per rule 1-5; rule-4 word-limit and the both-limbs case (bad-oversized-both) asserting BOTH the 'body ... lines exceeds 300' and 'body ... words exceeds 5000' tokens appear AND the tally line reports body-size=2; both-direction prelude cases; all six reader-robustness fixtures",
+        "python3 -m pytest tests/test_check_spec_purity.py passes from the feature-forge repo root",
+        "scripts/check-spec-purity.py is NOT referenced anywhere in scripts/validate.sh (validate.sh wiring is item 009)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T14:46:48.252Z",
+      "dependsOn": [
+        "001"
+      ],
+      "notes": "Verification at this stage is the fixture-driven pytest, NOT the live canon: running check-spec-purity.py against the real (still-impure) skills WILL report violations -- that is expected and correct until items 003-007 land. The checker's BOOTSTRAP_PRELUDE rule-5 oracle must be byte-identical to references/portable-root.md (item 001) / spec 00 section 3. The checker is invoked via python3 (its 0755 bit is convenience only, not gate-enforced). This is the largest item by volume (checker + tests + ~16 fixtures); it is one cohesive deliverable (a checker is unverifiable without its tests) and carries estimatedIterations: 2. If the iteration runs long, a minimum viable first pass is the checker + clean-skills + one fixture per rule, with the reader-robustness and both-limbs fixtures completing in the second iteration -- but all fixtures must be green before the ACs pass.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/05-spec-purity-checker.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/00-core-definitions.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Relocate argument-hint -> metadata.argument-hint in 10 SKILL.md frontmatter blocks",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Mechanical, one-concern-per-change frontmatter edit per spec 02 section 2.\n\nFor each of these 10 skills, remove the top-level `argument-hint:` key and re-add it nested under a `metadata:` map as `metadata.argument-hint` (2-space indent), VALUE BYTE-IDENTICAL (copy the exact verbatim values from the table in spec 02 section 1):\n  forge, forge-0-epic, forge-1-prd, forge-2-tech, forge-3-specs, forge-4-backlog, forge-5-loop, forge-6-docs, forge-fix, forge-verify.\n\nResulting top-level key set per file is exactly {name, description, metadata}.\n\nHard constraints:\n- forge-init/SKILL.md frontmatter is UNCHANGED (it has no argument-hint; do NOT add an empty metadata block).\n- Do NOT alter any `description` value -- not reflowed, re-quoted, or re-indented (REQ-FM-03; the checker does not catch this, so be precise).\n- Do NOT touch any `name` value (name == directory must keep holding).\n- Do NOT touch skill bodies in this item (no ${CLAUDE_PLUGIN_ROOT} work -- that is item 004).\n- The forge-verify value contains a literal pipe and forge's value contains an em-dash + parenthetical -- move them byte-for-byte (YAML-safe as double-quoted scalars).",
+      "acceptanceCriteria": [
+        "In all 10 listed skills the top-level argument-hint key is gone and present instead as metadata.argument-hint (2-space indent), with the value byte-identical to spec 02 section 1's table",
+        "forge-init/SKILL.md frontmatter is unchanged (still exactly {name, description}; no metadata block added)",
+        "Every skill's description value is byte-identical to its pre-refactor value and every name still equals its containing directory",
+        "grep -rnE '^argument-hint:' skills/*/SKILL.md returns zero matches from the feature-forge repo root",
+        "python3 scripts/check-spec-purity.py reports zero frontmatter-keys (rule 1) and zero name-matches-dir (rule 2) violations across all 11 skills (run standalone from the feature-forge repo root; rules 3/4/5 may still report and that is acceptable in this item)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T14:47:52.199Z",
+      "dependsOn": [
+        "002"
+      ],
+      "notes": "This is the single frontmatter transformation the feature performs (REQ-VND-01). metadata is the spec-sanctioned home for vendor data (constraint C-2). The checker (item 002) gives a quick rule-1/rule-2 read; to confirm just those rules, grep the checker output for 'frontmatter key' and '!= directory'. Verify description byte-identity by eye / git diff -- the gate does not enforce it.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/02-frontmatter-purity-and-inventory.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Route all 23 canonical ${CLAUDE_PLUGIN_ROOT} occurrences through the prelude/resolver",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Replace every canonical ${CLAUDE_PLUGIN_ROOT} usage per spec 03 section 5. FIRST re-grep to get authoritative loci: `grep -rn 'CLAUDE_PLUGIN_ROOT' skills agents references`. The 9 canonical files (counts at authoring): skills/forge-0-epic/SKILL.md (12), skills/forge/SKILL.md (3), skills/forge-5-loop/SKILL.md (1), skills/forge-6-docs/SKILL.md (1), skills/forge-init/SKILL.md (1), skills/forge-verify/SKILL.md (1), skills/forge-verify/references/verification-checklists.md (1), references/shared-conventions.md (2), agents/forge-verifier.md (1).\n\nPer-kind transformation:\n- INVOCATION lines (python3/bash \"${CLAUDE_PLUGIN_ROOT}/scripts/<x>\"): prepend the byte-identical 2-line bootstrap prelude (from references/portable-root.md, created in item 001) to the SAME fenced block, then rewrite the call to python3 \"$R/scripts/<x>\" (or bash \"$R/scripts/<x>\"). One prelude per fenced block -- if a block has multiple calls, add the prelude once and reuse $R. The forge-init line is currently unquoted (bash ${CLAUDE_PLUGIN_ROOT}/scripts/forge-init.sh) -> rewrite to quoted bash \"$R/scripts/forge-init.sh\".\n- PROSE mentions (forge-0-epic ~line 44; agents/forge-verifier.md ~line 104): reword the sentence to describe the portable resolver (scripts/forge-root.sh + the prelude; see references/portable-root.md). The variable name must not survive. Use the suggested meaning-preserving rewrites in spec 03 section 5.\n\nEXEMPT -- do NOT touch: hooks/hooks.json and the sanctioned residual inside scripts/forge-root.sh. Out of scope: specs/, plans/, docs/.\n\nThe 3 oversized skills may grow slightly here -- that is fine; body-size reduction is items 005-007.",
+      "acceptanceCriteria": [
+        "All 23 canonical ${CLAUDE_PLUGIN_ROOT} occurrences across the 9 files (spec 03 section 5) are routed: each invocation block carries the byte-identical prelude and the call is rewritten to \"$R/scripts/...\"",
+        "The 2 prose loci (skills/forge-0-epic/SKILL.md ~line 44 and agents/forge-verifier.md ~line 104) are reworded to describe the portable resolver; the literal ${CLAUDE_PLUGIN_ROOT} does not survive in either",
+        "Every bootstrap-prelude occurrence is byte-identical to the canonical snippet in references/portable-root.md",
+        "grep -rn 'CLAUDE_PLUGIN_ROOT' skills agents references returns zero matches from the feature-forge repo root (hooks/hooks.json and scripts/forge-root.sh are exempt and remain unchanged)",
+        "python3 scripts/check-spec-purity.py reports zero no-residual-var (rule 3) and zero prelude-identity (rule 5) violations across all canonical surfaces"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T14:54:03.398Z",
+      "dependsOn": [
+        "001",
+        "002"
+      ],
+      "notes": "Kept as one cohesive item (no agentDelegation) deliberately: the prelude must be byte-identical across every occurrence (checker rule 5), and a single agent copying from one source (references/portable-root.md) is safer than parallel agents risking drift. INVARIANTS -- do not 'fix' them: the prelude probes paths not the env var; the exec inside $(...) means first-discoverable-resolver-wins (removing exec is a regression). body-size (rule 4) will still fail for forge-0-epic/forge-5-loop/forge-verify after this item -- expected; handled in 005-007.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/03-portable-root-resolver.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Reduce forge-0-epic body to within budget (517 -> <=300 lines)",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Bring skills/forge-0-epic/SKILL.md body within the <=300-line AND <=5000-word budget by RELOCATING overflow into the skill's own references/ (content MOVED verbatim, never deleted), per spec 04 section 5.1.\n\n1. Create skills/forge-0-epic/references/ (NEW directory).\n2. Relocate -> skills/forge-0-epic/references/epic-manifest-subcommands.md: the per-subcommand epic-manifest.py reference tables / flag-surface command catalog and per-subcommand exit-code (0/1/2) disposition tables (from Step E3 + the Error Handling table).\n3. Relocate -> skills/forge-0-epic/references/edit-mode.md: the Edit-Mode E1-E6 mechanics (refuse-if-invalid protocol, the operation->mutator table, the contracts/remove-feature caveats incl. the verbatim WARN block, the E4 impact-warning detail).\n4. Leave an explicit in-body POINTER for each relocated block naming the exact target file (see the suggested pointer wording in spec 04 section 5.1). The body keeps the decision logic / step ordering; the lookup detail moves out.\n\nRelocated command blocks that contained ${CLAUDE_PLUGIN_ROOT} carry their prelude form WITH them (the target reference files are canonical surfaces -- no raw env var). Measure the FINAL (post-relocation, post-prelude) body; leave headroom under 300 lines. Do not edit descriptions; do not delete instructions.",
+      "acceptanceCriteria": [
+        "skills/forge-0-epic/references/epic-manifest-subcommands.md and skills/forge-0-epic/references/edit-mode.md exist and contain the relocated content verbatim (no instruction, table, command, or caveat dropped)",
+        "skills/forge-0-epic/SKILL.md retains an explicit in-body pointer to each relocated reference file, naming the exact target file",
+        "No relocated reference file under skills/forge-0-epic/references/ contains a raw ${CLAUDE_PLUGIN_ROOT} (moved command blocks keep the prelude/$R form)",
+        "python3 scripts/check-spec-purity.py reports zero body-size violations for skills/forge-0-epic/SKILL.md (final body <=300 lines AND <=5000 words)",
+        "python3 scripts/check-spec-purity.py reports zero rule 1/2/3/5 violations for skills/forge-0-epic (no regression from items 003/004)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T15:02:30.684Z",
+      "dependsOn": [
+        "004"
+      ],
+      "notes": "Depends on 004 because the prelude additions grow the body; the gate measures the post-prelude file (spec 04 section 6). Relocating command blocks to references/ moves their preludes out of the body, which helps the line budget. TQ-2: the exact line split is the implementer's call, constrained only by the <=300/<=5000 gate. The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/04-body-size-discipline.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Reduce forge-5-loop body to within budget (418 -> <=300 lines)",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Bring skills/forge-5-loop/SKILL.md body within the <=300-line AND <=5000-word budget by RELOCATING overflow into the skill's own references/ (content MOVED verbatim, never deleted), per spec 04 section 5.2.\n\n1. Create skills/forge-5-loop/references/ (NEW directory).\n2. Relocate -> skills/forge-5-loop/references/runner-contract.md: the detailed runner/loop-contract prose (event-stream vs log-fallback launch detail in steps 3b/3d/3e, the structured-surface monitoring caveats) and the model-precedence detail (item.model > --model/options > project default > provider default, plus the optional-flags catalog from step 2d).\n3. Relocate (apply only if line headroom requires; TQ-2) -> skills/forge-5-loop/references/result-reporting.md: the five Step-4b verbatim result-report output templates (all-done / needs-human / blocked / deferred / pending).\n4. Leave an explicit in-body POINTER for each relocated block naming the exact target file (see spec 04 section 5.2 wording). The body keeps Step ordering 1->6 and the decision points; the contract/template detail moves out.\n\nThe single ${CLAUDE_PLUGIN_ROOT} occurrence's prelude form moves with whichever surface its invocation lands in. Measure the FINAL (post-relocation, post-prelude) body; leave headroom under 300 lines. Do not edit descriptions; do not delete instructions.",
+      "acceptanceCriteria": [
+        "skills/forge-5-loop/references/runner-contract.md exists and contains the relocated runner-contract + model-precedence detail verbatim (nothing dropped); if result-reporting.md is created it likewise holds the moved templates verbatim",
+        "skills/forge-5-loop/SKILL.md retains an explicit in-body pointer to each relocated reference file, naming the exact target file",
+        "No relocated reference file under skills/forge-5-loop/references/ contains a raw ${CLAUDE_PLUGIN_ROOT}",
+        "python3 scripts/check-spec-purity.py reports zero body-size violations for skills/forge-5-loop/SKILL.md (final body <=300 lines AND <=5000 words)",
+        "python3 scripts/check-spec-purity.py reports zero rule 1/2/3/5 violations for skills/forge-5-loop (no regression from items 003/004)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T15:06:07.223Z",
+      "dependsOn": [
+        "004"
+      ],
+      "notes": "Depends on 004 (post-prelude body is what the gate measures, spec 04 section 6). forge-5-loop is ~118 lines over; relocating the runner-contract prose alone may suffice -- result-reporting.md is a headroom safety valve (TQ-2). Independent of items 005 and 007 (different skill). The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
+      "estimatedIterations": 2,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/04-body-size-discipline.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "refactor",
+      "priority": 1,
+      "title": "Reduce forge-verify body to within budget (337 -> <=300 lines)",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Bring skills/forge-verify/SKILL.md body within the <=300-line AND <=5000-word budget by RELOCATING overflow into the EXISTING skills/forge-verify/references/verification-checklists.md (content MOVED verbatim, never deleted), per spec 04 section 5.3. This is the smallest overrun (~37 lines over), so the relocation target already exists.\n\n1. Append to skills/forge-verify/references/verification-checklists.md (under clearly-titled sections): the per-stage check detail -- primarily the Step-6 epic-mode .epic-state.json state-write detail (schema + atomic-write rules) and the long findings-document / fix-plan output template + the V-001..V-012 example-findings block from Steps 4-5. Relocating the epic-mode state block alone (~70 lines) already clears budget with margin.\n2. Extend the EXISTING in-body pointer (the body already says 'Read references/verification-checklists.md for the detailed checklists per mode') to also cover the newly-moved content: the findings-report template, the example findings, and the epic-mode .epic-state.json write detail.\n\nNote: skills/forge-verify/SKILL.md and skills/forge-verify/references/verification-checklists.md each already had their 1 ${CLAUDE_PLUGIN_ROOT} routed in item 004 -- keep those prelude forms. Measure the FINAL (post-relocation, post-prelude) body; leave headroom under 300 lines. Do not edit descriptions; do not delete instructions.",
+      "acceptanceCriteria": [
+        "skills/forge-verify/references/verification-checklists.md contains the appended per-stage detail (epic-mode .epic-state.json write detail, findings-report template, example findings) verbatim under clearly-titled sections (nothing dropped)",
+        "skills/forge-verify/SKILL.md's in-body pointer is extended to reference the newly-moved content, naming the exact target file/sections",
+        "python3 scripts/check-spec-purity.py reports zero body-size violations for skills/forge-verify/SKILL.md (final body <=300 lines AND <=5000 words)",
+        "python3 scripts/check-spec-purity.py reports zero rule 1/2/3/5 violations for skills/forge-verify and skills/forge-verify/references/verification-checklists.md (no regression from items 003/004)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T15:07:59.446Z",
+      "dependsOn": [
+        "004"
+      ],
+      "notes": "Depends on 004 (gate measures the post-prelude body, spec 04 section 6). Reuses the existing references/ file (no new directory). Independent of items 005 and 006 (different skill). The line cap binds here; word count is already under 5000 per spec 04 section 3, but the gate checks both limbs -- re-measure both after relocation.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/04-body-size-discipline.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/01-architecture-layout.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "chore",
+      "priority": 1,
+      "title": "Author vendor-construct inventory (references/vendor-construct-inventory.md)",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Create the NEW reference file references/vendor-construct-inventory.md -- the exhaustive REQ-VND-03 audit output -- per spec 02 section 5.\n\nRequired structure (in order):\n1. Title + provenance blockquote (feature name, source-of-truth PRD v1 + tech-spec v1, one line stating this is the REQ-VND-03 audit output).\n2. A disposition legend reproducing the closed Disposition vocabulary from spec 00 section 8: relocated, removed, preserved-as-spec-allowed, out-of-canon, routed-through-resolver.\n3. The inventory table with columns: Construct | Locations / count | Disposition | Rationale / notes.\n4. A short notes section recording that no Codex/Copilot/Cursor/Gemini invocation directive was found (the REQ-VND-02 contingency did not fire), with pointers to spec 03 (resolver mechanics) and spec 00 section 8 (vocabulary).\n\nRequired rows (verify counts by re-grepping the live tree -- the grep is authoritative):\n- argument-hint, 10 SKILL.md (all but forge-init) -> relocated (-> metadata.argument-hint).\n- ${CLAUDE_PLUGIN_ROOT} canonical, 23 across the 9 files -> routed-through-resolver.\n- ${CLAUDE_PLUGIN_ROOT} in scripts/forge-root.sh, 1 (env fallback) -> preserved-as-spec-allowed.\n- ${CLAUDE_PLUGIN_ROOT} in hooks/hooks.json, 1 -> out-of-canon.\n- hooks/hooks.json SessionStart wiring (bash ${CLAUDE_PLUGIN_ROOT}/scripts/session-check.sh) -> out-of-canon.\n\nEvery disposition cell MUST be a member of the closed vocabulary (no free-form values).",
+      "acceptanceCriteria": [
+        "references/vendor-construct-inventory.md exists with the title/provenance blockquote, the disposition legend (relocated, removed, preserved-as-spec-allowed, out-of-canon, routed-through-resolver), the inventory table (4 required columns), and the notes section recording the REQ-VND-02 contingency did not fire",
+        "The table includes all known rows from spec 02 section 5.3: argument-hint x10 (relocated), ${CLAUDE_PLUGIN_ROOT} x23 canonical (routed-through-resolver) + x1 in forge-root.sh (preserved-as-spec-allowed) + x1 in hooks.json (out-of-canon), and hooks/hooks.json SessionStart wiring (out-of-canon)",
+        "Every disposition cell is exactly one member of the closed Disposition vocabulary from spec 00 section 8 (no free-form dispositions)",
+        "python3 scripts/check-spec-purity.py reports zero violations for references/vendor-construct-inventory.md (it is a canonical surface: no raw ${CLAUDE_PLUGIN_ROOT}; the literal in the hooks.json row must be written so it is not a routable invocation -- describe it as text, e.g. in a code span, matching how the spec records it)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T15:09:19.576Z",
+      "dependsOn": [
+        "001",
+        "004"
+      ],
+      "notes": "Depends on 001 (the forge-root.sh sanctioned-residual row is real only after the resolver exists) and 004 (the routed-through-resolver dispositions). references/ is a canonical surface scanned by checker rule 3 -- when the inventory mentions ${CLAUDE_PLUGIN_ROOT} in the hooks.json row, the literal would trip rule 3; spec 02 section 5 writes these as descriptive text / code spans. Confirm rule 3 stays green for this file after authoring; if the literal trips it, reword to name the construct without the routable invocation form (consistent with how the spec docs themselves record it).",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/02-frontmatter-purity-and-inventory.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/00-core-definitions.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "Wire checker into validate.sh and pass the completion gate",
+      "description": "Work in the feature-forge repo at /home/gary/workspace/feature-forge (C-1). Final item: wire the spec-purity checker into the gate and confirm the canon is clean end-to-end. By now the canon is pure (items 003-008), so wiring the checker into validate.sh is safe.\n\n1. Edit scripts/validate.sh per spec 05 section 5 / spec 01 section 5: insert ONE new TOP-LEVEL step that invokes `python3 \"$REPO_ROOT/scripts/check-spec-purity.py\"`, placed AFTER the existing script-permission loop (step 6) and BEFORE the `if [ -f \"$HELPER\" ]` epic-manifest guard begins. It MUST be OUTSIDE that guard (py_compile and pytest are both nested inside it) so the checker runs UNCONDITIONALLY. A non-zero checker exit must increment ERRORS so validate.sh exits 1 (hard gate, never soft-skipped). Use the exact step shape from spec 05 section 5. Do NOT add *.py to the script-permission glob.\n2. Run the completion gate (REQ-VER-03) from the feature-forge repo root and confirm green.\n\nDo NOT modify .claude-plugin/ or hooks/. The manual Claude behavioral smoke (REQ-COMPAT-01/02/03, spec 06 section 5) is a maintainer follow-up and is not loop-automatable -- note it but do not block on it.",
+      "acceptanceCriteria": [
+        "scripts/validate.sh has a new top-level step invoking python3 \"$REPO_ROOT/scripts/check-spec-purity.py\", placed after the script-permission loop and before the `if [ -f \"$HELPER\" ]` epic-manifest guard (outside that guard), incrementing ERRORS on non-zero exit; *.py is NOT added to the permission glob",
+        "python3 scripts/check-spec-purity.py exits 0 against the final state of all 11 skills and prints 'spec-purity: PASS' (REQ-VER-03)",
+        "python3 -m pytest tests passes from the feature-forge repo root (all suites including test_check_spec_purity.py and test_forge_root.py)",
+        "bash scripts/validate.sh passes end-to-end from the feature-forge repo root with the new checker step running unconditionally (never SKIP-ped)",
+        "git diff --stat (in feature-forge) shows only the expected surface: scripts/forge-root.sh + scripts/check-spec-purity.py (new), references/portable-root.md + references/vendor-construct-inventory.md + per-skill references/ files (new), tests/test_*.py + tests/fixtures (new), 11 edited SKILL.md, agents/forge-verifier.md, references/shared-conventions.md, skills/forge-verify/references/verification-checklists.md, scripts/validate.sh; nothing in .claude-plugin/ or hooks/",
+        "Maintainer follow-up recorded (manual; NOT loop-verified, non-gating): after the gate is green, run the Claude behavioral smoke (REQ-COMPAT-01/02/03, spec 06 section 5) -- plugin loads, all 11 skills trigger with byte-unchanged descriptions, resolver-backed flows run, and relocated content is reachable via in-body pointers"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-16T15:10:24.576Z",
+      "dependsOn": [
+        "003",
+        "004",
+        "005",
+        "006",
+        "007",
+        "008"
+      ],
+      "notes": "This is the acceptance gate the whole feature builds toward (spec 06 section 4). The checker requires only python3 stdlib, so the new step is always available -- there is no skip path. After this item the maintainer should run the manual behavioral smoke under Claude (plugin loads, all 11 skills still trigger with byte-unchanged descriptions, resolver-backed flows run, relocated content reachable via in-body pointers) -- spec 06 section 5; it cannot be automated by the loop.",
+      "estimatedIterations": 1,
+      "model": "opus",
+      "specReferences": [
+        "specs/agent-agnostic/forge-skill-spec-purity/05-spec-purity-checker.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/01-architecture-layout.md",
+        "specs/agent-agnostic/forge-skill-spec-purity/06-testing-strategy.md"
+      ]
+    }
+  ]
+}

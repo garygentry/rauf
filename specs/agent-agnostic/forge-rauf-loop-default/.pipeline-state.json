@@ -1,0 +1,147 @@
+{
+  "feature": "forge-rauf-loop-default",
+  "epic": "agent-agnostic",
+  "pipelineStatus": "active",
+  "createdAt": "2026-06-15T17:44:28Z",
+  "updatedAt": "2026-06-17T17:46:30Z",
+  "currentStage": "complete",
+  "stages": {
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-06-17T17:46:30Z",
+      "commitHash": "838f450",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/forge-rauf-loop-default/README.md",
+        "docs/architecture/forge-rauf-loop-default/architecture.md",
+        "docs/architecture/forge-rauf-loop-default/api-reference.md",
+        "docs/architecture/forge-rauf-loop-default/guides/integration.md"
+      ],
+      "notes": "Standard doc set (matches prior epic members). Cross-repo: docs describe impl that lives in feature-forge; docs themselves land in rauf docs/architecture/. No epic-level doc (epic 5/6, not all complete)."
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-impl-2026-06-17.md",
+      "findingsCount": 2,
+      "verifiedAt": "2026-06-17T17:01:34Z",
+      "fixedAt": "2026-06-17T17:01:34Z",
+      "commitHash": "635aa2e84fd01517c62b6d07b1a215122db95c2c"
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-06-17T16:41:02Z",
+      "completedAt": "2026-06-17T17:01:34Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "feature-forge:.forge-loop/.rauf/state.json"
+      ],
+      "notes": "Cross-repo run: impl landed in feature-forge on branch forge/forge-rauf-loop-default (5 [rauf] commits, off cross-agent-installer tip). Ran natively in feature-forge against staged .forge-loop backlog (abs specRefs); per-item gate + final = bash scripts/validate.sh (145 tests green). 5/5 done, 0 blocked/needsHuman/deferred, lastSignal clean, --review pass ran. Statuses synced back to canonical backlog (relative specRefs preserved)."
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "startedAt": "2026-06-17T15:32:01Z",
+      "completedAt": "2026-06-17T15:32:01Z",
+      "commitHash": "60c0ec40ebc78a21d9928ff3676d1853fde84f36",
+      "artifacts": [
+        "backlog.json"
+      ],
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      },
+      "notes": "5 items. Cross-repo: implementation lands in feature-forge; gate is bash scripts/validate.sh (CON-05), NOT rauf's pnpm gate. author-backlog skill unavailable in this install, so authored inline against .rauf/backlog.schema.json. Validated green (valid:true, 0 findings) via rauf-stable 0.6.0 backlog validate. Items: 001 schema (3 loopRunner fields + 0.6.0 floor + dual installHint), 002 executable spec loop-agent-selection.py, 003 mock-rauf fixture + pytest, 004 forge-5-loop skill edits (selector/precheck/version-wording/observability), 005 ralph-loop-contract.md expose."
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-17T13:41:50Z",
+      "commitHash": "bc747529690a2b35f1e06db620606c22dccc9652",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      },
+      "artifacts": [
+        "00-core-definitions.md",
+        "01-architecture-layout.md",
+        "02-config-schema-and-gating.md",
+        "03-selection-resolution-observability.md",
+        "04-availability-precheck.md",
+        "05-runner-discovery-version-gate.md",
+        "06-loop-runner-contract-doc.md",
+        "07-testing-strategy.md",
+        "TRACEABILITY.md"
+      ],
+      "notes": "8 numbered docs + TRACEABILITY. Resolved OQ-01 (floor 0.6.0, source-pinned), OQ-02 (flat presence-gated fields), OQ-T1 (executable spec is test-only + doc, not adapter-wired), OQ-T2 (installHint names `npx feature-forge install`). render_launch canonicalized in 03 \u00a73.4 (parallel-author gap fixed). All 29 PRD REQs traced."
+    },
+    "forge-0-epic": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-15T17:44:28Z"
+    },
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-17T03:48:42Z",
+      "basedOnVersions": {},
+      "artifacts": [
+        "PRD.md"
+      ],
+      "commitHash": "e0cf1e50470039bee6456aec0ac6c226c0cc6041"
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-06-16.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-06-16T00:00:00Z",
+      "fixedAt": "2026-06-17T00:00:00Z",
+      "commitHash": "92130debf4673368a9614f4ae9f8eccc4ba1b681"
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "completedAt": "2026-06-17T12:11:43Z",
+      "commitHash": "cebaa27159dfffe455b3511f91a1a30021eafd44",
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      },
+      "artifacts": [
+        "tech-spec.md"
+      ],
+      "notes": "Resolved PRD OQ-01 (version floor=0.6.0) and OQ-02 (flat tokenized loopRunner fields, presence-gated on agentArgument). Implementation targets feature-forge; gate is bash scripts/validate.sh (CON-05), not rauf's pnpm gate."
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-tech-2026-06-17.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-06-17T12:11:43Z",
+      "fixedAt": "2026-06-17T12:11:43Z",
+      "commitHash": "b36aaa7e94178ca4f4808a89f176f0b32bc22c2f"
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-06-17.md",
+      "findingsCount": 11,
+      "verifiedAt": "2026-06-17T13:55:00Z",
+      "fixedAt": "2026-06-17T14:10:00Z",
+      "commitHash": "78bd3c4d08f499daaddae6ba5c8834ce11f6e5e9"
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-06-17.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-06-17T00:00:00Z",
+      "fixedAt": "2026-06-17T00:00:00Z",
+      "commitHash": "5d009e3e81f59e998c997cb23ee53be6a07e7c50"
+    }
+  }
+}
