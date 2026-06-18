@@ -3,6 +3,12 @@ title: The Web Dashboard
 description: Start the server, discover projects, manage the backlog, read status badges, and recover loops from the browser.
 ---
 
+:::note[The CLI is the primary surface]
+The web dashboard is an **optional** way to view and manage loops — a newer, less battle-tested surface
+than the CLI. Everything it does is also available headless from the command line; reach for it when you
+want a visual overview, not because anything requires it.
+:::
+
 The web dashboard is a React single-page app served by a local [Hono](https://hono.dev/) server bound to
 `127.0.0.1` (port `5173` by default). It is a **view onto the same on-disk substrate the CLI reads** —
 `state.json`, `events.ndjson`, `iteration-status.json`, and `rauf.log` — so it reports the same status

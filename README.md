@@ -1,30 +1,30 @@
 # Rauf
 
-**Autonomous coding loops, managed.**
+**Robust autonomous coding loops over a structured backlog.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/github/v/release/garygentry/rauf)](https://github.com/garygentry/rauf/releases)
 
-Rauf installs, manages, and monitors AI coding loops across your local projects. Define a backlog, start the loop, and let [Claude Code](https://docs.anthropic.com/en/docs/claude-code) ship work items autonomously — with full visibility through a CLI and web dashboard.
+Rauf is a **"ralph" runner**: it iterates over a highly structured backlog file, giving each work item its **own fresh agent context**, then verifies the result and commits it. That backlog is almost always **authored by the coding agent itself** — via skills that ship with rauf — so you describe intent and the agent turns it into well-scoped, verifiable items.
+
+Each iteration starts from a clean slate — one item, a focused prompt, the backlog as read-only context. That fresh-context-per-iteration discipline (the [ralph](https://ghuntley.com/ralph/) pattern) is what keeps long autonomous runs from drifting.
+
+Rauf is **CLI-first** — driven by you or by an agent — and **optimized for [Claude Code](https://docs.anthropic.com/en/docs/claude-code)**, which it spawns by default. The loop runner is deliberately separated from the agent it spawns, so rauf isn't wired to a single harness.
 
 <p align="center">
-  <img src="docs/images/screenshots/dashboard.png" alt="Rauf Manager — Projects Dashboard" width="720" />
+  <img src="docs/images/rauf-loop.png" alt="Rauf loop diagram — backlog → pick → agent → verify & commit" width="720" />
 </p>
 
-> **Self-hosted from day one.** Rauf built itself — every backlog item in this repo was implemented, verified, and committed by its own loop. The screenshots below are rauf managing rauf.
+> **Self-hosted from day one.** Rauf built itself — every backlog item in this repo was implemented, verified, and committed by its own loop.
 
 ---
 
 ## How It Works
 
-<p align="center">
-  <img src="docs/images/rauf-loop.png" alt="Rauf loop diagram" width="720" />
-</p>
-
-1. **Backlog** — You define work items with titles, priorities, and acceptance criteria
+1. **Backlog** — You (or, more often, the agent) define work items with titles, priorities, and acceptance criteria
 2. **Pick** — The loop runner selects the next pending item by priority (dependency-aware)
-3. **Claude Code** — A fresh Claude Code session reads the item, implements changes, and runs verification
-4. **Verify & Commit** — If all criteria pass, changes are committed and the loop advances
+3. **Agent** — A **fresh agent session** reads the item, implements changes, and runs verification — a clean context every iteration, never carrying state between items
+4. **Verify & Commit** — If all criteria pass, the runner verifies and commits the work, then advances
 
 Each iteration produces one of three exit signals:
 
@@ -36,32 +36,37 @@ Each iteration produces one of three exit signals:
 
 ---
 
+## Backlogs
+
+The backlog is the heart of rauf — a structured JSON queue of work items with priorities, types, acceptance criteria, and dependencies. You rarely write it by hand: the **`author-backlog`** and **`review-backlog`** skills that ship with rauf let the agent turn a feature description into well-scoped, verifiable items (and QA them).
+
+- **Repo-wide (default)** — one queue at `<project>/.rauf/backlog.json`, the right model for a single stream of work.
+- **Isolated per-feature backlogs (the key feature)** — point any command at a separate backlog directory with `--backlog <dir>`. Each gets a **fully independent loop and state** — its own backlog, events, and status — that never collide. This is what lets discrete features run as separate, self-contained efforts.
+
+See [Multi-Backlog & Multi-Project](https://garygentry.github.io/rauf/guides/multi-backlog/) for the full model.
+
+## feature-forge
+
+Rauf is tightly integrated with — but **not dependent on** — [feature-forge](https://github.com/garygentry/feature-forge), an agent-agnostic spec-and-backlog **pipeline** that runs on Claude, Codex, Copilot, Cursor, and Gemini. feature-forge generates a backlog per feature and hands it to a conforming loop runner; rauf is the default and reference implementation. The two work as a pair, but rauf runs perfectly well on a hand-rolled or skill-authored backlog without it. See feature-forge's README for the cross-agent install story.
+
+---
+
 ## Features
 
 - **Auto-detect & install** — Detects Node.js, Python, Go, Rust stacks and deploys loop artifacts in one command
 - **Greenfield init** — Scaffold a new project with git, CLAUDE.md, backlog, and loop infrastructure
 - **Structured backlog** — JSON-based task queue with priorities, types, acceptance criteria, and dependencies
 - **Real-time status** — Loop state derived directly from `state.json` with log-parsing fallback
-- **Web dashboard** — React SPA with project cards, backlog management, live log streaming via SSE
-- **Full CLI** — Every dashboard action available headless for scripting and CI
+- **Full CLI** — Headless and scriptable, drivable by a human or a supervising agent
 - **Single binary** — Compiles to one executable via `bun build --compile` (CLI + server + frontend + templates)
 - **Self-contained projects** — Installed projects work standalone, no rauf manager required
-
----
-
-## Multi-agent / feature-forge
-
-Rauf is the default loop runner for [feature-forge](https://github.com/garygentry/feature-forge),
-an agent-agnostic spec-and-backlog pipeline that runs on Claude, Codex, Copilot, Cursor, and
-Gemini. feature-forge hands its generated backlog to a conforming runner; when no runner is
-configured it defaults to rauf. See feature-forge's README for the cross-agent install story and
-its per-agent setup docs.
+- **Optional web dashboard** — A local UI to view and manage loops (see below)
 
 ---
 
 ## Install
 
-**Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI and Git (rauf spawns a Claude Code session each iteration and commits the result). Building from source also needs [Bun](https://bun.sh/) 1.0+, [pnpm](https://pnpm.io/) 9+, and Node.js ≥ 22.
+**Prerequisites:** a coding-agent CLI and Git. Rauf spawns an agent session each iteration and commits the result; it is optimized for and defaults to [Claude Code](https://docs.anthropic.com/en/docs/claude-code), so make sure your agent CLI works on its own first. Building from source also needs [Bun](https://bun.sh/) 1.0+, [pnpm](https://pnpm.io/) 9+, and Node.js ≥ 22.
 
 ### Via npm
 
@@ -126,26 +131,6 @@ rauf loop run ~/workspace/my-project
 ```
 
 New to rauf? The [Your First Loop](https://garygentry.github.io/rauf/getting-started/your-first-loop/) tutorial walks through this end to end.
-
----
-
-## Web Dashboard
-
-```bash
-rauf server start     # http://localhost:5173
-```
-
-**Backlog management** — Add, edit, prioritize, and sweep items. Filter by status, type, or priority.
-
-<p align="center">
-  <img src="docs/images/screenshots/backlog.png" alt="Backlog view" width="720" />
-</p>
-
-**Status monitoring** — Live loop state, iteration counts, recent completions, and log streaming.
-
-<p align="center">
-  <img src="docs/images/screenshots/status.png" alt="Status view" width="720" />
-</p>
 
 ---
 
@@ -217,6 +202,20 @@ rauf/
 </p>
 
 `core` never imports from `loop`, `web`, or `cli`; `loop` never imports from `web` or `cli`. See [Architecture](docs/ARCHITECTURE.md) for the full design.
+
+## Web Dashboard (optional)
+
+The CLI is the primary surface. For a visual alternative, rauf also ships an **optional** local web UI — a newer, less battle-tested surface than the CLI — to view and manage loops in the browser. It reads the same on-disk state the CLI does, so it reports on any loop in a project, including ones it didn't start.
+
+```bash
+rauf server start     # http://localhost:5173
+```
+
+Manage the backlog (add, edit, prioritize, sweep), watch live loop state and log streaming, and run recovery actions — all the headless CLI actions, with a UI.
+
+<p align="center">
+  <img src="docs/images/screenshots/dashboard.png" alt="Rauf web dashboard — projects view" width="720" />
+</p>
 
 ## Documentation
 

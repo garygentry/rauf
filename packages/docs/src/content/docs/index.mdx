@@ -1,9 +1,9 @@
 ---
 title: What is Rauf?
-description: A CLI + web tool for installing, managing, and monitoring autonomous coding loops.
+description: A "ralph" runner that iterates a structured backlog, giving each item a fresh agent context.
 template: splash
 hero:
-  tagline: Install, manage, and monitor autonomous coding loops across local software projects. Rauf provides backlog management, status dashboards, and installation wizards — all powered by Claude Code.
+  tagline: Rauf is a "ralph" runner — it iterates over a highly structured backlog, giving each work item its own fresh agent context, then verifies and commits the result. The backlog is almost always authored by the coding agent itself, via skills that ship with rauf.
   actions:
     - text: Get Started
       link: getting-started/your-first-loop/
@@ -15,35 +15,50 @@ hero:
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
 
-## Key Features
+Rauf gives every work item its **own fresh agent context** — one item, a focused prompt, the backlog
+as read-only context. That fresh-context-per-iteration discipline is the [ralph](https://ghuntley.com/ralph/)
+pattern, and it's what keeps long autonomous runs from drifting. Rauf is **CLI-first** (driven by you
+or by an agent) and **optimized for Claude Code**, which it spawns by default — but the loop runner is
+deliberately separated from the agent it spawns, so rauf isn't wired to a single harness.
+
+## Key Concepts
 
 <CardGrid stagger>
-  <Card title="Project Installation" icon="setting">
-    Auto-detect tech stack (Node.js, Python, Go, Rust) and install loop infrastructure with a single
-    command.
+  <Card title="Agent-authored backlog" icon="list-format">
+    The backlog is a structured JSON queue of work items — priorities, acceptance criteria,
+    dependencies. You rarely hand-write it: the shipped `author-backlog` and `review-backlog` skills
+    let the agent generate and QA well-scoped items from a feature description.
   </Card>
-  <Card title="Backlog Management" icon="list-format">
-    Add, edit, delete, and list work items with priorities, acceptance criteria, and dependencies —
-    via CLI or web UI.
+  <Card title="Fresh context per iteration" icon="approve-check-circle">
+    Each item runs in a brand-new agent session. No state carries between items; the runner — not the
+    agent — verifies and commits the work, keeping history clean and runs recoverable.
   </Card>
-  <Card title="Status Monitoring" icon="approve-check-circle">
-    Every observer — `status`, `follow`, `log`, and the web — reconstructs loop activity from files
-    on disk (`state.json` + `events.ndjson`). Foreground and detached runs look identical.
+  <Card title="Isolated per-feature backlogs" icon="setting">
+    Run a repo-wide queue at `<project>/.rauf/`, or point `--backlog <dir>` at a separate directory
+    per feature. Each gets a fully independent loop and state that never collide.
   </Card>
-  <Card title="Web Dashboard" icon="laptop">
-    React SPA with project cards, backlog CRUD, a live status + event view, and recovery actions —
-    all reading the same on-disk substrate as the CLI.
+  <Card title="Optional web dashboard" icon="laptop">
+    The CLI is the primary surface. An optional local web UI — newer and less battle-tested — lets you
+    view and manage loops in the browser, reading the same on-disk state the CLI does.
   </Card>
 </CardGrid>
 
 ## How It Works
 
-1. You define work items in a **backlog** (JSON-based task queue)
-2. The loop runner picks the next item, spawns a Claude Code session, and monitors the result
-3. Each iteration reads acceptance criteria, implements changes, runs verification, and commits
-4. The loop continues until the backlog is empty or a limit is reached
+1. You (or, more often, the agent) define work items in a **backlog** — a structured JSON task queue
+2. The loop runner picks the next item, spawns a **fresh agent session**, and monitors the result
+3. Each iteration reads acceptance criteria, implements changes, runs verification, and signals done
+4. The runner verifies and commits the work, then continues until the backlog is empty or a limit is reached
 
 ![One rauf iteration: select an item, build the prompt, spawn the agent, parse its signal, verify and commit, then advance to the next item.](./images/loop-lifecycle.svg)
+
+## Works with feature-forge
+
+Rauf is tightly integrated with — but **not dependent on** —
+[feature-forge](https://github.com/garygentry/feature-forge), an agent-agnostic spec-and-backlog
+**pipeline**. feature-forge generates a backlog per feature and hands it to a conforming loop runner;
+rauf is the default and reference implementation. The two work as a pair, but rauf runs perfectly well
+on a hand-rolled or skill-authored backlog without it.
 
 ## Quick Install
 

@@ -35,7 +35,6 @@ export default defineConfig({
             { label: "Monitoring a Loop", slug: "guides/monitoring" },
             { label: "Recovery & Troubleshooting", slug: "guides/recovery" },
             { label: "Multi-Backlog & Multi-Project", slug: "guides/multi-backlog" },
-            { label: "The Web Dashboard", slug: "guides/web-dashboard" },
             { label: "Scripting & CI", slug: "guides/scripting-ci" },
             { label: "Customizing the Agent", slug: "guides/customizing-agent" },
             { label: "Migrating to v0.5.0+", slug: "guides/migrating-v0-5" },
@@ -48,6 +47,10 @@ export default defineConfig({
             { label: "Machine Surfaces & Contract", slug: "spec-backlog-tool-contract" },
             { label: "Backlog Schema", slug: "reference/backlog-schema" },
           ],
+        },
+        {
+          label: "Web Dashboard (optional)",
+          items: [{ label: "The Web Dashboard", slug: "guides/web-dashboard" }],
         },
         {
           label: "Internals",

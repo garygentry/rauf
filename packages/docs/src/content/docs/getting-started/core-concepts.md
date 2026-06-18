@@ -7,6 +7,14 @@ A handful of concepts explain everything rauf does. Learn these once and the CLI
 dashboard, and the machine surfaces all read the same way — because they all derive their
 view from the same files on disk.
 
+:::tip[The one idea behind all of them]
+Rauf is a **"ralph" runner**: it works a structured backlog one item at a time, and every
+item gets its **own fresh agent context** — a clean session with just that item and the
+backlog as read-only input. Nothing carries between iterations. That fresh-context-per-iteration
+discipline (the [ralph](https://ghuntley.com/ralph/) pattern) is what keeps long autonomous
+runs from drifting, and it's why the backlog — not the agent's memory — is the source of truth.
+:::
+
 ## The backlog and its items
 
 `.rauf/backlog.json` is the **persistent task queue** — the source of truth for what work
@@ -47,7 +55,7 @@ A run is a sequence of **iterations**. One iteration is one item, start to finis
    `in_progress`.
 2. **Build the prompt** from the project's `RAUF.md` guidance, the item, and its acceptance
    criteria.
-3. **Spawn** a fresh Claude Code session to do the work.
+3. **Spawn** a fresh agent session to do the work (Claude Code by default).
 4. **Parse the signal** the session emits (see below).
 5. **Verify and commit** — on success, the runner verifies and commits the work.
 6. **Advance** to the next item, until the backlog is exhausted or the iteration budget runs
