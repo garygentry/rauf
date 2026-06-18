@@ -20,18 +20,19 @@ rauf to a project, and the common first-run snags.
 
 ## Prerequisites
 
-| Tool                                                          | Why rauf needs it                                                     |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- |
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Rauf spawns a fresh Claude Code session for **each** loop iteration.  |
-| git                                                           | The runner commits the working tree after every successful iteration. |
-| [Bun](https://bun.sh/)                                        | TypeScript runtime used to build (and run) rauf from source.          |
-| [pnpm](https://pnpm.io/) 9+                                   | Workspace package manager — `pnpm install` / `pnpm build`.            |
-| Node.js >= 22                                                 | Required by the toolchain that builds the packages.                   |
+| Tool                                                                                          | Why rauf needs it                                                     |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| A coding-agent CLI ([Claude Code](https://docs.anthropic.com/en/docs/claude-code) by default) | Rauf spawns a fresh agent session for **each** loop iteration.        |
+| git                                                                                           | The runner commits the working tree after every successful iteration. |
+| [Bun](https://bun.sh/)                                                                        | TypeScript runtime used to build (and run) rauf from source.          |
+| [pnpm](https://pnpm.io/) 9+                                                                   | Workspace package manager — `pnpm install` / `pnpm build`.            |
+| Node.js >= 22                                                                                 | Required by the toolchain that builds the packages.                   |
 
-:::note[Claude Code is the engine]
-Rauf does not implement an LLM agent itself — it orchestrates Claude Code. Each iteration is a
-separate Claude Code session that reads one backlog item, makes changes, and runs your
-verification command. Make sure `claude` works on its own before installing rauf.
+:::note[Rauf orchestrates an agent — it doesn't implement one]
+Rauf is the loop runner; it doesn't implement an LLM agent itself, it spawns one per iteration to
+read a backlog item, make changes, and run your verification command. The runner is deliberately
+separated from the agent it drives. Rauf is **optimized for and defaults to Claude Code**, so make
+sure `claude` works on its own before installing rauf.
 :::
 
 ## Install from source

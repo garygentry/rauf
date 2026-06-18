@@ -10,7 +10,11 @@
  *      these as REMOVED), and lines that talk ABOUT the removal (contain "removed",
  *      "replaces", "→", "migrat…", "legacy", …) are exempt — only USAGE is flagged.
  *   2. `ralph` branding leakage in user-facing docs + the diagram source. Legitimate
- *      migration references (the `rauf migrate` legacy path, `~/.ralph`) are exempt.
+ *      migration references (the `rauf migrate` legacy path, `~/.ralph`) are exempt, as are
+ *      references to the generic "ralph" loop ARCHETYPE — the technique rauf implements
+ *      (https://ghuntley.com/ralph/), written as the quoted `"ralph"` pattern/runner or with
+ *      the canonical link. We guard the old PRODUCT NAME, not the word; the archetype is fair
+ *      game and is deliberately surfaced in the README + landing essence.
  *   3. Obviously stale RAUF version-tag pins (v0.0.x–v0.3.x) hard-coded in docs.
  *   4. A CLI command/subcommand registered in packages/cli/src/commands.ts but ABSENT from
  *      docs/SPEC-CLI.md — the drift that hid `validate`/`unblock` (and `migrate`) from the
@@ -53,6 +57,12 @@ const MIGRATION_PAGE = "packages/docs/src/content/docs/guides/migrating-v0-5.md"
 // A line that talks ABOUT removed/renamed things is documentation, not usage.
 const REMOVAL_CONTEXT =
   /removed|replaces|instead of|no longer|formerly|deprecated|renamed|migrat|legacy|→|->/i;
+
+// A line referencing the generic "ralph" loop ARCHETYPE (the technique rauf implements), not the
+// old product name. Signalled by the canonical link, the quoted archetype name, or pattern-adjacent
+// wording. These are legitimately user-facing and exempt from the branding-leak check.
+const RALPH_PATTERN_CONTEXT =
+  /ghuntley\.com\/ralph|["“'`]ralph["”'`]|ralph[-\s](pattern|technique|archetype|loop|runner|style)|(pattern|technique|archetype|loop|runner|style)[-\s]ralph/i;
 
 interface Finding {
   file: string;
@@ -104,6 +114,7 @@ for (const file of docFiles) {
       !isMigrationPage &&
       /\bralph\b/i.test(line) &&
       !REMOVAL_CONTEXT.test(line) &&
+      !RALPH_PATTERN_CONTEXT.test(line) &&
       !/\.ralph\b/.test(line)
     ) {
       add(file, lineNo, line, "ralph branding leak (rauf was formerly ralph)");

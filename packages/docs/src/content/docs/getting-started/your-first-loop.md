@@ -90,8 +90,8 @@ above:
 1. **Select the next pending item** from the backlog (respecting priority and dependencies).
 2. **Build the prompt** from three sources: the project's `RAUF.md` instructions, the item
    itself, and its acceptance criteria.
-3. **Spawn a Claude Code session** with that prompt. This is the agent that does the work —
-   reading code, editing files, running tests.
+3. **Spawn an agent session** with that prompt (Claude Code by default). This is the agent that
+   does the work — reading code, editing files, running tests.
 4. **The agent works and emits a signal** on its final line saying how it went (see Step 4).
 5. **The runner verifies and commits.** This is the key rule: the **agent never commits**. The
    runner inspects the result and, on success, stages everything and makes one commit shaped

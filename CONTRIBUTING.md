@@ -10,7 +10,7 @@ description: Development setup, coding conventions, and contribution workflow fo
 - [Node.js](https://nodejs.org/) v22+
 - [Bun](https://bun.sh/) v1.0+ (runtime for the web server and binary compilation)
 - [pnpm](https://pnpm.io/) v9+ (package manager)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI (for running loops)
+- A coding-agent CLI for running loops — rauf is optimized for and defaults to [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
 ### Getting Started
 
