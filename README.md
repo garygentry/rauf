@@ -109,6 +109,28 @@ irm https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binar
 
 Set `RAUF_VERSION=<tag>` to pin a specific release instead of latest. macOS binaries are unsigned; if Gatekeeper blocks one downloaded via a browser, run `xattr -d com.apple.quarantine ./rauf`. See [Releasing & Installing](docs/RELEASING.md) for details.
 
+### Claude Code skills (optional)
+
+Rauf ships its agent skills — `author-backlog`, `review-backlog`, `drive-rauf-loop`, `review-rauf-guidance` — as a Claude Code plugin. Installing them as a plugin (rather than copying skill folders) namespaces them under `rauf:` (e.g. `rauf:author-backlog`), so they won't collide with similarly named skills and they update with one command:
+
+```
+/plugin marketplace add garygentry/rauf
+/plugin install rauf@rauf
+```
+
+Later, pull updates with `/plugin marketplace update rauf`. These skills are a convenience for authoring and reviewing backlogs interactively in Claude Code — the `rauf` CLI itself does not require them.
+
+To enable the plugin declaratively (e.g. provisioning a machine), add to `~/.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "rauf": { "source": { "source": "github", "repo": "garygentry/rauf" } }
+  },
+  "enabledPlugins": { "rauf@rauf": true }
+}
+```
+
 ---
 
 ## Quick Start
