@@ -1,6 +1,6 @@
 ---
 title: Core Package
-description: Specification for the shared business logic package — filesystem operations, backlog management, and project discovery.
+description: Specification for the shared business logic package (filesystem operations, backlog management, and project discovery).
 ---
 
 Reference: `packages/core/src/`
@@ -11,7 +11,7 @@ This package contains all filesystem operations and business logic. It has ZERO 
 
 ### atomicWrite(filePath, content)
 
-1. Copy existing file to `filePath.bak` (if it exists — only for backlog.json)
+1. Copy existing file to `filePath.bak` (if it exists; only for backlog.json)
 2. Write content to `filePath.tmp`
 3. Rename `filePath.tmp` → `filePath`
 4. Return Result
@@ -21,7 +21,7 @@ This package contains all filesystem operations and business logic. It has ZERO 
 1. Read file with `fs.readFileSync(filePath, 'utf-8')`
 2. `JSON.parse()` in try/catch
 3. Validate against Zod schema
-4. Return `Result<T>` — parse errors include line/position info where possible
+4. Return `Result<T>`. Parse errors include line/position info where possible.
 
 ### computeHash(filePath) → string
 
@@ -88,7 +88,7 @@ export const ErrorCodes = {
 6. Filter: exclude projects with `options.ignoreInTool === true` from active list (but return them separately)
 7. Return sorted by project name
 
-Performance: reads ONLY .rauf.json during scan. Backlog, state, log reads are lazy.
+Performance: reads ONLY .rauf.json during scan. Backlog, state, and log reads are lazy.
 
 ## Module: config.ts
 
@@ -215,7 +215,7 @@ Copy `.rauf/backlog.json.bak` → `.rauf/backlog.json` if backup exists.
 
 ### selectNextItem(backlog: Backlog) → BacklogItem | null
 
-Returns the highest-priority pending item whose dependencies are all done. Returns null if no eligible items exist. Ties in priority broken by lower item ID (lexicographic). Takes a `Backlog` object (not a path) — caller must read the backlog first.
+Returns the highest-priority pending item whose dependencies are all done. Returns null if no eligible items exist. Ties in priority broken by lower item ID (lexicographic). Takes a `Backlog` object (not a path); the caller must read the backlog first.
 
 ### resetStalledItems(projectPath) → Result\<{ resetCount: number }\>
 
@@ -225,14 +225,14 @@ Read backlog, reset all `in_progress` items to `pending` via `updateItem`. Retur
 
 ### deriveStatus(projectPath) → Result<DerivedStatus>
 
-**Tier 1 — state.json:**
+**Tier 1, state.json:**
 
 1. Read `.rauf/state.json`
 2. If valid, map status field to LoopStateEnum
 3. Staleness check: if `updatedAt` > 5 min old AND status is "running", downgrade to PAUSED
 4. Set stateSource = "state.json"
 
-**Tier 2 — Log parsing fallback:**
+**Tier 2, log parsing fallback:**
 
 1. If state.json missing/invalid, check rauf.log
 2. Read last 1000 lines for recent status patterns
@@ -254,7 +254,7 @@ Watch rauf.log for changes using fs.watch. Call callback with new lines. Return 
 
 ### writeLoopState(projectPath, state) → Result\<void\>
 
-Atomic write of `.rauf/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema` — returns `VALIDATION_ERROR` if invalid. The `deferredItems` field defaults to `[]` when omitted, keeping existing callers compatible.
+Atomic write of `.rauf/state.json`. Auto-sets `updatedAt` to current ISO timestamp before writing. Validates against `LoopStateSchema`; returns `VALIDATION_ERROR` if invalid. The `deferredItems` field defaults to `[]` when omitted, so existing callers stay compatible.
 
 ### appendLog(projectPath, message) → Result\<void\>
 
@@ -351,16 +351,16 @@ Moves done backlog items into monthly archive files under `.rauf/archive/YYYY-MM
 
 **Archive file format:** `{ month: "YYYY-MM", items: BacklogItem[] }`. Appends to existing file if present.
 
-**Write order:** Archive files written first, then `backlog.json` updated — safer failure mode (items temporarily in both) vs. data loss.
+**Write order:** Archive files written first, then `backlog.json` updated. This gives a safer failure mode (items temporarily in both) vs. data loss.
 
 ### sweepBacklog(projectPath, options?: { minAgeDays?: number }) → Result\<SweepResult\>
 
 1. Read backlog via `readBacklog()`. Return error on failure.
-2. Compute cutoff: if `minAgeDays > 0`, cutoff = `Date.now() - minAgeDays * 86_400_000`. Items completed after cutoff are kept. If `minAgeDays` is 0 or omitted, all done items are swept.
+2. Compute cutoff: if `minAgeDays > 0`, cutoff = `Date.now() - minAgeDays * 86_400_000`. Items completed after the cutoff are kept. If `minAgeDays` is 0 or omitted, all done items are swept.
 3. Separate `toArchive` (status === "done" and passes age check) from `toKeep`.
 4. If `toArchive` is empty, return `{ archivedCount: 0, archivedMonths: [] }` early.
 5. Group `toArchive` by month: `completedAt.slice(0, 7)` or `new Date().toISOString().slice(0, 7)` fallback for null.
-6. `ensureDir(archiveDir)` — create `.rauf/archive/` if absent.
+6. `ensureDir(archiveDir)`: create `.rauf/archive/` if absent.
 7. For each month group: read existing archive file (if present, validate), merge items, `atomicWrite` the file.
 8. `writeBacklog(projectPath, { ...backlog, items: toKeep })`.
 9. Return `ok({ archivedCount, archivedMonths: sorted keys })`.
@@ -372,7 +372,7 @@ Moves done backlog items into monthly archive files under `.rauf/archive/YYYY-MM
 
 ### readArchiveMonth(projectPath, month) → Result\<ArchiveMonth\>
 
-- Validates month format (`/^\d{4}-\d{2}$/`) — returns `VALIDATION_ERROR` if invalid.
+- Validates month format (`/^\d{4}-\d{2}$/`); returns `VALIDATION_ERROR` if invalid.
 - Reads and validates file against `ArchiveMonthSchema`.
 
 ### purgeArchive(projectPath, month?) → Result\<{ purgedCount: number, purgedMonths: string[] }\>
@@ -382,7 +382,7 @@ Moves done backlog items into monthly archive files under `.rauf/archive/YYYY-MM
 
 ## Module: budget.ts
 
-Derives a right-sized iteration cap from the backlog's pending work instead of a flat default.
+Derives an iteration cap from the backlog's pending work instead of a flat default.
 
 ### computeMaxIterations(backlog, opts?)
 
@@ -405,7 +405,7 @@ function computeMaxIterations(
 ): MaxIterationsEstimate;
 ```
 
-- When `pending === 0`, returns `cap: 0` (floor does not apply — nothing to budget for)
+- When `pending === 0`, returns `cap: 0` (floor does not apply; nothing to budget for)
 - Used by CLI commands (`loop run`, including `--detached`) and the web loop route when `--iterations` is omitted
 - An explicit `--iterations` flag always overrides the computed cap
 - `formatBudgetMath(estimate)` returns a human-readable budget line for the CLI
@@ -418,9 +418,9 @@ Orchestrates a full project reset for a fresh backlog cycle.
 
 Options:
 
-- `clearBacklog?: boolean` — empty the backlog items array (preserve project/description metadata)
-- `keepProgress?: boolean` — when used with `clearBacklog`, preserve `progress.md` instead of archiving it
-- `keepLog?: boolean` — when used with `clearBacklog`, preserve `rauf.log` instead of archiving it
+- `clearBacklog?: boolean`: empty the backlog items array (preserve project/description metadata)
+- `keepProgress?: boolean`: when used with `clearBacklog`, preserve `progress.md` instead of archiving it
+- `keepLog?: boolean`: when used with `clearBacklog`, preserve `rauf.log` instead of archiving it
 
 Steps:
 
@@ -432,7 +432,7 @@ Steps:
 6. If `clearBacklog` and not `keepLog`: archive `rauf.log` → `.rauf/archive/YYYYMMDD-HHmmss-rauf.log`
 7. If `clearBacklog`: empty backlog items array (preserve project/description)
 
-Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`) — never overwrites previous archives.
+Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`), so it never overwrites previous archives.
 
 ## File locations summary
 
@@ -448,7 +448,7 @@ Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`) — never overwrites 
 | discovery.ts     | (read-only)                                                                 |
 | profile.ts       | (read-only, result stored by installer)                                     |
 | template.ts      | (pure functions, no direct file I/O unless renderTemplateFile)              |
-| budget.ts        | (pure function — no file I/O)                                               |
+| budget.ts        | (pure function, no file I/O)                                                |
 
 ---
 
@@ -487,9 +487,9 @@ A missing signal (`none`) **never**, by itself, marks an item `blocked`. The `Ex
 - `infra_error` → item stays `pending`, increment `consecutiveInfraFailures` counter
 - `genuine_retry` → retry up to `maxRetries`; on exhaustion, set `blocked + deferred: true` with reason `"No signal after N attempts (deferred by runner)"` and push to `deferredItems`
 
-The `deferred` flag on `BacklogItem` distinguishes a runner "false block" from a genuine agent block — `rauf reset`/`resume` requeue deferred items to `pending` while leaving genuine blocks untouched.
+The `deferred` flag on `BacklogItem` distinguishes a runner "false block" from a genuine agent block. `rauf reset`/`resume` requeue deferred items to `pending` while leaving genuine blocks untouched.
 
-No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget — `iterationCount` is decremented and a note is appended to the log.
+No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget: `iterationCount` is decremented and a note is appended to the log.
 
 ### Circuit Breaker
 
@@ -506,14 +506,14 @@ This prevents the loop from spinning indefinitely when every spawn dies the same
 
 Before recording any non-done outcome for an item, the runner checks:
 
-1. `findItemCommit(projectPath, itemId, sinceRef?)` — does a `[rauf] <id>:` commit exist in git history **after `sinceRef`**?
-2. `isTreeClean(projectPath)` — is the working tree clean?
+1. `findItemCommit(projectPath, itemId, sinceRef?)`: does a `[rauf] <id>:` commit exist in git history **after `sinceRef`**?
+2. `isTreeClean(projectPath)`: is the working tree clean?
 
 If both are true → the item is promoted to `done` (not blocked/deferred), `item_completed` is emitted, and `"recovered_via_commit: <hash>"` is appended to the log. This handles the case where the agent committed and verified but died before printing `RAUF_DONE`.
 
 If the tree is dirty after a non-done exit → abandoned work is stashed (excluding `.rauf/` and `backlog.json`) before the next item starts.
 
-**Why bounded reconciliation (`sinceRef`)?** Rauf restarts backlog IDs at `001` for every new backlog cycle (e.g. after `rauf backlog reset --clear`). An unbounded `git log` search for `[rauf] 001:` would find a commit from the _previous_ cycle and falsely promote a fresh item 001 to `done`. The runner captures the HEAD commit at loop start as `baseCommitHash`, persists it in `state.json`, and passes it as `sinceRef` to every `findItemCommit` call — so only commits made during this run can trigger recovery. `rauf reset`/`resume` read `baseCommitHash` from `state.json` and apply the same bound when reconciling on behalf of the user.
+**Why bounded reconciliation (`sinceRef`)?** Rauf restarts backlog IDs at `001` for every new backlog cycle (e.g. after `rauf backlog reset --clear`). An unbounded `git log` search for `[rauf] 001:` would find a commit from the _previous_ cycle and falsely promote a fresh item 001 to `done`. The runner captures the HEAD commit at loop start as `baseCommitHash`, persists it in `state.json`, and passes it as `sinceRef` to every `findItemCommit` call, so only commits made during this run can trigger recovery. `rauf reset`/`resume` read `baseCommitHash` from `state.json` and apply the same bound when reconciling on behalf of the user.
 
 ### Usage-Limit Pause/Resume
 
@@ -532,7 +532,7 @@ When `sleepOnLimit` is `true` (default), the runner parses the reset time from t
 - **Token source:** `~/.config/claude-code/credentials.json` → `.claudeAiOauth.accessToken`
 - **Errors:** `FILE_NOT_FOUND` (file absent or unreadable), `INVALID_JSON` (malformed), `VALIDATION_ERROR` (missing fields or empty token)
 
-When the token read fails, the preflight is skipped **with no behavior change** — reactive banner detection (items 005/006) still covers the usage-limit case. The runner logs the specific error code and message plus a remediation hint:
+When the token read fails, the preflight is skipped **with no behavior change**: reactive banner detection (items 005/006) still covers the usage-limit case. The runner logs the specific error code and message plus a remediation hint:
 
 ```
 OAuth token unavailable (FILE_NOT_FOUND: Claude credentials file not found: /home/user/.config/claude-code/credentials.json). Ensure Claude Code is authenticated (token: ~/.config/claude-code/credentials.json → .claudeAiOauth.accessToken). Relying on reactive banner detection.

@@ -170,20 +170,20 @@ interface LoopState {
 }
 ```
 
-| Status value         | Meaning                                                                                      |
-| -------------------- | -------------------------------------------------------------------------------------------- |
-| `idle`               | No loop active (initial state)                                                               |
-| `starting`           | Loop initializing                                                                            |
-| `running`            | Actively processing an item                                                                  |
-| `paused`             | Gracefully stopped (CANCEL signal)                                                           |
-| `complete`           | All items resolved                                                                           |
-| `paused_human`       | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                 |
-| `limit_reached`      | Max iterations config exceeded                                                               |
-| `error`              | Unexpected termination                                                                       |
-| `sleeping_limit`     | Sleeping until 5-hour Claude usage window resets                                             |
-| `weekly_limit`       | 7-day weekly Claude usage cap exhausted                                                      |
-| `reviewing`          | Running post-loop review pass                                                                |
-| `paused_usage_limit` | Usage limit hit with `sleepOnLimit=false` — loop halted cleanly, resumable via `rauf resume` |
+| Status value         | Meaning                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `idle`               | No loop active (initial state)                                                              |
+| `starting`           | Loop initializing                                                                           |
+| `running`            | Actively processing an item                                                                 |
+| `paused`             | Gracefully stopped (CANCEL signal)                                                          |
+| `complete`           | All items resolved                                                                          |
+| `paused_human`       | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                |
+| `limit_reached`      | Max iterations config exceeded                                                              |
+| `error`              | Unexpected termination                                                                      |
+| `sleeping_limit`     | Sleeping until 5-hour Claude usage window resets                                            |
+| `weekly_limit`       | 7-day weekly Claude usage cap exhausted                                                     |
+| `reviewing`          | Running post-loop review pass                                                               |
+| `paused_usage_limit` | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume` |
 
 File: `.rauf/state.json` (written by the loop runner, read by status derivation)
 
@@ -201,7 +201,7 @@ interface ToolConfig {
 
 ## LockSummary
 
-Liveness of a backlog root's `.loop.lock`, included in `DerivedStatus`. Derived from `checkLock` in `packages/core` — never reimplements PID checks.
+Liveness of a backlog root's `.loop.lock`, included in `DerivedStatus`. Derived from `checkLock` in `packages/core`; never reimplements PID checks.
 
 ```typescript
 interface LockSummary {
@@ -259,7 +259,7 @@ type LoopStateEnum =
 
 ### State Labels
 
-The `state-labels` module in `@rauf/core` is the single source of truth for human-readable labels and UI tone for each `LoopStateEnum` value. Both the CLI (`colorLoopState`) and web (`StateBadge`) derive display from it — no parallel maps.
+The `state-labels` module in `@rauf/core` is the single source of truth for human-readable labels and UI tone for each `LoopStateEnum` value. Both the CLI (`colorLoopState`) and web (`StateBadge`) derive display from it; no parallel maps.
 
 ```typescript
 type StateTone = "neutral" | "info" | "success" | "warning" | "danger";
@@ -355,7 +355,7 @@ interface RaufError {
 `NOT_INSTALLED`, `CONFLICT`, `TRANSITION_INVALID`, `LOCK_CONFLICT`, and `IO_ERROR`.
 
 `IO_ERROR` is returned by the filesystem append/read primitives (`appendLine`, `readNdjson`) and the
-event-log / registry modules on an fs failure — distinct from `FILE_NOT_FOUND` (graceful absence is
+event-log / registry modules on an fs failure. Distinct from `FILE_NOT_FOUND` (graceful absence is
 handled by returning `ok([])`, not an error) and from `INVALID_JSON`/`VALIDATION_ERROR` (content
 shape, not fs failure).
 
@@ -365,7 +365,7 @@ Resolved absolute paths for a backlog root (`packages/core/src/backlog-root.ts`)
 `resolveBacklogPaths()`. Fields: `projectPath`, `root`, `stateDir`, `backlog`, `state`, `log`,
 `done`, `cancel`, `progress`, `iterationStatus`, `archive`, `lock`, and `eventsLog`.
 
-- `eventsLog` — path to `events.ndjson`, the persisted per-run event stream (= `stateDir/events.ndjson`).
+- `eventsLog`: path to `events.ndjson`, the persisted per-run event stream (= `stateDir/events.ndjson`).
 
 ## Template Variables
 
@@ -592,7 +592,7 @@ type LoopEvent =
 
 ## PersistedEvent (events.ndjson)
 
-One line of `events.ndjson` — a full `LoopEvent` intersected with a two-field envelope. **Flat
+One line of `events.ndjson`: a full `LoopEvent` intersected with a two-field envelope. **Flat
 by design**: the entire `LoopEvent` is preserved, so a reader needs no join against another
 surface to interpret a record. Defined as `PersistedEventSchema = z.intersection(LoopEventSchema, …)`
 (the first `z.intersection` in the codebase; `LoopEventSchema.and(envelope)` is an equivalent terser
@@ -625,7 +625,7 @@ shapes as the `--ndjson` stream, plus the `seq` + `schemaVersion` envelope):
    event, is **additive** and requires **no** version bump.
 3. Readers MUST ignore unknown `type` values and unknown fields rather than
    failing on them.
-4. `EVENTS_SCHEMA_VERSION` is incremented **only** on a breaking change — a
+4. `EVENTS_SCHEMA_VERSION` is incremented **only** on a breaking change: a
    renamed or removed `type` or documented field.
 
 `EVENTS_SCHEMA_VERSION` stays `"1"` in v0.5.0: adding `"review"` to the

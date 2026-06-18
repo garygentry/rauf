@@ -12,10 +12,10 @@ autonomous loop. This document is the **loop workflow** for contributors.
 
 ## Two binaries, two roles
 
-| Binary        | What it is                                                                              | Use for                                                     |
-| ------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `rauf`        | `~/.local/bin/rauf` → `scripts/bin/rauf`, runs the **live TS source** via Bun           | Interactive / ad-hoc commands while developing              |
-| `rauf-stable` | A **compiled snapshot** (`bun build --compile`) installed to `~/.local/bin/rauf-stable` | The **loop runner** — decoupled from in-flight source edits |
+| Binary        | What it is                                                                              | Use for                                                    |
+| ------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `rauf`        | `~/.local/bin/rauf` → `scripts/bin/rauf`, runs the **live TS source** via Bun           | Interactive / ad-hoc commands while developing             |
+| `rauf-stable` | A **compiled snapshot** (`bun build --compile`) installed to `~/.local/bin/rauf-stable` | The **loop runner**, decoupled from in-flight source edits |
 
 Running the loop with a compiled snapshot means an edit you make mid-iteration
 (or a half-finished refactor) can't change the runner out from under a running
@@ -30,7 +30,7 @@ rauf-stable version --json # sanity-check the installed snapshot
 
 Rebuild **whenever you change the runner itself** (anything under
 `packages/loop`, `packages/core`, or the loop CLI in `packages/cli`). Feature
-code that the loop merely _implements_ does not require a rebuild — only changes
+code that the loop merely _implements_ does not require a rebuild; only changes
 to the runner's own behavior do.
 
 feature-forge drives this binary via the `loopRunner.bin` field in
@@ -48,7 +48,7 @@ auto-commits with `git add -A` on the **current** branch:
 - with a **dirty** working tree (uncommitted changes).
 
 Each refusal exits with `CONFLICT` and an actionable message. Pass `--force` to
-bypass the guard — but note `--force` **also force-clears any loop lock** (stale
+bypass the guard, but note `--force` **also force-clears any loop lock** (stale
 or live); there is currently no way to skip the guard alone. The guard applies
 to `loop run` (direct mode); `loop start` (server mode) is a follow-up.
 
@@ -58,7 +58,7 @@ commit.
 
 ## A feature, end to end
 
-1. **Branch per feature** — never run the loop on `main` (the guard enforces
+1. **Branch per feature**: never run the loop on `main` (the guard enforces
    this):
 
    ```bash
@@ -83,7 +83,7 @@ commit.
 
    On a clean feature branch the guard passes and the loop iterates, committing
    each completed item as `[rauf] <item-id>: <title>`. From `main` or a dirty
-   tree it refuses — switch/clean up, or pass `--force` (which also clears the
+   tree it refuses; switch/clean up, or pass `--force` (which also clears the
    lock).
 
 4. **Gate on green CI, merge via PR.** Open a PR for the feature branch; let
@@ -93,8 +93,8 @@ commit.
 ### Review at the gate, not per iteration
 
 If you have a commit/`Stop`-triggered review hook installed globally (e.g. a
-security-review plugin), it fires inside **every** loop child session — noise,
-not real review, since the child rubber-stamps its own findings. Run the loop
+security-review plugin), it fires inside **every** loop child session. That is
+noise rather than real review, since the child rubber-stamps its own findings. Run the loop
 quiet and review the cumulative branch diff **once**, surfaced to you:
 
 ```bash
@@ -103,7 +103,7 @@ rauf-stable loop run . --backlog specs/<name> --suppress-iteration-review
 
 `--suppress-iteration-review` propagates a documented set of hook-suppression
 env vars (`REVIEW_HOOK_SUPPRESSION_ENV` in `@rauf/loop`, currently
-`ENABLE_CODE_SECURITY_REVIEW=0`) into each child session. It is generic — the
+`ENABLE_CODE_SECURITY_REVIEW=0`) into each child session. It is generic: the
 `childEnv` loop option opts out of any hook that honors an env var. Then gate
 once over `main..HEAD`: `git diff main..HEAD`, the PR review hook / CI, or
 `rauf loop review`. See `docs/SPEC-CLI.md` → "Single-gate review".

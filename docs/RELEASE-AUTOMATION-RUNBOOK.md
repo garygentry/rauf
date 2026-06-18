@@ -32,7 +32,7 @@ $ git stash push .claude/settings.local.json   # restore later with: git stash p
 
 > The loop **auto-commits with `git add -A`** on the current branch, which is why
 > a clean tree on a non-default branch is required. Only rebuild `rauf-stable`
-> (`pnpm dogfood:runner`) if you change **runner** code — implementing a feature
+> (`pnpm dogfood:runner`) if you change **runner** code. Implementing a feature
 > that doesn't touch `packages/loop|core` or the loop CLI leaves the snapshot valid.
 
 ## 1. PRD → Tech spec → Implementation specs
@@ -49,7 +49,7 @@ $ git stash push .claude/settings.local.json   # restore later with: git stash p
   `forge.config.json` (here: `typescript` / `pnpm typecheck` / `pnpm test`).
 - Each stage auto-commits (`forge(release-automation): …`) because
   `gitCommitAfterStage: true`.
-- **Stay on `feature/release-automation`** — if forge-1 offers to create a
+- **Stay on `feature/release-automation`**: if forge-1 offers to create a
   `forge/release-automation` branch, decline (the loop guard needs this
   non-default branch).
 
@@ -95,9 +95,9 @@ verify after fix until clean.
 
 forge-5 automatically:
 
-- **Version gate** — `rauf-stable version --json` must be ≥ `0.5.0` (the feature-forge `minRunnerVersion`).
-- **Setup gate** — `.rauf.json` must exist at the project root.
-- **Iteration budget** — `ceil(pending × 1.5)`.
+- **Version gate**: `rauf-stable version --json` must be ≥ `0.5.0` (the feature-forge `minRunnerVersion`).
+- **Setup gate**: `.rauf.json` must exist at the project root.
+- **Iteration budget**: `ceil(pending × 1.5)`.
 - **Renders the run command and asks you to confirm**, then runs it in the
   background:
 
@@ -111,8 +111,8 @@ forge-5 automatically:
 Per iteration the loop selects one `pending` item, spawns Claude, and on
 `RAUF_DONE` **auto-commits** `[rauf] <item-id>: <title>` on this branch.
 `RAUF_BLOCKED:<reason>` parks the item; `RAUF_NEEDS_HUMAN:<reason>` stops the loop
-for you. The loop does **not** run `pnpm test` itself — each item's acceptance
-criteria instruct Claude to verify; `--review` adds a diff review that can spawn
+for you. The loop does **not** run `pnpm test` itself; each item's acceptance
+criteria instruct Claude to verify, and `--review` adds a diff review that can spawn
 fix items.
 
 **Monitor** (separate shell, or via the skill's monitor commands). State, log,
@@ -148,7 +148,7 @@ $ git push                                  # push the loop's commits
 Open a PR for `feature/release-automation`, let GitHub Actions go green, review
 `release.yml`, then merge to `main`.
 
-## 8. Cut the release — human-gated, NOT the loop
+## 8. Cut the release (human-gated, NOT the loop)
 
 Publishing a release is outward-facing and irreversible, so it is a deliberate
 manual step. After the PR merges on green CI, push the tag (which is what
