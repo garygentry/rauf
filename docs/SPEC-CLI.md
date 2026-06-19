@@ -164,7 +164,8 @@ Run the loop. Without `--detached`, runs directly in-process, the **unattended-s
 - `--detached` / `-d`: delegate to the server API instead of running in-process (auto-starts the server; prints a follow hint; returns immediately)
 - `--follow` / `-f`: with `--detached`, attach the `follow` view after the server accepts the job. Ctrl-C detaches the view only; the loop keeps running server-side.
 - `--retries N`: max retries per item (default: 3)
-- `--model <model>`: model override
+- `--model <model>`: model override (run-level). Sets the model for every iteration unless an item carries its own `model`. Precedence: `item.model > --model > .rauf.json options.model > provider default`.
+- `--no-model` (alias `--model none`): ephemeral per-run override that makes the loop **ignore each backlog item's `model`** field for this run, dropping resolution to `--model > project default > provider default`. Use it to run a backlog whose items carry **Claude-only tier aliases** (e.g. `opus`/`sonnet`) under a non-Claude `--agent` without a persistent edit to `backlog.json` — the alias would otherwise be forwarded verbatim and rejected (e.g. Codex 400), halting the loop on the circuit breaker. Also settable via the `ignoreItemModel` loop option / `POST /loop/start` body. Default (flag absent) is unchanged.
 - `--agent <id>`: coding-agent CLI that drives iterations (default: `claude-cli`). Supported built-ins: `claude-cli`, `codex`, `gemini`, `copilot`, `cursor`, `generic-cli`. The id is the user-facing alias for the internal `provider` option; an unknown or absent agent is surfaced by the runner's fail-fast (no state written). See [`rauf agents`](#rauf-agents) for live availability.
 - `--timeout N`: session timeout in minutes (default: 60)
 - `--review`: enable a post-loop review pass after all items complete

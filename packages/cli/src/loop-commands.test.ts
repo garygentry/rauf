@@ -20,6 +20,7 @@ import {
   handleLoopRun,
   handleAgents,
   loopRunExitCode,
+  resolveModelOverride,
 } from "./loop-commands.js";
 import type { LoopResult } from "@rauf/loop";
 import { LoopRunner, getAgentDescriptors, listAgents } from "@rauf/loop";
@@ -95,6 +96,43 @@ function baseEvent<T extends LoopEvent["type"]>(
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────
+
+describe("resolveModelOverride (--model / --no-model, #38)", () => {
+  it("returns the model and no override for a plain --model", () => {
+    const flags = new Map<string, string | true>([["model", "opus"]]);
+    expect(resolveModelOverride(flags)).toEqual({ model: "opus", ignoreItemModel: false });
+    expect(flags.has("model")).toBe(false); // extracted
+  });
+
+  it("sets ignoreItemModel and no model for --no-model", () => {
+    const flags = new Map<string, string | true>([["no-model", true]]);
+    expect(resolveModelOverride(flags)).toEqual({ model: undefined, ignoreItemModel: true });
+    expect(flags.has("no-model")).toBe(false);
+  });
+
+  it("treats --model none as the ignore sentinel (no model string)", () => {
+    const flags = new Map<string, string | true>([["model", "none"]]);
+    expect(resolveModelOverride(flags)).toEqual({ model: undefined, ignoreItemModel: true });
+  });
+
+  it("honors --no-model alongside a run-level --model override", () => {
+    const flags = new Map<string, string | true>([
+      ["no-model", true],
+      ["model", "gpt-5-codex"],
+    ]);
+    expect(resolveModelOverride(flags)).toEqual({
+      model: "gpt-5-codex",
+      ignoreItemModel: true,
+    });
+  });
+
+  it("returns neither when no model flag is present", () => {
+    expect(resolveModelOverride(new Map())).toEqual({
+      model: undefined,
+      ignoreItemModel: false,
+    });
+  });
+});
 
 describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)", () => {
   // Each row: a LoopResult shape and the expected unified exit code.

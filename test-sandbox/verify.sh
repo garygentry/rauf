@@ -804,6 +804,63 @@ run_agent_scenario "codex" "stream-blocked"
 assert_item_status "001" "blocked"
 assert_event_provider "codex"
 
+# ─── Ephemeral --no-model override (#38) ─────────────────────────────
+
+# 15b. A backlog item carrying a Claude-only tier alias (`model: "opus"`) must not
+#      be forwarded verbatim to a non-Claude agent. Under `--agent codex` the
+#      runner resolves `item.model` and passes `--model opus` to codex (the bug
+#      from #38). `--no-model` (the `ignoreItemModel` loop option) drops the
+#      per-item override for the run so the backlog runs portably — without
+#      editing backlog.json. We drive the `record-args` scenario (writes the
+#      agent's argv to $RECORD_ARGS_FILE, one token per line) and assert that the
+#      model VALUE line is present without the flag and absent with it. (We match
+#      the value "opus", not "--model", because the prompt text itself mentions
+#      `--model` — only the resolved flag puts "opus" on its own argv line.)
+echo ""
+echo "=== Scenario: --no-model ephemeral override (#38) ==="
+
+# Pin the alias onto item 001 in the committed baseline by injecting it into the
+# template BEFORE setup.sh commits it (same trick the generic-cli scenario uses
+# for .rauf.json — keeps the dirty-tree guard satisfied). Restored after the run.
+cp "$SANDBOX_DIR/backlog-template.json" "$SANDBOX_DIR/backlog-template.json.verifybak"
+jq '(.items[] | select(.id == "001")).model = "opus"' \
+  "$SANDBOX_DIR/backlog-template.json.verifybak" >"$SANDBOX_DIR/backlog-template.json"
+
+export RECORD_ARGS_FILE="$SANDBOX_DIR/.rauf/agent-args.txt"
+export MOCK_AGENT_SCENARIO="record-args"
+export MOCK_CLAUDE_SCENARIO="record-args"
+
+# (a) Baseline: no --no-model → the alias reaches codex as `--model opus`.
+# rm the args file BEFORE setup so its absence is baked into the clean baseline
+# commit (it's also git-excluded in setup.sh, so the scenario's write never
+# dirties the tree for the dirty-tree guard).
+rm -f "$RECORD_ARGS_FILE"
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+export PATH="$SANDBOX_DIR:$REPO_ROOT/scripts/bin:$PATH"
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --agent codex >/dev/null 2>&1 || true
+
+if grep -Fxq -- "opus" "$RECORD_ARGS_FILE" 2>/dev/null; then
+  pass "without --no-model, item.model alias forwarded to codex (model=opus in argv)"
+else
+  fail "without --no-model, expected opus in codex argv (got: $(tr '\n' ' ' <"$RECORD_ARGS_FILE" 2>/dev/null))"
+fi
+
+# (b) --no-model → item.model ignored; the alias never reaches codex.
+rm -f "$RECORD_ARGS_FILE"
+bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
+rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 --agent codex --no-model >/dev/null 2>&1 || true
+
+if grep -Fxq -- "opus" "$RECORD_ARGS_FILE" 2>/dev/null; then
+  fail "with --no-model, item.model alias still reached codex (got: $(tr '\n' ' ' <"$RECORD_ARGS_FILE" 2>/dev/null))"
+else
+  pass "with --no-model, item.model alias stripped (no model flag in codex argv)"
+fi
+# The run still completes — the backlog is portable under the non-Claude agent.
+assert_item_status "001" "done"
+
+unset RECORD_ARGS_FILE MOCK_AGENT_SCENARIO
+mv "$SANDBOX_DIR/backlog-template.json.verifybak" "$SANDBOX_DIR/backlog-template.json"
+
 # ─── Fail-fast: absent agent CLI (SC-3, REQ-DET-02) ──────────────────
 
 # 16. Selecting an agent whose CLI is absent must fail BEFORE any iteration runs

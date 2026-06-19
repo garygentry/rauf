@@ -65,4 +65,6 @@ When running as a rauf loop iteration, follow these operational rules:
 
 The runner picks the model by precedence (highest wins):
 `item.model` > `--model` / options > project default > provider default.
+(`rauf loop run --no-model` ignores `item.model` for one run — useful for running
+a Claude-aliased backlog under a non-Claude `--agent`.)
 <!-- rauf:end -->

@@ -77,6 +77,29 @@ const DEFAULT_SESSION_TIMEOUT_MINUTES = 60;
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /**
+ * Resolve the run-level model and the ephemeral per-item-model override from the
+ * `--model` / `--no-model` flags. Mutates the flags map (extracts both).
+ *
+ * - `--no-model` (or the sentinel `--model none`) sets `ignoreItemModel: true`,
+ *   so the runner skips each backlog item's Claude-only tier alias and falls
+ *   back to the run/project/provider default — letting a backlog run portably
+ *   under a non-Claude `--agent` without editing `backlog.json` (#38).
+ * - The `none` sentinel never becomes the resolved model string.
+ */
+export function resolveModelOverride(flags: Map<string, string | true>): {
+  model: string | undefined;
+  ignoreItemModel: boolean;
+} {
+  const noModel = extractBoolFlag(flags, "no-model");
+  const rawModel = extractStringFlag(flags, "model") ?? undefined;
+  const ignoreItemModel = noModel || rawModel === "none";
+  return {
+    model: rawModel === "none" ? undefined : rawModel,
+    ignoreItemModel,
+  };
+}
+
+/**
  * Resolve maxIterations by precedence (flag > `.rauf.json` options.maxIterations
  * > computed-from-backlog) and log the resolved value plus its source. The
  * budget-math line (item 010) is only printed when the source is `computed`.
@@ -378,7 +401,7 @@ async function runDetached(ctx: CommandContext): Promise<number> {
   const body: Record<string, unknown> = {};
   const iterations = extractNumberFlag(ctx.flags, "iterations");
   const retries = extractNumberFlag(ctx.flags, "retries");
-  const model = extractStringFlag(ctx.flags, "model");
+  const { model, ignoreItemModel } = resolveModelOverride(ctx.flags);
   const agent = extractStringFlag(ctx.flags, "agent");
   const timeout = extractNumberFlag(ctx.flags, "timeout");
   const suppressIterationReview = extractBoolFlag(ctx.flags, "suppress-iteration-review");
@@ -395,7 +418,8 @@ async function runDetached(ctx: CommandContext): Promise<number> {
     body.maxIterations = iterations;
   }
   if (retries !== null) body.maxRetries = retries;
-  if (model !== null) body.model = model;
+  if (model !== undefined) body.model = model;
+  if (ignoreItemModel) body.ignoreItemModel = true;
   if (agent !== null) body.provider = agent;
   if (timeout !== null) body.sessionTimeoutMinutes = timeout;
   if (backlogFlag !== null) body.backlogRoot = backlogFlag;
@@ -816,7 +840,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   const iterationsFlag = extractNumberFlag(ctx.flags, "iterations");
   const iterations = resolveLoopMaxIterations(projectPath, paths, iterationsFlag);
   const retries = extractNumberFlag(ctx.flags, "retries") ?? DEFAULT_MAX_RETRIES;
-  const model = extractStringFlag(ctx.flags, "model") ?? undefined;
+  const { model, ignoreItemModel } = resolveModelOverride(ctx.flags);
   const agent = extractStringFlag(ctx.flags, "agent") ?? undefined; // REQ-SEL-01 (00 §4: agent → provider)
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
   const reviewOnly = extractBoolFlag(ctx.flags, "review-only");
@@ -838,15 +862,23 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     reviewOnly,
     suppressIterationReview,
     pauseOnNeedsHuman,
+    ignoreItemModel,
     backlogRoot: backlogRootResult.value,
   });
 
   info(`Running loop directly for ${c.cyan(path.basename(projectPath))}`);
   info(
     c.dim(
-      `iterations=${options.maxIterations}, retries=${options.maxRetries}, timeout=${options.sessionTimeoutMinutes}m${review ? ", review=on" : ""}${reviewOnly ? " (review-only)" : ""}${suppressIterationReview ? ", iteration-review=suppressed" : ""}`,
+      `iterations=${options.maxIterations}, retries=${options.maxRetries}, timeout=${options.sessionTimeoutMinutes}m${review ? ", review=on" : ""}${reviewOnly ? " (review-only)" : ""}${suppressIterationReview ? ", iteration-review=suppressed" : ""}${ignoreItemModel ? ", item-model=ignored" : ""}`,
     ),
   );
+  if (ignoreItemModel) {
+    info(
+      c.dim(
+        "Per-item `model` overrides ignored for this run — falling back to the run/project/provider default so the backlog runs portably under the chosen agent.",
+      ),
+    );
+  }
   if (suppressIterationReview) {
     info(
       c.dim(

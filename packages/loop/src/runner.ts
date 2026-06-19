@@ -694,8 +694,13 @@ export class LoopRunner extends TypedEventEmitter {
     }
     this.writeState("running", item.id);
 
-    // Resolve model: item.model > options.model
-    const resolvedModel = item.model ?? this.options.model ?? projectModel;
+    // Resolve model: item.model > options.model > projectModel.
+    // When `ignoreItemModel` is set (rauf loop run --no-model / --model none),
+    // skip the per-item override so a backlog carrying Claude-only tier aliases
+    // can run portably under a non-Claude --agent without editing backlog.json.
+    const resolvedModel = this.options.ignoreItemModel
+      ? (this.options.model ?? projectModel)
+      : (item.model ?? this.options.model ?? projectModel);
 
     // Build prompt
     // Re-read backlog since we just updated the item status
