@@ -1,15 +1,23 @@
 /**
  * Maintainer release-prep helper (specs/release-automation/03-prepare-helper.md).
  *
- * Run via `pnpm release:prepare <X.Y.Z[-pre]> [--dry-run] [--no-push]`.
- * Validates repo state (five guards, ALL before any mutation — REQ-PREP-07),
- * bumps all eight version locations, rolls the changelog, commits, tags, and
- * pushes branch-first so the tagged commit is on origin/main before the tag
- * (the workflow trigger) arrives. Supersedes the removed legacy bump script.
+ * Run via `pnpm release:prepare <X.Y.Z[-pre]> [--dry-run] [--no-push] [--open-pr]`.
+ * Validates repo state (six guards, ALL before any mutation — REQ-PREP-07),
+ * then prepares the release ON A BRANCH (`release/X.Y.Z`): bumps all eight
+ * version locations, rolls the changelog, commits `chore(release): vX.Y.Z`,
+ * pushes the branch, and (with --open-pr) opens the PR. It does NOT tag and does
+ * NOT push `main`.
+ *
+ * Why a branch + PR, not a direct push: `main` is protected and requires the
+ * `check` status on every push, so a direct `git push origin main` is rejected.
+ * The release lands on `main` via the PR; the OWNER then tags the squash-merged
+ * commit (`git tag -m vX.Y.Z vX.Y.Z && git push origin vX.Y.Z`), which triggers
+ * `release.yml`, and afterwards dispatches the npm launcher publish. See
+ * docs/RELEASING.md. Tagging here would orphan the tag on the pre-merge commit.
  *
  * This file is an executable: nothing imports it except prepare.test.ts, which
- * imports only the pure guard predicates below. The git-touching flow runs only
- * under `bun run` (import.meta.main), never on import.
+ * imports only the pure helpers below. The git-touching flow runs only under
+ * `bun run` (import.meta.main), never on import.
  */
 
 import { execFileSync } from "node:child_process";
@@ -64,9 +72,14 @@ export function checkChangelogNonEmpty(changelog: string): string | null {
     : "refusing: CHANGELOG.md `## Unreleased` section is empty — write release notes first";
 }
 
+/** The release-prep branch for a version, e.g. `0.9.0` → `release/0.9.0`. */
+export function releaseBranchName(version: string): string {
+  return `release/${version}`;
+}
+
 // ── Dry-run preview ─────────────────────────────────────────────────────────
 
-/** Print the planned edits + rolled section + tag (03-prepare-helper.md §5). */
+/** Print the planned edits + rolled section + branch (03-prepare-helper.md §5). */
 function printDryRun(plan: PreparePlan): void {
   const canonical = plan.locations.find((l) => l.canonical)!.version;
   console.log(`Plan for ${plan.tag} (${plan.isPrerelease ? "prerelease" : "stable"}):`);
@@ -76,12 +89,17 @@ function printDryRun(plan: PreparePlan): void {
     console.log(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
   }
   console.log(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
-  console.log(`  tag: ${plan.tag}`);
+  console.log(
+    `  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`,
+  );
+  console.log(
+    `  tag: none — the owner tags ${plan.tag} on the merged commit (see docs/RELEASING.md)`,
+  );
   console.log("");
   console.log(`## ${plan.version} section body:`);
   console.log(plan.sectionBody);
   console.log("");
-  console.log("(dry run — no changes written)");
+  console.log("(dry run — no changes written, no branch created, no push)");
 }
 
 // ── Executable flow ─────────────────────────────────────────────────────────
@@ -91,9 +109,10 @@ function main(): void {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const noPush = args.includes("--no-push");
+  const openPr = args.includes("--open-pr");
   const positionals = args.filter((a) => !a.startsWith("--"));
   if (positionals.length !== 1) {
-    fail("usage: pnpm release:prepare <X.Y.Z[-pre]> [--dry-run] [--no-push]");
+    fail("usage: pnpm release:prepare <X.Y.Z[-pre]> [--dry-run] [--no-push] [--open-pr]");
   }
   const version = positionals[0]!;
 
@@ -134,13 +153,27 @@ function main(): void {
     fail("refusing: local main has diverged from origin/main — reconcile first");
   }
 
-  // Guard 2.3 — tag absent locally and on origin (REQ-PREP-03).
+  // Guard 2.3 — tag absent locally and on origin (REQ-PREP-03). The tag is
+  // created by the owner post-merge, but if it already exists this version was
+  // already released — refuse early.
   const tag = `v${version}`;
   if (git(["tag", "-l", tag]).trim() !== "") {
     fail(`refusing: tag ${tag} already exists locally`);
   }
   if (git(["ls-remote", "--tags", "origin", tag]).trim() !== "") {
     fail(`refusing: tag ${tag} already exists on origin`);
+  }
+
+  // Guard 2.3b — the release-prep branch must not already exist (local/origin),
+  // so we never clobber an in-flight release PR.
+  const releaseBranch = releaseBranchName(version);
+  if (git(["branch", "--list", releaseBranch]).trim() !== "") {
+    fail(
+      `refusing: branch ${releaseBranch} already exists locally — delete it or finish that release`,
+    );
+  }
+  if (git(["ls-remote", "--heads", "origin", releaseBranch]).trim() !== "") {
+    fail(`refusing: branch ${releaseBranch} already exists on origin — a release PR may be open`);
   }
 
   // Guard 2.4 — version moves forward vs the CANONICAL version.ts value
@@ -173,6 +206,10 @@ function main(): void {
     process.exit(0);
   }
 
+  // All guards passed. Prepare on a branch — never commit to / push `main`
+  // directly (branch protection rejects it). The release reaches main via PR.
+  git(["checkout", "-b", releaseBranch]);
+
   // §3.1 — canonical version.ts.
   const vtsPath = path.join(repoRoot, VERSION_TS_PATH);
   fs.writeFileSync(vtsPath, setVersionTs(fs.readFileSync(vtsPath, "utf8"), version));
@@ -187,49 +224,72 @@ function main(): void {
   // §3.3 — roll the changelog (REQ-NOTES-01).
   fs.writeFileSync(changelogPath, rolledChangelog);
 
-  // §3.4 — commit & tag. The tag carries a message (-m) so it works
-  // non-interactively under tag.gpgSign=true (a bare `git tag` would demand
-  // an editor for the forced-annotated tag and die with "no tag message").
+  // §3.4 — commit on the release branch. NO tag here: the owner tags the
+  // squash-merged commit on main post-merge (tagging the pre-merge branch commit
+  // would orphan the tag).
   git(["add", "-A"]);
   git(["commit", "-m", `chore(release): ${tag}`]);
-  git(["tag", "-m", tag, tag]);
 
-  // §3.5 / §4 — push branch FIRST, then the tag (the irreversible trigger).
-  // The two pushes are not transactional; on failure print exact recovery
-  // commands so the maintainer is never left guessing (tech-spec §7).
-  function pushOrRecover(pushArgs: string[], which: "branch" | "tag"): void {
+  // §3.5 — push the branch (not main). On failure, print exact recovery commands.
+  if (!noPush) {
     try {
-      git(pushArgs);
+      git(["push", "-u", "origin", releaseBranch]);
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      if (which === "branch") {
-        fail(
-          `push failed: ${detail}\n` +
-            `release commit & tag ${tag} exist locally but were NOT pushed.\n` +
-            `  retry:  git push origin main && git push origin ${tag}\n` +
-            `  abort:  git reset --hard origin/main && git tag -d ${tag}`,
-        );
-      } else {
-        fail(
-          `tag push failed: ${detail}\n` +
-            `main was pushed but tag ${tag} was not — the release has NOT triggered.\n` +
-            `  retry:  git push origin ${tag}`,
-        );
-      }
+      fail(
+        `push failed: ${detail}\n` +
+          `release commit exists locally on ${releaseBranch} but was NOT pushed.\n` +
+          `  retry:  git push -u origin ${releaseBranch}\n` +
+          `  abort:  git checkout main && git branch -D ${releaseBranch}`,
+      );
     }
   }
 
-  if (!noPush) {
-    pushOrRecover(["push", "origin", "main"], "branch");
-    pushOrRecover(["push", "origin", tag], "tag");
+  // §3.6 — optionally open the PR. PRs are not owner-gated (a merge never
+  // publishes), so this is safe to automate; default is to print the command.
+  const prTitle = `chore(release): ${tag}`;
+  const prBody = [
+    `Release-prep PR for **${tag}**. Bumps all eight version locations to \`${version}\` and rolls the`,
+    "`CHANGELOG.md` `## Unreleased` section.",
+    "",
+    "## After merge (owner-only)",
+    "1. Tag the squash-merged commit and push (triggers `release.yml`):",
+    "   ```",
+    "   git checkout main && git pull",
+    `   git tag -m ${tag} ${tag} && git push origin ${tag}`,
+    "   ```",
+    `2. Once the \`${tag}\` GitHub Release exists, publish the npm launcher: Actions → "npm Publish (manual)" (or \`gh workflow run npm-publish.yml --ref main\`).`,
+    "",
+    "See docs/RELEASING.md.",
+  ].join("\n");
+
+  let prOpened = false;
+  if (openPr && !noPush) {
+    try {
+      execFileSync("gh", ["pr", "create", "--title", prTitle, "--body", prBody, "--base", "main"], {
+        cwd: repoRoot,
+        stdio: "inherit",
+      });
+      prOpened = true;
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      console.error(`(could not open PR automatically: ${detail} — open it manually below)`);
+    }
   }
-  console.log(
-    `Prepared ${tag}.${
-      noPush
-        ? " (not pushed — run the two git push commands when ready)"
-        : " Release workflow triggered."
-    }`,
-  );
+
+  // §4 — next steps.
+  console.log("");
+  console.log(`Prepared ${tag} on branch ${releaseBranch}.`);
+  if (noPush) {
+    console.log(`  Not pushed. When ready:  git push -u origin ${releaseBranch}`);
+  }
+  if (!prOpened) {
+    console.log(`  Open the PR:  gh pr create --base main --title "${prTitle}"`);
+  }
+  console.log("  After the PR merges on green CI, the OWNER cuts the release:");
+  console.log("    git checkout main && git pull");
+  console.log(`    git tag -m ${tag} ${tag} && git push origin ${tag}   # triggers release.yml`);
+  console.log(`  Then publish the npm launcher: Actions → "npm Publish (manual)".`);
 }
 
 if (meta.main) {
