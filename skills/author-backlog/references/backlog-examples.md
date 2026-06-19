@@ -134,7 +134,6 @@ These examples demonstrate the quality, detail, and format expected for rauf bac
   "completedAt": null,
   "dependsOn": ["031"],
   "estimatedIterations": 3,
-  "model": "opus",
   "agentDelegation": {
     "recommendedConcurrency": 3,
     "strategy": "Split by command group. Each sub-agent handles one or two command group files independently. All share the same middleware and index structure.",
@@ -155,7 +154,7 @@ These examples demonstrate the quality, detail, and format expected for rauf bac
 - `recommendedConcurrency` matches the number of subtasks (3).
 - Stays as one backlog item because all commands share one verification step (`bun run typecheck && bun run build && bun check passes`) and must ship together.
 - Each subtask references existing files for business logic, so subagents know where to look.
-- `estimatedIterations: 3` and `model: "opus"` reflect that this is large/complex despite the parallelization. (If such a refactor needed to hold many large files in context at once, `"opus[1m]"` would unlock the 1M window at no cost premium.)
+- `estimatedIterations: 3` reflects that this is large/complex despite the parallelization. `model` is omitted so the item stays agent-portable — if the user has opted into Claude tiering, they'd add `"model": "opus"` here (or `"opus[1m]"` if it needed to hold many large files in context at once, unlocking the 1M window at no cost premium). Tier aliases are Claude-only; see the `model` section in SKILL.md.
 
 **When NOT to use agentDelegation:**
 
