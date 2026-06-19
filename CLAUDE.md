@@ -71,6 +71,20 @@ pnpm version:check    # Assert all package.json versions match packages/core/src
 > locally before pushing; don't rely on the narrower `typecheck && test` subset (it misses `build` and
 > `schema:check`).
 
+## Branching & merging
+
+`main` is protected: it requires the green `check` status (which runs `pnpm gate`) on every push, so a
+direct `git push origin main` is **rejected**. Every change — code, docs, and release-prep — reaches
+`main` **via a pull request**:
+
+1. Branch from an up-to-date `main` (`git checkout main && git pull && git checkout -b <type>/<slug>`).
+2. Make the change; run `pnpm gate` locally until green.
+3. Push the branch and open a PR; let CI's `check` go green.
+4. **Squash-merge** (`required_linear_history` is on). Never push to `main` directly.
+
+Releases follow the same rule — see [Publishing & Releasing](#publishing--releasing): `release:prepare`
+produces a release-prep PR, and the owner tags the merged commit afterward.
+
 ## Test Sandbox
 
 `test-sandbox/` provides a self-contained rauf project with mock Claude scripts for testing the loop runner without API access.
@@ -195,10 +209,12 @@ This repository IS a rauf-managed project. The `.rauf/` directory at the repo ro
 
 ## Publishing & Releasing
 
-Two separate, **manual, owner-gated** flows — a routine merge to `main` never publishes anything:
+Two separate, **manual, owner-gated** flows — a routine merge to `main` never publishes anything. Both are **PR-based**: like all changes, a release reaches `main` via a PR (see [Branching & merging](#branching--merging)), and only the owner cuts the actual release.
 
-- **Binary release** (the `rauf` CLI binaries + GitHub Release): tag-driven. Run `pnpm release:prepare X.Y.Z` (bumps all eight version locations, rolls the changelog, commits, tags `vX.Y.Z`, pushes); the `v*` tag triggers `release.yml`. Full mechanics in `docs/RELEASING.md`.
+- **Binary release** (the `rauf` CLI binaries + GitHub Release): a **release-prep PR** then an **owner tag**. Run `pnpm release:prepare X.Y.Z` — it bumps all eight version locations, rolls the changelog, commits on a `release/X.Y.Z` branch, and pushes it for a PR (it does **not** push `main` or tag). After the PR merges on green CI, the **owner** tags the merged commit (`git tag -m vX.Y.Z vX.Y.Z && git push origin vX.Y.Z`); the `v*` tag triggers `release.yml`. Full mechanics in `docs/RELEASING.md`.
 - **npm launcher** (`@garygentry/rauf` — the `npx @garygentry/rauf` shim in `npm-dist/`): published by `.github/workflows/npm-publish.yml`, whose **only** trigger is `workflow_dispatch` (Actions → "npm Publish (manual)"). The published version is `npm-dist/package.json`'s version, kept in lockstep with the binary release by the version guards — so publish the launcher **after** the matching `vX.Y.Z` GitHub release exists, so `npx @garygentry/rauf@X.Y.Z` resolves to that release's binary.
+
+> rauf and **feature-forge** are versioned **independently** — there is no lockstep. The only coupling is feature-forge's dependency pin on a published rauf coordinate (`RAUF_PIN`) plus its `COMPATIBILITY.md`. Both repos share the same release _process_ (PR-only merges, manual owner-gated publish, bump-before-publish, offer-don't-act).
 
 **Agent guidance — offer, don't act.** When merged changes are user-facing and worth getting to end users, proactively **suggest** the appropriate release/publish and outline the steps; never tag, `npm publish`, or dispatch a publish yourself. These are deliberate, owner-only acts.
 

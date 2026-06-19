@@ -7,7 +7,12 @@
 
 import { describe, expect, it } from "vitest";
 import { makeChangelog } from "./__fixtures__";
-import { checkChangelogNonEmpty, checkValidVersion, checkVersionForward } from "./prepare";
+import {
+  checkChangelogNonEmpty,
+  checkValidVersion,
+  checkVersionForward,
+  releaseBranchName,
+} from "./prepare";
 
 describe("checkValidVersion (guard 2.1, REQ-VER-04)", () => {
   it("passes valid stable and prerelease versions", () => {
@@ -61,6 +66,13 @@ describe("checkChangelogNonEmpty (guard 2.5, REQ-PREP-05)", () => {
 
   it("refuses when the ## Unreleased heading is absent entirely", () => {
     expect(checkChangelogNonEmpty("# Changelog\n\n## 0.1.0\n\n- old\n")).toMatch(/^refusing: /);
+  });
+});
+
+describe("releaseBranchName (PR-mode branch derivation)", () => {
+  it("derives release/<version> for stable and prerelease versions", () => {
+    expect(releaseBranchName("0.9.0")).toBe("release/0.9.0");
+    expect(releaseBranchName("1.0.0-rc.1")).toBe("release/1.0.0-rc.1");
   });
 });
 

@@ -51,21 +51,49 @@ Run through this once before the **first** release (items 1 and 2 are blockers):
 
 ## 2. Cutting a Release (maintainer)
 
-Releases are tag-driven. The whole flow is:
+A release is **a release-prep PR + an owner tag**. There are two human-driven
+phases: (1) anyone can prepare and merge the version-bump PR; (2) only the owner
+tags the merged commit, which triggers the binary build.
+
+### Why a PR, not a direct push
+
+`main` is a **protected branch** that requires the `check` status (which runs
+`pnpm gate`) on every push — `required_pull_request_reviews` is off, but the
+required status check still rejects a direct `git push origin main`. So the
+version bump cannot be pushed straight to `main`; it lands via a PR like any
+other change (`required_linear_history` is on, so PRs are squash-merged). Tags
+are governed by the separate `release-tags` ruleset (owner-only), **not** branch
+protection, so the owner can push the tag where a `main` push would be rejected.
+
+### Phase 1 — release-prep PR
 
 ```bash
-pnpm release:prepare 0.3.0            # bump + changelog roll + commit + tag + push
-pnpm release:prepare 0.3.0 --dry-run  # preview the planned edits, no writes
-pnpm release:prepare 0.3.0 --no-push  # do everything locally, push manually later
+pnpm release:prepare 0.3.0            # bump + changelog roll + commit on release/0.3.0 + push branch
+pnpm release:prepare 0.3.0 --dry-run  # preview the planned edits, no writes / no branch / no push
+pnpm release:prepare 0.3.0 --no-push  # commit on the branch locally, push manually later
+pnpm release:prepare 0.3.0 --open-pr  # also run `gh pr create` for the branch
 ```
 
-`release:prepare` guards against unsafe states (wrong branch, dirty tree,
-behind/ahead of origin, existing tag, non-incrementing version, empty
-changelog; each failure prints a distinct `refusing: …` line and leaves the
-repo untouched), then bumps all eight version locations, renames
-`## Unreleased` to `## X.Y.Z` in the changelog, commits, tags `vX.Y.Z`, and
-pushes branch-first so the tagged commit is on `origin/main` before the tag
-arrives.
+`release:prepare` guards against unsafe states (must start on a clean `main`
+synced with origin; existing tag; existing `release/X.Y.Z` branch;
+non-incrementing version; empty changelog — each failure prints a distinct
+`refusing: …` line and leaves the repo untouched). It then creates a
+`release/X.Y.Z` branch, bumps all eight version locations, renames
+`## Unreleased` to `## X.Y.Z` in the changelog, commits `chore(release): vX.Y.Z`,
+and pushes the **branch**. It does **not** tag and does **not** push `main` —
+tagging a pre-merge branch commit would orphan the tag on the squash-merge.
+
+Open the PR (the command is printed, or use `--open-pr`), let CI's `check` go
+green, and **squash-merge** it to `main`.
+
+### Phase 2 — cut the release (owner-only)
+
+After the PR merges on green CI, the owner tags the merged commit:
+
+```bash
+git checkout main && git pull
+git tag -m v0.3.0 v0.3.0 && git push origin v0.3.0
+```
 
 The `v*` tag push triggers `.github/workflows/release.yml`, which:
 
@@ -100,6 +128,10 @@ release: `npx @garygentry/rauf@X.Y.Z` resolves to the `vX.Y.Z` binary. Publishin
 uses npm Trusted Publishing (OIDC): no token, owner-dispatched only.
 Re-publishing an already-published version is rejected by npm, so a new publish
 always follows a new release/version bump.
+
+> **Worked example:** [`RELEASE-AUTOMATION-RUNBOOK.md` §7–8](./RELEASE-AUTOMATION-RUNBOOK.md)
+> walks the same PR → merge → owner-tag sequence end-to-end for a feature built
+> through the forge pipeline. This document is the canonical reference.
 
 ---
 
