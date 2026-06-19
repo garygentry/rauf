@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.0
+
 Provider-neutral backlogs. Backlog items no longer bind to Claude by default, and
 a new loop flag lets a Claude-aliased backlog run portably under any agent without
 editing it — closing the #38 failure mode where a `model: "opus"` item silently
