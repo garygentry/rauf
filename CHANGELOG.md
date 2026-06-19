@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 0.8.0
+
+Provider-neutral backlogs. Backlog items no longer bind to Claude by default, and
+a new loop flag lets a Claude-aliased backlog run portably under any agent without
+editing it — closing the #38 failure mode where a `model: "opus"` item silently
+halted the loop under a non-Claude agent. Additive minor bump.
+
+### Added
+
+- **`rauf loop run --no-model`** (alias `--model none`) — ephemeral per-run model
+  override that makes the loop ignore each backlog item's `model` field for that
+  run (the new `ignoreItemModel` loop option). Resolution drops to
+  `--model` > project default > provider default, so a backlog whose items carry
+  Claude-only tier aliases (`opus`/`sonnet`/…) runs portably under a non-Claude
+  `--agent` without a persistent edit to `backlog.json`. Also accepted on the
+  `POST /loop/start` body for server-mode parity. (#38)
+
+### Changed
+
+- **`author-backlog` skill is provider-neutral by default** — item `model` is now
+  omitted unless the user explicitly opts into a Claude tier, keeping authored
+  backlogs agent-portable. Tier aliases are documented as Claude-only and
+  agent-binding. (#38)
+- **`review-backlog` skill** flags items carrying Claude-only `model` aliases as a
+  portability concern (new "Claude-bound model alias" anti-pattern). (#38)
+
 ## 0.7.0
 
 The agent-agnostic epic — rauf's loop runner is no longer Claude-only. A pluggable
