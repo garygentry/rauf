@@ -61,6 +61,11 @@ The runner resolves which model drives an iteration by this precedence
 - provider default — if none of the above is set, no model is forced and the
   provider/CLI uses its own configured default.
 
+`rauf loop run --no-model` (alias `--model none`) ignores `item.model` for that
+run, so resolution drops to `--model` > project default > provider default. Use it
+to run a backlog whose items carry Claude-only tier aliases under a non-Claude
+`--agent` without editing `backlog.json`.
+
 ## Agent Delegation
 
 Some backlog items include an `agentDelegation` field with guidance for parallel execution.

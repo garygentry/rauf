@@ -628,6 +628,49 @@ else echo "RAUF_DONE"; fi`,
         "claude-sonnet-4-6",
       );
     });
+
+    it("ignores item.model and uses options.model when ignoreItemModel is set (#38)", async () => {
+      // Item carries a Claude-only alias; ignoreItemModel makes the run fall
+      // back to options.model so a non-Claude agent never sees the alias.
+      setupProject(tmpDir, [pendingItem("001", "Model task", { model: "opus" })]);
+      writeMockClaude(binDir, 'echo "$@" >&2\necho "RAUF_DONE"');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        model: "gpt-5-codex",
+        ignoreItemModel: true,
+      });
+      runner.on("llm_spawned", (e) => events.push(e));
+
+      await runner.start();
+
+      const spawnedEvents = events.filter((e) => e.type === "llm_spawned");
+      expect(spawnedEvents).toHaveLength(1);
+      expect((spawnedEvents[0] as Extract<LoopEvent, { type: "llm_spawned" }>).model).toBe(
+        "gpt-5-codex",
+      );
+    });
+
+    it("ignoreItemModel with no options.model leaves model unset (provider default)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Model task", { model: "opus" })]);
+      writeMockClaude(binDir, 'echo "$@" >&2\necho "RAUF_DONE"');
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        ignoreItemModel: true,
+      });
+      runner.on("llm_spawned", (e) => events.push(e));
+
+      await runner.start();
+
+      const spawnedEvents = events.filter((e) => e.type === "llm_spawned");
+      expect(spawnedEvents).toHaveLength(1);
+      expect(
+        (spawnedEvents[0] as Extract<LoopEvent, { type: "llm_spawned" }>).model,
+      ).toBeUndefined();
+    });
   });
 
   describe("maxIterations", () => {

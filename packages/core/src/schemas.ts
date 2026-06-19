@@ -415,6 +415,15 @@ export const LoopStartOptionsSchema = z.object({
    * items after setting the needs-human item aside.
    */
   pauseOnNeedsHuman: z.boolean().optional(),
+  /**
+   * Opt-in: ignore each backlog item's `model` field for this run, so the loop
+   * uses the run/project/provider default model instead. Lets a run override a
+   * backlog whose items carry Claude-only tier aliases (e.g. `opus`) when
+   * launching under a non-Claude `--agent`, without a persistent edit to
+   * `backlog.json`. Enabled by `rauf loop run --no-model` (alias `--model none`).
+   * Resolution drops to `model > projectModel` — `item.model` is skipped.
+   */
+  ignoreItemModel: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────

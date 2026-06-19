@@ -66,6 +66,7 @@ cat >"$SBX_GIT_DIR/info/exclude" <<'EOF'
 **/.rauf/archive/
 **/.rauf/archive
 **/.rauf/answer-proof.txt
+**/.rauf/agent-args.txt
 **/backlog.json.bak
 EOF
 # Commit the freshly-reset state as the clean baseline (no-op if unchanged).
