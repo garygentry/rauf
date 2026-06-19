@@ -46,7 +46,6 @@ The authoring craft and full machine contract live in the `author-backlog` skill
       "dependsOn": ["000"],
       "notes": "Context, links, hints for the agent",
       "estimatedIterations": 1,
-      "model": "opus",
       "agentDelegation": {
         "recommendedConcurrency": 3,
         "strategy": "How to parallelize",
@@ -150,6 +149,7 @@ For each existing item, compare its description and acceptance criteria against 
 - `completedAt` present and `null` for pending/blocked items, ISO date for done items. Flag items where `completedAt` is missing entirely.
 - Field naming uses `dependsOn` (not `dependencies`).
 - `dependsOn` contains only valid item IDs.
+- **`model` portability** — `model` is optional and should normally be omitted so the backlog stays agent-portable. Tier aliases (`opus`, `sonnet`, `haiku`, the `[1m]` suffix) and pinned `claude-*` ids are **Claude-only**: rauf's precedence is `item.model > --agent`, so the value is forwarded verbatim and a non-Claude agent (e.g. Codex) rejects it, halting the loop on the circuit breaker. Flag any item carrying such a value (see "Claude-bound model alias" below) unless the user confirms the backlog only ever runs under Claude.
 - Project-level `project` and `description` are present and meaningful. `schemaVersion`, if present, is a string; if absent, that's fine.
 
 ## Run the Validator
@@ -172,21 +172,22 @@ Exit codes: `0` = valid; `1` = validation findings (errors); `2` = usage/IO erro
 
 ## Anti-Patterns to Flag
 
-| Anti-Pattern         | Severity  | Description                                                                         |
-| -------------------- | --------- | ----------------------------------------------------------------------------------- |
-| God item             | CRITICAL  | 15+ acceptance criteria or 8+ files touched — must be split                         |
-| Missing verification | CRITICAL  | No verification command in acceptance criteria                                      |
-| Invalid enum         | CRITICAL  | `type` or `status` outside the allowed set (e.g. `complete`, `in-progress`, `docs`) |
-| Phantom dependency   | CRITICAL  | `dependsOn` references a non-existent item ID                                       |
-| Circular dependency  | CRITICAL  | Dependency chain forms a cycle                                                      |
-| Wrong dep field      | IMPORTANT | Uses `dependencies` instead of `dependsOn`                                          |
-| Vague description    | IMPORTANT | Description under 100 chars for a feature item                                      |
-| Priority inflation   | IMPORTANT | More than 60% of items are priority 1                                               |
-| Stale blocked        | IMPORTANT | Blocked item whose blocker is now done                                              |
-| Over-constrained     | IMPORTANT | Items chained by `dependsOn` that could run independently                           |
-| Under-constrained    | IMPORTANT | Item uses types/functions from another item but doesn't depend on it                |
-| Wrong type           | INFO      | Item classified as the wrong (but valid) type                                       |
-| Orphan item          | INFO      | Item nothing depends on AND that depends on nothing (may be fine, but worth noting) |
+| Anti-Pattern             | Severity  | Description                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| God item                 | CRITICAL  | 15+ acceptance criteria or 8+ files touched — must be split                                                                                                                                                                                                                                                                       |
+| Missing verification     | CRITICAL  | No verification command in acceptance criteria                                                                                                                                                                                                                                                                                    |
+| Invalid enum             | CRITICAL  | `type` or `status` outside the allowed set (e.g. `complete`, `in-progress`, `docs`)                                                                                                                                                                                                                                               |
+| Phantom dependency       | CRITICAL  | `dependsOn` references a non-existent item ID                                                                                                                                                                                                                                                                                     |
+| Circular dependency      | CRITICAL  | Dependency chain forms a cycle                                                                                                                                                                                                                                                                                                    |
+| Wrong dep field          | IMPORTANT | Uses `dependencies` instead of `dependsOn`                                                                                                                                                                                                                                                                                        |
+| Vague description        | IMPORTANT | Description under 100 chars for a feature item                                                                                                                                                                                                                                                                                    |
+| Priority inflation       | IMPORTANT | More than 60% of items are priority 1                                                                                                                                                                                                                                                                                             |
+| Stale blocked            | IMPORTANT | Blocked item whose blocker is now done                                                                                                                                                                                                                                                                                            |
+| Over-constrained         | IMPORTANT | Items chained by `dependsOn` that could run independently                                                                                                                                                                                                                                                                         |
+| Under-constrained        | IMPORTANT | Item uses types/functions from another item but doesn't depend on it                                                                                                                                                                                                                                                              |
+| Claude-bound model alias | IMPORTANT | Item sets a Claude-only `model` (tier alias `opus`/`sonnet`/`haiku`/`[1m]`, or a `claude-*` id), binding the backlog to Claude agents. Under a non-Claude `--agent` the value is forwarded verbatim and the spawn fails (e.g. Codex 400), halting the loop. Flag unless Claude is the confirmed target; suggest omitting `model`. |
+| Wrong type               | INFO      | Item classified as the wrong (but valid) type                                                                                                                                                                                                                                                                                     |
+| Orphan item              | INFO      | Item nothing depends on AND that depends on nothing (may be fine, but worth noting)                                                                                                                                                                                                                                               |
 
 ## Report Format
 

@@ -72,7 +72,6 @@ Never hard-fail just because the installed copy is missing — fall back to the 
       "dependsOn": ["000"],
       "notes": "Context, links, hints for the agent",
       "estimatedIterations": 1,
-      "model": "opus",
       "agentDelegation": {
         "recommendedConcurrency": 3,
         "strategy": "How to parallelize",
@@ -108,7 +107,7 @@ Never hard-fail just because the installed copy is missing — fall back to the 
 - `dependsOn` — Array of item IDs that must be `done` first. **Use `dependsOn`, never `dependencies`.**
 - `notes` — Free-text hints, context, gotchas for the agent.
 - `estimatedIterations` — Expected loop cycles (default: 1).
-- `model` — Per-item model override. Prefer tier aliases: `"opus"` for complex work, `"sonnet"` for simpler/mechanical work, `"opus[1m]"` for items that need the 1M context window. See [`model` — Right-sizing the intelligence](#model--right-sizing-the-intelligence).
+- `model` — Per-item model override. **Omit by default** so the item stays portable across agents. Only set it to opt into a **Claude tier** (`"opus"`, `"sonnet"`, `"opus[1m]"`) — tier aliases are Claude-only and bind the item to Claude agents. See [`model` — Right-sizing the intelligence (opt-in, Claude-only)](#model--right-sizing-the-intelligence-opt-in-claude-only).
 - `agentDelegation` — Parallelization hints (`recommendedConcurrency`, `strategy`, `subtasks`).
 - `specReferences` — File paths (relative to project root) of specs the agent should read before starting.
 - `provider` — Per-item LLM provider override.
@@ -284,11 +283,31 @@ Use `agentDelegation` when a task has clearly independent subtasks that can run 
 
 List file paths **relative to the project root** (e.g., `specs/auth/00-core-definitions.md`, `docs/SPEC-CORE.md`), NOT relative to the backlog file. `rauf backlog validate --specs-dir …` resolves these from the project root and flags any that don't exist (or that are absolute / escape the project root), so make sure each file actually exists. Use this when the item implements a specific spec section or relies on architectural context not in the description.
 
-### `model` — Right-sizing the intelligence
+### `model` — Right-sizing the intelligence (opt-in, Claude-only)
 
-Prefer **tier aliases** over pinned model ids — an alias tracks the latest model in its tier, so a backlog written today doesn't pin to a model that ages out. `claude --model` accepts these aliases (and the `[1m]` suffix) verbatim, and rauf passes the `model` string straight through to it.
+**Default → omit `model`.** Leave it off and the item inherits whatever agent the
+loop is launched with (`rauf loop run --agent <agent>`, or the project default).
+This keeps the backlog **agent-portable** — the same items run under Claude, Codex,
+or any other provider without edits.
 
-- **Default → `"opus"`** — the latest Opus (200K context). Best for complex architectural work and novel implementations. You may also omit `model` to fall back to the loop's default.
+> **Tier aliases are Claude-only.** `"opus"`, `"sonnet"`, `"haiku"`, and the `[1m]`
+> suffix are **Claude tier aliases**, not provider-neutral values. rauf's resolution
+> precedence is `item.model > --agent`, so a value written here is forwarded
+> **verbatim** to whatever agent runs the loop. Under a non-Claude agent it is not
+> recognized and the spawn fails — e.g. Codex returns
+> `The 'sonnet' model is not supported when using Codex with a ChatGPT account`,
+> every iteration exits 1, and rauf halts on the circuit breaker
+> (`3 consecutive infra failures`) with no hint of the cause. **An item with a tier
+> alias is silently bound to Claude agents.** Only set `model` when the user has
+> explicitly chosen Claude _and_ wants per-item tiering. If you're unsure which
+> agent the backlog will run under, omit it.
+
+When the user has opted into Claude tiering, prefer **tier aliases** over pinned
+model ids — an alias tracks the latest model in its tier, so a backlog written today
+doesn't pin to a model that ages out. `claude --model` accepts these aliases (and the
+`[1m]` suffix) verbatim.
+
+- **Complex / architectural → `"opus"`** — the latest Opus (200K context). Best for novel implementations and architectural work.
 - **Simple / mechanical → `"sonnet"`** — well-specified, low-ambiguity tasks (small edits, mechanical refactors, docs touch-ups). Cheaper and faster than Opus.
 - **Needs the 1M window → `"opus[1m]"`** — use **only** for items that genuinely require the 1M-token context window: large-codebase reads, long multi-file refactors, or tasks that must hold many large files in context at once. The 1M window is **opt-in** — it is enabled solely by the `[1m]` suffix on the alias (or on a full model id). Standard Opus is 200K; `opus[1m]` raises it to 1M with **no cost premium** over standard Opus (note: Sonnet's 1M window, by contrast, requires extra credits — Opus 1M does not). Do **not** add `[1m]` by default — only when the work needs it.
 
