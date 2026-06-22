@@ -1641,7 +1641,7 @@ export class LoopRunner extends TypedEventEmitter {
       appendLog(
         this.paths,
         `OAuth token unavailable (${code}: ${message}). ` +
-          `Ensure Claude Code is authenticated (token: ~/.config/claude-code/credentials.json → .claudeAiOauth.accessToken). ` +
+          `Ensure Claude Code is authenticated (token: ~/.claude/.credentials.json → .claudeAiOauth.accessToken). ` +
           `Relying on reactive banner detection.`,
       );
       return "continue";

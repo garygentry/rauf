@@ -1772,9 +1772,10 @@ fi`,
       // Mock claude signals done immediately so the loop finishes cleanly.
       writeMockClaude(binDir, 'echo "RAUF_DONE"');
 
-      // Redirect HOME so readClaudeOAuthToken looks for credentials at
-      // ${tmpDir}/.config/claude-code/credentials.json (which doesn't exist),
-      // returning FILE_NOT_FOUND without touching the real credentials file.
+      // Redirect HOME so readClaudeOAuthToken looks for credentials under
+      // ${tmpDir} (both ~/.claude/.credentials.json and the legacy
+      // ~/.config/claude-code/credentials.json — neither exists), returning
+      // FILE_NOT_FOUND without touching the real credentials file.
       const origHome = process.env.HOME;
       process.env.HOME = tmpDir;
       try {
