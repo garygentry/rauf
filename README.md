@@ -1,9 +1,10 @@
-# Rauf
+# rauf
 
-**Robust autonomous coding loops over a structured backlog.**
+> Robust autonomous coding loops over a structured backlog.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/garygentry/rauf/actions/workflows/ci.yml/badge.svg)](https://github.com/garygentry/rauf/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/release/garygentry/rauf)](https://github.com/garygentry/rauf/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Rauf is a "ralph" runner: it works through a highly structured backlog file one item at a time, gives each item its own fresh agent context, then verifies the result and commits it. You rarely write that backlog by hand. The coding agent usually authors it, using skills that ship with rauf, so you describe what you want and the agent turns it into well-scoped, verifiable items.
 
