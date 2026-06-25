@@ -11,6 +11,7 @@ import {
   resolveRootDirectory,
   readClaudeOAuthToken,
   getClaudeCredentialsPath,
+  getClaudeCredentialsCandidatePaths,
   MARKER_FILENAME,
   TOOL_CONFIG_DIR,
   TOOL_CONFIG_PATH,
@@ -504,9 +505,17 @@ describe("readClaudeOAuthToken", () => {
     fs.rmSync(oauthTmpDir, { recursive: true, force: true });
   });
 
-  it("getClaudeCredentialsPath returns path under homedir", () => {
+  it("getClaudeCredentialsPath returns the modern path under homedir", () => {
     const result = getClaudeCredentialsPath();
-    expect(result).toBe(path.join(os.homedir(), ".config", "claude-code", "credentials.json"));
+    expect(result).toBe(path.join(os.homedir(), ".claude", ".credentials.json"));
+  });
+
+  it("getClaudeCredentialsCandidatePaths returns modern then legacy under homedir", () => {
+    const candidates = getClaudeCredentialsCandidatePaths();
+    expect(candidates).toEqual([
+      path.join(os.homedir(), ".claude", ".credentials.json"),
+      path.join(os.homedir(), ".config", "claude-code", "credentials.json"),
+    ]);
   });
 
   it("returns ok with token when credentials file is valid", () => {
@@ -640,5 +649,104 @@ describe("readClaudeOAuthToken", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value).toBe("nested-correct-token");
+  });
+});
+
+// ─── readClaudeOAuthToken: candidate path resolution (no override) ───
+//
+// Exercises the modern-then-legacy fallback by mocking os.homedir() to a temp
+// HOME and writing credentials at the modern (~/.claude/.credentials.json) and/or
+// legacy (~/.config/claude-code/credentials.json) locations.
+
+describe("readClaudeOAuthToken candidate resolution", () => {
+  let homeDir: string;
+  let modernPath: string;
+  let legacyPath: string;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
+
+  const writeCreds = (file: string, token: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ claudeAiOauth: { accessToken: token } }));
+  };
+
+  beforeEach(() => {
+    homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-home-"));
+    // os.homedir() reads $HOME (POSIX) / %USERPROFILE% (Windows) at call time, so
+    // pointing both at the temp HOME makes candidate resolution hermetic without
+    // spying on the (non-configurable) os module namespace.
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
+    modernPath = path.join(homeDir, ".claude", ".credentials.json");
+    legacyPath = path.join(homeDir, ".config", "claude-code", "credentials.json");
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("reads the modern ~/.claude/.credentials.json location", () => {
+    writeCreds(modernPath, "modern-token");
+
+    const result = readClaudeOAuthToken();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("modern-token");
+  });
+
+  it("falls back to the legacy path when the modern file is absent", () => {
+    writeCreds(legacyPath, "legacy-token");
+
+    const result = readClaudeOAuthToken();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("legacy-token");
+  });
+
+  it("prefers the modern path when both files exist", () => {
+    writeCreds(modernPath, "modern-token");
+    writeCreds(legacyPath, "legacy-token");
+
+    const result = readClaudeOAuthToken();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("modern-token");
+  });
+
+  it("skips a malformed modern file and uses a valid legacy file", () => {
+    fs.mkdirSync(path.dirname(modernPath), { recursive: true });
+    fs.writeFileSync(modernPath, "{ not valid json }}");
+    writeCreds(legacyPath, "legacy-token");
+
+    const result = readClaudeOAuthToken();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toBe("legacy-token");
+  });
+
+  it("returns FILE_NOT_FOUND naming all candidates when none exist", () => {
+    const result = readClaudeOAuthToken();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.FILE_NOT_FOUND);
+    expect(result.error.message).toContain(modernPath);
+    expect(result.error.message).toContain(legacyPath);
+  });
+
+  it("surfaces a present-but-invalid file's error when no valid candidate exists", () => {
+    fs.mkdirSync(path.dirname(modernPath), { recursive: true });
+    fs.writeFileSync(modernPath, JSON.stringify({ claudeAiOauth: { refreshToken: "no-access" } }));
+
+    const result = readClaudeOAuthToken();
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    expect(result.error.message).toContain("accessToken");
   });
 });

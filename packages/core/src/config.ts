@@ -108,16 +108,33 @@ export function resolveRootDirectory(cliRoot?: string, envRoot?: string): string
 //
 // Read the Claude OAuth bearer token from the Claude Code credentials file.
 // Extracts .claudeAiOauth.accessToken from the parsed JSON.
+//
+// Modern Claude Code (v2.x) stores credentials at ~/.claude/.credentials.json;
+// older builds used ~/.config/claude-code/credentials.json. Probe the modern
+// location first and fall back to the legacy one, so an authenticated machine is
+// detected regardless of which path the installed Claude Code writes.
 
-const CLAUDE_CREDENTIALS_REL = path.join(".config", "claude-code", "credentials.json");
+const CLAUDE_CREDENTIALS_REL_MODERN = path.join(".claude", ".credentials.json");
+const CLAUDE_CREDENTIALS_REL_LEGACY = path.join(".config", "claude-code", "credentials.json");
 
-export function getClaudeCredentialsPath(): string {
-  return path.join(os.homedir(), CLAUDE_CREDENTIALS_REL);
+// Candidate credential paths, ordered most- to least-preferred. Deterministic
+// (no filesystem access) so it stays trivially testable.
+export function getClaudeCredentialsCandidatePaths(): string[] {
+  const home = os.homedir();
+  return [
+    path.join(home, CLAUDE_CREDENTIALS_REL_MODERN),
+    path.join(home, CLAUDE_CREDENTIALS_REL_LEGACY),
+  ];
 }
 
-export function readClaudeOAuthToken(credentialsPathOverride?: string): Result<string> {
-  const credentialsPath = credentialsPathOverride ?? getClaudeCredentialsPath();
+// The preferred default location (modern Claude Code). Retained for callers and
+// messages that want a single representative path; it is the first candidate.
+export function getClaudeCredentialsPath(): string {
+  return path.join(os.homedir(), CLAUDE_CREDENTIALS_REL_MODERN);
+}
 
+// Read and validate a single credentials file, extracting claudeAiOauth.accessToken.
+function readClaudeOAuthTokenFromFile(credentialsPath: string): Result<string> {
   let raw: string;
   try {
     raw = fs.readFileSync(credentialsPath, "utf-8");
@@ -173,6 +190,39 @@ export function readClaudeOAuthToken(credentialsPathOverride?: string): Result<s
   }
 
   return ok(accessToken);
+}
+
+export function readClaudeOAuthToken(credentialsPathOverride?: string): Result<string> {
+  // Explicit override → read exactly that file (single-path semantics, preserved
+  // for callers/tests that pass a specific path).
+  if (credentialsPathOverride !== undefined) {
+    return readClaudeOAuthTokenFromFile(credentialsPathOverride);
+  }
+
+  const candidates = getClaudeCredentialsCandidatePaths();
+  let lastPresentError: Result<string> | undefined;
+
+  for (const candidate of candidates) {
+    const result = readClaudeOAuthTokenFromFile(candidate);
+    if (result.ok) {
+      return result;
+    }
+    // A file that exists but is malformed/invalid is more informative than a plain
+    // "not found" — remember it, but keep probing later candidates so a stale broken
+    // file doesn't mask a valid one further down the list.
+    if (result.error.code !== ErrorCodes.FILE_NOT_FOUND) {
+      lastPresentError = result;
+    }
+  }
+
+  if (lastPresentError !== undefined) {
+    return lastPresentError;
+  }
+
+  return err({
+    code: ErrorCodes.FILE_NOT_FOUND,
+    message: `Claude credentials file not found (checked: ${candidates.join(", ")})`,
+  });
 }
 
 // ─── Exported constants (for testing) ────────────────────────────
