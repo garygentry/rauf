@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Codex preset uses current `codex exec` automation flags** — the `codex` CLI
+  preset now runs with `--sandbox workspace-write --ask-for-approval never`
+  instead of the deprecated `--full-auto`, matching current Codex CLI docs. This
+  avoids deprecation noise and makes the sandbox/approval behavior explicit so
+  non-interactive loop runs neither hang on approval prompts nor run with implicit
+  permissions. Added preset argv tests guarding the exact invocation.
+
 ## 0.8.0
 
 Provider-neutral backlogs. Backlog items no longer bind to Claude by default, and

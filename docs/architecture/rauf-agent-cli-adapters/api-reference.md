@@ -186,7 +186,7 @@ const agent = new CliAgent({
   binary: "codex",
   promptDelivery: "arg",
   buildArgs: () => ["exec"],
-  nonInteractive: ["--full-auto"],
+  nonInteractive: ["--sandbox", "workspace-write", "--ask-for-approval", "never"],
   modelFlag: (m) => ["--model", m],
 });
 ```
