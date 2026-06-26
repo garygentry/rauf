@@ -10,7 +10,7 @@ export default defineConfig({
   image: { service: passthroughImageService() },
   integrations: [
     starlight({
-      title: "Rauf",
+      title: "rauf",
       description:
         "Install, manage, and monitor autonomous coding loops across local software projects.",
       social: [
@@ -32,6 +32,7 @@ export default defineConfig({
         {
           label: "Guides",
           items: [
+            { label: "Running a Loop", slug: "guides/running" },
             { label: "Monitoring a Loop", slug: "guides/monitoring" },
             { label: "Recovery & Troubleshooting", slug: "guides/recovery" },
             { label: "Multi-Backlog & Multi-Project", slug: "guides/multi-backlog" },
