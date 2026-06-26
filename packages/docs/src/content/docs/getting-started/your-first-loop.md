@@ -193,6 +193,8 @@ attach the live view in one go.)
 
 - [Core Concepts](../core-concepts/) — what a backlog item, a signal, and a status mean, and how
   they fit together.
+- [Running a Loop](../../guides/running/) — the operational reference for run modes, guards,
+  tuning flags, and stop/resume/reset.
 - [Monitoring a Loop](../../guides/monitoring/) — every way to watch a loop, including the
   machine-readable surfaces.
 - [CLI Reference](../../spec-cli/) — every command and flag in full.
