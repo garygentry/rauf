@@ -113,16 +113,18 @@ path-sandboxing and never leaks on failure.
 
 The four presets are `CliAgentConfig` literals:
 
-| id        | binary         | delivery | non-interactive     | model flag    |
-| --------- | -------------- | -------- | ------------------- | ------------- |
-| `codex`   | `codex`        | `arg`    | `--full-auto`       | `--model <m>` |
-| `gemini`  | `gemini`       | `stdin`  | `--yolo`            | `-m <m>`      |
-| `copilot` | `copilot`      | `stdin`  | `--allow-all-tools` | `--model <m>` |
-| `cursor`  | `cursor-agent` | `arg`    | `--force`           | `--model <m>` |
+| id        | binary         | delivery | non-interactive                                      | model flag    |
+| --------- | -------------- | -------- | ---------------------------------------------------- | ------------- |
+| `codex`   | `codex`        | `arg`    | `--sandbox workspace-write --ask-for-approval never` | `--model <m>` |
+| `gemini`  | `gemini`       | `stdin`  | `--yolo`                                             | `-m <m>`      |
+| `copilot` | `copilot`      | `stdin`  | `--allow-all-tools`                                  | `--model <m>` |
+| `cursor`  | `cursor-agent` | `arg`    | `--force`                                            | `--model <m>` |
 
 > Note `cursor`'s binary (`cursor-agent`) deliberately differs from its agent id
-> (`cursor`). These flags are best-known defaults (epic OQ-2) — correct them via
-> `generic-cli` config if an upstream CLI changes.
+> (`cursor`). Codex is driven through `codex exec` with explicit sandbox/approval
+> flags (verified against current Codex CLI docs); the deprecated `--full-auto` is
+> intentionally avoided. The remaining flags are best-known defaults (epic OQ-2) —
+> correct them via `generic-cli` config if an upstream CLI changes.
 
 `generic-cli` is the reserved, configurable agent. `configToCliAgentConfig(id, raw)`
 normalizes an untyped `providerConfig` record into a validated `CliAgentConfig`, returning

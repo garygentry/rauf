@@ -13,6 +13,12 @@ import { registerAgent } from "./registry.js";
  * fix here, never an engine change. SC-1 proves the invocation MECHANISM via mock agents in the
  * sandbox (items 012/013), NOT the real flags. Update these literals when an agent's actual CLI
  * surface is confirmed.
+ *
+ * Codex is verified against current Codex CLI docs: non-interactive automation is `codex exec`
+ * with explicit sandbox/approval flags. `--full-auto` is deprecated and intentionally not used —
+ * it would emit deprecation noise and leave sandbox/approval behavior implicit. `--ask-for-approval
+ * never` keeps the loop from hanging on prompts; `--sandbox workspace-write` allows in-repo edits
+ * without full host access.
  */
 export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
   {
@@ -21,7 +27,7 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     binary: "codex",
     promptDelivery: "arg",
     buildArgs: () => ["exec"],
-    nonInteractive: ["--full-auto"],
+    nonInteractive: ["--sandbox", "workspace-write", "--ask-for-approval", "never"],
     modelFlag: (m) => ["--model", m],
   },
   {
