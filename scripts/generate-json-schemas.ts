@@ -116,7 +116,7 @@ export function buildBacklogSchemaJson(schemaId: string): string {
   }
   if (itemProps["model"]) {
     itemProps["model"].description =
-      "Per-item Claude model override. Prefer tier aliases ('opus', 'sonnet'); append '[1m]' for the 1M context window ('opus[1m]').";
+      "Per-item model override passed to the selected provider. Omit by default for portability. Claude tier aliases such as 'opus', 'sonnet', and 'opus[1m]' are Claude-only and may fail under non-Claude agents.";
   }
   if (itemProps["package"]) {
     itemProps["package"].description =

@@ -43,4 +43,11 @@ The runner picks the model by precedence (highest wins):
 `item.model` > `--model` / options > project default > provider default.
 (`rauf loop run --no-model` ignores `item.model` for one run — useful for running
 a Claude-aliased backlog under a non-Claude `--agent`.)
+
+### Delegation (Claude Code)
+
+In Claude Code, when a backlog item carries `agentDelegation`, use the **Task** tool to spawn
+sub-agents for the independent subtasks, then wait for all of them before final verification. You
+(the main agent) still own the `RAUF_*` exit signal — sub-agents do not emit it. The shared
+`RAUF.md` guidance is host-agnostic; this Task-tool note is the Claude-specific specialization.
 <!-- rauf:end -->

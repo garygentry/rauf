@@ -99,7 +99,11 @@ function formatAgentDelegation(item: BacklogItem): string {
 
   const parts: string[] = [];
   parts.push("### Agent Delegation");
-  parts.push("This task has delegation guidance. Use the Task tool to parallelize work:");
+  parts.push(
+    "This task has delegation guidance. If your host agent provides a subagent/delegation " +
+      "mechanism, use it to parallelize the work below; otherwise complete the subtasks inline " +
+      "in the main session:",
+  );
   parts.push("");
 
   if (delegation.strategy) {
@@ -118,10 +122,12 @@ function formatAgentDelegation(item: BacklogItem): string {
 
   parts.push("");
   parts.push("**Instructions:**");
-  parts.push("- Use Task tool to create sub-agents for each subtask");
-  parts.push("- Give each sub-agent clear, self-contained instructions");
-  parts.push("- Wait for all sub-agents before running final verification");
-  parts.push("- You own the RAUF_DONE/RAUF_BLOCKED signal — sub-agents do not emit these");
+  parts.push(
+    "- If your host agent supports subagents/delegation, create one per subtask; otherwise do them inline",
+  );
+  parts.push("- Give each subtask clear, self-contained instructions");
+  parts.push("- Complete all subtasks before running final verification");
+  parts.push("- You own the RAUF_DONE/RAUF_BLOCKED signal — delegated subtasks do not emit these");
 
   return parts.join("\n");
 }
@@ -131,7 +137,7 @@ function formatEstimatedIterationsHint(item: BacklogItem): string {
 
   return [
     "### Multi-Iteration Guidance",
-    `This task is estimated to take ${item.estimatedIterations} iterations. Consider using the Task tool to delegate independent subtasks to parallel agents for efficiency.`,
+    `This task is estimated to take ${item.estimatedIterations} iterations. If your host agent supports delegation, consider delegating independent subtasks to parallel subagents for efficiency; otherwise work through them inline.`,
   ].join("\n");
 }
 
