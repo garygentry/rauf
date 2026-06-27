@@ -385,6 +385,40 @@ describe("install — idempotency", () => {
     expect(claudeMd2).toBe(claudeMd1);
   });
 
+  it("reinstall preserves provider/providerConfig and other marker options", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    // First install.
+    install(tmpDir, installOpts({ projectName: "orig" }));
+
+    // Simulate a project configured to default to a non-Claude agent by hand-editing the marker
+    // (as a user or feature-forge installer would persist provider config).
+    const markerPath = path.join(tmpDir, ".rauf.json");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+    marker.options.provider = "codex";
+    marker.options.providerConfig = { binary: "codex", promptDelivery: "arg" };
+    marker.options.model = "gpt-5";
+    marker.options.runtime = "global";
+    fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+
+    // Reinstall (idempotent path).
+    const r2 = install(tmpDir, installOpts({ projectName: "orig" }));
+    expect(r2.ok).toBe(true);
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+
+    // Cross-agent config must survive reinstall, not silently revert to the Claude default.
+    expect(markerResult.value.options.provider).toBe("codex");
+    expect(markerResult.value.options.providerConfig).toEqual({
+      binary: "codex",
+      promptDelivery: "arg",
+    });
+    expect(markerResult.value.options.model).toBe("gpt-5");
+    expect(markerResult.value.options.runtime).toBe("global");
+  });
+
   it("second install preserves existing backlog.json", () => {
     createFakeProject(tmpDir, { git: true });
 

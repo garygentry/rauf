@@ -80,14 +80,22 @@ export const createGenericCliProvider: ProviderFactory = (config) => {
  * `providerConfig` carrying a `binary` is supplied, it PATH-probes that binary.
  */
 export async function detectGenericCli(config?: Record<string, unknown>): Promise<DetectionResult> {
-  const binary = config?.binary;
-  if (typeof binary === "string" && binary.length > 0) {
-    return probeBinaryOnPath(binary);
+  // Enumeration path (no providerConfig, e.g. `rauf agents`): the binary is unknown until a
+  // per-run config is supplied, so report configurable rather than failing discovery.
+  if (config === undefined) {
+    return {
+      available: true,
+      detail: "configurable; binary resolved from providerConfig at run time",
+    };
   }
-  return {
-    available: true,
-    detail: "configurable; binary resolved from providerConfig at run time",
-  };
+  // Preflight path: a providerConfig IS supplied. Validate the WHOLE config (binary present +
+  // valid promptDelivery/args/…) so a missing binary or malformed option fails setup before any
+  // loop state/backlog mutation, instead of throwing later from createProvider (P1 review).
+  const parsed = configToCliAgentConfig(GENERIC_AGENT_ID, config);
+  if (!parsed.ok) {
+    return { available: false, detail: parsed.error.message };
+  }
+  return probeBinaryOnPath(parsed.value.binary);
 }
 
 // Register the reserved generic-cli descriptor with NO binaryName (its binary is unknown until
@@ -96,5 +104,5 @@ registerAgent({
   id: GENERIC_AGENT_ID,
   displayName: "Generic CLI agent (configurable)",
   factory: createGenericCliProvider,
-  detect: () => detectGenericCli(),
+  detect: (config) => detectGenericCli(config),
 });

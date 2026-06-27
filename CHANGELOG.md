@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Reinstall preserves provider configuration** — `install()` now carries every
+  existing `.rauf.json` marker option (`provider`, `providerConfig`, `model`,
+  `runtime`, sweep settings, `sessionTimeout`, …) across an idempotent reinstall
+  instead of keeping only `ignoreInTool`/`gitignoreScripts`/`maxIterations`. A
+  project configured to default to `codex` or `generic-cli` no longer silently
+  reverts to the Claude default when rauf is reinstalled or refreshed.
+- **`generic-cli` configuration is preflighted before state mutation** — the
+  setup-time agent detection now validates the project `providerConfig` for
+  `generic-cli` (binary present and executable, valid `promptDelivery`/args) and
+  fails fast with a clear message before any loop state or backlog item is
+  mutated, instead of throwing mid-iteration after an item is marked
+  `in_progress`. Enumeration (`rauf agents`) still reports `generic-cli` as
+  configurable when no config is supplied.
+
 ## 0.8.1
 
 ### Fixed

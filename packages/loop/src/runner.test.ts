@@ -1725,6 +1725,35 @@ fi`,
       expect(backlog.items[0]!.status).toBe("pending");
     });
 
+    it("fails fast for generic-cli when its providerConfig is invalid — before any state/backlog mutation", async () => {
+      setupProject(tmpDir, [pendingItem("001", "GenericPreflight")]);
+
+      // Configure the project to default to generic-cli but with a providerConfig that omits the
+      // required binary. Preflight must catch this before marking the item in_progress.
+      const markerPath = path.join(tmpDir, ".rauf.json");
+      const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+      marker.options.provider = "generic-cli";
+      marker.options.providerConfig = { promptDelivery: "stdin" }; // no binary
+      fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+
+      const errors: string[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("loop_error", (e) => errors.push(e.error));
+      const result = await runner.start();
+
+      expect(result).toMatchObject({ completedCount: 0, blockedCount: 0, cancelled: false });
+      const errMsg = errors.find((m) => m.includes("generic-cli"));
+      expect(errMsg).toBeDefined();
+      expect(errMsg).toContain("binary");
+
+      // No state.json, item still pending.
+      expect(fs.existsSync(path.join(tmpDir, ".rauf", "state.json"))).toBe(false);
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]!.status).toBe("pending");
+    });
+
     it("applies neutralizeForDetection before parseSignal at both work and review sites", () => {
       const here = path.dirname(fileURLToPath(import.meta.url));
       const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");

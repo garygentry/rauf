@@ -54,6 +54,7 @@ import { TypedEventEmitter } from "./events.js";
 import { createProvider, getAgentDescriptors, detectAgent } from "./providers/index.js";
 import type { LLMProvider } from "./providers/types.js";
 import { resolveAgentId } from "./agent-selection.js";
+import { GENERIC_AGENT_ID } from "./constants.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
@@ -551,7 +552,13 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     for (const id of candidateIds) {
-      const result = await detectAgent(id); // never throws
+      // For generic-cli, hand the project providerConfig to detection so a missing/invalid
+      // config fails setup here (before any state/backlog mutation) instead of throwing later
+      // from createProvider during iteration (P1 review). Other agents take the PATH probe.
+      const result = await detectAgent(
+        id,
+        id === GENERIC_AGENT_ID ? this.projectProviderConfig : undefined,
+      ); // never throws
       if (result.available) continue;
 
       // Unavailable. Discriminate by capability (not by id), matching item 010's
