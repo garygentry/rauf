@@ -1,7 +1,7 @@
 ---
 title: "Backlog-Tool / Loop-Runner Contract"
 description: The protocol a ralph-style loop runner exposes so a pipeline tool can drive it (Part A), plus rauf's LLM-agnostic execution architecture (Part B). rauf is the default and reference implementation.
-status: Part A is STABLE (current surface); Part B is DRAFT (provider refactor)
+status: Part A is STABLE (current surface); Part B is HISTORICAL (the provider refactor it planned is now implemented — see the banner under "Part B")
 ---
 
 # SPEC: Backlog-Tool / Loop-Runner Contract
@@ -335,9 +335,27 @@ for state.
 
 # Part B: LLM-Agnostic Execution Architecture
 
-> This part is the **provider** axis (which LLM drives an iteration) and remains
-> a DRAFT refactor plan. The state-directory layout and `.rauf.json` marker it
-> references are defined authoritatively in Part A §A.3.
+> **HISTORICAL — kept for design rationale, not current state.** Part B was the
+> DRAFT plan for the provider/agent refactor. That refactor is **implemented**: the
+> provider registry, the `LLMProvider` interface, `--agent` selection, per-item
+> `provider`, the `claude-cli`/`cli-agent`/`generic-cli` adapters, and
+> provider-neutral `<provider.id>` events all ship today. For the **current**
+> architecture, read the implemented docs instead:
+>
+> - `docs/architecture/rauf-agent-cli-adapters/README.md`
+> - `docs/architecture/rauf-agent-cli-adapters/architecture.md`
+> - `docs/architecture/rauf-agent-cli-adapters/api-reference.md`
+>
+> Two known drifts between this draft and the shipped code: (1) the user-facing CLI
+> flag is **`--agent`**, not the `--provider` this draft names (`provider` survives
+> only as the persisted/internal `.rauf.json` and per-item schema key); (2) some
+> "Must Change" code paths below (e.g. `claude-process.ts`) were since reorganized
+> into the `packages/loop/src/providers/` adapters. Where this draft and the
+> implemented docs disagree, the implemented docs win.
+>
+> This part is the **provider** axis (which LLM drives an iteration). The
+> state-directory layout and `.rauf.json` marker it references are defined
+> authoritatively in Part A §A.3.
 
 ## 1. Problem Statement
 

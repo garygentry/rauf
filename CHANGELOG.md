@@ -15,6 +15,20 @@
   too (it runs through the same installer). Additive — the Claude path is
   unchanged.
 
+### Docs
+
+- **Marked the provider-refactor draft as historical** — `Part B` of
+  `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` described the agent-agnostic refactor as a
+  DRAFT plan, but that work has shipped. It now carries a HISTORICAL banner
+  pointing to the implemented `docs/architecture/rauf-agent-cli-adapters/*` docs
+  and noting the two drifts (the user-facing flag is `--agent`, not the draft's
+  `--provider`; some "Must Change" paths were reorganized into
+  `packages/loop/src/providers/`).
+- **Documented the non-Claude telemetry gap explicitly** — the adapter
+  architecture doc now spells out that `llm_spawned`/`llm_exited` are emitted for
+  every provider while `llm_tool_activity`/`llm_token_update` may be absent for
+  plain CLI agents, and that stuck detection degrades to process silence for them.
+
 ### Fixed
 
 - **Reinstall preserves provider configuration** — `install()` now carries every
