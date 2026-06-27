@@ -13,6 +13,13 @@
   `pnpm codex:check` drift guard in the gate keeps it in lockstep. rauf's skill
   frontmatter is already Codex-compatible (`name` + `description`), so skills map
   through with no dropped constructs.
+- **Codex subagents** — two repo-level Codex subagents, `rauf-backlog-reviewer`
+  and `rauf-loop-driver` (`.codex/agents/*.toml`), generated from canonical
+  `agents/<name>.md` definitions by `scripts/build-codex-agents.ts` and guarded by
+  the same `pnpm codex:check`. They let a Codex session delegate a backlog QA audit
+  or loop supervision to a focused subagent that defers to the canonical
+  `review-backlog` / `drive-rauf-loop` skills. Repo-level only — `rauf install`
+  does not deploy them, keeping user installs clean.
 
 ## 0.9.0
 
