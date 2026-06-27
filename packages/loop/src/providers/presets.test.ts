@@ -1,69 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ok } from "@rauf/core";
-import type { ProcessGroupResult } from "../process-group.js";
+import { describe, it, expect } from "vitest";
 
-// Mock the shared process-group helper so we can observe the assembled argv.
-vi.mock("../process-group.js", () => ({
-  spawnProcessGroup: vi.fn(),
-}));
-
-import { spawnProcessGroup } from "../process-group.js";
-import { CliAgent } from "./cli-agent.js";
-import { getPresetConfig } from "./presets.js";
-
-const mockSpawn = vi.mocked(spawnProcessGroup);
-
-const PG_OK: ProcessGroupResult = {
-  exitCode: 0,
-  stdout: "RAUF_DONE",
-  stderr: "",
-  timedOut: false,
-  durationMs: 1,
-};
+import { getPresetConfig, PRESET_CONFIGS } from "./presets.js";
 
 describe("preset configs", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockSpawn.mockResolvedValue(ok(PG_OK));
+  // codex is no longer a generic preset — it has a dedicated adapter (CodexCliProvider) with the
+  // corrected current argv and JSONL telemetry. See codex-cli.test.ts for its invocation asserts.
+  it("does not register codex as a generic preset", () => {
+    expect(getPresetConfig("codex")).toBeUndefined();
+    expect(PRESET_CONFIGS.some((c) => c.id === "codex")).toBe(false);
   });
 
-  describe("codex", () => {
-    it("uses `codex exec` with explicit sandbox/approval flags (no deprecated --full-auto)", async () => {
-      const config = getPresetConfig("codex");
-      expect(config).toBeDefined();
-      // Guard against regressing to the deprecated automation flag.
-      expect(config!.nonInteractive).not.toContain("--full-auto");
-
-      const agent = new CliAgent(config!);
-      await agent.execute("the prompt", { timeoutMinutes: 30, model: "gpt-5-codex" });
-
-      const [cmd, args] = mockSpawn.mock.calls[0]!;
-      expect(cmd).toBe("codex");
-      expect(args).toEqual([
-        "exec",
-        "--sandbox",
-        "workspace-write",
-        "--ask-for-approval",
-        "never",
-        "--model",
-        "gpt-5-codex",
-        "the prompt",
-      ]);
-    });
-
-    it("omits the --model flag when no model is resolved", async () => {
-      const agent = new CliAgent(getPresetConfig("codex")!);
-      await agent.execute("p", { timeoutMinutes: 1 });
-
-      const [, args] = mockSpawn.mock.calls[0]!;
-      expect(args).toEqual([
-        "exec",
-        "--sandbox",
-        "workspace-write",
-        "--ask-for-approval",
-        "never",
-        "p",
-      ]);
-    });
+  it("still ships the other CLI presets", () => {
+    for (const id of ["gemini", "copilot", "cursor"]) {
+      expect(getPresetConfig(id), `missing preset ${id}`).toBeDefined();
+    }
   });
 });
