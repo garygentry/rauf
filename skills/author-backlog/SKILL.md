@@ -77,12 +77,15 @@ Never hard-fail just because the installed copy is missing — fall back to the 
         "strategy": "How to parallelize",
         "subtasks": ["Subtask 1", "Subtask 2", "Subtask 3"]
       },
-      "specReferences": ["docs/SPEC.md"],
-      "provider": "claude-cli"
+      "specReferences": ["docs/SPEC.md"]
     }
   ]
 }
 ```
+
+> The shape above omits `provider` and `model` on purpose — that's the portable
+> default. Add them only for an item that intentionally requires a specific agent
+> or Claude tier (see the optional-fields notes below).
 
 ### Top-level fields
 
@@ -110,7 +113,7 @@ Never hard-fail just because the installed copy is missing — fall back to the 
 - `model` — Per-item model override. **Omit by default** so the item stays portable across agents. Only set it to opt into a **Claude tier** (`"opus"`, `"sonnet"`, `"opus[1m]"`) — tier aliases are Claude-only and bind the item to Claude agents. See [`model` — Right-sizing the intelligence (opt-in, Claude-only)](#model--right-sizing-the-intelligence-opt-in-claude-only).
 - `agentDelegation` — Parallelization hints (`recommendedConcurrency`, `strategy`, `subtasks`).
 - `specReferences` — File paths (relative to project root) of specs the agent should read before starting.
-- `provider` — Per-item LLM provider override.
+- `provider` — Per-item agent/provider override (e.g. `"claude-cli"`, `"codex"`). **Omit by default.** rauf's precedence is `item.provider > --agent`, so a per-item `provider` **overrides the run-level `--agent` selection** and makes that item non-portable — an item pinned to `"claude-cli"` ignores `rauf loop run --agent codex`. Set it only when an item intentionally requires a specific agent, and say why in `notes`.
 
 ### Enums — get these exactly right
 

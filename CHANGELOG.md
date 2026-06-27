@@ -36,6 +36,13 @@
   "Claude model"; it now explains the field is passed to the selected provider and
   that Claude tier aliases (`opus`/`sonnet`/`opus[1m]`) are Claude-only and may
   fail under non-Claude agents.
+- **Backlog skills no longer bias toward Claude** — the `author-backlog` and
+  `review-backlog` skills dropped the `"provider": "claude-cli"` line from their
+  generic shape examples (a per-item `provider` overrides the run-level `--agent`,
+  silently making a backlog non-portable). `author-backlog` now documents
+  `provider` as omit-by-default and adds a portable-vs-intentionally-pinned
+  example; `review-backlog` gains a provider-pin portability rule mirroring the
+  existing `model` rule.
 
 ## 0.8.1
 
