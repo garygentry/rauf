@@ -8,11 +8,26 @@ import { registerAgent } from "./registry.js";
  * Each preset is plain {@link CliAgentConfig} data over the {@link CliAgent} engine — no new
  * orchestration code (REQ-SCALE-01). All run in plain-text mode (`parsesStream` omitted).
  *
- * ⚠️ WARNING (OQ-2): the `nonInteractive` and `modelFlag` literals below are best-known,
- * CORRECTABLE values — not verified against the real CLIs. A wrong flag is a one-line config
- * fix here, never an engine change. SC-1 proves the invocation MECHANISM via mock agents in the
- * sandbox (items 012/013), NOT the real flags. Update these literals when an agent's actual CLI
- * surface is confirmed.
+ * OQ-2 verification status (real-CLI checked 2026-06-27; a wrong flag is a one-line config fix
+ * here, never an engine change):
+ *  - `copilot` (@github/copilot 1.0.65) — VERIFIED end-to-end: `copilot --allow-all-tools` with
+ *    the prompt on stdin runs headlessly and emits the agent's text on stdout (real run exited 0
+ *    with the expected sentinel). All three CLIs auto-detect a non-TTY stdin and go headless, so
+ *    the engine's stdin/arg delivery is enough — no explicit `-p/--prompt` is needed for copilot
+ *    or gemini.
+ *  - `gemini` (@google/gemini-cli 0.49.0) — argv VERIFIED to reach headless execution: `gemini
+ *    --yolo` with the prompt on stdin parses, enters non-interactive mode, and consumes the
+ *    prompt (run reached the auth wall — `GEMINI_API_KEY` not set in this env). Completion +
+ *    stdout capture remains unconfirmed until run with a real key; flags themselves are correct.
+ *  - `cursor` (cursor-agent 2026.06.26) — `--print` is the headless trigger ("Print responses to
+ *    console for scripts/non-interactive use"); WITHOUT it cursor-agent would not emit parseable
+ *    output. Added below and argv-verified (reaches the auth wall, not an "unknown option"
+ *    error). `--force` stays as the auto-approve flag. End-to-end completion unconfirmed until
+ *    run with `cursor-agent login` / `CURSOR_API_KEY`.
+ *
+ * None of the three exhibit the codex failure mode (argv rejection / interactive hang). Validated
+ * against the real binaries, not docs or literal-asserting unit tests (the blind spot that shipped
+ * the broken codex loop in 0.9.0). Re-verify gemini/cursor end-to-end when credentials are present.
  *
  * NOTE: `codex` is NOT a generic preset — it has a dedicated, telemetry-capable adapter
  * ({@link ./codex-cli.ts}, `CodexCliProvider`) that also builds the correct current argv
@@ -44,7 +59,9 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     binary: "cursor-agent",
     promptDelivery: "arg",
     buildArgs: () => [],
-    nonInteractive: ["--force"],
+    // `--print` is the headless/non-interactive trigger (prints responses to stdout for scripts);
+    // `--force` auto-approves tool calls. Verified against cursor-agent 2026.06.26 (2026-06-27).
+    nonInteractive: ["--print", "--force"],
     modelFlag: (m) => ["--model", m],
   },
 ];

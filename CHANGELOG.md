@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`cursor` preset was missing its headless trigger** — the Cursor preset shipped
+  `cursor-agent --force <prompt>` but omitted `--print`, the flag that makes
+  cursor-agent "print responses to console for scripts/non-interactive use". Without
+  it, even an authenticated run would emit no parseable stdout, so rauf would never see
+  the agent's output (e.g. `RAUF_DONE`). The preset now builds
+  `cursor-agent --print --force <prompt>`, verified against the real binary
+  (cursor-agent 2026.06.26): the new argv parses and reaches execution, whereas a bogus
+  flag yields a distinct "unknown option" error.
+
+### Changed
+
+- **CLI preset argv validated against the real binaries** (OQ-2) — `copilot`
+  (@github/copilot 1.0.65) is now VERIFIED end-to-end (`copilot --allow-all-tools` with
+  the prompt on stdin runs headlessly and emits the expected sentinel, exit 0). `gemini`
+  (@google/gemini-cli 0.49.0, `--yolo` on stdin) is argv-verified to enter headless and
+  consume the prompt (full completion pending a real `GEMINI_API_KEY`). None of the three
+  presets exhibit the codex-class argv-rejection/interactive-hang failure. The OQ-2
+  warning in `presets.ts` is narrowed to a per-CLI verification status, and
+  `presets.test.ts` now asserts the real-CLI-verified argv literals.
+
 ## 0.10.0
 
 ### Fixed
