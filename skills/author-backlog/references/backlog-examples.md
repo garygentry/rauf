@@ -221,3 +221,42 @@ These examples demonstrate the quality, detail, and format expected for rauf bac
 - Uses the `test` type because the test suite is the deliverable (most tests should instead live in an implementation item's acceptance criteria).
 - Enumerates the exact cases and expected results — not "test the edge cases".
 - Constrains the agent to test-only changes and tells it what to do if a real bug surfaces.
+
+## Example 7: Portable by default vs. intentionally agent-pinned
+
+Most items should carry **no** `provider` and **no** `model`, so the same backlog runs under whatever `--agent` the user picks (Claude, Codex, Gemini, …):
+
+```json
+{
+  "id": "030",
+  "type": "test",
+  "priority": 2,
+  "title": "Add validation tests for the config loader",
+  "description": "Add table-driven tests for loadConfig() covering missing/malformed/valid inputs.",
+  "acceptanceCriteria": ["Tests cover missing, malformed, and valid config", "Suite passes"],
+  "status": "pending",
+  "completedAt": null
+}
+```
+
+Pin `provider` (or `model`) **only** when an item genuinely depends on a specific agent — and record the intent in `notes`. A per-item `provider` overrides the run-level `--agent` (`item.provider > --agent`), so this item stays on Claude even under `rauf loop run --agent codex`:
+
+```json
+{
+  "id": "031",
+  "type": "chore",
+  "priority": 3,
+  "title": "Migrate notes into Claude Code project memory",
+  "description": "Move the long-form design notes into Claude Code's project memory files.",
+  "acceptanceCriteria": ["Notes captured in the Claude project-memory format"],
+  "status": "pending",
+  "completedAt": null,
+  "provider": "claude-cli",
+  "notes": "Intentionally Claude-only: this task depends on Claude Code project memory, which other agents do not provide."
+}
+```
+
+**Why this is good:**
+
+- The default item is portable — no agent binding, runs anywhere.
+- The pinned item is the rare exception, and its `notes` justify the binding so a reviewer doesn't flag it as an accidental Claude pin.
