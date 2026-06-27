@@ -133,6 +133,12 @@ To enable the plugin declaratively (e.g. provisioning a machine), add to `~/.cla
 }
 ```
 
+### Codex skills (optional)
+
+The same four skills ship as a **Codex plugin** at [`.codex-plugin/`](./.codex-plugin/), generated from the identical canonical sources (no divergent copy — `scripts/build-codex-bundle.ts`, guarded by `pnpm codex:check`). Install it with Codex's plugin tooling pointed at this repo / the bundle directory; see the [Codex plugins docs](https://developers.openai.com/codex/plugins). Like the Claude plugin, these skills are an authoring/review convenience — the `rauf` CLI does not require them, and rauf already drives the loop under `--agent codex`.
+
+> Maintainers: never hand-edit `.codex-plugin/` — edit the canonical `skills/<name>/SKILL.md` and run `pnpm codex:generate`.
+
 ---
 
 ## Quick Start

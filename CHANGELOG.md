@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- **Codex plugin packaging** — rauf's four agent skills (`author-backlog`,
+  `review-backlog`, `drive-rauf-loop`, `review-rauf-guidance`) now also ship as a
+  Codex plugin under `.codex-plugin/`, giving Codex users first-class access to
+  the same skills the Claude plugin provides. The bundle is **generated** from the
+  identical canonical `skills/<name>/SKILL.md` sources by
+  `scripts/build-codex-bundle.ts` (no hand-maintained divergent copy), and a new
+  `pnpm codex:check` drift guard in the gate keeps it in lockstep. rauf's skill
+  frontmatter is already Codex-compatible (`name` + `description`), so skills map
+  through with no dropped constructs.
+
 ## 0.9.0
 
 ### Added
