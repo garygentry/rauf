@@ -17,6 +17,13 @@
   mutated, instead of throwing mid-iteration after an item is marked
   `in_progress`. Enumeration (`rauf agents`) still reports `generic-cli` as
   configurable when no config is supplied.
+- **Provider-neutral loop logs and CLI help** — the per-iteration exit log now
+  reads `<provider.id> exited (…)` instead of always `Claude exited (…)`, so a
+  `codex`/`generic-cli` run no longer produces misleading Claude-named logs.
+  `rauf loop run --model` help is now provider-neutral ("Model to pass to the
+  selected agent; omit for the provider default") and `--no-model` is now listed
+  in the command help. Claude-specific wording is retained only inside
+  Claude-specific code paths (usage-limit/credential handling).
 
 ## 0.8.1
 

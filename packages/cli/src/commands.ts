@@ -193,7 +193,15 @@ export const COMMANDS: CommandDef[] = [
             name: "--timeout <N>",
             description: "Per-iteration session timeout in minutes (default: 60)",
           },
-          { name: "--model <name>", description: "Claude model to use" },
+          {
+            name: "--model <name>",
+            description: "Model to pass to the selected agent; omit for the provider default",
+          },
+          {
+            name: "--no-model",
+            description:
+              "Ignore per-item model pins for this run; useful when running Claude-pinned backlogs under another agent",
+          },
           {
             name: "--agent <id>",
             description: `Coding agent CLI that drives iterations (default: claude-cli). Supported: ${SUPPORTED_AGENT_IDS}. See \`rauf agents\` for live availability.`,

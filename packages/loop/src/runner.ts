@@ -650,7 +650,7 @@ export class LoopRunner extends TypedEventEmitter {
   // ─── Iteration logic (extracted from main loop body) ──────────────
 
   /**
-   * Execute a single iteration of the loop: select item, spawn Claude, handle signal.
+   * Execute a single iteration of the loop: select item, spawn the agent, handle signal.
    * Returns "continue" to keep looping, "break" to stop loop, or "exit" to return immediately.
    */
   private async runIteration(projectModel?: string): Promise<"continue" | "break" | "exit"> {
@@ -863,7 +863,7 @@ export class LoopRunner extends TypedEventEmitter {
     });
     appendLog(
       this.paths,
-      `Claude exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
+      `${provider.id} exited (code=${exitCode}, timedOut=${timedOut}, duration=${Math.round(durationMs / 1000)}s)`,
     );
 
     // Compute signal text — prefer reconstructed text from stream-json, fall back to raw stdout
