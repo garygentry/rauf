@@ -2,7 +2,26 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Codex loop start was broken on current Codex CLI** — the preset argv built
+  `codex exec … --ask-for-approval never`, but current Codex (≥ 0.141) treats
+  `--ask-for-approval` as a **top-level** flag and rejects it after the `exec`
+  subcommand (exit 2, "unexpected argument"), so `rauf loop run --agent codex`
+  failed to spawn before iteration 1. Codex now has a dedicated adapter
+  (`CodexCliProvider`) that builds the correct argv
+  (`codex --ask-for-approval never exec [--json] --sandbox workspace-write
+[--model <m>] <prompt>`), validated end-to-end against codex-cli 0.141.0.
+
 ### Added
+
+- **Codex streaming telemetry** — under `--agent codex`, rauf now drives
+  `codex exec --json` and parses the JSON Lines event stream (`CodexStreamParser`)
+  into the same `llm_tool_activity` / `llm_token_update` events and reconstructed
+  final message that the Claude path produces. Codex runs get real tool/token
+  telemetry and tool-aware stuck detection instead of process-silence only —
+  telemetry parity with Claude. Other CLI agents stay plain-text (the rich parsing
+  is intentionally not forced into the generic `CliAgent`).
 
 - **Codex plugin packaging** — rauf's four agent skills (`author-backlog`,
   `review-backlog`, `drive-rauf-loop`, `review-rauf-guidance`) now also ship as a

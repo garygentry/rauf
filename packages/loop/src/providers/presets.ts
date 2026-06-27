@@ -14,22 +14,11 @@ import { registerAgent } from "./registry.js";
  * sandbox (items 012/013), NOT the real flags. Update these literals when an agent's actual CLI
  * surface is confirmed.
  *
- * Codex is verified against current Codex CLI docs: non-interactive automation is `codex exec`
- * with explicit sandbox/approval flags. `--full-auto` is deprecated and intentionally not used —
- * it would emit deprecation noise and leave sandbox/approval behavior implicit. `--ask-for-approval
- * never` keeps the loop from hanging on prompts; `--sandbox workspace-write` allows in-repo edits
- * without full host access.
+ * NOTE: `codex` is NOT a generic preset — it has a dedicated, telemetry-capable adapter
+ * ({@link ./codex-cli.ts}, `CodexCliProvider`) that also builds the correct current argv
+ * (`--ask-for-approval` is a top-level flag that current Codex rejects after `exec`).
  */
 export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
-  {
-    id: "codex",
-    displayName: "Codex CLI",
-    binary: "codex",
-    promptDelivery: "arg",
-    buildArgs: () => ["exec"],
-    nonInteractive: ["--sandbox", "workspace-write", "--ask-for-approval", "never"],
-    modelFlag: (m) => ["--model", m],
-  },
   {
     id: "gemini",
     displayName: "Gemini CLI",

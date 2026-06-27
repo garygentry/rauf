@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"019f076a-ca6d-7f71-a105-851883810000"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/usr/bin/zsh -lc 'cat file.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/usr/bin/zsh -lc 'cat file.txt'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"RAUF_DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":22770,"cached_input_tokens":19200,"output_tokens":54,"reasoning_output_tokens":0}}

@@ -201,7 +201,7 @@ The loop's event stream is agent-agnostic: events carry the real `provider.id`. 
 that only Claude's stream parser produces (token counts, tool-activity) is simply absent
 for `CliAgent`-driven agents — consumers must treat those fields as optional (REQ-OBS-02).
 
-Concretely, for non-Claude CLI agents:
+Concretely, for **generic `CliAgent`-driven** agents (gemini/copilot/cursor/generic-cli):
 
 - **`llm_spawned` / `llm_exited` are emitted** (lifecycle is provider-neutral), so the runner
   still records that an iteration ran and how it ended.
@@ -211,8 +211,13 @@ Concretely, for non-Claude CLI agents:
 - **Stuck detection degrades to process silence / iteration status**, not rich tool events: a
   plain CLI agent is judged stuck by lack of output over time, not by an absent tool stream.
 
-A future Codex-specific adapter could parse `codex exec --json` JSONL into rauf progress events;
-that telemetry is intentionally NOT forced into the generic `CliAgent`.
+**Codex is the exception.** It has a dedicated adapter (`CodexCliProvider`, `providers/codex-cli.ts`)
+that drives `codex exec --json` and parses the JSON Lines event stream (`CodexStreamParser`) into the
+same `tool_start`/`tool_end`/`token_update` events Claude produces, plus a reconstructed final
+message. So under `--agent codex`, `llm_tool_activity` and `llm_token_update` ARE emitted and stuck
+detection sees real tool activity — parity with the Claude telemetry path. This richer parsing is
+intentionally NOT forced into the generic `CliAgent`; other CLI agents stay plain-text until they
+earn a dedicated adapter.
 
 ## Further Reading
 
