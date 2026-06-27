@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.0
+
 ### Fixed
 
 - **Codex loop start was broken on current Codex CLI** — the preset argv built
