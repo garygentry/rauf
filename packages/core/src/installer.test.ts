@@ -210,6 +210,40 @@ describe("install", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
   });
 
+  it("creates AGENTS.md with the cross-agent rauf section", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    install(tmpDir, installOpts());
+
+    const agentsMd = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(agentsMd).toContain("<!-- rauf:agents:start -->");
+    expect(agentsMd).toContain("<!-- rauf:agents:end -->");
+    expect(agentsMd).toContain("Autonomous Loop (Rauf)");
+    // Cross-agent file must NOT carry the Claude-only Task-tool guidance.
+    expect(agentsMd).not.toMatch(/Task tool/i);
+  });
+
+  it("merges AGENTS.md if it already exists, preserving user content", () => {
+    createFakeProject(tmpDir, { git: true });
+    fs.writeFileSync(path.join(tmpDir, "AGENTS.md"), "# My Project\n\nExisting AGENTS notes.\n");
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+
+    const agentsMd = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(agentsMd).toContain("Existing AGENTS notes.");
+    expect(agentsMd).toContain("<!-- rauf:agents:start -->");
+  });
+
+  it("reinstall leaves AGENTS.md byte-identical (idempotent skip)", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+    const first = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    install(tmpDir, installOpts());
+    const second = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(second).toBe(first);
+  });
+
   it("writes .rauf.json marker file", () => {
     createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true });
 
@@ -836,6 +870,38 @@ describe("uninstall", () => {
 
     const content = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
     expect(content).toContain(CLAUDE_MD_SENTINEL_START);
+  });
+
+  it("removes the cross-agent section from AGENTS.md (deletes file when only the block remained)", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+    expect(fileExists(path.join(tmpDir, "AGENTS.md"))).toBe(true);
+
+    uninstall(tmpDir);
+
+    expect(fileExists(path.join(tmpDir, "AGENTS.md"))).toBe(false);
+  });
+
+  it("preserves non-rauf content in AGENTS.md after uninstall", () => {
+    createFakeProject(tmpDir, { git: true });
+    fs.writeFileSync(path.join(tmpDir, "AGENTS.md"), "# My Project\n\nKeep this AGENTS content.\n");
+
+    install(tmpDir, installOpts());
+    uninstall(tmpDir);
+
+    const content = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(content).toContain("Keep this AGENTS content.");
+    expect(content).not.toContain("<!-- rauf:agents:start -->");
+  });
+
+  it("preserves AGENTS.md section when removeAgentsMdSection=false", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    uninstall(tmpDir, { removeAgentsMdSection: false });
+
+    const content = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(content).toContain("<!-- rauf:agents:start -->");
   });
 
   it("removes .rauf/ directory when empty", () => {
