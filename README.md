@@ -55,7 +55,8 @@ Rauf is tightly integrated with [feature-forge](https://github.com/garygentry/fe
 ## Features
 
 - **Auto-detect & install:** Detects Node.js, Python, Go, Rust stacks and deploys loop artifacts in one command
-- **Greenfield init:** Scaffold a new project with git, CLAUDE.md, backlog, and loop infrastructure
+- **Cross-agent instructions:** Installs a managed block into `AGENTS.md` (the host-agnostic repo-instructions file read by Codex and others) alongside a Claude-optimized `CLAUDE.md`
+- **Greenfield init:** Scaffold a new project with git, `AGENTS.md` + `CLAUDE.md`, backlog, and loop infrastructure
 - **Structured backlog:** JSON-based task queue with priorities, types, acceptance criteria, and dependencies
 - **Real-time status:** Loop state derived directly from `state.json` with log-parsing fallback
 - **Full CLI:** Headless and scriptable, drivable by a human or a supervising agent

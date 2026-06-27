@@ -98,6 +98,12 @@ Go, Rust) and writes the loop artifacts and a `.rauf.json` config:
 rauf install /path/to/my-project --yes
 ```
 
+Install also writes two repository instruction files (both as idempotent, sentinel-bounded
+managed blocks that preserve any surrounding content):
+
+- **`AGENTS.md`** — the host-agnostic cross-agent instructions read by Codex and other agents.
+- **`CLAUDE.md`** — the Claude-optimized companion (includes Claude Task-tool delegation guidance).
+
 `--yes` accepts the detected defaults non-interactively. You can override the detected commands
 with flags when they differ from the stack defaults:
 

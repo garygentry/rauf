@@ -21,6 +21,14 @@ import {
   CLAUDE_MD_SENTINEL_START,
   CLAUDE_MD_SENTINEL_END,
 } from "./claude-md.js";
+import {
+  mergeManagedSection,
+  extractManagedBlock as extractAgentsManagedBlock,
+  removeManagedSection,
+  AGENTS_MD_FILENAME,
+  AGENTS_MD_SENTINEL_START,
+  AGENTS_MD_SENTINEL_END,
+} from "./agent-instructions.js";
 import { getEmbeddedArtifact } from "./embedded-artifacts.js";
 
 // Avoid circular import by not importing VERSION from index.ts
@@ -45,6 +53,9 @@ const DIR_FILES = {
 
 /** Template used for CLAUDE.md merge — not deployed directly */
 const CLAUDE_ADDON_FILE = "CLAUDE_ADDON.md";
+
+/** Template used for AGENTS.md merge (cross-agent instructions) — not deployed directly */
+const AGENTS_ADDON_FILE = "AGENTS_ADDON.md";
 
 /** Sentinels for the managed block in RAUF.md */
 const RAUF_MD_MANAGED_START = "<!-- rauf:managed:start -->";
@@ -156,6 +167,8 @@ export interface UninstallOptions {
   keepLog?: boolean;
   /** Remove ralph section from CLAUDE.md (default: true) */
   removeClaudeMdSection?: boolean;
+  /** Remove cross-agent section from AGENTS.md (default: true) */
+  removeAgentsMdSection?: boolean;
 }
 
 export interface PreflightCheck {
@@ -332,10 +345,15 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     });
   }
 
-  // 9. CLAUDE.md smart merge
+  // 9. CLAUDE.md smart merge (Claude-optimized companion)
   const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
+
+  // 9a. AGENTS.md smart merge (cross-agent instructions — Codex et al.)
+  const agentsMdResult = deployAgentsMd(resolved, artifactsDir);
+  if (!agentsMdResult.ok) return agentsMdResult;
+  actions.push(agentsMdResult.value);
 
   // 9b. Deploy .gitignore runtime entries
   const gitignoreResult = deployGitignore(resolved);
@@ -481,6 +499,11 @@ export function update(
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
+  // Update AGENTS.md cross-agent section (idempotent — backfills older installs)
+  const agentsMdResult = deployAgentsMd(resolved, artifactsDir);
+  if (!agentsMdResult.ok) return agentsMdResult;
+  actions.push(agentsMdResult.value);
+
   // Deploy .gitignore runtime entries (idempotent — backfills older installs)
   const gitignoreResult = deployGitignore(resolved);
   if (!gitignoreResult.ok) return gitignoreResult;
@@ -603,6 +626,7 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   const keepProgress = options.keepProgress ?? true;
   const keepLog = options.keepLog ?? true;
   const removeClaudeMdSection = options.removeClaudeMdSection ?? true;
+  const removeAgentsMdSection = options.removeAgentsMdSection ?? true;
 
   // Remove RAUF.md and REVIEW.md (always)
   safeUnlink(path.join(resolved, DOT_RAUF, "RAUF.md"));
@@ -632,6 +656,16 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   // Remove CLAUDE.md ralph section
   if (removeClaudeMdSection) {
     removeClaudeMdRaufSection(resolved);
+  }
+
+  // Remove AGENTS.md cross-agent section
+  if (removeAgentsMdSection) {
+    removeManagedSection(
+      resolved,
+      AGENTS_MD_FILENAME,
+      AGENTS_MD_SENTINEL_START,
+      AGENTS_MD_SENTINEL_END,
+    );
   }
 
   // Remove .rauf.json marker
@@ -937,6 +971,48 @@ function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<Inst
     action: mergeAction,
     detail: claudeMdActionDetail(mergeAction),
   });
+}
+
+/** Merge the cross-agent section into AGENTS.md using the AGENTS_ADDON.md template */
+function deployAgentsMd(projectPath: string, artifactsDir?: string): Result<InstallAction> {
+  const contentResult = readArtifact(AGENTS_ADDON_FILE, artifactsDir);
+  if (!contentResult.ok) return contentResult;
+
+  const block = extractAgentsManagedBlock(
+    contentResult.value,
+    AGENTS_MD_SENTINEL_START,
+    AGENTS_MD_SENTINEL_END,
+  );
+  const mergeResult = mergeManagedSection(
+    projectPath,
+    AGENTS_MD_FILENAME,
+    AGENTS_MD_SENTINEL_START,
+    AGENTS_MD_SENTINEL_END,
+    block,
+  );
+  if (!mergeResult.ok) return mergeResult;
+
+  return ok({
+    file: AGENTS_MD_FILENAME,
+    action: mergeResult.value.action,
+    detail: agentsMdActionDetail(mergeResult.value.action),
+  });
+}
+
+/** Human-readable detail for AGENTS.md merge actions */
+function agentsMdActionDetail(action: string): string {
+  switch (action) {
+    case "created":
+      return "Created AGENTS.md with cross-agent rauf section";
+    case "merged":
+      return "Appended cross-agent rauf section to existing AGENTS.md";
+    case "skipped":
+      return "AGENTS.md rauf section already up to date";
+    case "updated":
+      return "Updated cross-agent rauf section in AGENTS.md";
+    default:
+      return `AGENTS.md: ${action}`;
+  }
 }
 
 /** Human-readable detail for CLAUDE.md merge actions */

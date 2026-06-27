@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Added
+
+- **Cross-agent `AGENTS.md` install** — install/update now writes a managed,
+  sentinel-bounded rauf block into `AGENTS.md` (the host-agnostic repo-instructions
+  file read by Codex and other agents) **alongside** the existing Claude-optimized
+  `CLAUDE.md`. The block uses its own `<!-- rauf:agents:start -->` / `:end`
+  sentinels, merges idempotently, preserves surrounding user content, and is
+  stripped on uninstall (`removeAgentsMdSection`, default true). `AGENTS.md`
+  carries the host-agnostic loop rules and delegation guidance; the Claude-only
+  Task-tool note stays in `CLAUDE.md`. Greenfield `rauf init` gets `AGENTS.md`
+  too (it runs through the same installer). Additive — the Claude path is
+  unchanged.
+
 ### Fixed
 
 - **Reinstall preserves provider configuration** — `install()` now carries every
