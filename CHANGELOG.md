@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.1
+
 ### Fixed
 
 - **`cursor` preset was missing its headless trigger** — the Cursor preset shipped
