@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.9.0
+
 ### Added
 
 - **Cross-agent `AGENTS.md` install** — install/update now writes a managed,
