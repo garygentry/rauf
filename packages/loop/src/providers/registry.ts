@@ -118,7 +118,10 @@ export async function probeBinaryOnPath(binaryName: string): Promise<DetectionRe
  * and never spawns the agent. An unknown id resolves to `{ available: false, detail: 'Unknown
  * agent "<id>". Supported agents: <ids>.' }` (it does NOT throw — unlike `createProvider`).
  */
-export async function detectAgent(id: string): Promise<DetectionResult> {
+export async function detectAgent(
+  id: string,
+  config?: Record<string, unknown>,
+): Promise<DetectionResult> {
   const descriptor = descriptors.get(id);
   if (!descriptor) {
     const ids = getAgentDescriptors()
@@ -132,7 +135,7 @@ export async function detectAgent(id: string): Promise<DetectionResult> {
 
   if (descriptor.detect) {
     try {
-      return await descriptor.detect();
+      return await descriptor.detect(config);
     } catch (e) {
       return { available: false, detail: e instanceof Error ? e.message : String(e) };
     }

@@ -131,7 +131,9 @@ export interface AgentDescriptor {
    * Availability probe. Defaults to a PATH resolution of `binaryName` (no agent subprocess —
    * a stat-style `which`, consistent with CLAUDE.md "status reads files, not subprocesses").
    * `claude-cli` overrides this with its credential check; `generic-cli` overrides it to
-   * resolve the binary from the supplied `providerConfig`.
+   * resolve and validate the binary from the supplied `providerConfig`. The optional `config`
+   * is the per-run `providerConfig` record, passed by callers that can preflight a configured
+   * agent (e.g. the runner for `generic-cli`); enumeration callers pass nothing.
    */
-  detect?: () => Promise<DetectionResult>;
+  detect?: (config?: Record<string, unknown>) => Promise<DetectionResult>;
 }

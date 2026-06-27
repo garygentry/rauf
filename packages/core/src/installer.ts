@@ -346,8 +346,15 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   }
 
   // 10. Write .rauf.json marker file
-  // On re-install, preserve existing options unless explicitly overridden
+  // On re-install, preserve ALL existing options (provider, providerConfig, model, runtime,
+  // sweep settings, sessionTimeout, …), then overlay explicit overrides. Spreading the whole
+  // existing object means cross-agent project config survives reinstall instead of silently
+  // reverting to the Claude default (P1 review). The three required fields keep their defaults
+  // via the explicit `??` chain below the spreads.
   const markerOptions: MarkerOptions = {
+    ...existingOptions,
+    ...options.options,
+    // The three required fields always resolve to a concrete value (override → existing → default).
     ignoreInTool: options.options?.ignoreInTool ?? existingOptions?.ignoreInTool ?? false,
     gitignoreScripts:
       options.options?.gitignoreScripts ?? existingOptions?.gitignoreScripts ?? false,

@@ -9,7 +9,11 @@ vi.mock("../process-group.js", () => ({
 
 import { spawnProcessGroup } from "../process-group.js";
 import { GENERIC_AGENT_ID } from "../constants.js";
-import { configToCliAgentConfig, createGenericCliProvider } from "./generic-cli.js";
+import {
+  configToCliAgentConfig,
+  createGenericCliProvider,
+  detectGenericCli,
+} from "./generic-cli.js";
 import { CliAgent } from "./cli-agent.js";
 
 const mockSpawn = vi.mocked(spawnProcessGroup);
@@ -116,6 +120,38 @@ describe("createGenericCliProvider", () => {
 
   it("throws when invoked with no config", () => {
     expect(() => createGenericCliProvider(undefined)).toThrow();
+  });
+});
+
+describe("detectGenericCli (preflight)", () => {
+  it("reports configurable when no providerConfig is supplied (enumeration path)", async () => {
+    const result = await detectGenericCli(undefined);
+    expect(result.available).toBe(true);
+    expect(result.detail).toMatch(/configurable/);
+  });
+
+  it("fails when a providerConfig is supplied but its binary is missing", async () => {
+    const result = await detectGenericCli({ promptDelivery: "stdin" });
+    expect(result.available).toBe(false);
+    expect(result.detail).toMatch(/binary/);
+  });
+
+  it("fails when a supplied providerConfig has an invalid promptDelivery", async () => {
+    const result = await detectGenericCli({ binary: "x", promptDelivery: "telepathy" });
+    expect(result.available).toBe(false);
+    expect(result.detail).toMatch(/promptDelivery/);
+  });
+
+  it("fails when a supplied binary is not found on PATH", async () => {
+    const result = await detectGenericCli({ binary: "/no/such/rauf-binary-xyz" });
+    expect(result.available).toBe(false);
+    expect(result.detail).toMatch(/not found/);
+  });
+
+  it("passes when a supplied config resolves to an executable binary", async () => {
+    // process.execPath is a real, executable absolute path — a stand-in for a valid agent binary.
+    const result = await detectGenericCli({ binary: process.execPath, promptDelivery: "stdin" });
+    expect(result.available).toBe(true);
   });
 });
 
