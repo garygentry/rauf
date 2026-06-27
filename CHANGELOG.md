@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.8.1
+
 ### Fixed
 
 - **Codex preset uses current `codex exec` automation flags** — the `codex` CLI
