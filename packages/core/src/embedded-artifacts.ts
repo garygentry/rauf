@@ -80,12 +80,13 @@ to run a backlog whose items carry Claude-only tier aliases under a non-Claude
 
 Some backlog items include an \`agentDelegation\` field with guidance for parallel execution.
 When present:
-- Use the **Task** tool to spawn sub-agents for each subtask listed
+- If your host agent provides a subagent/delegation mechanism, use it to spawn a subagent for
+  each subtask listed; if it does not, complete the subtasks inline in the main session
 - Follow the \`strategy\` and \`recommendedConcurrency\` hints
-- Give each sub-agent clear, self-contained instructions including relevant file paths
-- Wait for **all** sub-agents to complete before running final verification
-- You (the main agent) own the exit signal — sub-agents do not emit RAUF_DONE/RAUF_BLOCKED
-- If any sub-agent fails, assess whether the overall task can still be completed
+- Give each subtask clear, self-contained instructions including relevant file paths
+- Complete **all** subtasks before running final verification
+- You (the main agent) own the exit signal — delegated subtasks do not emit RAUF_DONE/RAUF_BLOCKED
+- If a subtask fails, assess whether the overall task can still be completed
 
 Items may also include a \`specReferences\` field listing paths to specification documents. Read these before starting work.
 
@@ -98,7 +99,7 @@ Items may also include a \`specReferences\` field listing paths to specification
 - DO read \`progress.md\` for accumulated learnings
 - DO append new learnings to \`progress.md\` if you discover important patterns
 - The backlog.json file is your source of truth for what to work on
-- Claude Code Tasks (if you use them internally) are your own planning — they don't affect the backlog
+- Any subagents/subtasks you run internally are your own planning — they don't affect the backlog
 
 ## Project-Specific Instructions
 <!-- Add custom instructions below this line — they survive rauf update -->
@@ -292,7 +293,7 @@ RAUF_DONE
           },
           "model": {
             "type": "string",
-            "description": "Per-item Claude model override. Prefer tier aliases ('opus', 'sonnet'); append '[1m]' for the 1M context window ('opus[1m]')."
+            "description": "Per-item model override passed to the selected provider. Omit by default for portability. Claude tier aliases such as 'opus', 'sonnet', and 'opus[1m]' are Claude-only and may fail under non-Claude agents."
           },
           "agentDelegation": {
             "type": "object",
@@ -427,6 +428,13 @@ The runner picks the model by precedence (highest wins):
 \`item.model\` > \`--model\` / options > project default > provider default.
 (\`rauf loop run --no-model\` ignores \`item.model\` for one run — useful for running
 a Claude-aliased backlog under a non-Claude \`--agent\`.)
+
+### Delegation (Claude Code)
+
+In Claude Code, when a backlog item carries \`agentDelegation\`, use the **Task** tool to spawn
+sub-agents for the independent subtasks, then wait for all of them before final verification. You
+(the main agent) still own the \`RAUF_*\` exit signal — sub-agents do not emit it. The shared
+\`RAUF.md\` guidance is host-agnostic; this Task-tool note is the Claude-specific specialization.
 <!-- rauf:end -->
 `,
   ],

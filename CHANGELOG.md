@@ -24,6 +24,18 @@
   selected agent; omit for the provider default") and `--no-model` is now listed
   in the command help. Claude-specific wording is retained only inside
   Claude-specific code paths (usage-limit/credential handling).
+- **Host-agnostic delegation language in shared prompts** — the loop prompt and
+  installed `RAUF.md` no longer instruct agents to "Use the Task tool" (a
+  Claude-only mechanism). Delegation guidance is now capability-neutral ("if your
+  host agent provides a subagent/delegation mechanism, use it; otherwise complete
+  the subtasks inline"), so non-Claude agents don't waste an iteration chasing a
+  missing tool. The Claude-specific Task-tool note now lives only in the
+  `CLAUDE.md` managed block.
+- **Provider-neutral backlog `model` schema description** — the per-item `model`
+  field description in the generated/installed backlog schema no longer calls it a
+  "Claude model"; it now explains the field is passed to the selected provider and
+  that Claude tier aliases (`opus`/`sonnet`/`opus[1m]`) are Claude-only and may
+  fail under non-Claude agents.
 
 ## 0.8.1
 

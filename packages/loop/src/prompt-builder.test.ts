@@ -474,6 +474,7 @@ describe("buildPrompt", () => {
       if (result.ok) {
         expect(result.value).toContain("### Multi-Iteration Guidance");
         expect(result.value).toContain("estimated to take 3 iterations");
+        expect(result.value).not.toMatch(/Task tool/i);
       }
     });
 
@@ -536,7 +537,11 @@ describe("buildPrompt", () => {
         expect(result.value).toContain("1. Implement module A");
         expect(result.value).toContain("2. Implement module B");
         expect(result.value).toContain("3. Write tests");
-        expect(result.value).toContain("Use Task tool to create sub-agents");
+        // Delegation language must be host-agnostic — no Claude-only "Task tool" reference leaks
+        // into the prompt sent to whichever provider runs the iteration (P0 review).
+        expect(result.value).toMatch(/subagent\/delegation|inline/i);
+        expect(result.value).not.toMatch(/Task tool/i);
+        expect(result.value).not.toContain("Claude Code Tasks");
       }
     });
 
