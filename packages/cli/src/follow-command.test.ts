@@ -106,8 +106,9 @@ describe("handleFollow", () => {
     const code = await handleFollow(makeCtx([tmpDir]));
 
     expect(code).toBe(ExitCode.SUCCESS);
-    expect(written).toContain("loop_started");
-    expect(written).toContain("iteration_start");
+    // Formatted (human) mode renders rich labels, not the raw event-type tokens.
+    expect(written).toContain("loop started");
+    expect(written).toContain("iteration 1/");
   });
 
   it("replays events as NDJSON (one PersistedEvent per line) under --json", async () => {

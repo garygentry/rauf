@@ -763,7 +763,8 @@ describe("log --follow", () => {
 
     expect(code).toBe(ExitCode.SUCCESS);
     expect(out).toContain("first log line");
-    expect(out).toContain("loop_started");
+    // Formatted (human) mode renders the rich label, not the raw event type.
+    expect(out).toContain("loop started");
   });
 
   it("emits NDJSON objects (log + events) under --follow --json", async () => {

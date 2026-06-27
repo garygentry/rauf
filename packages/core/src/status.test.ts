@@ -1546,6 +1546,7 @@ describe("mapLoopStateStatus", () => {
     paused: "PAUSED",
     complete: "COMPLETE",
     paused_human: "PAUSED_HUMAN",
+    iterations_complete: "ITERATIONS_COMPLETE",
     limit_reached: "LIMIT_REACHED",
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
@@ -1554,7 +1555,7 @@ describe("mapLoopStateStatus", () => {
     paused_usage_limit: "PAUSED_USAGE_LIMIT",
   };
 
-  it("maps all 12 raw statuses with no undefined", () => {
+  it("maps all raw statuses with no undefined", () => {
     for (const raw of LoopStateStatusSchema.options) {
       const derived = mapLoopStateStatus(raw);
       expect(derived, `unmapped raw status ${raw}`).toBeDefined();
