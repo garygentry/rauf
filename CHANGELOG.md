@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.11.0
+
+### Added
+
+- **Rich live event rendering in `follow` and `log --follow`** — `events.ndjson`
+  carries full payloads (item titles, provider, token counts, per-tool activity,
+  signals + reasons, durations, review summaries), but both human renderers had been
+  reducing each event to a bare `#seq type`. A new shared, exhaustive `formatEvent()`
+  — one canonical renderer over the 24-variant `LoopEvent` union — now surfaces that
+  detail (e.g. `#2 item selected  [001] Add memory.py read-only seams… (p1)`,
+  `#5 tool ▶  [001] Read`, `#23 loop completed  1 done · 0 blocked · 0 needs-human`).
+  `--json` output paths are untouched.
+
+### Fixed
+
+- **Iteration-budget exhaustion no longer masquerades as a usage limit** — the
+  overloaded `limit_reached` / `LIMIT_REACHED` state meant a successful bounded run
+  (`--iterations N`) surfaced with a warning tone and exit code **4** (the
+  throttled-by-Claude code). A new distinct `ITERATIONS_COMPLETE` state
+  (state.json: `iterations_complete`) is written when the budget is hit with eligible
+  work remaining; `complete` is written when the budget lands exactly as the backlog
+  drains. The new state is success-toned and resumable, exiting **0** (or **5** if
+  blocks remain). **Behavioral change:** `rauf loop run` / `status` now exit **0**
+  (or 5) instead of **4** when the iteration budget is reached. The `LIMIT_REACHED`
+  enum string is unchanged (no JSON-wire/schema migration); legacy `limit_reached`
+  state files still parse.
+
 ## 0.10.1
 
 ### Fixed
