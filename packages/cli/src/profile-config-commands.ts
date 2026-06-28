@@ -511,6 +511,8 @@ function colorLoopState(state: string): string {
       return c.red(state);
     case "COMPLETE":
       return c.cyan(state);
+    case "ITERATIONS_COMPLETE":
+      return c.green(state);
     case "PAUSED":
       return c.yellow(state);
     case "NOT_INSTALLED":

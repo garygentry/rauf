@@ -117,6 +117,7 @@ export function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     paused: "PAUSED",
     complete: "COMPLETE",
     paused_human: "PAUSED_HUMAN",
+    iterations_complete: "ITERATIONS_COMPLETE",
     limit_reached: "LIMIT_REACHED",
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",

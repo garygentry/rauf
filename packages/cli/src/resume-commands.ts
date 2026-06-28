@@ -172,6 +172,7 @@ async function runRecoverInterrupted(
 const RESUMABLE_RAW_STATUSES = new Set<LoopState["status"]>([
   "paused_usage_limit",
   "paused_human",
+  "iterations_complete",
   "limit_reached",
   "error",
   "paused",
@@ -182,6 +183,7 @@ const RESUMABLE_RAW_STATUSES = new Set<LoopState["status"]>([
 /** Derived states that indicate a stopped loop with work potentially left. */
 const RESUMABLE_DERIVED_STATES = new Set<LoopStateEnum>([
   "PAUSED",
+  "ITERATIONS_COMPLETE",
   "LIMIT_REACHED",
   "ERROR",
   "WEEKLY_LIMIT",

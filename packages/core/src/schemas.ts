@@ -171,6 +171,11 @@ export const LoopStateStatusSchema = z.enum([
   "paused",
   "complete",
   "paused_human",
+  /** Iteration BUDGET exhausted (a clean, resumable stop) — distinct from a
+   *  usage/rate `*_limit`. Kept separate so it presents as success, not a limit. */
+  "iterations_complete",
+  /** @deprecated Usage-limit terminal only; the iteration-budget stop now uses
+   *  `iterations_complete`. Retained so prior state.json files still parse. */
   "limit_reached",
   "error",
   "sleeping_limit",
@@ -231,6 +236,7 @@ export const LoopStateEnumSchema = z.enum([
   "PAUSED",
   "COMPLETE",
   "PAUSED_HUMAN",
+  "ITERATIONS_COMPLETE",
   "LIMIT_REACHED",
   "ERROR",
   "NOT_INSTALLED",

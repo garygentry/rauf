@@ -690,11 +690,13 @@ async function connectSSE(
 // ─── loop run terminal exit-code mapping ────────────────────────────
 
 /**
- * Whether a resolved LoopResult represents a usage/iteration-limit terminal
- * (limit_reached / weekly_limit / paused_usage_limit). LoopResult carries this
- * via the `limitReached` flag the runner sets when it writes a terminal limit
- * state (00-core-definitions §2a / 03-exit-codes §3). If no limit signal is
- * reachable, this is simply false and the LIMIT branch is not taken.
+ * Whether a resolved LoopResult represents a USAGE-limit terminal
+ * (weekly_limit / paused_usage_limit / legacy limit_reached). LoopResult carries
+ * this via the `limitReached` flag the runner sets when it writes a terminal
+ * usage-limit state (00-core-definitions §2a / 03-exit-codes §3). Iteration-budget
+ * exhaustion is NOT a limit here — it writes `iterations_complete` (a clean,
+ * resumable stop) and exits via the SUCCESS/BLOCKED path. If no usage-limit
+ * signal is reachable, this is simply false and the LIMIT branch is not taken.
  */
 function isLimitTerminal(result: LoopResult): boolean {
   return result.limitReached === true;

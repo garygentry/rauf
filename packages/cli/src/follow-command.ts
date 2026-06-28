@@ -14,6 +14,7 @@ import {
   watchEvents,
   resolveBacklogRoot,
   resolveBacklogPaths,
+  getStateLabel,
   type BacklogPaths,
   type PersistedEvent,
 } from "@rauf/core";
@@ -21,12 +22,14 @@ import {
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractNumberFlag, extractStringFlag } from "./parser.js";
-import { c, info, print, error } from "./formatter.js";
+import { info, print, error } from "./formatter.js";
+import { formatEvent } from "./event-format.js";
 
 /** Terminal loop states — the loop is no longer active. */
 const TERMINAL_LOOP_STATES: ReadonlySet<string> = new Set([
   "IDLE",
   "COMPLETE",
+  "ITERATIONS_COMPLETE",
   "ERROR",
   "PAUSED",
   "PAUSED_HUMAN",
@@ -43,7 +46,7 @@ function emitEvent(ev: PersistedEvent, json: boolean): void {
     process.stdout.write(JSON.stringify(ev) + "\n");
     return;
   }
-  print(`${c.dim(`#${ev.seq}`)} ${c.cyan(ev.type)}`);
+  print(formatEvent(ev));
 }
 
 export async function handleFollow(ctx: CommandContext): Promise<number> {
@@ -131,7 +134,9 @@ async function followEvents(
       if (TERMINAL_LOOP_STATES.has(st.value.loopState)) {
         if (!opts.json) {
           print("");
-          info(`Loop ended (${st.value.loopState}).`);
+          // Friendly label (e.g. "Iterations Complete") with the machine value
+          // in parens, so the end line reads cleanly without losing the wire form.
+          info(`Loop ended — ${getStateLabel(st.value.loopState).label} (${st.value.loopState}).`);
         }
         finish(st.value.loopState === "ERROR" ? ExitCode.ERROR : ExitCode.SUCCESS);
       }

@@ -16,11 +16,20 @@ import { StateBadge } from "../../components/StateBadge";
 
 // ─── Loop control state sets ──────────────────────────────────────
 
-const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ERROR"]);
+const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ITERATIONS_COMPLETE", "ERROR"]);
 const STOPPABLE_STATES = new Set(["RUNNING", "SLEEPING_LIMIT"]);
 
-// States from which a Resume action is meaningful (spec 04 §8.7).
-const RESUMABLE_STATES = new Set(["PAUSED", "PAUSED_HUMAN", "PAUSED_USAGE_LIMIT", "ERROR", "IDLE"]);
+// States from which a Resume action is meaningful (spec 04 §8.7). Iteration
+// budget reached is a clean stop with work likely remaining — re-running
+// continues the backlog, so it is resumable alongside the paused states.
+const RESUMABLE_STATES = new Set([
+  "PAUSED",
+  "PAUSED_HUMAN",
+  "PAUSED_USAGE_LIMIT",
+  "ITERATIONS_COMPLETE",
+  "ERROR",
+  "IDLE",
+]);
 // States in which a standalone Review pass would 409 (a loop is active).
 const REVIEW_BLOCKING_STATES = new Set(["RUNNING", "REVIEWING", "STARTING"]);
 

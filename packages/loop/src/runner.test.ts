@@ -674,8 +674,8 @@ else echo "RAUF_DONE"; fi`,
   });
 
   describe("maxIterations", () => {
-    it("stops after maxIterations and writes limit_reached state", async () => {
-      // Create many items but limit iterations to 2
+    it("stops after maxIterations with work remaining and writes iterations_complete state", async () => {
+      // Create many items but limit iterations to 2 — items 003/004 remain.
       setupProject(tmpDir, [
         pendingItem("001", "Task 1"),
         pendingItem("002", "Task 2"),
@@ -694,15 +694,32 @@ else echo "RAUF_DONE"; fi`,
       const result = await runner.start();
 
       expect(result.completedCount).toBe(2);
+      // Iteration budget exhausted with eligible items left is a clean, resumable
+      // stop — NOT a usage limit, so it must not surface as limit_reached.
+      expect(result.limitReached).not.toBe(true);
 
-      // State should be limit_reached
+      // State should be iterations_complete (budget reached, work remains)
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
-      expect(state.status).toBe("limit_reached");
+      expect(state.status).toBe("iterations_complete");
 
       // DONE file written
       const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).toContain("completed=2");
       expect(doneContent).toContain("iterations=2");
+    });
+
+    it("writes complete (not iterations_complete) when the budget lands as the backlog drains", async () => {
+      // Exactly as many iterations as items — the budget is hit at the same moment
+      // the backlog drains, so there is no outstanding work: terminal is `complete`.
+      setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 2 });
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(2);
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("complete");
     });
   });
 

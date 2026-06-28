@@ -33,6 +33,7 @@ import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractBoolFlag, extractNumberFlag, extractStringFlag } from "./parser.js";
 import { c, info, print, error, warn, outputJson } from "./formatter.js";
+import { formatEvent } from "./event-format.js";
 
 // ─── handleStatus ─────────────────────────────────────────────────
 //
@@ -375,7 +376,7 @@ async function handleLogFollow(
   };
   const emitEvent = (ev: PersistedEvent): void => {
     if (json) process.stdout.write(JSON.stringify(ev) + "\n");
-    else print(`${c.dim(`#${ev.seq}`)} ${c.cyan(ev.type)}`);
+    else print(formatEvent(ev));
   };
 
   // Replay: tail rauf.log + readEvents(paths) for events.ndjson (current run only).
@@ -526,6 +527,10 @@ export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): n
       return ExitCode.LIMIT; // 4
     case "ERROR":
       return ExitCode.ERROR; // 1
+    // ITERATIONS_COMPLETE (iteration budget reached) is a clean, user-chosen stop
+    // — NOT a usage LIMIT(4). It joins the clean-terminal group below: SUCCESS(0),
+    // or BLOCKED(5) if blocks remain.
+    case "ITERATIONS_COMPLETE":
     case "IDLE":
     case "COMPLETE":
     case "PAUSED":

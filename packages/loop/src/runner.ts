@@ -395,10 +395,14 @@ export class LoopRunner extends TypedEventEmitter {
       }
 
       // Loop ended
-      if (this.iterationCount >= this.options.maxIterations) {
-        // Max iterations reached
-        appendLog(this.paths, `Max iterations reached (${this.options.maxIterations})`);
-        this.writeState("limit_reached", null);
+      if (this.iterationCount >= this.options.maxIterations && this.hasEligibleItems()) {
+        // Iteration budget exhausted with work still to do — a clean, resumable
+        // stop. NOT a usage limit: distinct state so it presents as success and
+        // exits 0 (re-run to continue). If the budget landed exactly as the
+        // backlog drained, hasEligibleItems() is false and we fall through to
+        // `complete` below.
+        appendLog(this.paths, `Iteration budget reached (${this.options.maxIterations})`);
+        this.writeState("iterations_complete", null);
         this.emitEvent("loop_completed", {
           completedCount: this.completedCount,
           blockedCount: this.blockedCount,
@@ -1902,6 +1906,20 @@ export class LoopRunner extends TypedEventEmitter {
   }
 
   /** Build a summary string for the DONE file */
+  /**
+   * Whether the backlog still has an item the loop could pick up — used at
+   * budget exhaustion to tell a genuine "stopped early, work remains" stop
+   * (`iterations_complete`) from "budget landed exactly as the backlog drained"
+   * (`complete`). Mirrors the selection the main loop uses (selectNextItem only
+   * returns pending/eligible items); a read failure is treated as "no eligible
+   * items" so we never falsely claim outstanding work.
+   */
+  private hasEligibleItems(): boolean {
+    const backlogResult = readBacklog(this.paths);
+    if (!backlogResult.ok) return false;
+    return selectNextItem(backlogResult.value) !== null;
+  }
+
   private buildSummary(): string {
     const parts: string[] = [];
     parts.push(`completed=${this.completedCount}`);
