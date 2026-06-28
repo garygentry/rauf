@@ -527,9 +527,10 @@ export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): n
       return ExitCode.LIMIT; // 4
     case "ERROR":
       return ExitCode.ERROR; // 1
+    // ITERATIONS_COMPLETE (iteration budget reached) is a clean, user-chosen stop
+    // — NOT a usage LIMIT(4). It joins the clean-terminal group below: SUCCESS(0),
+    // or BLOCKED(5) if blocks remain.
     case "ITERATIONS_COMPLETE":
-    // Iteration budget reached is a clean, user-chosen stop — NOT a usage LIMIT(4).
-    // It joins the clean-terminal group: SUCCESS(0), or BLOCKED(5) if blocks remain.
     case "IDLE":
     case "COMPLETE":
     case "PAUSED":
