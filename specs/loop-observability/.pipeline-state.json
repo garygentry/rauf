@@ -35,6 +35,13 @@
       "completedAt": "2026-07-05T19:20:00Z",
       "commitHash": "7e95a2b0edcfe1edf76fa74b081435cb897f3fb4",
       "basedOnVersions": { "forge-1-prd": 1 }
+    },
+    "forge-verify-tech": {
+      "status": "findings",
+      "findingsFile": ".verification/VERIFY-tech-2026-07-05.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-07-05T19:35:00Z",
+      "verifiedStageVersion": 1
     }
   }
 }
