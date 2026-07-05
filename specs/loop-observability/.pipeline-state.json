@@ -3,8 +3,12 @@
   "pipelineStatus": "active",
   "branch": "forge/loop-observability",
   "createdAt": "2026-07-05T18:35:45Z",
-  "updatedAt": "2026-07-05T18:58:00Z",
-  "currentStage": "forge-2-tech",
+  "updatedAt": "2026-07-05T19:20:00Z",
+  "currentStage": "forge-3-specs",
+  "notes": [
+    "OTQ-1: resolveTarget() file home (backlog-root.ts vs new target-resolution.ts) + whether isLoopLive's iteration-status.json read is promoted to a shared internal are forge-3-specs author calls; must honor single-read per REQ-PERF-01.",
+    "Q3: the feature-forge forge-5-loop / runner-contract.md edit (defer decision semantics to rauf's drive-rauf-loop) is a cross-repo follow-up in the feature-forge repo, OUT of this backlog's scope. rauf deliverable = drive-rauf-loop is the authoritative contract."
+  ],
   "stages": {
     "forge-1-prd": {
       "status": "complete",
@@ -22,6 +26,15 @@
       "verifiedAt": "2026-07-05T18:58:00Z",
       "fixedAt": "2026-07-05T18:58:00Z",
       "verifiedStageVersion": 1
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["tech-spec.md"],
+      "startedAt": "2026-07-05T19:00:00Z",
+      "completedAt": "2026-07-05T19:20:00Z",
+      "commitHash": null,
+      "basedOnVersions": { "forge-1-prd": 1 }
     }
   }
 }
