@@ -389,22 +389,31 @@ Explicitly **NOT** part of this feature (ratified §5 non-goals):
 
 ## 9. Success Criteria
 
+Each success criterion is P0 — collectively they are the feature's
+definition-of-done.
+
 - **REQ-SUCCESS-01** *(keystone)* — **One poll = full decision, zero raw-file
   reads.** A single `rauf status <root> --backlog <dir> --json` answers
   done / needs-human / recoverable-stall / healthy, and `drive-rauf-loop` never
   falls back to `iteration-status.json` or `events.ndjson` to make a decision. If
   it must, the contract has a hole and the feature is not done.
+  - Priority: **P0**
 - **REQ-SUCCESS-02** — There is exactly **one** prescribed supervision pattern,
   documented in `drive-rauf-loop`, and `forge-5-loop` references its decision
   semantics rather than defining its own.
+  - Priority: **P0**
 - **REQ-SUCCESS-03** — A human can, in one command, (a) follow a running loop at
   item-level with a progress header, and (b) see every live loop on the machine.
+  - Priority: **P0**
 - **REQ-SUCCESS-04** — In a machine context (`--json` / non-TTY), an ambiguous
   target is a hard error, not a silent wrong-root scan.
+  - Priority: **P0**
 - **REQ-SUCCESS-05** — No machine-surface (`--json` / `--ndjson`) output changed
   in a breaking way; all additions are additive and versioned; `pnpm gate` is
   green at each phase.
+  - Priority: **P0**
 - **REQ-SUCCESS-06** *(negative test / "what a user would complain about")* — A
   human running `follow` no longer has to wade through token/tool events to see
   which item the loop is on; an agent author no longer has to invent a poll
   interval or read a second file.
+  - Priority: **P0**
