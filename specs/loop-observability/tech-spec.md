@@ -27,9 +27,11 @@ four independently-shippable phases, each green under `pnpm gate` (REQ-GATE-01):
    when no iteration is live (D4 / Q1).
 2. Availability is advertised via a top-level **`statusSchemaVersion: "1"`** marker,
    mirroring the existing `EVENTS_SCHEMA_VERSION` convention (REQ-COMPAT-02).
-3. `deriveStatus` **already reads `iteration-status.json`** (via the private
-   `isLoopLive` helper), so the `health` block adds **zero new I/O** (REQ-PERF-01,
-   C-04).
+3. `deriveStatus` reads `iteration-status.json` **only conditionally today** (via the
+   private `isLoopLive` helper, and only inside the staleness-downgrade branch), so
+   populating `health` requires **promoting a single shared `readIterationStatus` call**
+   into `deriveStatus` — keeping the cost at **≤1 iteration-status read per poll, no
+   subprocess** (REQ-PERF-01, C-04). See §3.1 and §6 #1/#2.
 4. Event-altitude classification and target resolution both live in **`core` as pure
    functions** — reusable, unit-testable, and (for `eventAltitude`) the seam a future
    web-parity feature reuses. Neither changes what a machine surface emits
@@ -104,6 +106,16 @@ type Health = {
 - **Freshness reuses the existing constant:** `iterationFresh` uses
   `ITERATION_STATUS_FRESH_MS` (60s, `status.ts:36`), already used by `isLoopLive`.
   No new threshold introduced.
+- **I/O cost — ≤1 read per poll (REQ-PERF-01):** `deriveStatus` does **not** read
+  `iteration-status.json` on the healthy path today — the `isLoopLive` read
+  (`status.ts:143`) fires **only** inside the staleness-downgrade branch
+  (`status.ts:179`), and even there short-circuits when a live lock exists. Populating
+  `health` therefore requires **promoting a single `readIterationStatus(paths)` call**
+  into `deriveStatus`/`deriveFromStateJson`, replacing the conditional read inside
+  `isLoopLive` with one shared read so the invocation count stays **at most one per
+  `deriveStatus`** (still no subprocess — C-02). This is the accurate REQ-PERF-01
+  guarantee; see §6 #1/#2 and the read-spy test in §8. The shared-read promotion is a
+  **required** part of the implementation (OTQ-1), not optional.
 
 ### 3.2 Versioning — `statusSchemaVersion` marker (REQ-COMPAT-02, REQ-CONTRACT-05, REQ-COMPAT-01)
 
@@ -163,7 +175,7 @@ Add a top-level `statusSchemaVersion: "1"` to the `DerivedStatus` object.
 
 > **Naming note:** the PRD refers to both `follow` (the standalone command,
 > `follow-command.ts`) and `status --follow` (`handleStatusFollow`,
-> `status-commands.ts:471`). The item-level default is the **`follow` command's**
+> `status-commands.ts:439`). The item-level default is the **`follow` command's**
 > default; `status --follow` remains the re-rendered `DerivedStatus` snapshot glance
 > (REQ-CMD-01). No fourth verb is added (REQ-CMD-02).
 
@@ -201,6 +213,15 @@ type ResolvedTarget =
 - **`--all` front door (REQ-SCOPE-04/05):** unchanged mechanism — `handleStatusAll`
   over `listActiveLoops()`. `--all --json` is explicitly human/tooling scope, **not**
   the single-loop agent contract.
+- **File home — spec-author call, with a leaning (OTQ-1):** `resolveTarget()` may live in
+  the existing `backlog-root.ts` or a new `target-resolution.ts`. Trade-off: co-locating
+  in `backlog-root.ts` keeps the sandbox/containment seam in **one** module (it already
+  owns `resolveBacklogRoot` at `:94`, which resolution must delegate to) — lower churn,
+  higher cohesion of the safety-critical path; a new `target-resolution.ts` isolates the
+  context-aware (TTY/machine, cwd-default, enumeration) logic and keeps `backlog-root.ts`
+  focused on the pure path join. **Leaning: co-locate in `backlog-root.ts`** since the
+  containment check is the load-bearing part and splitting it across two files risks
+  drift; forge-3-specs may override with rationale.
 
 ### 3.6 The canonical poll supervision recipe — `drive-rauf-loop` rewrite (REQ-PRESCRIBE-01…06, REQ-SKILL-01, Q4)
 
@@ -311,16 +332,16 @@ Verified from source (file:line). Signatures confirmed against the researched co
 
 | # | Existing surface | Location | How this feature integrates |
 |---|------------------|----------|------------------------------|
-| 1 | `deriveStatus(paths): Result<DerivedStatus>` | `core/src/status.ts:365` | Stamp `statusSchemaVersion`; populate `health` from the `IterationStatus` **already read** by `isLoopLive` (`status.ts:143–158`) — pass it through instead of discarding after the freshness check. |
-| 2 | `isLoopLive` / `ITERATION_STATUS_FRESH_MS` | `status.ts:143`, `:36` | Reuse the same 60s constant for `iterationFresh`; reuse the same `readIterationStatus` read (no second read → REQ-PERF-01). |
+| 1 | `deriveStatus(paths): Result<DerivedStatus>` | `core/src/status.ts:365` | Stamp `statusSchemaVersion`; populate `health` from `IterationStatus`. Today `iteration-status.json` is read **only conditionally** inside `isLoopLive` (`status.ts:143–158`), not on the healthy path — so promote a **single shared `readIterationStatus`** call into `deriveStatus`/`deriveFromStateJson` and feed both the freshness check and `health` from it. |
+| 2 | `isLoopLive` / `ITERATION_STATUS_FRESH_MS` | `status.ts:143`, `:36` (sole call site `:179`) | Reuse the same 60s constant for `iterationFresh`; replace `isLoopLive`'s conditional read with the promoted shared read so the total stays **≤1 `readIterationStatus` per `deriveStatus`** (REQ-PERF-01), no subprocess. |
 | 3 | `DerivedStatusSchema` / `BacklogSummarySchema` | `schemas.ts:279`, `:249` | Add `health` + `statusSchemaVersion`; `BacklogSummary` untouched (REQ-CONTRACT-06). |
 | 4 | `IterationStatusSchema` | `schemas.ts:710` | Read-only source of `stuckWarning`, `lastActivityAt`, `updatedAt`. |
 | 5 | `LoopEventSchema` (24 types) | `schemas.ts:591` | `eventAltitude()` exhaustively classifies all 24 types (exhaustiveness enforced by a `never` check). |
 | 6 | `readEvents` / `watchEvents` | `events-log.ts:86`, `:174` | Reused unchanged by the item-level `follow` feed (REQ-CMD-05). |
 | 7 | `formatEvent(ev): string` | `cli/src/event-format.ts:43` | Reused for rendering the events that pass the item-level filter; new sticky-header renderer added alongside. |
-| 8 | `listActiveLoops()` / `ActiveLoopEntry` | `core/src/loop-registry.ts:129`, `schemas.ts:656` | Backs TTY enumeration in `resolveTarget()` and the `--all` front door. |
+| 8 | `listActiveLoops()` / `ActiveLoopEntry` | `loop-registry.ts:129`; `ActiveLoopEntrySchema` `schemas.ts:656`, `type ActiveLoopEntry` `schemas.ts:757` | Backs TTY enumeration in `resolveTarget()` and the `--all` front door. |
 | 9 | `resolveBacklogRoot()` | `core/src/backlog-root.ts:94` | `resolveTarget()` delegates the final path join + sandbox containment to it (REQ-SAFE-01). |
-| 10 | `handleStatus` / `handleFollow` / `handleStatusAll` | `cli/src/status-commands.ts:44,225`, `follow-command.ts:52` | Delegate target resolution to `resolveTarget()`; apply `eventAltitude` filter + header in `follow`. |
+| 10 | `handleStatus` / `handleStatusAll` / `handleStatusFollow` / `handleFollow` | `status-commands.ts:44` / `:225` / `:439`; `follow-command.ts:52` | Delegate target resolution to `resolveTarget()`; apply `eventAltitude` filter + header in `follow`. |
 | 11 | `outputJson` | `cli/src/formatter.ts:113` | Unchanged — passes the enriched `DerivedStatus` through as-is; the version marker rides along in the object. |
 | 12 | `detectColorSupport()` | `cli/src/formatter.ts:33` | Reused for A11Y-safe header degradation (REQ-A11Y-01). |
 
@@ -334,13 +355,15 @@ imports from `cli`/`web` (C-01).
 `forge/loop-observability` branch is the sole owner. The feature-forge-side
 `runner-contract.md` edit (Q3) is a *different repo* — no local conflict.
 
-> **WARNING — verify before implementing:** `resolveTarget()`'s new home
+> **WARNING — verify before implementing:** `resolveTarget()`'s home
 > (`backlog-root.ts` vs. a new `target-resolution.ts`) is a spec-author call in
-> forge-3-specs; confirm the exact export path when writing the numbered spec. The
-> `isLoopLive` helper is currently **private** in `status.ts` — the `health`
-> population may either inline the read inside `deriveFromStateJson` or promote a
-> shared internal read; confirm the refactor keeps a single `readIterationStatus`
-> call per `deriveStatus` invocation (REQ-PERF-01).
+> forge-3-specs (leaning: co-locate — see §3.5); confirm the exact export path when
+> writing the numbered spec. The `isLoopLive` helper is currently **private** in
+> `status.ts` and reads `iteration-status.json` **only** in the staleness-downgrade
+> branch (`:179`), **not** on the healthy path — so `health` population **requires**
+> promoting a shared `readIterationStatus` read into `deriveStatus`/`deriveFromStateJson`
+> (feeding both freshness and `health`). The refactor **must** keep **≤1
+> `readIterationStatus` call per `deriveStatus` invocation** (REQ-PERF-01).
 
 ---
 
@@ -429,7 +452,8 @@ Carried from the PRD, now with a resolution or an explicit forge-3-specs hand-of
   escalate, default **N=3** consecutive polls before escalation; `resume` → `--force`
   → `reset` only on dead lock (§3.6). N is a documented, overridable prescription.
 - **OTQ-1 (spec-author call)** — Exact home of `resolveTarget()` (`backlog-root.ts`
-  vs. new `target-resolution.ts`) and whether `isLoopLive`'s `iteration-status.json`
-  read is promoted to a shared internal or inlined — to be pinned in forge-3-specs,
-  constrained by the single-read requirement (REQ-PERF-01, §6 WARNING).
+  vs. new `target-resolution.ts`; **leaning: co-locate** per §3.5) — to be pinned in
+  forge-3-specs. Note the `iteration-status.json` read promotion is **not** open: it is
+  a **required** refactor (promote a shared `readIterationStatus` into `deriveStatus`),
+  constrained by the **≤1-read-per-poll** invariant (REQ-PERF-01, §3.1, §6 #1/#2 & WARNING).
 ```

@@ -5,7 +5,7 @@
 - **Date:** 2026-07-05
 - **Artifacts verified:** `tech-spec.md` (against `PRD.md`; `CANON.md` for context); source verified in `packages/core`, `packages/cli`
 - **Checks executed:** 17 of 17 — **12 pass, 4 fail, 1 n/a**
-- **Findings:** 4 (2 error, 0 gap, 1 inconsistency, 1 improvement)
+- **Findings:** 4 (2 error, 0 gap, 1 inconsistency, 1 improvement) — **all ✅ RESOLVED 2026-07-05**
 
 ## Summary
 
@@ -38,6 +38,7 @@ table matches PRD §6.
 
 ### V-001 — REQ-PERF-01 "zero new I/O" claim is false on the healthy-loop path
 
+- **Status:** ✅ RESOLVED (2026-07-05) — §1 decision 3, §3.1 (new I/O bullet), §6 #1/#2 & WARNING, §10 OTQ-1 reworded to "≤1 `readIterationStatus` read per poll" via a required shared-read promotion.
 - **Severity:** error
 - **Location:** `tech-spec.md` §1 (Key decision 3), §3.1 (freshness/source bullet), §6 integration points #1 and #2, §10 OTQ-1
 - **Checklist:** CHECK-T05, CHECK-T16
@@ -70,6 +71,7 @@ table matches PRD §6.
 
 ### V-002 — Non-existent `handleFollow` in `status-commands.ts`; wrong line for `handleStatusFollow`
 
+- **Status:** ✅ RESOLVED (2026-07-05) — §6 #10 corrected to `handleStatus:44` / `handleStatusAll:225` / `handleStatusFollow:439` / `handleFollow (follow-command.ts:52)`; §3.4 naming note → `:439`.
 - **Severity:** error
 - **Location:** `tech-spec.md` §6 integration point #10; §2 module table row `cli / src/status-commands.ts`; §3.4 naming note
 - **Checklist:** CHECK-T05
@@ -89,6 +91,7 @@ table matches PRD §6.
 
 ### V-003 — `ActiveLoopEntry` citation points at the schema, not the type
 
+- **Status:** ✅ RESOLVED (2026-07-05) — §6 #8 now distinguishes `ActiveLoopEntrySchema` (`schemas.ts:656`) from `type ActiveLoopEntry` (`schemas.ts:757`).
 - **Severity:** inconsistency
 - **Location:** `tech-spec.md` §6 integration point #8 (also §3.5 "candidates from `listActiveLoops()`")
 - **Checklist:** CHECK-T05, CHECK-T06
@@ -104,6 +107,7 @@ table matches PRD §6.
 
 ### V-004 — Thin alternatives analysis for the deferred `resolveTarget()` home
 
+- **Status:** ✅ RESOLVED (2026-07-05) — §3.5 gained a "File home" bullet weighing `backlog-root.ts` co-location vs. a new `target-resolution.ts`, with a stated leaning (co-locate); §10 OTQ-1 updated to match.
 - **Severity:** improvement
 - **Location:** `tech-spec.md` §3.5 and §10 OTQ-1
 - **Checklist:** CHECK-T09
