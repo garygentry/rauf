@@ -69,7 +69,7 @@
       ],
       "startedAt": "2026-07-05T17:45:00Z",
       "completedAt": "2026-07-05T17:58:00Z",
-      "commitHash": null,
+      "commitHash": "19e1eb07fbd4d8b3e1c02bd85b4d4a394f67362b",
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 }
     }
   }
