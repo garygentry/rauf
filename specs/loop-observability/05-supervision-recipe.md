@@ -355,7 +355,7 @@ removed (REQ-COMPAT-01, the prime directive). Web parity is out of scope (§5.3)
 ### 5.3 Web parity — deferred (Q2)
 
 Phase 4 is **docs-only**. Web observation parity for any new human view is
-**deferred entirely to a follow-up feature** (Q2 ratified, tech-spec §1, §4.4).
+**deferred entirely to a follow-up feature** (Q2 ratified, tech-spec §1, §10 (Q2)).
 This doc updates only the two spec files above and adds **no** web-facing doc.
 State this explicitly in the Phase-4 doc updates so a reader does not expect a web
 change.

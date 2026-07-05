@@ -58,15 +58,19 @@ rauf/
 │   └── skills/drive-rauf-loop/SKILL.md      Δ mirror — kept in lockstep
 ├── agents/
 │   └── rauf-loop-driver.md                  · verify defers to skill (likely no edit)
+├── .codex/
+│   └── agents/rauf-loop-driver.toml         · verify defers to skill (likely no edit) — see 05 §1/§4.3
 └── docs/
     ├── SPEC-CLI.md                          Δ document health, version, item-feed, scope
     └── SPEC-BACKLOG-TOOL-CONTRACT.md        Δ document the agent single-poll contract
 ```
 
 > **Path caveat (verify before writing):** the skill/agent homes above
-> (`skills/`, `.codex-plugin/skills/`, `agents/`) follow tech-spec §2. Confirm the
-> exact in-repo paths with `git ls-files | grep -i drive-rauf-loop` before
-> editing — see `05-supervision-recipe.md` §1, which owns that resolution.
+> (`skills/`, `.codex-plugin/skills/`, `agents/`, `.codex/agents/`) follow
+> tech-spec §2. Confirm the exact in-repo paths with
+> `git ls-files | grep -iE "drive-rauf-loop|rauf-loop-driver"` before editing —
+> see `05-supervision-recipe.md` §1, which owns that resolution (it enumerates all
+> four files, including the `.codex/agents/rauf-loop-driver.toml` mirror).
 
 ---
 
@@ -79,7 +83,7 @@ breaking way.
 | Phase | Spec doc | Files | Ships |
 |-------|----------|-------|-------|
 | **1 — Complete the contract** | `02-health-status-contract.md` | `core/schemas.ts`, `core/status.ts` (+tests) | Additive `health` + `statusSchemaVersion` on `DerivedStatus` |
-| **2 — Make it consistent** | `03-target-resolution.md`, `05-supervision-recipe.md` | `core/backlog-root.ts`, `cli/status-commands.ts` (+tests); `skills/drive-rauf-loop/*` | `resolveTarget()`; the canonical poll recipe |
+| **2 — Make it consistent** | `03-target-resolution.md`, `05-supervision-recipe.md` | `core/backlog-root.ts`, `cli/status-commands.ts` (+tests); `skills/drive-rauf-loop/*`; `agents/rauf-loop-driver.md` + `.codex/agents/rauf-loop-driver.toml` (verify-only, likely no edit) | `resolveTarget()`; the canonical poll recipe |
 | **3 — Make it humane** | `04-event-altitude-follow.md` | `core/events-log.ts`, `cli/follow-command.ts`, `cli/event-format.ts` (+tests) | `eventAltitude()` + item-level `follow` + sticky header + `--all` |
 | **4 — Parity & docs** | `05-supervision-recipe.md` §Docs | `docs/SPEC-CLI.md`, `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` | Docs only (web parity deferred — Q2) |
 

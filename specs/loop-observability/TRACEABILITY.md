@@ -30,7 +30,7 @@ Spec-doc legend: `00` core-definitions · `01` architecture-layout ·
 | REQ-CMD-02 | P1 | 00, 04, 06 | 04 |
 | REQ-CMD-03 | P0 | 00, 04, 05, 06 | 04 |
 | REQ-CMD-04 | P2 | 05 | 05 |
-| REQ-CMD-05 | P1 | 01, 03, 04, 06 | 04 |
+| REQ-CMD-05 | P1 | 01, 04 | 04 |
 | REQ-SCOPE-01 | P0 | 00, 03, 05, 06 | 03 |
 | REQ-SCOPE-02 | P1 | 03, 06 | 03 |
 | REQ-SCOPE-03 | P1 | 03 | 03 |
@@ -75,7 +75,7 @@ Spec-doc legend: `00` core-definitions · `01` architecture-layout ·
 | 00-core-definitions.md | shared types for CONTRACT-03/04/05/06, COMPAT-02, CMD-02/03, SCOPE-01…05, SAFE-02, PERF-01 |
 | 01-architecture-layout.md | C-01, COMPAT-01, GATE-01, CONTRACT-05, CMD-05, SAFE-01, PERF-01 |
 | 02-health-status-contract.md | CONTRACT-01/02/03/04/05, COMPAT-01/02, PERF-01, SUCCESS-01/05 |
-| 03-target-resolution.md | SCOPE-01…05, SAFE-01/02, SUCCESS-03/04, CMD-05 |
+| 03-target-resolution.md | SCOPE-01…05, SAFE-01/02, SUCCESS-03/04 |
 | 04-event-altitude-follow.md | CMD-01/02/03/05, A11Y-01, COMPAT-01, SUCCESS-03/06 |
 | 05-supervision-recipe.md | PRESCRIBE-01…06, SKILL-01/02, SUCCESS-01/02/06, CMD-04, COMPAT-01 |
 | 06-testing-strategy.md | GATE-01, PERF-01, CONTRACT-05, CMD-03, A11Y-01, SCOPE-01, SAFE-01, SUCCESS-01/05 |

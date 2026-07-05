@@ -386,6 +386,17 @@ describe("resolveTarget — machine context strictness (REQ-SCOPE-01, REQ-SAFE-0
     expect(r.error.code).toBe("missing_target");
   });
 
+  // REQ-SUCCESS-04 (P0): the missing-target path must be a HARD ERROR, never a
+  // silent scan of the machine — assert no enumeration read occurs (03 §Verification
+  // "no listActiveLoops / cwd read on that path, via a call spy").
+  it("does not scan (listActiveLoops never called) on the missing_target path", () => {
+    const spy = vi.spyOn(loopRegistry, "listActiveLoops");
+    const r = resolveTarget({ isMachineContext: true, isTTY: false });
+    expect(r.ok).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   it("errors ambiguous_target when several active roots in machine context", () => {
     // several live loops discovered but no explicit path → hard fail, never a scan
     const r = resolveTarget({ isMachineContext: true, isTTY: false /* + fixture of 2 active roots */ });
@@ -496,6 +507,48 @@ describe("deriveStatus — single-poll decision completeness (REQ-SUCCESS-01)", 
 });
 ```
 
+### 4.6 `--all` broadening + machine-wide front door (REQ-SCOPE-03/04, REQ-SUCCESS-03b)
+
+The P0 criterion REQ-SUCCESS-03(b) — "see **every** live loop on the machine" —
+and the bare-`status` cwd→`--all` broadening (`03-target-resolution.md` §5–§6) get
+concrete CLI tests. Appends to `packages/cli/src/status-commands.test.ts`; uses the
+temp-dir active-root fixtures (`registerLoop`/`listActiveLoops`) the existing
+`--all` suite already relies on. stdout is captured to assert the JSON *shape*.
+
+```ts
+describe("status — cwd→--all broadening (REQ-SCOPE-03)", () => {
+  it("broadens to the --all view when the cwd has no live loop but loops exist elsewhere", async () => {
+    // fixture: cwd backlog idle; a second root live elsewhere (registerLoop)
+    const out = await captureStdout(() => handleStatus({ /* bare, TTY */ }));
+    expect(out).toContain(/* the other live root's id / the machine-wide listing */);
+  });
+
+  it("does NOT broaden when the cwd has a live loop", async () => {
+    // fixture: cwd backlog live
+    const spy = vi.spyOn(statusCommands, "handleStatusAll");
+    await handleStatus({ /* bare, TTY */ });
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("status --all --json — front door is a loop list, not a DerivedStatus (REQ-SCOPE-04)", () => {
+  it("emits { loops: ActiveLoopEntry[] }, never a single-loop DerivedStatus", async () => {
+    // fixture: >=1 live root registered
+    const out = await captureStdout(() => handleStatusAll({ json: true }));
+    const parsed = JSON.parse(out);
+    expect(Array.isArray(parsed.loops)).toBe(true);
+    // it is human/tooling scope — NOT the single-loop agent contract:
+    expect(parsed.statusSchemaVersion).toBeUndefined();
+    expect(parsed.loopState).toBeUndefined();
+  });
+});
+```
+
+> `--all --json` is explicitly **human/tooling** scope, not the single-loop agent
+> contract (`03` §6): the absence of `statusSchemaVersion`/`loopState` at the top
+> level is the assertion that guards that boundary.
+
 ---
 
 ## 5. Phase 3 — `eventAltitude()` + `follow` (`04-event-altitude-follow.md`)
@@ -532,6 +585,16 @@ describe("eventAltitude — exhaustive 24-type table (REQ-CMD-02)", () => {
       const ev = { ...event(0), type } as unknown as PersistedEvent;
       expect(eventAltitude(ev), `altitude for ${type}`).toBe(expected);
     }
+  });
+
+  // Runtime fallback branch (04 §2.3): an unrecognized type must default to
+  // "firehose" (visible under --verbose, never silently dropped) and never throw.
+  // This exercises the runtime default branch that the compile-time `never` guard
+  // cannot — closing the "full branch coverage" claim in §7.
+  it("defaults an unknown runtime type to 'firehose' without throwing", () => {
+    const ev = { ...event(0), type: "made_up_future_type" } as unknown as PersistedEvent;
+    expect(() => eventAltitude(ev)).not.toThrow();
+    expect(eventAltitude(ev)).toBe("firehose");
   });
 });
 ```
@@ -611,6 +674,22 @@ describe("sticky progress header (REQ-CMD-05)", () => {
     expect(renderStickyHeader(status, { color: true })).toContain("4/12 done");
     expect(renderStickyHeader(status, { color: true })).toContain("1 blocked");
     expect(renderStickyHeader(status, { color: true })).toContain("on auth-007");
+  });
+
+  // Segment elision (04 §Verification): the `blocked` and `on` segments drop out
+  // when blocked === 0 / currentItem === null — a distinct render branch, so §7's
+  // full-branch-coverage claim requires it be exercised.
+  it("elides the 'blocked' and 'on' segments when blocked===0 and currentItem===null", () => {
+    const status = {
+      statusSchemaVersion: "1", loopState: "RUNNING",
+      currentItem: null,
+      backlogSummary: { done: 4, total: 12, blocked: 0, needsHuman: 0, deferred: 0, pending: 8, inProgress: 0 },
+      // …remaining DerivedStatus fields…
+    } as unknown as DerivedStatus;
+    const line = renderStickyHeader(status, { color: true });
+    expect(line).toContain("4/12 done");
+    expect(line).not.toContain("blocked");
+    expect(line).not.toContain("on ");
   });
 });
 ```

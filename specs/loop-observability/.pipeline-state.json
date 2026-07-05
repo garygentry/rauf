@@ -54,6 +54,14 @@
       "fixedAt": "2026-07-05T19:45:00Z",
       "verifiedStageVersion": 1
     },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-07-05.md",
+      "findingsCount": 9,
+      "verifiedAt": "2026-07-05T18:05:00Z",
+      "fixedAt": "2026-07-05T18:12:00Z",
+      "verifiedStageVersion": 1
+    },
     "forge-3-specs": {
       "status": "complete",
       "version": 1,
