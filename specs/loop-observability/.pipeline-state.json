@@ -3,8 +3,18 @@
   "pipelineStatus": "active",
   "branch": "forge/loop-observability",
   "createdAt": "2026-07-05T18:35:45Z",
-  "updatedAt": "2026-07-05T19:20:00Z",
-  "currentStage": "forge-3-specs",
+  "updatedAt": "2026-07-05T17:58:00Z",
+  "currentStage": "forge-verify",
+  "artifacts": [
+    "specs/loop-observability/00-core-definitions.md",
+    "specs/loop-observability/01-architecture-layout.md",
+    "specs/loop-observability/02-health-status-contract.md",
+    "specs/loop-observability/03-target-resolution.md",
+    "specs/loop-observability/04-event-altitude-follow.md",
+    "specs/loop-observability/05-supervision-recipe.md",
+    "specs/loop-observability/06-testing-strategy.md",
+    "specs/loop-observability/TRACEABILITY.md"
+  ],
   "notes": [
     "OTQ-1: resolveTarget() file home (backlog-root.ts vs new target-resolution.ts) + whether isLoopLive's iteration-status.json read is promoted to a shared internal are forge-3-specs author calls; must honor single-read per REQ-PERF-01.",
     "Q3: the feature-forge forge-5-loop / runner-contract.md edit (defer decision semantics to rauf's drive-rauf-loop) is a cross-repo follow-up in the feature-forge repo, OUT of this backlog's scope. rauf deliverable = drive-rauf-loop is the authoritative contract."
@@ -43,6 +53,24 @@
       "verifiedAt": "2026-07-05T19:35:00Z",
       "fixedAt": "2026-07-05T19:45:00Z",
       "verifiedStageVersion": 1
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/loop-observability/00-core-definitions.md",
+        "specs/loop-observability/01-architecture-layout.md",
+        "specs/loop-observability/02-health-status-contract.md",
+        "specs/loop-observability/03-target-resolution.md",
+        "specs/loop-observability/04-event-altitude-follow.md",
+        "specs/loop-observability/05-supervision-recipe.md",
+        "specs/loop-observability/06-testing-strategy.md",
+        "specs/loop-observability/TRACEABILITY.md"
+      ],
+      "startedAt": "2026-07-05T17:45:00Z",
+      "completedAt": "2026-07-05T17:58:00Z",
+      "commitHash": null,
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 }
     }
   }
 }
