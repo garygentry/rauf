@@ -1,0 +1,19 @@
+{
+  "feature": "loop-observability",
+  "pipelineStatus": "active",
+  "branch": "forge/loop-observability",
+  "createdAt": "2026-07-05T18:35:45Z",
+  "updatedAt": "2026-07-05T18:35:45Z",
+  "currentStage": "forge-2-tech",
+  "stages": {
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["PRD.md", "CANON.md"],
+      "startedAt": "2026-07-05T18:35:45Z",
+      "completedAt": "2026-07-05T18:35:45Z",
+      "commitHash": null,
+      "basedOnVersions": {}
+    }
+  }
+}
