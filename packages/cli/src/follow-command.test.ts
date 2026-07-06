@@ -98,6 +98,19 @@ describe("handleFollow", () => {
     expect(await handleFollow(ctx)).toBe(ExitCode.USAGE);
   });
 
+  it("emits a structured missing_target error under --json when no path is given", async () => {
+    const ctx: CommandContext = {
+      args: [],
+      flags: new Map(),
+      globalFlags: { json: true, quiet: true, noColor: true, root: null },
+      rawArgv: [],
+    };
+    const code = await handleFollow(ctx);
+    expect(code).toBe(ExitCode.USAGE);
+    const parsed = JSON.parse(written.trim()) as { error: { code: string } };
+    expect(parsed.error.code).toBe("missing_target");
+  });
+
   it("replays the current run's events then exits on a terminal state (formatted)", async () => {
     const raufDir = createRaufDir(tmpDir);
     createTerminalState(raufDir);

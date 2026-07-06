@@ -1,7 +1,29 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+
+// Mock listActiveLoops (the CLI-imported export) so the bare-status broadening
+// (REQ-SCOPE-03) and `--all` can be driven deterministically without touching the
+// real ~/.rauf/active registry. All other @rauf/core exports pass through. NOTE:
+// resolveTarget's OWN internal enumeration is unaffected (it binds core's private
+// reference), so the resolver still sees the real, empty registry in tests.
+const { listActiveLoopsMock, resolveTargetMock } = vi.hoisted(() => ({
+  listActiveLoopsMock: vi.fn(),
+  resolveTargetMock: vi.fn(),
+}));
+vi.mock("@rauf/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@rauf/core")>();
+  // resolveTarget defaults to the REAL resolver (pass-through); individual tests
+  // override it to force a deterministic target without depending on the live
+  // ~/.rauf/active registry (which is non-empty while this repo self-hosts a loop).
+  resolveTargetMock.mockImplementation(actual.resolveTarget);
+  return {
+    ...actual,
+    listActiveLoops: listActiveLoopsMock,
+    resolveTarget: (opts: Parameters<typeof actual.resolveTarget>[0]) => resolveTargetMock(opts),
+  };
+});
 
 import { handleStatus, handleLog, handleProgress, statusExitCode } from "./status-commands.js";
 import { ExitCode } from "./commands.js";
@@ -16,10 +38,16 @@ let tmpDir: string;
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ralph-cli-status-"));
   configureOutput({ noColor: true, quiet: true, json: false });
+  // Default: no live loops machine-wide (matches an empty real registry).
+  listActiveLoopsMock.mockReturnValue({ ok: true, value: [] });
 });
 
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  // Reset call history only — keep the factory-set resolveTarget pass-through so
+  // other suites still resolve real targets.
+  listActiveLoopsMock.mockClear();
+  resolveTargetMock.mockClear();
 });
 
 /** Create a minimal project dir with .rauf directory */
@@ -485,6 +513,127 @@ describe("handleStatus", () => {
     const code = await handleStatus(ctx);
     // PAUSED → exit 0
     expect(code).toBe(0);
+  });
+});
+
+// ─── handleStatus — resolveTarget wiring (item 003) ────────────────
+
+describe("handleStatus — target resolution", () => {
+  /** Capture stdout for the duration of `fn`. */
+  async function captureStdout(fn: () => Promise<unknown>): Promise<string> {
+    const origWrite = process.stdout.write.bind(process.stdout);
+    let out = "";
+    process.stdout.write = ((s: string | Uint8Array) => {
+      out += String(s);
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      await fn();
+    } finally {
+      process.stdout.write = origWrite;
+    }
+    return out;
+  }
+
+  /** Temporarily present stdout as a TTY for an async body, then restore it. */
+  async function withTTY<T>(isTTY: boolean, fn: () => Promise<T>): Promise<T> {
+    const prev = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: isTTY, configurable: true });
+    try {
+      return await fn();
+    } finally {
+      if (prev) Object.defineProperty(process.stdout, "isTTY", prev);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+    }
+  }
+
+  function makeActiveEntry(overrides: Record<string, unknown> = {}) {
+    return {
+      stateDir: "/other/.rauf",
+      projectPath: "/other",
+      backlogRoot: "/other/.rauf",
+      pid: 4242,
+      startedAt: new Date().toISOString(),
+      status: "running",
+      ...overrides,
+    };
+  }
+
+  it("emits a structured missing_target error under --json (no path)", async () => {
+    const ctx = makeCtx([], {}, { json: true });
+    let code = 0;
+    const out = await captureStdout(async () => {
+      code = await handleStatus(ctx);
+    });
+    expect(code).toBe(ExitCode.USAGE);
+    const parsed = JSON.parse(out.trim()) as { error: { code: string } };
+    expect(parsed.error.code).toBe("missing_target");
+  });
+
+  it("renders a missing_target error to stderr (non-json) and returns USAGE", async () => {
+    const ctx = makeCtx([]); // non-TTY test env → machine context
+    const code = await handleStatus(ctx);
+    expect(code).toBe(ExitCode.USAGE);
+  });
+
+  it("--all short-circuits before resolveTarget; --all --json emits { loops }", async () => {
+    listActiveLoopsMock.mockReturnValue({ ok: true, value: [makeActiveEntry()] });
+    const ctx = makeCtx([], { all: true }, { json: true });
+    let code = 0;
+    const out = await captureStdout(async () => {
+      code = await handleStatus(ctx);
+    });
+    expect(code).toBe(ExitCode.SUCCESS);
+    const parsed = JSON.parse(out.trim()) as { loops: unknown[] };
+    expect(Array.isArray(parsed.loops)).toBe(true);
+    expect(parsed.loops).toHaveLength(1);
+  });
+
+  it("bare status on a TTY with an idle cwd backlog broadens to --all when a loop is live elsewhere", async () => {
+    const projectDir = path.join(tmpDir, "idle-cwd");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir); // installed but idle (no state.json)
+    // Force the bare-status cwd resolution deterministically (no path arg), and a
+    // live loop elsewhere so the broadening fires.
+    resolveTargetMock.mockReturnValueOnce({
+      ok: true,
+      value: { kind: "resolved", root: projectDir, backlogDir: raufDir },
+    });
+    listActiveLoopsMock.mockReturnValue({ ok: true, value: [makeActiveEntry()] });
+
+    const ctx = makeCtx([]); // no path → cwd default on a TTY
+    let code = 0;
+    const out = await withTTY(true, () =>
+      captureStdout(async () => {
+        code = await handleStatus(ctx);
+      }),
+    );
+    // Broadened: handleStatusAll rendered the machine-wide list.
+    expect(out).toContain("Live loops (machine-wide)");
+    expect(code).toBe(ExitCode.SUCCESS);
+  });
+
+  it("does NOT broaden when the cwd loop is itself live", async () => {
+    const projectDir = path.join(tmpDir, "live-cwd");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, { status: "running" }); // live locally
+    resolveTargetMock.mockReturnValueOnce({
+      ok: true,
+      value: { kind: "resolved", root: projectDir, backlogDir: raufDir },
+    });
+    listActiveLoopsMock.mockReturnValue({ ok: true, value: [makeActiveEntry()] });
+
+    const ctx = makeCtx([]);
+    let code = 0;
+    const out = await withTTY(true, () =>
+      captureStdout(async () => {
+        code = await handleStatus(ctx);
+      }),
+    );
+    expect(out).not.toContain("Live loops (machine-wide)");
+    // A running local loop reports RUNNING(6), never the broadened view.
+    expect(code).toBe(ExitCode.RUNNING);
   });
 });
 

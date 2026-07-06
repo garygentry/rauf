@@ -6,15 +6,14 @@
 // detection. It reads files for ANY loop regardless of who started it, which is
 // what collapses the in-process/server asymmetry for this observer.
 
-import * as path from "node:path";
-
 import {
   deriveStatus,
   readEvents,
   watchEvents,
-  resolveBacklogRoot,
   resolveBacklogPaths,
+  resolveTarget,
   getStateLabel,
+  type ActiveLoopEntry,
   type BacklogPaths,
   type PersistedEvent,
 } from "@rauf/core";
@@ -22,7 +21,7 @@ import {
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractNumberFlag, extractStringFlag } from "./parser.js";
-import { info, print, error } from "./formatter.js";
+import { c, info, print, error, outputJson } from "./formatter.js";
 import { formatEvent } from "./event-format.js";
 
 /** Terminal loop states — the loop is no longer active. */
@@ -50,31 +49,48 @@ function emitEvent(ev: PersistedEvent, json: boolean): void {
 }
 
 export async function handleFollow(ctx: CommandContext): Promise<number> {
-  const targetPath = ctx.args[0];
-  if (!targetPath) {
-    error("Missing required argument: <path>");
-    info("Usage: rauf follow [path] [--json] [--interval N] [--backlog <dir>]");
-    return ExitCode.USAGE;
-  }
-
-  const resolved = path.resolve(targetPath);
   const json = ctx.globalFlags.json;
   const intervalSeconds = extractNumberFlag(ctx.flags, "interval") ?? DEFAULT_POLL_SECONDS;
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const isTTY = Boolean(process.stdout.isTTY);
 
-  // --backlog is the single targeting spelling — same preamble as every read command.
-  const rootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
-  if (!rootResult.ok) {
-    error(rootResult.error.message);
+  // Delegate targeting to the context-aware resolver (03-target-resolution.md §7):
+  // [path] is optional on a TTY (cwd default / pick list); a missing/ambiguous
+  // target in machine context (--json or non-TTY) is a structured hard error.
+  const res = resolveTarget({
+    pathArg: ctx.args[0],
+    backlogFlag: backlogFlag ?? undefined,
+    isMachineContext: json || !isTTY,
+    isTTY,
+  });
+  if (!res.ok) {
+    if (json) outputJson({ error: res.error });
+    else error(res.error.message);
     return ExitCode.USAGE;
   }
-  const pathsResult = resolveBacklogPaths(resolved, rootResult.value);
+  if (res.value.kind === "ambiguous") {
+    // Several live loops on a TTY — render the pick list (machine ctx never
+    // reaches here; branch 2 already errored). Item-level rendering is owned by 04.
+    renderCandidateList(res.value.candidates);
+    return ExitCode.SUCCESS;
+  }
+
+  const pathsResult = resolveBacklogPaths(res.value.root, res.value.backlogDir);
   if (!pathsResult.ok) {
-    error(pathsResult.error.message);
+    if (json) outputJson({ error: pathsResult.error });
+    else error(pathsResult.error.message);
     return ExitCode.ERROR;
   }
 
   return followEvents(pathsResult.value, { json, intervalSeconds });
+}
+
+/** Render the ambiguous-target pick list (TTY only; 04 owns richer rendering). */
+function renderCandidateList(candidates: ActiveLoopEntry[]): void {
+  print(c.bold("Multiple live loops found — re-run with <root> --backlog <dir>:"));
+  for (const e of candidates) {
+    print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid})`)}`);
+  }
 }
 
 /** Replay-then-tail engine: readEvents (current run) then watchEvents (live tail). */

@@ -15,12 +15,14 @@ import {
   fileExists,
   resolveBacklogRoot,
   resolveBacklogPaths,
+  resolveTarget,
   scanActiveRoots,
   detectMigrationState,
   listActiveLoops,
   surfaceInspectedStatus,
   surfaceInspectedDir,
   STATE_LABELS,
+  type ActiveLoopEntry,
   type BacklogPaths,
   type DerivedStatus,
   type LoopStateEnum,
@@ -42,137 +44,155 @@ import { formatEvent } from "./event-format.js";
 // 1=error, 2=usage, 3=needs-human, 4=limit, 5=blocked, 6=running (query-time, status only)
 
 export async function handleStatus(ctx: CommandContext): Promise<number> {
-  const targetPath = ctx.args[0];
-  if (!targetPath) {
-    error("Missing required argument: <path>");
-    info("Usage: rauf status <path> [--follow] [--json] [--interval N] [--all] [--backlog <dir>]");
-    return ExitCode.USAGE;
-  }
-
   const all = extractBoolFlag(ctx.flags, "all");
-  const follow = extractBoolFlag(ctx.flags, "follow"); // -f resolved in parser
-  const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
-  const resolved = path.resolve(targetPath);
-  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
-
   if (all) {
     // Machine-wide listing of every live loop via the reconciled registry (§9).
+    // `--all` short-circuits BEFORE resolveTarget — it needs no single-root target.
     return handleStatusAll(ctx.globalFlags.json);
   }
 
-  if (follow) {
-    return handleStatusFollow(resolved, interval, backlogFlag ?? undefined, ctx.globalFlags.json);
+  const follow = extractBoolFlag(ctx.flags, "follow"); // -f resolved in parser
+  const interval = extractNumberFlag(ctx.flags, "interval") ?? 2;
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const json = ctx.globalFlags.json;
+
+  // Context-aware targeting (03-target-resolution.md §5): [path] is optional on a
+  // TTY (cwd default / single-loop / pick list); in machine context (--json or
+  // non-TTY) a missing/ambiguous target is a structured hard error.
+  const isTTY = Boolean(process.stdout.isTTY);
+  const isMachineContext = json || !isTTY; // D5
+  const res = resolveTarget({
+    pathArg: ctx.args[0],
+    backlogFlag: backlogFlag ?? undefined,
+    isMachineContext,
+    isTTY,
+  });
+
+  if (!res.ok) {
+    // A `not_found` on the DEFAULT (no --backlog) path preserves the legacy /
+    // empty-is-never-silent surfacing (SUCCESS); every other TargetError (and any
+    // failure under --backlog) is a USAGE(2) resolution failure rendered per §4.
+    if (res.error.code === "not_found" && !backlogFlag) {
+      const projectRoot = ctx.args[0] ? path.resolve(ctx.args[0]) : process.cwd();
+      return surfaceDefaultRoot(projectRoot, json);
+    }
+    if (json) outputJson({ error: res.error });
+    else error(res.error.message);
+    return ExitCode.USAGE;
   }
 
-  if (backlogFlag) {
-    // Show status for specific root only
-    const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag);
-    if (!backlogRootResult.ok) {
-      error(backlogRootResult.error.message);
-      return ExitCode.USAGE;
+  if (res.value.kind === "ambiguous") {
+    // Several live loops on a TTY — render the pick list (machine ctx never
+    // reaches here; branch 2 already errored). Richer rendering is owned by 04.
+    renderCandidateList(res.value.candidates);
+    return ExitCode.SUCCESS;
+  }
+
+  const { root, backlogDir } = res.value;
+
+  if (follow) {
+    return handleStatusFollow(root, backlogDir, interval, json);
+  }
+
+  const pathsResult = resolveBacklogPaths(root, backlogDir);
+  if (!pathsResult.ok) {
+    if (json) outputJson({ error: pathsResult.error });
+    else error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+
+  const result = deriveStatus(pathsResult.value);
+  if (!result.ok) {
+    if (json) {
+      outputJson({ error: result.error });
+    } else {
+      error(result.error.message);
+      if (!backlogFlag) info(`Ensure rauf is installed. Run: ${c.cyan(`rauf install ${root}`)}`);
     }
-    const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
-    if (!pathsResult.ok) {
-      error(pathsResult.error.message);
-      return ExitCode.ERROR;
-    }
+    return ExitCode.ERROR;
+  }
 
-    const result = deriveStatus(pathsResult.value);
-    if (!result.ok) {
-      if (ctx.globalFlags.json) {
-        outputJson({ error: result.error });
-      } else {
-        error(result.error.message);
-      }
-      return ExitCode.ERROR;
-    }
+  const status = result.value;
+  if (json) {
+    outputJson(status);
+    return statusExitCode(status.loopState, status);
+  }
 
-    if (ctx.globalFlags.json) {
-      outputJson(result.value);
-      return statusExitCode(result.value.loopState, result.value);
-    }
+  printStatusSummary(status);
+  if (status.stateSource === "none") {
+    renderInspectedStatus(surfaceInspectedStatus(pathsResult.value, status), json);
+  }
 
-    printStatusSummary(result.value);
-    if (result.value.stateSource === "none") {
-      renderInspectedStatus(
-        surfaceInspectedStatus(pathsResult.value, result.value),
-        ctx.globalFlags.json,
-      );
-    }
-    return statusExitCode(result.value.loopState, result.value);
-  } else {
-    // Default root + list active non-default roots
-    const defaultRoot = path.join(resolved, ".rauf");
-    const defaultPathsResult = resolveBacklogPaths(resolved, defaultRoot);
-
-    // Tolerate legacy ralph projects: warn to migrate rather than implying "not installed".
-    if (!defaultPathsResult.ok) {
-      const legacy = detectMigrationState(resolved);
-      if (legacy.ok && (legacy.value === "legacy_ralph" || legacy.value === "partial")) {
-        if (ctx.globalFlags.json) {
-          outputJson({ legacy: true, message: `Run 'rauf migrate ${resolved}' to migrate.` });
-        } else {
-          warn(`Legacy rauf project detected.`);
-          info(`Run: ${c.cyan(`rauf migrate ${resolved}`)} to migrate it to rauf.`);
-        }
-        return ExitCode.ERROR;
-      }
-      // No installed/usable state at the default root and not a legacy project:
-      // never go silent — name the inspected directory and surface any loop live
-      // elsewhere on the machine (REQ-DISC-01/02). No resolved paths/status here,
-      // so use the raw-dir entry point into the same core data layer.
-      renderInspectedStatus(surfaceInspectedDir(defaultRoot, true), ctx.globalFlags.json);
-      return ExitCode.SUCCESS;
-    }
-
-    if (defaultPathsResult.ok) {
-      const result = deriveStatus(defaultPathsResult.value);
-      if (!result.ok) {
-        if (ctx.globalFlags.json) {
-          outputJson({ error: result.error });
-        } else {
-          error(result.error.message);
-          info(`Ensure rauf is installed. Run: ${c.cyan(`rauf install ${resolved}`)}`);
-        }
-        return ExitCode.ERROR;
-      }
-
-      const status = result.value;
-      if (ctx.globalFlags.json) {
-        outputJson(status);
-        return statusExitCode(status.loopState, status);
-      }
-
-      printStatusSummary(status);
-      if (status.stateSource === "none") {
-        renderInspectedStatus(
-          surfaceInspectedStatus(defaultPathsResult.value, status),
-          ctx.globalFlags.json,
-        );
-      }
-    }
-
-    // Scan for active non-default roots
-    const activeRootsResult = scanActiveRoots(resolved);
+  // The default-view extras (non-default root footer + bare-status broadening) are
+  // scoped to the DEFAULT root only; `--backlog <dir>` is a single-root view.
+  if (!backlogFlag) {
+    // Scan for active non-default roots.
+    const activeRootsResult = scanActiveRoots(root);
     if (activeRootsResult.ok && activeRootsResult.value.length > 0) {
       const nonDefault = activeRootsResult.value.filter((r) => r.relativePath !== ".rauf");
       if (nonDefault.length > 0) {
         print("");
         print(c.bold("Active backlog roots:"));
-        for (const root of nonDefault) {
-          const stateLabel = root.loopState;
-          const itemLabel = root.currentItem ? ` (item ${root.currentItem})` : "";
-          print(`  ${c.cyan(root.relativePath)} — ${stateLabel}${itemLabel}`);
+        for (const r of nonDefault) {
+          const itemLabel = r.currentItem ? ` (item ${r.currentItem})` : "";
+          print(`  ${c.cyan(r.relativePath)} — ${r.loopState}${itemLabel}`);
         }
       }
     }
 
-    if (defaultPathsResult.ok) {
-      const result = deriveStatus(defaultPathsResult.value);
-      if (result.ok) return statusExitCode(result.value.loopState, result.value);
+    // Bare-status cwd → --all broadening (REQ-SCOPE-03): fires ONLY on a TTY with
+    // no explicit path and no --backlog. When the cwd backlog has no live loop but
+    // >=1 loop is live elsewhere, additionally surface handleStatusAll. A live cwd
+    // loop is the answer — do NOT broaden.
+    if (isTTY && !ctx.args[0] && !isLoopLiveLocally(status)) {
+      const live = listActiveLoops();
+      if (live.ok && live.value.length >= 1) {
+        return handleStatusAll(json);
+      }
     }
-    return ExitCode.SUCCESS;
   }
+
+  return statusExitCode(status.loopState, status);
+}
+
+/**
+ * Surface the default root when it has no usable backlog: tolerate a legacy ralph
+ * project (warn to migrate), else render the empty-is-never-silent footer
+ * (REQ-DISC-01/02). Extracted from the old default branch's not-found path so the
+ * resolver's `not_found` composes with — does not replace — this surfacing (§5).
+ */
+function surfaceDefaultRoot(projectRoot: string, json: boolean): number {
+  const legacy = detectMigrationState(projectRoot);
+  if (legacy.ok && (legacy.value === "legacy_ralph" || legacy.value === "partial")) {
+    if (json) {
+      outputJson({ legacy: true, message: `Run 'rauf migrate ${projectRoot}' to migrate.` });
+    } else {
+      warn(`Legacy rauf project detected.`);
+      info(`Run: ${c.cyan(`rauf migrate ${projectRoot}`)} to migrate it to rauf.`);
+    }
+    return ExitCode.ERROR;
+  }
+  const defaultRoot = path.join(projectRoot, ".rauf");
+  renderInspectedStatus(surfaceInspectedDir(defaultRoot, true), json);
+  return ExitCode.SUCCESS;
+}
+
+/** Render the ambiguous-target pick list (TTY only; 04 owns richer rendering). */
+function renderCandidateList(candidates: ActiveLoopEntry[]): void {
+  print(c.bold("Multiple live loops found — re-run with <root> --backlog <dir>:"));
+  for (const e of candidates) {
+    print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid})`)}`);
+  }
+}
+
+/**
+ * A loop is live *locally* when it is actively running/reviewing or holds a live
+ * lock. Used by the bare-status broadening (REQ-SCOPE-03) to decide whether the
+ * cwd already answers the query or the machine-wide `--all` view should broaden.
+ */
+function isLoopLiveLocally(status: DerivedStatus): boolean {
+  if (status.loopState === "RUNNING" || status.loopState === "REVIEWING") return true;
+  return Boolean(status.lock && status.lock.present && status.lock.alive);
 }
 
 // ─── Empty-is-never-silent surfacing ─────────────────────────────
@@ -437,11 +457,14 @@ async function handleLogFollow(
 // changed, not the human presentation).
 
 async function handleStatusFollow(
-  projectPath: string,
+  root: string,
+  backlogDir: string,
   intervalSeconds: number,
-  backlogFlag: string | undefined,
   json: boolean,
 ): Promise<number> {
+  // The caller (handleStatus) has already resolved and sandbox-validated the
+  // target, so the poll loop re-derives status per tick but never re-resolves the
+  // root — resolveBacklogPaths(root, backlogDir) reconstructs the paths cheaply.
   return new Promise<number>((resolve) => {
     let running = true;
     let lastSerialized: string | null = null;
@@ -458,29 +481,26 @@ async function handleStatusFollow(
     const tick = () => {
       if (!running) return;
 
-      const rootResult = resolveBacklogRoot(projectPath, backlogFlag);
-      if (!rootResult.ok) {
-        if (!json) error(rootResult.error.message);
-      } else {
-        const pathsResult = resolveBacklogPaths(projectPath, rootResult.value);
-        if (pathsResult.ok) {
-          const result = deriveStatus(pathsResult.value);
-          if (result.ok) {
-            if (json) {
-              // One DerivedStatus snapshot per CHANGE (NDJSON).
-              const serialized = JSON.stringify(result.value);
-              if (serialized !== lastSerialized) {
-                lastSerialized = serialized;
-                process.stdout.write(serialized + "\n");
-              }
-            } else {
-              process.stdout.write("\x1b[2J\x1b[H");
-              print(c.dim(`rauf status  (${new Date().toLocaleTimeString()})  Ctrl+C to stop`));
-              print("");
-              printStatusSummary(result.value);
+      const pathsResult = resolveBacklogPaths(root, backlogDir);
+      if (pathsResult.ok) {
+        const result = deriveStatus(pathsResult.value);
+        if (result.ok) {
+          if (json) {
+            // One DerivedStatus snapshot per CHANGE (NDJSON).
+            const serialized = JSON.stringify(result.value);
+            if (serialized !== lastSerialized) {
+              lastSerialized = serialized;
+              process.stdout.write(serialized + "\n");
             }
+          } else {
+            process.stdout.write("\x1b[2J\x1b[H");
+            print(c.dim(`rauf status  (${new Date().toLocaleTimeString()})  Ctrl+C to stop`));
+            print("");
+            printStatusSummary(result.value);
           }
         }
+      } else if (!json) {
+        error(pathsResult.error.message);
       }
 
       if (running) setTimeout(tick, intervalSeconds * 1000);

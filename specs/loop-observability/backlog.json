@@ -73,8 +73,8 @@
         "The old ad-hoc \"Missing required argument: <path>\" string no longer appears on the resolver path in handleStatus/handleStatusFollow/handleFollow",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:35:45.691Z",
       "dependsOn": [
         "002"
       ],
