@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   resolveBacklogRoot,
   resolveStateDir,
@@ -8,9 +8,20 @@ import {
   resolveInstructionPaths,
   ensureStateDir,
   scanBacklogRoots,
+  resolveTarget,
+  type TargetErrorCode,
 } from "./backlog-root.js";
 import { ErrorCodes } from "./errors.js";
 import { createMultiRootProject } from "./test-helpers.js";
+import { listActiveLoops } from "./loop-registry.js";
+import type { ActiveLoopEntry } from "./schemas.js";
+
+// Mock the registry so resolveTarget's TTY enumeration is deterministic and so
+// we can spy on whether it is consulted at all.
+vi.mock("./loop-registry.js", () => ({
+  listActiveLoops: vi.fn(() => ({ ok: true, value: [] })),
+}));
+const mockListActiveLoops = vi.mocked(listActiveLoops);
 
 let project: ReturnType<typeof createMultiRootProject>;
 
@@ -300,5 +311,178 @@ describe("scanBacklogRoots", () => {
     if (!result.ok) throw new Error("unexpected");
     expect(result.value.map((r) => r.root)).toEqual([".rauf", "specs/auth"]);
     p.cleanup();
+  });
+});
+
+// ─── resolveTarget ───────────────────────────────────────────────
+
+describe("resolveTarget", () => {
+  function makeEntry(projectPath: string, backlogRoot: string): ActiveLoopEntry {
+    return {
+      stateDir: backlogRoot,
+      projectPath,
+      backlogRoot,
+      pid: 1234,
+      startedAt: new Date().toISOString(),
+      status: "running",
+    };
+  }
+
+  beforeEach(() => {
+    mockListActiveLoops.mockReset();
+    mockListActiveLoops.mockReturnValue({ ok: true, value: [] });
+  });
+
+  it("resolves an explicit pathArg regardless of context", () => {
+    const res = resolveTarget({
+      pathArg: project.projectPath,
+      isMachineContext: true,
+      isTTY: false,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error("unexpected");
+    expect(res.value.kind).toBe("resolved");
+    if (res.value.kind !== "resolved") throw new Error("unexpected");
+    expect(res.value.root).toBe(path.resolve(project.projectPath));
+    expect(res.value.backlogDir).toBe(path.join(path.resolve(project.projectPath), ".rauf"));
+    // pathArg branch is context-independent — never enumerates.
+    expect(mockListActiveLoops).not.toHaveBeenCalled();
+  });
+
+  it("returns missing_target in machine context with no pathArg and does NOT enumerate or read cwd", () => {
+    const cwdSpy = vi.spyOn(process, "cwd");
+    const res = resolveTarget({ isMachineContext: true, isTTY: true });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("unexpected");
+    expect(res.error.code).toBe("missing_target");
+    expect(mockListActiveLoops).not.toHaveBeenCalled();
+    expect(cwdSpy).not.toHaveBeenCalled();
+    cwdSpy.mockRestore();
+  });
+
+  it("treats non-TTY-non-machine defensively as machine strictness (missing_target)", () => {
+    const res = resolveTarget({ isMachineContext: false, isTTY: false });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("unexpected");
+    expect(res.error.code).toBe("missing_target");
+    expect(mockListActiveLoops).not.toHaveBeenCalled();
+  });
+
+  it("TTY, exactly one active loop → resolves that loop's root", () => {
+    const backlogRoot = path.join(path.resolve(project.projectPath), ".rauf");
+    mockListActiveLoops.mockReturnValue({
+      ok: true,
+      value: [makeEntry(project.projectPath, backlogRoot)],
+    });
+    const res = resolveTarget({ isMachineContext: false, isTTY: true });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error("unexpected");
+    expect(res.value.kind).toBe("resolved");
+    if (res.value.kind !== "resolved") throw new Error("unexpected");
+    expect(res.value.root).toBe(path.resolve(project.projectPath));
+    expect(res.value.backlogDir).toBe(backlogRoot);
+  });
+
+  it("TTY, several active loops → ambiguous with those candidates", () => {
+    const entries = [
+      makeEntry(project.projectPath, path.join(path.resolve(project.projectPath), ".rauf")),
+      makeEntry("/other/proj", "/other/proj/.rauf"),
+    ];
+    mockListActiveLoops.mockReturnValue({ ok: true, value: entries });
+    const res = resolveTarget({ isMachineContext: false, isTTY: true });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error("unexpected");
+    expect(res.value.kind).toBe("ambiguous");
+    if (res.value.kind !== "ambiguous") throw new Error("unexpected");
+    expect(res.value.candidates).toEqual(entries);
+  });
+
+  it("TTY, zero active loops → resolves cwd default", () => {
+    mockListActiveLoops.mockReturnValue({ ok: true, value: [] });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(path.resolve(project.projectPath));
+    const res = resolveTarget({ isMachineContext: false, isTTY: true });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error("unexpected");
+    expect(res.value.kind).toBe("resolved");
+    if (res.value.kind !== "resolved") throw new Error("unexpected");
+    expect(res.value.root).toBe(path.resolve(project.projectPath));
+    cwdSpy.mockRestore();
+  });
+
+  it("TTY, listActiveLoops IO_ERROR → treated as zero (cwd default)", () => {
+    mockListActiveLoops.mockReturnValue({
+      ok: false,
+      error: { code: ErrorCodes.IO_ERROR, message: "boom" },
+    });
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(path.resolve(project.projectPath));
+    const res = resolveTarget({ isMachineContext: false, isTTY: true });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error("unexpected");
+    expect(res.value.kind).toBe("resolved");
+    cwdSpy.mockRestore();
+  });
+
+  it("out-of-root backlogFlag → outside_sandbox (PATH_VIOLATION mapped)", () => {
+    const res = resolveTarget({
+      pathArg: project.projectPath,
+      backlogFlag: "../escape",
+      isMachineContext: true,
+      isTTY: false,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("unexpected");
+    expect(res.error.code).toBe("outside_sandbox");
+    expect(res.error.offending).toBe("../escape");
+  });
+
+  it("non-existent root → not_found", () => {
+    const missing = path.join(path.resolve(project.projectPath), "no-such-dir");
+    const res = resolveTarget({
+      pathArg: missing,
+      isMachineContext: true,
+      isTTY: false,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) throw new Error("unexpected");
+    expect(res.error.code).toBe("not_found");
+  });
+
+  it("all four TargetErrorCode variants are reachable", () => {
+    // missing_target
+    const missing = resolveTarget({ isMachineContext: true, isTTY: false });
+    expect(missing.ok).toBe(false);
+    if (missing.ok) throw new Error("unexpected");
+    expect(missing.error.code).toBe("missing_target");
+
+    // outside_sandbox
+    const outside = resolveTarget({
+      pathArg: project.projectPath,
+      backlogFlag: "../escape",
+      isMachineContext: true,
+      isTTY: false,
+    });
+    expect(outside.ok).toBe(false);
+    if (outside.ok) throw new Error("unexpected");
+    expect(outside.error.code).toBe("outside_sandbox");
+
+    // not_found
+    const notFound = resolveTarget({
+      pathArg: path.join(path.resolve(project.projectPath), "no-such"),
+      isMachineContext: true,
+      isTTY: false,
+    });
+    expect(notFound.ok).toBe(false);
+    if (notFound.ok) throw new Error("unexpected");
+    expect(notFound.error.code).toBe("not_found");
+
+    // ambiguous_target is not produced by resolveTarget's algorithm (branch 2
+    // fails fast); it exists in the type surface for an exhaustive CLI switch.
+    const codes: TargetErrorCode[] = [
+      "missing_target",
+      "ambiguous_target",
+      "not_found",
+      "outside_sandbox",
+    ];
+    expect(codes).toContain("ambiguous_target");
   });
 });

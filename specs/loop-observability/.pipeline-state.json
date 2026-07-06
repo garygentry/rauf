@@ -1,0 +1,153 @@
+{
+  "feature": "loop-observability",
+  "pipelineStatus": "active",
+  "branch": "forge/loop-observability",
+  "createdAt": "2026-07-05T18:35:45Z",
+  "updatedAt": "2026-07-06T09:30:00Z",
+  "currentStage": "complete",
+  "artifacts": [
+    "specs/loop-observability/00-core-definitions.md",
+    "specs/loop-observability/01-architecture-layout.md",
+    "specs/loop-observability/02-health-status-contract.md",
+    "specs/loop-observability/03-target-resolution.md",
+    "specs/loop-observability/04-event-altitude-follow.md",
+    "specs/loop-observability/05-supervision-recipe.md",
+    "specs/loop-observability/06-testing-strategy.md",
+    "specs/loop-observability/TRACEABILITY.md"
+  ],
+  "notes": [
+    "OTQ-1: resolveTarget() file home (backlog-root.ts vs new target-resolution.ts) + whether isLoopLive's iteration-status.json read is promoted to a shared internal are forge-3-specs author calls; must honor single-read per REQ-PERF-01.",
+    "Q3: the feature-forge forge-5-loop / runner-contract.md edit (defer decision semantics to rauf's drive-rauf-loop) is a cross-repo follow-up in the feature-forge repo, OUT of this backlog's scope. rauf deliverable = drive-rauf-loop is the authoritative contract."
+  ],
+  "stages": {
+    "forge-1-prd": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "PRD.md",
+        "CANON.md"
+      ],
+      "startedAt": "2026-07-05T18:35:45Z",
+      "completedAt": "2026-07-05T18:35:45Z",
+      "commitHash": "556d879d9f23a25cdcba781cff9727f44302a005",
+      "basedOnVersions": {}
+    },
+    "forge-verify-prd": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-prd-2026-07-05.md",
+      "findingsCount": 1,
+      "verifiedAt": "2026-07-05T18:58:00Z",
+      "fixedAt": "2026-07-05T18:58:00Z",
+      "verifiedStageVersion": 1
+    },
+    "forge-2-tech": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "tech-spec.md"
+      ],
+      "startedAt": "2026-07-05T19:00:00Z",
+      "completedAt": "2026-07-05T19:20:00Z",
+      "commitHash": "7e95a2b0edcfe1edf76fa74b081435cb897f3fb4",
+      "basedOnVersions": {
+        "forge-1-prd": 1
+      }
+    },
+    "forge-verify-tech": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-tech-2026-07-05.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-07-05T19:35:00Z",
+      "fixedAt": "2026-07-05T19:45:00Z",
+      "verifiedStageVersion": 1
+    },
+    "forge-verify-specs": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-specs-2026-07-05.md",
+      "findingsCount": 9,
+      "verifiedAt": "2026-07-05T18:05:00Z",
+      "fixedAt": "2026-07-05T18:12:00Z",
+      "verifiedStageVersion": 1
+    },
+    "forge-3-specs": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/loop-observability/00-core-definitions.md",
+        "specs/loop-observability/01-architecture-layout.md",
+        "specs/loop-observability/02-health-status-contract.md",
+        "specs/loop-observability/03-target-resolution.md",
+        "specs/loop-observability/04-event-altitude-follow.md",
+        "specs/loop-observability/05-supervision-recipe.md",
+        "specs/loop-observability/06-testing-strategy.md",
+        "specs/loop-observability/TRACEABILITY.md"
+      ],
+      "startedAt": "2026-07-05T17:45:00Z",
+      "completedAt": "2026-07-05T17:58:00Z",
+      "commitHash": "19e1eb07fbd4d8b3e1c02bd85b4d4a394f67362b",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1
+      }
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": [
+        "specs/loop-observability/backlog.json"
+      ],
+      "startedAt": "2026-07-05T22:00:00Z",
+      "completedAt": "2026-07-05T22:10:00Z",
+      "commitHash": "dde8dd9357567c4ed9848836f786dc0a9a0a7d12",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1
+      }
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-07-05.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-07-05T22:05:00Z",
+      "fixedAt": "2026-07-05T22:10:00Z",
+      "verifiedStageVersion": 1
+    },
+    "forge-5-loop": {
+      "status": "complete",
+      "startedAt": "2026-07-05T22:30:00Z",
+      "completedAt": "2026-07-06T00:00:00Z",
+      "basedOnVersions": {
+        "forge-4-backlog": 1
+      },
+      "artifacts": [
+        "specs/loop-observability/.rauf/state.json"
+      ]
+    },
+    "forge-verify-impl": {
+      "status": "findings-applied",
+      "findingsFile": "specs/loop-observability/.verification/VERIFY-impl-2026-07-06.md",
+      "findingsCount": 4,
+      "verifiedAt": "2026-07-06T08:15:00Z",
+      "verifiedStageVersion": 1,
+      "fixedAt": "2026-07-06T09:10:00Z"
+    },
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-07-06T09:30:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/loop-observability/README.md",
+        "docs/architecture/loop-observability/architecture.md",
+        "docs/architecture/loop-observability/api-reference.md",
+        "docs/architecture/loop-observability/guides/supervision.md"
+      ]
+    }
+  }
+}

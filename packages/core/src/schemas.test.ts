@@ -7,6 +7,7 @@ import {
   LoopStateSchema,
   ToolConfigSchema,
   DerivedStatusSchema,
+  HealthSchema,
   BacklogSummarySchema,
   DiscoveredProjectSchema,
   InstallationReportSchema,
@@ -802,6 +803,7 @@ describe("ToolConfigSchema", () => {
 describe("DerivedStatusSchema", () => {
   it("accepts a valid derived status", () => {
     const result = DerivedStatusSchema.parse({
+      statusSchemaVersion: "1",
       loopState: "RUNNING",
       stateSource: "state.json",
       iteration: 3,
@@ -817,6 +819,7 @@ describe("DerivedStatusSchema", () => {
         done: 2,
         total: 8,
       },
+      health: null,
     });
     expect(result.loopState).toBe("RUNNING");
     expect(result.stateSource).toBe("state.json");
@@ -840,6 +843,7 @@ describe("DerivedStatusSchema", () => {
 
   it("accepts nullable fields as null", () => {
     const result = DerivedStatusSchema.parse({
+      statusSchemaVersion: "1",
       loopState: "IDLE",
       stateSource: "none",
       iteration: null,
@@ -855,9 +859,92 @@ describe("DerivedStatusSchema", () => {
         done: 0,
         total: 0,
       },
+      health: null,
     });
     expect(result.iteration).toBeNull();
     expect(result.elapsed).toBeNull();
+  });
+
+  it("accepts a populated health block", () => {
+    const result = DerivedStatusSchema.parse({
+      statusSchemaVersion: "1",
+      loopState: "RUNNING",
+      stateSource: "state.json",
+      iteration: 1,
+      maxIterations: 10,
+      currentItem: "001",
+      lastSignal: null,
+      startedAt: null,
+      elapsed: null,
+      backlogSummary: { pending: 0, inProgress: 1, blocked: 0, done: 0, total: 1 },
+      health: {
+        stuckWarning: true,
+        iterationFresh: true,
+        lastActivityAt: "2026-02-21T19:00:00Z",
+        secondsSinceActivity: 12,
+      },
+    });
+    expect(result.health).not.toBeNull();
+    expect(result.health?.stuckWarning).toBe(true);
+  });
+
+  it("rejects a missing statusSchemaVersion", () => {
+    expect(() =>
+      DerivedStatusSchema.parse({
+        loopState: "IDLE",
+        stateSource: "none",
+        iteration: null,
+        maxIterations: null,
+        currentItem: null,
+        lastSignal: null,
+        startedAt: null,
+        elapsed: null,
+        backlogSummary: { pending: 0, inProgress: 0, blocked: 0, done: 0, total: 0 },
+        health: null,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a statusSchemaVersion other than '1'", () => {
+    const result = DerivedStatusSchema.safeParse({
+      statusSchemaVersion: "2",
+      loopState: "IDLE",
+      stateSource: "none",
+      iteration: null,
+      maxIterations: null,
+      currentItem: null,
+      lastSignal: null,
+      startedAt: null,
+      elapsed: null,
+      backlogSummary: { pending: 0, inProgress: 0, blocked: 0, done: 0, total: 0 },
+      health: null,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ─── Health ────────────────────────────────────────────────────────
+
+describe("HealthSchema", () => {
+  it("accepts a valid health block", () => {
+    const result = HealthSchema.parse({
+      stuckWarning: false,
+      iterationFresh: true,
+      lastActivityAt: "2026-02-21T19:00:00Z",
+      secondsSinceActivity: 0,
+    });
+    expect(result.iterationFresh).toBe(true);
+  });
+
+  it("rejects a negative secondsSinceActivity", () => {
+    expect(() =>
+      HealthSchema.parse({
+        stuckWarning: false,
+        iterationFresh: false,
+        lastActivityAt: "2026-02-21T19:00:00Z",
+        secondsSinceActivity: -1,
+      }),
+    ).toThrow();
   });
 });
 

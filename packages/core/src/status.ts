@@ -17,7 +17,12 @@ import {
   type BacklogSummary,
   type LockSummary,
   type ActiveLoopEntry,
+  type Health,
+  type IterationStatus,
 } from "./schemas.js";
+
+/** Additive marker for the enriched status contract; starts at "1". */
+export const STATUS_SCHEMA_VERSION = "1" as const;
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -140,13 +145,16 @@ export function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
  *      token counts during an iteration).
  * Either signal means the loop is genuinely RUNNING.
  */
-function isLoopLive(paths: BacklogPaths, now: number): boolean {
+function isLoopLive(
+  paths: BacklogPaths,
+  iterationStatus: IterationStatus | null,
+  now: number,
+): boolean {
   const lock = checkLock(paths);
   if (lock.ok && lock.value.locked && lock.value.stale !== true) {
     return true;
   }
 
-  const iterationStatus = readIterationStatus(paths);
   if (iterationStatus) {
     const updatedAt = new Date(iterationStatus.updatedAt).getTime();
     if (!Number.isNaN(updatedAt) && now - updatedAt < ITERATION_STATUS_FRESH_MS) {
@@ -155,6 +163,43 @@ function isLoopLive(paths: BacklogPaths, now: number): boolean {
   }
 
   return false;
+}
+
+/**
+ * Build the `health` block from an already-read IterationStatus.
+ *
+ * Takes the value (not `paths`) so it performs NO I/O — the single shared
+ * `readIterationStatus` read lives in `deriveFromStateJson` (REQ-PERF-01, C-02).
+ * Every field is a surfacing of `IterationStatus` — a computed value, never a
+ * new source of truth (C-04); a hint (booleans + raw age), not a verdict.
+ *
+ * @param iterationStatus the parsed iteration-status.json, or null if absent/unparseable
+ * @param now             derivation clock (ms since epoch)
+ * @returns a populated Health, or null when there is no live iteration
+ */
+function buildHealth(iterationStatus: IterationStatus | null, now: number): Health | null {
+  if (iterationStatus === null) {
+    return null;
+  }
+
+  // Freshness: reuse the existing 60s window — no new threshold.
+  const updatedAtMs = new Date(iterationStatus.updatedAt).getTime();
+  const iterationFresh =
+    !Number.isNaN(updatedAtMs) && now - updatedAtMs < ITERATION_STATUS_FRESH_MS;
+
+  // secondsSinceActivity: whole seconds, clamped ≥ 0 so a future lastActivityAt
+  // (clock skew) never yields a negative age.
+  const lastActivityMs = new Date(iterationStatus.lastActivityAt).getTime();
+  const secondsSinceActivity = Number.isNaN(lastActivityMs)
+    ? 0
+    : Math.max(0, Math.floor((now - lastActivityMs) / 1000));
+
+  return {
+    stuckWarning: iterationStatus.stuckWarning,
+    iterationFresh,
+    lastActivityAt: iterationStatus.lastActivityAt,
+    secondsSinceActivity,
+  };
 }
 
 function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> {
@@ -166,17 +211,23 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
   }
 
   const state = stateResult.value;
+  const now = Date.now();
+
+  // ── The single shared read (REQ-PERF-01, ≤1 per deriveStatus) ──
+  // Feeds BOTH the staleness/liveness check below AND the health block, so
+  // populating health adds no second read. File read only — no subprocess (C-02).
+  const iterationStatus = readIterationStatus(paths);
+
   let loopState = mapLoopStateStatus(state.status);
 
   // Staleness check: running >5min old → PAUSED, UNLESS a liveness signal shows
   // the loop is mid-iteration. state.json is only written between iterations, so
   // a long active iteration looks stale by updatedAt alone; consult checkLock +
-  // readIterationStatus before downgrading.
+  // the shared iteration-status read before downgrading.
   // sleeping_limit and weekly_limit are intentionally long-lived — never downgrade them
   if ((state.status === "running" || state.status === "starting") && state.updatedAt) {
     const updatedAt = new Date(state.updatedAt).getTime();
-    const now = Date.now();
-    if (now - updatedAt > STALENESS_THRESHOLD_MS && !isLoopLive(paths, now)) {
+    if (now - updatedAt > STALENESS_THRESHOLD_MS && !isLoopLive(paths, iterationStatus, now)) {
       loopState = "PAUSED";
     }
   }
@@ -184,6 +235,7 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
   const elapsed = computeElapsed(state.startedAt);
 
   return ok({
+    statusSchemaVersion: STATUS_SCHEMA_VERSION,
     loopState,
     stateSource: "state.json" as const,
     iteration: state.iteration,
@@ -194,6 +246,7 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
     elapsed,
     backlogSummary: computeBacklogSummary(paths),
     sleepUntil: state.sleepUntil ?? null,
+    health: buildHealth(iterationStatus, now),
   });
 }
 
@@ -205,6 +258,7 @@ function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
   const summary = computeBacklogSummary(paths);
 
   const base: DerivedStatus = {
+    statusSchemaVersion: STATUS_SCHEMA_VERSION,
     loopState: "IDLE",
     stateSource: "log-parsing",
     iteration: null,
@@ -214,6 +268,7 @@ function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
     startedAt: null,
     elapsed: null,
     backlogSummary: summary,
+    health: null,
   };
 
   // Check if log file exists
@@ -348,7 +403,7 @@ function computeElapsed(startedAt: string | null): number | null {
   if (startedAt === null) return null;
   try {
     const start = new Date(startedAt).getTime();
-    if (isNaN(start)) return null;
+    if (Number.isNaN(start)) return null;
     return Math.floor((Date.now() - start) / 1000);
   } catch {
     return null;

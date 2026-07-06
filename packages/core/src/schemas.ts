@@ -276,7 +276,27 @@ export const LockSummarySchema = z.object({
   stale: z.boolean(),
 });
 
+/**
+ * A hint (not a verdict) about the currently-live iteration's health, surfaced
+ * on `DerivedStatus` so a single `status --json` poll answers the stall
+ * question without reading raw `iteration-status.json`. Every field mirrors
+ * `IterationStatus` — a computed surfacing, never a new source of truth.
+ * Null on `DerivedStatus` when no iteration is live.
+ */
+export const HealthSchema = z.object({
+  /** Faithful mirror of `IterationStatus.stuckWarning`. */
+  stuckWarning: z.boolean(),
+  /** `updatedAt` within the freshness window (~60s) of derivation time. */
+  iterationFresh: z.boolean(),
+  /** Mirror of `IterationStatus.lastActivityAt`. */
+  lastActivityAt: z.string(),
+  /** Whole seconds since `lastActivityAt`, clamped ≥ 0 (raw age, not a verdict). */
+  secondsSinceActivity: z.number().nonnegative(),
+});
+
 export const DerivedStatusSchema = z.object({
+  /** Additive schema marker for the enriched contract; starts at "1". */
+  statusSchemaVersion: z.literal("1"),
   loopState: LoopStateEnumSchema,
   stateSource: z.enum(["state.json", "log-parsing", "none"]),
   iteration: z.number().int().nullable(),
@@ -289,6 +309,8 @@ export const DerivedStatusSchema = z.object({
   /** Lock-file liveness for this backlog root (present/alive/stale + PID). */
   lock: LockSummarySchema.optional(),
   sleepUntil: z.string().nullable().optional(),
+  /** Live-iteration health hint (null when no iteration is live). */
+  health: HealthSchema.nullable(),
 });
 
 // ─── DiscoveredProject ─────────────────────────────────────────────
@@ -740,6 +762,7 @@ export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 export type LoopStateEnum = z.infer<typeof LoopStateEnumSchema>;
 export type BacklogSummary = z.infer<typeof BacklogSummarySchema>;
 export type LockSummary = z.infer<typeof LockSummarySchema>;
+export type Health = z.infer<typeof HealthSchema>;
 export type DerivedStatus = z.infer<typeof DerivedStatusSchema>;
 export type DiscoveredProject = z.infer<typeof DiscoveredProjectSchema>;
 export type InstallAction = z.infer<typeof InstallActionSchema>;

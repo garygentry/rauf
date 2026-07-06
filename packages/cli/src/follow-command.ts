@@ -6,15 +6,15 @@
 // detection. It reads files for ANY loop regardless of who started it, which is
 // what collapses the in-process/server asymmetry for this observer.
 
-import * as path from "node:path";
-
 import {
   deriveStatus,
+  eventAltitude,
   readEvents,
   watchEvents,
-  resolveBacklogRoot,
   resolveBacklogPaths,
+  resolveTarget,
   getStateLabel,
+  type ActiveLoopEntry,
   type BacklogPaths,
   type PersistedEvent,
 } from "@rauf/core";
@@ -22,8 +22,8 @@ import {
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { extractNumberFlag, extractStringFlag } from "./parser.js";
-import { info, print, error } from "./formatter.js";
-import { formatEvent } from "./event-format.js";
+import { c, info, print, error, outputJson, detectColorSupport } from "./formatter.js";
+import { formatEvent, formatFollowHeader } from "./event-format.js";
 
 /** Terminal loop states — the loop is no longer active. */
 const TERMINAL_LOOP_STATES: ReadonlySet<string> = new Set([
@@ -39,55 +39,96 @@ const TERMINAL_LOOP_STATES: ReadonlySet<string> = new Set([
 
 const DEFAULT_POLL_SECONDS = 2;
 
-/** Render a single PersistedEvent — NDJSON line in --json mode, formatted otherwise. */
-function emitEvent(ev: PersistedEvent, json: boolean): void {
-  if (json) {
+/**
+ * Render one PersistedEvent according to the active mode (04 §4.2):
+ *  - json:    raw NDJSON line — EVERY event, never classified (REQ-CMD-03).
+ *  - verbose: formatted line   — EVERY event (today's behavior).
+ *  - default: formatted line   — ONLY item-altitude events (REQ-CMD-02).
+ *
+ * The `--json` branch is FIRST and returns before any classification — a
+ * structural guarantee that the altitude filter never touches the machine
+ * surface (the prime directive).
+ */
+function emitEvent(ev: PersistedEvent, opts: { json: boolean; verbose: boolean }): void {
+  if (opts.json) {
     // One PersistedEvent (NDJSON) per line — replay and tail emit identically.
     process.stdout.write(JSON.stringify(ev) + "\n");
     return;
   }
+  if (!opts.verbose && eventAltitude(ev) !== "item") return; // altitude filter
   print(formatEvent(ev));
 }
 
 export async function handleFollow(ctx: CommandContext): Promise<number> {
-  const targetPath = ctx.args[0];
-  if (!targetPath) {
-    error("Missing required argument: <path>");
-    info("Usage: rauf follow [path] [--json] [--interval N] [--backlog <dir>]");
-    return ExitCode.USAGE;
-  }
-
-  const resolved = path.resolve(targetPath);
   const json = ctx.globalFlags.json;
+  const verbose = ctx.flags.get("verbose") === true;
   const intervalSeconds = extractNumberFlag(ctx.flags, "interval") ?? DEFAULT_POLL_SECONDS;
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const isTTY = Boolean(process.stdout.isTTY);
 
-  // --backlog is the single targeting spelling — same preamble as every read command.
-  const rootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
-  if (!rootResult.ok) {
-    error(rootResult.error.message);
+  // Delegate targeting to the context-aware resolver (03-target-resolution.md §7):
+  // [path] is optional on a TTY (cwd default / pick list); a missing/ambiguous
+  // target in machine context (--json or non-TTY) is a structured hard error.
+  const res = resolveTarget({
+    pathArg: ctx.args[0],
+    backlogFlag: backlogFlag ?? undefined,
+    isMachineContext: json || !isTTY,
+    isTTY,
+  });
+  if (!res.ok) {
+    if (json) outputJson({ error: res.error });
+    else error(res.error.message);
     return ExitCode.USAGE;
   }
-  const pathsResult = resolveBacklogPaths(resolved, rootResult.value);
+  if (res.value.kind === "ambiguous") {
+    // Several live loops on a TTY — render the pick list (machine ctx never
+    // reaches here; branch 2 already errored). Item-level rendering is owned by 04.
+    renderCandidateList(res.value.candidates);
+    return ExitCode.SUCCESS;
+  }
+
+  const pathsResult = resolveBacklogPaths(res.value.root, res.value.backlogDir);
   if (!pathsResult.ok) {
-    error(pathsResult.error.message);
+    if (json) outputJson({ error: pathsResult.error });
+    else error(pathsResult.error.message);
     return ExitCode.ERROR;
   }
 
-  return followEvents(pathsResult.value, { json, intervalSeconds });
+  return followEvents(pathsResult.value, { json, verbose, intervalSeconds });
+}
+
+/** Render the ambiguous-target pick list (TTY only; 04 owns richer rendering). */
+function renderCandidateList(candidates: ActiveLoopEntry[]): void {
+  print(c.bold("Multiple live loops found — re-run with <root> --backlog <dir>:"));
+  for (const e of candidates) {
+    print(`  ${c.cyan(e.backlogRoot)} — ${e.status} ${c.dim(`(PID ${e.pid})`)}`);
+  }
 }
 
 /** Replay-then-tail engine: readEvents (current run) then watchEvents (live tail). */
 async function followEvents(
   paths: BacklogPaths,
-  opts: { json: boolean; intervalSeconds: number },
+  opts: { json: boolean; verbose: boolean; intervalSeconds: number },
 ): Promise<number> {
+  // The sticky progress header is a human-only affordance for the default
+  // (item-level) feed — never under --json (machine surface) or --verbose
+  // (the firehose has no header, 04 §4.1).
+  const headerEnabled = !opts.json && !opts.verbose;
+  const color = detectColorSupport();
+  const printHeader = () => {
+    if (!headerEnabled) return;
+    const st = deriveStatus(paths);
+    if (st.ok) print(formatFollowHeader(st.value, { color }));
+  };
+
   // 1. REPLAY — current run only: readEvents reads paths.eventsLog, which the
   //    runner rotated at start(); it never stitches the prior archived log.
   const replay = readEvents(paths); // Result<PersistedEvent[]>; absent file → ok([])
   if (replay.ok) {
-    for (const ev of replay.value) emitEvent(ev, opts.json); // ordered by seq
+    for (const ev of replay.value) emitEvent(ev, opts); // ordered by seq
   }
+  // Header once after replay (04 §4.3).
+  printHeader();
 
   return new Promise<number>((resolve) => {
     let resolved = false;
@@ -115,7 +156,11 @@ async function followEvents(
       if (watcherActive) return;
       try {
         stopWatcher = watchEvents(paths, (records) => {
-          for (const ev of records) emitEvent(ev, opts.json);
+          for (const ev of records) emitEvent(ev, opts);
+          // Reprint the sticky header after an item-milestone batch (04 §4.3).
+          if (headerEnabled && records.some((ev) => eventAltitude(ev) === "item")) {
+            printHeader();
+          }
         });
         watcherActive = true;
       } catch {
@@ -131,6 +176,11 @@ async function followEvents(
       if (!watcherActive) tryStartWatcher();
       const st = deriveStatus(paths);
       if (!st.ok) return;
+      if (headerEnabled && !TERMINAL_LOOP_STATES.has(st.value.loopState)) {
+        // Sticky header — reprinted (no cursor addressing) so it stays near the
+        // scroll tail on each non-terminal poll tick (04 §4.3).
+        print(formatFollowHeader(st.value, { color }));
+      }
       if (TERMINAL_LOOP_STATES.has(st.value.loopState)) {
         if (!opts.json) {
           print("");

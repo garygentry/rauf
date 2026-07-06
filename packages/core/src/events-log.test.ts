@@ -4,7 +4,14 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 import { defaultBacklogPaths, type BacklogPaths } from "./backlog-root.js";
-import { appendEvent, readEvents, rotateEventsLog, watchEvents } from "./events-log.js";
+import {
+  appendEvent,
+  readEvents,
+  rotateEventsLog,
+  watchEvents,
+  eventAltitude,
+  type EventAltitude,
+} from "./events-log.js";
 import { ErrorCodes } from "./errors.js";
 import { EVENTS_SCHEMA_VERSION, type PersistedEvent } from "./schemas.js";
 
@@ -213,5 +220,59 @@ describe("watchEvents", () => {
 
     expect(received).toHaveLength(1);
     expect(received[0]!.seq).toBe(0);
+  });
+});
+
+// ─── eventAltitude ────────────────────────────────────────────────
+
+describe("eventAltitude", () => {
+  // Exhaustive table over all 24 LoopEvent types (schemas.ts LoopEventSchema).
+  const table: Array<[PersistedEvent["type"], EventAltitude]> = [
+    // FIREHOSE (5)
+    ["iteration_start", "firehose"],
+    ["llm_spawned", "firehose"],
+    ["llm_exited", "firehose"],
+    ["llm_tool_activity", "firehose"],
+    ["llm_token_update", "firehose"],
+    // ITEM (19)
+    ["loop_started", "item"],
+    ["item_selected", "item"],
+    ["signal_parsed", "item"],
+    ["item_completed", "item"],
+    ["item_blocked", "item"],
+    ["item_retried", "item"],
+    ["needs_human", "item"],
+    ["loop_paused", "item"],
+    ["usage_limit_hit", "item"],
+    ["usage_limit_cleared", "item"],
+    ["sleep_start", "item"],
+    ["sleep_end", "item"],
+    ["loop_completed", "item"],
+    ["loop_error", "item"],
+    ["loop_cancelled", "item"],
+    ["review_started", "item"],
+    ["review_completed", "item"],
+    ["review_failed", "item"],
+    ["llm_stuck_warning", "item"],
+  ];
+
+  it("classifies all 24 LoopEvent types per the spec table", () => {
+    expect(table).toHaveLength(24);
+    expect(table.filter(([, a]) => a === "firehose")).toHaveLength(5);
+    expect(table.filter(([, a]) => a === "item")).toHaveLength(19);
+    for (const [type, expected] of table) {
+      const ev = {
+        type,
+        seq: 0,
+        schemaVersion: EVENTS_SCHEMA_VERSION,
+      } as unknown as PersistedEvent;
+      expect(eventAltitude(ev)).toBe(expected);
+    }
+  });
+
+  it('returns "firehose" for an unrecognized runtime type and does not throw', () => {
+    const bogus = { type: "totally_unknown_event", seq: 99 } as unknown as PersistedEvent;
+    expect(() => eventAltitude(bogus)).not.toThrow();
+    expect(eventAltitude(bogus)).toBe("firehose");
   });
 });
