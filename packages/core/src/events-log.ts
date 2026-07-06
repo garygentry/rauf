@@ -36,6 +36,70 @@ function eventsArchiveTimestamp(): string {
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
+// ─── eventAltitude ──────────────────────────────────────────────
+
+/**
+ * Presentation altitude of a persisted event (spec 04).
+ *
+ * "item" events are item/loop milestones a supervisor cares about; "firehose"
+ * events are the high-frequency per-iteration narration (spawn/exit, tool and
+ * token activity). This is a PURE, I/O-free classification consumed ONLY by the
+ * TTY `follow` renderer (item 006) — it never touches the --json/--ndjson
+ * machine surfaces (the prime directive).
+ */
+export type EventAltitude = "item" | "firehose";
+
+/**
+ * Classify a persisted event as "item" (a milestone worth showing by default)
+ * or "firehose" (high-frequency per-iteration narration).
+ *
+ * Never throws, does no I/O. The `default` branch pins compile-time
+ * exhaustiveness (a 25th LoopEvent type without a case fails typecheck via the
+ * `never` assignment) AND returns "firehose" as a runtime safety net so an
+ * unrecognized runtime type is surfaced, never silently dropped. Mirrors
+ * formatEvent's never-guard (event-format.ts).
+ */
+export function eventAltitude(ev: PersistedEvent): EventAltitude {
+  switch (ev.type) {
+    // FIREHOSE — high-frequency per-iteration narration.
+    case "iteration_start":
+    case "llm_spawned":
+    case "llm_exited":
+    case "llm_tool_activity":
+    case "llm_token_update":
+      return "firehose";
+    // ITEM — item/loop milestones.
+    case "loop_started":
+    case "item_selected":
+    case "signal_parsed":
+    case "item_completed":
+    case "item_blocked":
+    case "item_retried":
+    case "needs_human":
+    case "loop_paused":
+    case "usage_limit_hit":
+    case "usage_limit_cleared":
+    case "sleep_start":
+    case "sleep_end":
+    case "loop_completed":
+    case "loop_error":
+    case "loop_cancelled":
+    case "review_started":
+    case "review_completed":
+    case "review_failed":
+    case "llm_stuck_warning":
+      return "item";
+    default: {
+      // Compile-time exhaustiveness: a new LoopEvent type without a case fails
+      // typecheck here. Do NOT remove the trailing return — it is the runtime
+      // safety net for an unrecognized runtime type.
+      const _exhaustive: never = ev;
+      void _exhaustive;
+      return "firehose";
+    }
+  }
+}
+
 // ─── appendEvent ────────────────────────────────────────────────
 
 /**

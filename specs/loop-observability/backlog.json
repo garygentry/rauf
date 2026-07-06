@@ -125,8 +125,8 @@
         "core still has zero imports from cli/web (grep -rE 'from \"\\.\\./(cli|web)' packages/core/src returns nothing)",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:43:06.121Z",
       "dependsOn": [],
       "notes": "Independent core item — no dependency on the Phase 1/2 work. This is a presentation classification consumed ONLY by the TTY renderer (item 006); it never touches --json/--ndjson output (the prime directive). Mirrors formatEvent's existing never-guard at event-format.ts:141.",
       "estimatedIterations": 1,
