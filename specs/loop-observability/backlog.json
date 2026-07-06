@@ -99,8 +99,8 @@
         "agents/rauf-loop-driver.md and .codex/agents/rauf-loop-driver.toml contain no hard-coded poll interval and no stall heuristic other than health.stuckWarning (grep confirms neither an interval literal nor an iteration-status.json read); expected outcome is no edit",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:40:16.491Z",
       "dependsOn": [
         "001",
         "003"
