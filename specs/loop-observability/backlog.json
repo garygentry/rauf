@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "1",
   "project": "rauf — loop-observability",
   "description": "Make `rauf status --json` a complete single-poll decision surface and prescribe one canonical supervision recipe. Four independently-shippable phases: (1) complete the contract — additive `health` block + `statusSchemaVersion` on DerivedStatus; (2) make it consistent — `resolveTarget()` + CLI wiring + the canonical drive-rauf-loop poll recipe; (3) make it humane — item-level `follow` feed + sticky header via a pure `eventAltitude()` classifier; (4) parity & docs. Prime directive: no machine surface (`--json`/`--ndjson`) is ever altered — all human-render work is additive/presentation-only. Each phase is green under `pnpm gate`.",
   "items": [
@@ -20,8 +21,8 @@
         "BacklogSummarySchema and IterationStatusSchema are unchanged in this diff",
         "pnpm gate passes (build + schema:check + version:check + typecheck + lint + format:check + test; no package version bump)"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:17:41.787Z",
       "dependsOn": [],
       "notes": "Foundation for the whole feature — the four-way decision tree (item 004) and the docs (007) both read health.stuckWarning off this contract. The shared-read promotion is REQUIRED, not optional (tech-spec §10 OTQ-1): today readIterationStatus is called only conditionally inside isLoopLive at the staleness-downgrade branch (status.ts:179), never on the healthy path — so populating health naively would add a SECOND read and violate REQ-PERF-01. Field/line numbers cited are from spec authoring time; confirm against source before editing.",
       "estimatedIterations": 2,
@@ -74,7 +75,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["002"],
+      "dependsOn": [
+        "002"
+      ],
       "notes": "ExitCode.USAGE = 2 (commands.ts:94). --all mechanism (handleStatusAll reads listActiveLoops) is unchanged; humane rendering refinements belong to item 006. The existing empty-dir footer (renderInspectedStatus) composes with — does not replace — the broadening.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -98,7 +101,10 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "003"],
+      "dependsOn": [
+        "001",
+        "003"
+      ],
       "notes": "Depends on 001 (health.stuckWarning must be populated so the recipe is executable from one poll) and 003 (machine-context target strictness the recipe relies on). The feature-forge forge-5-loop / runner-contract.md edit is a DIFFERENT repo and OUT OF SCOPE — the rauf-side deliverable is solely that drive-rauf-loop is the authoritative contract. author-backlog is unaffected. Both SKILL.md copies are byte-identical today (diff empty) — preserve that.",
       "estimatedIterations": 1,
       "specReferences": [
@@ -147,7 +153,9 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["005"],
+      "dependsOn": [
+        "005"
+      ],
       "notes": "Depends on 005 (eventAltitude). Does NOT require item 001 — the header reads backlogSummary/currentItem which already exist; it does not need the health field. Reuses readEvents/watchEvents (the replay-then-tail engine) and deriveStatus (already polled at follow-command.ts:130) unchanged — no new scan, no new data model (REQ-CMD-05).",
       "estimatedIterations": 1,
       "specReferences": [
@@ -170,7 +178,12 @@
       ],
       "status": "pending",
       "completedAt": null,
-      "dependsOn": ["001", "003", "004", "006"],
+      "dependsOn": [
+        "001",
+        "003",
+        "004",
+        "006"
+      ],
       "notes": "Last phase — docs describe behavior shipped by items 001 (health/version), 003 (scope strictness), 004 (the recipe), and 006 (item-feed follow). Verify the exact section anchors/line numbers against the current docs before editing.",
       "estimatedIterations": 1,
       "specReferences": [

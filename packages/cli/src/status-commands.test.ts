@@ -815,6 +815,7 @@ describe("statusExitCode (unified exit-code scheme)", () => {
   /** Minimal DerivedStatus carrying a backlog summary with the given blocked/deferred counts. */
   function derivedWith(blocked: number, deferred = 0): DerivedStatus {
     return {
+      statusSchemaVersion: "1",
       loopState: "IDLE",
       stateSource: "state.json",
       iteration: null,
@@ -831,6 +832,7 @@ describe("statusExitCode (unified exit-code scheme)", () => {
         done: 0,
         total: blocked,
       },
+      health: null,
     };
   }
 

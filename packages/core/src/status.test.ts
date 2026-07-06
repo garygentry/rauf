@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -25,6 +25,21 @@ import {
   defaultBacklogPaths,
 } from "./backlog-root.js";
 import type { BacklogPaths } from "./backlog-root.js";
+
+// Wrap readIterationStatus with a call counter to assert the ≤1-read-per-poll
+// invariant (REQ-PERF-01). The wrapper delegates to the real implementation, so
+// every other test behaves normally.
+const readIterationStatusSpy = vi.hoisted(() => ({ count: 0 }));
+vi.mock("./iteration-status.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./iteration-status.js")>();
+  return {
+    ...actual,
+    readIterationStatus: (paths: BacklogPaths) => {
+      readIterationStatusSpy.count++;
+      return actual.readIterationStatus(paths);
+    },
+  };
+});
 import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
 import { LoopStateStatusSchema, LoopStateEnumSchema } from "./schemas.js";
 
@@ -114,6 +129,35 @@ function writeIterationStatusFile(updatedAt: string = new Date().toISOString()):
         tokens: { input: 1000, output: 500 },
         lastActivityAt: updatedAt,
         stuckWarning: false,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+/** Write iteration-status.json with explicit health-relevant fields. */
+function writeIterationStatusFull(fields: {
+  updatedAt?: string;
+  lastActivityAt?: string;
+  stuckWarning?: boolean;
+}): void {
+  createRaufDir();
+  const now = new Date().toISOString();
+  const updatedAt = fields.updatedAt ?? now;
+  const filePath = path.join(tmpDir, DEFAULT_ROOT_DIR, "iteration-status.json");
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify(
+      {
+        itemId: "003",
+        startedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+        updatedAt,
+        currentTool: "Edit",
+        recentTools: ["Read", "Edit"],
+        tokens: { input: 1000, output: 500 },
+        lastActivityAt: fields.lastActivityAt ?? updatedAt,
+        stuckWarning: fields.stuckWarning ?? false,
       },
       null,
       2,
@@ -1590,5 +1634,172 @@ describe("deriveStatus — REVIEWING / PAUSED_USAGE_LIMIT", () => {
     if (!result.ok) return;
     expect(result.value.loopState).toBe("PAUSED_USAGE_LIMIT");
     expect(result.value.stateSource).toBe("state.json");
+  });
+});
+
+// ─── deriveStatus — health block + statusSchemaVersion (Phase 1) ─────
+
+describe("deriveStatus — health block + statusSchemaVersion", () => {
+  it("stamps statusSchemaVersion '1' on the Tier-1 path", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.statusSchemaVersion).toBe("1");
+  });
+
+  it("stamps statusSchemaVersion '1' and health null on the Tier-2 (log-parsing) path", () => {
+    // Recent log, no state.json → Tier 2 RUNNING
+    writeLog("[2026-01-01 00:00:00] loop starting");
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stateSource).toBe("log-parsing");
+    expect(result.value.statusSchemaVersion).toBe("1");
+    expect(result.value.health).toBeNull();
+  });
+
+  it("stamps statusSchemaVersion '1' and health null on the 'none' path even with an iteration-status.json on disk", () => {
+    // No state.json, no log → "none". iteration-status.json present but must be ignored.
+    writeIterationStatusFull({ stuckWarning: true });
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stateSource).toBe("none");
+    expect(result.value.statusSchemaVersion).toBe("1");
+    expect(result.value.health).toBeNull();
+  });
+
+  it("mirrors stuckWarning=true from iteration-status.json into health", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    writeIterationStatusFull({ stuckWarning: true });
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.health).not.toBeNull();
+    expect(result.value.health!.stuckWarning).toBe(true);
+  });
+
+  it("mirrors stuckWarning=false from iteration-status.json into health", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    writeIterationStatusFull({ stuckWarning: false });
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.health).not.toBeNull();
+    expect(result.value.health!.stuckWarning).toBe(false);
+  });
+
+  it("returns health null when iteration-status.json is absent (Tier 1)", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stateSource).toBe("state.json");
+    expect(result.value.health).toBeNull();
+  });
+
+  it("returns health null (result still ok) when iteration-status.json is unparseable", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    createRaufDir();
+    fs.writeFileSync(
+      path.join(tmpDir, DEFAULT_ROOT_DIR, "iteration-status.json"),
+      "{ not valid json",
+    );
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.health).toBeNull();
+  });
+
+  it("returns health null (result still ok) when iteration-status.json fails schema validation", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    createRaufDir();
+    fs.writeFileSync(
+      path.join(tmpDir, DEFAULT_ROOT_DIR, "iteration-status.json"),
+      JSON.stringify({ itemId: "003" }) + "\n",
+    );
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.health).toBeNull();
+  });
+
+  it("iterationFresh is true within 60s and false when older", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+
+    // Fresh: updatedAt just now
+    writeIterationStatusFull({ updatedAt: new Date(Date.now() - 5_000).toISOString() });
+    const fresh = deriveStatus(makePaths());
+    expect(fresh.ok).toBe(true);
+    if (!fresh.ok) return;
+    expect(fresh.value.health!.iterationFresh).toBe(true);
+
+    // Stale: updatedAt 120s ago
+    writeIterationStatusFull({ updatedAt: new Date(Date.now() - 120_000).toISOString() });
+    const stale = deriveStatus(makePaths());
+    expect(stale.ok).toBe(true);
+    if (!stale.ok) return;
+    expect(stale.value.health!.iterationFresh).toBe(false);
+  });
+
+  it("secondsSinceActivity equals floor((now - lastActivityAt)/1000)", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    const lastActivityAt = new Date(Date.now() - 42_000).toISOString();
+    writeIterationStatusFull({ lastActivityAt });
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Allow a 1s slack for wall-clock advance during the call.
+    expect(result.value.health!.secondsSinceActivity).toBeGreaterThanOrEqual(42);
+    expect(result.value.health!.secondsSinceActivity).toBeLessThanOrEqual(43);
+  });
+
+  it("clamps secondsSinceActivity to 0 for a future lastActivityAt (clock skew)", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    writeIterationStatusFull({ lastActivityAt: new Date(Date.now() + 60_000).toISOString() });
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.health!.secondsSinceActivity).toBe(0);
+  });
+
+  it("reads iteration-status.json at most once per deriveStatus on the Tier-1 path (REQ-PERF-01)", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    writeIterationStatusFull({ stuckWarning: false });
+
+    readIterationStatusSpy.count = 0;
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    expect(readIterationStatusSpy.count).toBeLessThanOrEqual(1);
+  });
+
+  it("reads iteration-status.json zero times on the Tier-2/'none' paths", () => {
+    // No state.json → Tier 2/none. iteration-status.json present but must never be read.
+    writeIterationStatusFull({ stuckWarning: true });
+
+    readIterationStatusSpy.count = 0;
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    expect(readIterationStatusSpy.count).toBe(0);
+  });
+
+  it("enriched object still parses under an existing-shape consumer (additive-compat)", () => {
+    writeStateJson(makeLoopState({ status: "running" }));
+    writeIterationStatusFull({ stuckWarning: true });
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // An existing consumer that only knows the pre-enrichment fields ignores the
+    // new keys and still reads what it always read.
+    const legacy = result.value as {
+      loopState: string;
+      stateSource: string;
+      backlogSummary: { total: number };
+    };
+    expect(legacy.loopState).toBe("RUNNING");
+    expect(legacy.stateSource).toBe("state.json");
+    expect(typeof legacy.backlogSummary.total).toBe("number");
   });
 });
