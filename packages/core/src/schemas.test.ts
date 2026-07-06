@@ -904,6 +904,23 @@ describe("DerivedStatusSchema", () => {
       }),
     ).toThrow();
   });
+
+  it("rejects a statusSchemaVersion other than '1'", () => {
+    const result = DerivedStatusSchema.safeParse({
+      statusSchemaVersion: "2",
+      loopState: "IDLE",
+      stateSource: "none",
+      iteration: null,
+      maxIterations: null,
+      currentItem: null,
+      lastSignal: null,
+      startedAt: null,
+      elapsed: null,
+      backlogSummary: { pending: 0, inProgress: 0, blocked: 0, done: 0, total: 0 },
+      health: null,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 // ─── Health ────────────────────────────────────────────────────────

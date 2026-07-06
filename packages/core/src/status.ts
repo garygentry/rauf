@@ -403,7 +403,7 @@ function computeElapsed(startedAt: string | null): number | null {
   if (startedAt === null) return null;
   try {
     const start = new Date(startedAt).getTime();
-    if (isNaN(start)) return null;
+    if (Number.isNaN(start)) return null;
     return Math.floor((Date.now() - start) / 1000);
   } catch {
     return null;

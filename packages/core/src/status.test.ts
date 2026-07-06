@@ -1784,6 +1784,22 @@ describe("deriveStatus — health block + statusSchemaVersion", () => {
     expect(readIterationStatusSpy.count).toBe(0);
   });
 
+  it("reads iteration-status.json at most once on the staleness-downgrade path (REQ-PERF-01)", () => {
+    // The old sole read site: state.json is stale but iteration-status.json is
+    // fresh, keeping the loop RUNNING. The liveness read and the health read must
+    // be the same single read, not two.
+    const staleTime = new Date(Date.now() - STALENESS_THRESHOLD_MS - 60_000).toISOString();
+    writeStateJson(makeLoopState({ status: "running", updatedAt: staleTime }));
+    writeIterationStatusFull({ stuckWarning: false }); // fresh (updatedAt defaults to now)
+
+    readIterationStatusSpy.count = 0;
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("RUNNING");
+    expect(readIterationStatusSpy.count).toBeLessThanOrEqual(1);
+  });
+
   it("enriched object still parses under an existing-shape consumer (additive-compat)", () => {
     writeStateJson(makeLoopState({ status: "running" }));
     writeIterationStatusFull({ stuckWarning: true });
@@ -1801,5 +1817,37 @@ describe("deriveStatus — health block + statusSchemaVersion", () => {
     expect(legacy.loopState).toBe("RUNNING");
     expect(legacy.stateSource).toBe("state.json");
     expect(typeof legacy.backlogSummary.total).toBe("number");
+  });
+});
+
+describe("deriveStatus — single-poll decision completeness (REQ-SUCCESS-01)", () => {
+  it("carries loopState, health.stuckWarning, lock.stale, and backlogSummary.needsHuman on one poll", () => {
+    // The supervision recipe's four-way decision tree reads all four inputs from a
+    // single status poll. Prove they are all present on one DerivedStatus object,
+    // so a supervisor never has to read a raw state file to make its decision.
+    writeBacklog(
+      makeBacklog([
+        makeItem({ id: "001", status: "done", completedAt: "2026-01-01" }),
+        makeItem({
+          id: "002",
+          status: "blocked",
+          blockedReason: "need API key",
+          needsHuman: true,
+        }),
+      ]),
+    );
+    writeStateJson(makeLoopState({ status: "running" }));
+    writeIterationStatusFull({ stuckWarning: true });
+    writeLock(process.pid); // live lock → lock summary present
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const s = result.value;
+    expect(s.loopState).toBeDefined();
+    expect(s.backlogSummary.needsHuman).toBe(1);
+    expect(s.health?.stuckWarning).toBe(true);
+    expect(s.lock?.stale).toBeDefined();
   });
 });
