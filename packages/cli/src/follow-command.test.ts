@@ -111,7 +111,7 @@ describe("handleFollow", () => {
     expect(parsed.error.code).toBe("missing_target");
   });
 
-  it("replays the current run's events then exits on a terminal state (formatted)", async () => {
+  it("default feed replays item-altitude events only; firehose is suppressed", async () => {
     const raufDir = createRaufDir(tmpDir);
     createTerminalState(raufDir);
     writeEvents(raufDir, tmpDir);
@@ -120,8 +120,108 @@ describe("handleFollow", () => {
 
     expect(code).toBe(ExitCode.SUCCESS);
     // Formatted (human) mode renders rich labels, not the raw event-type tokens.
+    // loop_started is item-altitude → shown; iteration_start is firehose → hidden.
+    expect(written).toContain("loop started");
+    expect(written).not.toContain("iteration 1/");
+  });
+
+  it("--verbose restores the full firehose (iteration_start appears)", async () => {
+    const raufDir = createRaufDir(tmpDir);
+    createTerminalState(raufDir);
+    writeEvents(raufDir, tmpDir);
+
+    const ctx = makeCtx([tmpDir]);
+    ctx.flags.set("verbose", true);
+    const code = await handleFollow(ctx);
+
+    expect(code).toBe(ExitCode.SUCCESS);
     expect(written).toContain("loop started");
     expect(written).toContain("iteration 1/");
+  });
+
+  it("suppresses llm_token_update / llm_tool_activity but shows item_completed by default", async () => {
+    const raufDir = createRaufDir(tmpDir);
+    createTerminalState(raufDir);
+    const ts = new Date().toISOString();
+    const lines = [
+      JSON.stringify({
+        type: "llm_token_update",
+        timestamp: ts,
+        projectPath: tmpDir,
+        itemId: "001",
+        inputTokens: 100,
+        outputTokens: 50,
+        seq: 0,
+        schemaVersion: "1",
+      }),
+      JSON.stringify({
+        type: "llm_tool_activity",
+        timestamp: ts,
+        projectPath: tmpDir,
+        itemId: "001",
+        toolName: "Edit",
+        phase: "start",
+        seq: 1,
+        schemaVersion: "1",
+      }),
+      JSON.stringify({
+        type: "item_completed",
+        timestamp: ts,
+        projectPath: tmpDir,
+        itemId: "001",
+        title: "The vault seam",
+        seq: 2,
+        schemaVersion: "1",
+      }),
+    ];
+    fs.writeFileSync(path.join(raufDir, "events.ndjson"), lines.join("\n") + "\n");
+
+    const code = await handleFollow(makeCtx([tmpDir]));
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(written).not.toContain("tokens");
+    expect(written).not.toContain("tool ▶");
+    expect(written).toContain("item completed");
+    expect(written).toContain("The vault seam");
+  });
+
+  it("--json still emits every event as NDJSON (altitude filter never applied)", async () => {
+    const raufDir = createRaufDir(tmpDir);
+    createTerminalState(raufDir);
+    const ts = new Date().toISOString();
+    const lines = [
+      JSON.stringify({
+        type: "llm_token_update",
+        timestamp: ts,
+        projectPath: tmpDir,
+        itemId: "001",
+        inputTokens: 100,
+        outputTokens: 50,
+        seq: 0,
+        schemaVersion: "1",
+      }),
+      JSON.stringify({
+        type: "item_completed",
+        timestamp: ts,
+        projectPath: tmpDir,
+        itemId: "001",
+        title: "The vault seam",
+        seq: 1,
+        schemaVersion: "1",
+      }),
+    ];
+    fs.writeFileSync(path.join(raufDir, "events.ndjson"), lines.join("\n") + "\n");
+
+    const code = await handleFollow(makeCtx([tmpDir], true));
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const objectLines = written
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as { type: string; seq: number });
+    // The firehose llm_token_update is present — --json is never filtered.
+    expect(objectLines.map((o) => o.type)).toContain("llm_token_update");
+    expect(objectLines.map((o) => o.type)).toContain("item_completed");
   });
 
   it("replays events as NDJSON (one PersistedEvent per line) under --json", async () => {

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll } from "vitest";
 
 import { configureOutput } from "./formatter.js";
-import { formatEvent } from "./event-format.js";
-import type { PersistedEvent } from "@rauf/core";
+import { formatEvent, formatFollowHeader } from "./event-format.js";
+import type { DerivedStatus, PersistedEvent } from "@rauf/core";
 
 // Render without ANSI so assertions read on plain text.
 beforeAll(() => {
@@ -106,5 +106,75 @@ describe("formatEvent", () => {
     expect(out).toContain("…");
     expect(out).not.toContain("\n");
     expect(out.length).toBeLessThan(160);
+  });
+});
+
+function status(partial: Partial<DerivedStatus>): DerivedStatus {
+  return {
+    statusSchemaVersion: "1",
+    loopState: "RUNNING",
+    stateSource: "state.json",
+    iteration: 1,
+    maxIterations: 12,
+    currentItem: null,
+    lastSignal: null,
+    startedAt: null,
+    elapsed: null,
+    backlogSummary: {
+      pending: 0,
+      inProgress: 0,
+      blocked: 0,
+      done: 0,
+      total: 0,
+    },
+    health: null,
+    ...partial,
+  } as DerivedStatus;
+}
+
+describe("formatFollowHeader", () => {
+  it("renders done/blocked/on-item with all segments present", () => {
+    const out = formatFollowHeader(
+      status({
+        loopState: "RUNNING",
+        currentItem: "auth-007",
+        backlogSummary: { pending: 7, inProgress: 1, blocked: 1, done: 4, total: 12 },
+      }),
+      { color: false },
+    );
+    expect(out).toContain("4/12 done · 1 blocked · on auth-007");
+  });
+
+  it("elides the blocked segment when blocked === 0 and on-item when currentItem === null", () => {
+    const out = formatFollowHeader(
+      status({
+        loopState: "RUNNING",
+        currentItem: null,
+        backlogSummary: { pending: 8, inProgress: 0, blocked: 0, done: 4, total: 12 },
+      }),
+      { color: false },
+    );
+    expect(out).toContain("4/12 done");
+    expect(out).not.toContain("blocked");
+    expect(out).not.toContain(" on ");
+  });
+
+  it("carries state in a text label and emits no ANSI when color is off (REQ-A11Y-01)", () => {
+    const blocked = formatFollowHeader(
+      status({
+        loopState: "RUNNING",
+        backlogSummary: { pending: 0, inProgress: 0, blocked: 2, done: 4, total: 12 },
+      }),
+      { color: false },
+    );
+    expect(blocked).toContain("blocked");
+    // eslint-disable-next-line no-control-regex
+    expect(blocked).not.toMatch(/\[/);
+
+    const needsHuman = formatFollowHeader(status({ loopState: "PAUSED_HUMAN" }), { color: false });
+    expect(needsHuman).toContain("needs-human");
+
+    const healthy = formatFollowHeader(status({ loopState: "RUNNING" }), { color: false });
+    expect(healthy).toContain("healthy");
   });
 });

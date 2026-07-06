@@ -7,7 +7,7 @@
 // reduction. The `--json` paths are unaffected — they emit the full record and
 // never call this.
 
-import type { PersistedEvent } from "@rauf/core";
+import type { DerivedStatus, PersistedEvent } from "@rauf/core";
 
 import { c } from "./formatter.js";
 
@@ -145,4 +145,81 @@ export function formatEvent(ev: PersistedEvent): string {
       return `${c.dim(`#${unknown.seq}`)} ${c.dim(unknown.type)}`;
     }
   }
+}
+
+// ─── Sticky Progress Header (item-level `follow`) ────────────────
+//
+// The header re-rendered above the item-level `follow` feed (04 §4.3). It is
+// sourced entirely from a DerivedStatus poll — the same poll `follow` already
+// runs — so there is no new scan or data model (REQ-CMD-05). State is carried by
+// a leading TEXT label, never by color alone (REQ-A11Y-01): color only
+// re-emphasizes the already-present label.
+
+/**
+ * The state text label for the sticky header — always present, so state never
+ * depends on color (REQ-A11Y-01). Reuses `getStateLabel`'s tone via the derived
+ * loop state, folding in the needs-human / blocked distinction the raw
+ * `loopState` does not carry.
+ */
+function deriveStateLabel(status: DerivedStatus): string {
+  const summary = status.backlogSummary;
+  if (status.loopState === "PAUSED_HUMAN" || (summary.needsHuman ?? 0) > 0) {
+    return "needs-human";
+  }
+  switch (status.loopState) {
+    case "COMPLETE":
+    case "ITERATIONS_COMPLETE":
+      return "complete";
+    case "SLEEPING_LIMIT":
+      return "sleeping";
+    case "PAUSED":
+    case "PAUSED_USAGE_LIMIT":
+    case "LIMIT_REACHED":
+    case "WEEKLY_LIMIT":
+      return "paused";
+    default:
+      break;
+  }
+  if (status.loopState === "ERROR" || summary.blocked > 0) return "blocked";
+  return "healthy";
+}
+
+/** Re-emphasize the (already-present) text label with color — never the sole carrier. */
+function colorizeLabel(label: string, body: string): string {
+  switch (label) {
+    case "complete":
+    case "healthy":
+      return c.green(body);
+    default:
+      // needs-human / blocked / paused / sleeping — all warning-toned.
+      return c.yellow(body);
+  }
+}
+
+/**
+ * Render the sticky progress header for the item-level `follow` feed
+ * (REQ-CMD-02). Sourced from a DerivedStatus poll — no new scan (REQ-CMD-05).
+ *
+ * Shape (color-capable TTY): `healthy  4/12 done · 1 blocked · on auth-007`.
+ * The `blocked` segment is omitted when 0; the `on <item>` segment is omitted
+ * when `currentItem` is null. State is conveyed by the leading TEXT LABEL, never
+ * by color alone (REQ-A11Y-01) — when `opts.color` is false the returned string
+ * contains no ANSI escape sequences.
+ *
+ * @param status - The current DerivedStatus from the follow poll.
+ * @param opts.color - Whether ANSI color is enabled (from detectColorSupport()).
+ * @returns A single-line header string (no trailing newline).
+ */
+export function formatFollowHeader(status: DerivedStatus, opts: { color: boolean }): string {
+  const s = status.backlogSummary;
+  const parts: string[] = [`${s.done}/${s.total} done`];
+  if (s.blocked > 0) parts.push(`${s.blocked} blocked`);
+  if (status.currentItem) parts.push(`on ${status.currentItem}`);
+
+  const label = deriveStateLabel(status);
+  const body = `${label}  ${parts.join(" · ")}`;
+
+  // Color is decorative only: it re-emphasizes the label, never replaces it.
+  if (!opts.color) return body;
+  return colorizeLabel(label, body);
 }

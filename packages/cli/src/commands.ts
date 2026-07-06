@@ -361,11 +361,15 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "follow",
     description: "Follow a loop's live event stream (replay current run, then tail)",
-    usage: "rauf follow [path] [--json] [--interval N] [--backlog <dir>]",
+    usage: "rauf follow [path] [--json] [--verbose] [--interval N] [--backlog <dir>]",
     flags: [
       {
         name: "--json",
         description: "Emit one PersistedEvent (NDJSON) per line instead of formatted output",
+      },
+      {
+        name: "--verbose",
+        description: "Show the full token/tool firehose instead of the default item-level feed",
       },
       {
         name: "--interval <N>",

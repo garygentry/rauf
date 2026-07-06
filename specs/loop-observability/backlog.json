@@ -151,8 +151,8 @@
         "status --follow (handleStatusFollow) is unchanged in this diff; no fourth verb is added",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:50:45.924Z",
       "dependsOn": [
         "005"
       ],
