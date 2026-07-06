@@ -47,8 +47,8 @@
         "The only new import in backlog-root.ts is listActiveLoops from ./loop-registry.js; core still has zero imports from cli/web (grep -rE 'from \"\\.\\./(cli|web)' packages/core/src returns nothing)",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:23:59.904Z",
       "dependsOn": [],
       "notes": "Independent of the health work — core-only, no dependency on item 001. ActiveLoopEntry is the existing type at schemas.ts:757; Result/ok/err, resolveBacklogRoot, resolveBacklogPaths, validatePath, ErrorCodes (PATH_VIOLATION, FILE_NOT_FOUND) are all existing. ambiguous_target is not produced by this algorithm (branch 2 fails fast with missing_target before enumerating) but the code exists in the type surface so the CLI's error switch is exhaustive.",
       "estimatedIterations": 1,

@@ -3,6 +3,8 @@ import * as path from "node:path";
 
 import { fileExists, validatePath, ensureDir } from "./fs-utils.js";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
+import { listActiveLoops } from "./loop-registry.js";
+import type { ActiveLoopEntry } from "./schemas.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
@@ -327,4 +329,171 @@ export function scanBacklogRoots(projectPath: string): Result<BacklogRootEntry[]
   });
 
   return ok(results);
+}
+
+// ─── resolveTarget ───────────────────────────────────────────────
+//
+// The context-aware wrong-root safety guard. Co-located here (not a new file)
+// because the load-bearing sandbox-containment seam (`resolveBacklogRoot`,
+// `resolveBacklogPaths`) already lives in this module and `resolveTarget` MUST
+// delegate containment to it (REQ-SAFE-01) — see 03-target-resolution.md §2.
+
+/**
+ * Inputs to {@link resolveTarget}. The CLI computes `isMachineContext`/`isTTY`
+ * from the global flags + `process.stdout.isTTY` and passes them in, so `core`
+ * stays free of any `process`/TTY probing of its own.
+ */
+export interface ResolveTargetOptions {
+  /** Positional `<root>` argument, if the user gave one. */
+  pathArg?: string;
+  /** `--backlog <dir>` flag, if given. */
+  backlogFlag?: string;
+  /**
+   * True when output is machine-bound: `--json` OR a non-TTY stdout (D5).
+   * When true, a missing/ambiguous target is a HARD ERROR (REQ-SCOPE-01),
+   * never an implicit scan.
+   */
+  isMachineContext: boolean;
+  /** True when stdout is an interactive TTY (drives cwd-default + pick list). */
+  isTTY: boolean;
+}
+
+/**
+ * Outcome of a *successful* resolution. Two shapes:
+ *  - "resolved"  — a concrete (root, backlogDir) the caller acts on.
+ *  - "ambiguous" — several active roots on a TTY; the CLI renders `candidates`
+ *                  as an interactive pick list. NEVER returned in machine
+ *                  context — there, ambiguity is a `TargetError`.
+ */
+export type ResolvedTarget =
+  | {
+      kind: "resolved";
+      /** Absolute, sandbox-validated project root. */
+      root: string;
+      /** Absolute, sandbox-validated backlog/state directory under `root`. */
+      backlogDir: string;
+    }
+  | {
+      kind: "ambiguous";
+      /** Live loops to disambiguate between; from `listActiveLoops()`. */
+      candidates: ActiveLoopEntry[];
+    };
+
+/** Reason a target could not be resolved to a single concrete root. */
+export type TargetErrorCode =
+  | "missing_target" // machine context, no path given (REQ-SCOPE-01)
+  | "ambiguous_target" // machine context, several active roots — hard fail
+  | "not_found" // named/derived root does not exist
+  | "outside_sandbox"; // containment failure (REQ-SAFE-01)
+
+/**
+ * Structured resolution failure. Returned in a `Result`, never thrown for an
+ * expected condition. The CLI maps every variant to exit `USAGE(2)`.
+ */
+export interface TargetError {
+  /** Machine-stable discriminant. */
+  code: TargetErrorCode;
+  /** Human-readable, single-line explanation. */
+  message: string;
+  /** The path/flag that triggered the failure, when applicable. */
+  offending?: string;
+}
+
+/**
+ * Resolve an explicit (pathArg, backlogFlag) pair to a concrete `resolved`
+ * target, delegating ALL containment/existence checks to `resolveBacklogRoot` +
+ * `resolveBacklogPaths` (REQ-SAFE-01 — no local `path.resolve`+`startsWith`).
+ * Maps delegate `RaufError.code`s to `TargetError` codes.
+ */
+function resolveConcrete(
+  pathArg: string,
+  backlogFlag?: string,
+): Result<ResolvedTarget, TargetError> {
+  const rootResult = resolveBacklogRoot(pathArg, backlogFlag);
+  if (!rootResult.ok) {
+    if (rootResult.error.code === ErrorCodes.PATH_VIOLATION) {
+      return err({
+        code: "outside_sandbox",
+        message: rootResult.error.message,
+        offending: backlogFlag ?? pathArg,
+      });
+    }
+    return err({ code: "not_found", message: rootResult.error.message, offending: pathArg });
+  }
+
+  const pathsResult = resolveBacklogPaths(pathArg, rootResult.value);
+  if (!pathsResult.ok) {
+    if (pathsResult.error.code === ErrorCodes.PATH_VIOLATION) {
+      return err({
+        code: "outside_sandbox",
+        message: pathsResult.error.message,
+        offending: rootResult.value,
+      });
+    }
+    // FILE_NOT_FOUND (or any other code) → not_found (defensive default).
+    return err({
+      code: "not_found",
+      message: pathsResult.error.message,
+      offending: rootResult.value,
+    });
+  }
+
+  return ok({
+    kind: "resolved",
+    root: pathsResult.value.projectPath,
+    backlogDir: pathsResult.value.root,
+  });
+}
+
+/**
+ * Resolve the CLI arguments + output context to a single backlog target, or a
+ * structured reason it cannot be resolved. Context-aware (REQ-SCOPE-01/02, D5):
+ *
+ *  - **Explicit `pathArg`** — context-independent: resolve it via
+ *    `resolveBacklogRoot`/`resolveBacklogPaths`.
+ *  - **No path, machine context** — HARD `missing_target` error; never scans.
+ *  - **No path, TTY** — default to cwd; exactly one live loop → resolved; several
+ *    → `kind:"ambiguous"`; zero → resolve cwd.
+ *
+ * The final (root, backlogDir) always flows through the delegate seam, so the
+ * sandbox containment check is NEVER reimplemented here (REQ-SAFE-01). No
+ * subprocess, no `process`/TTY probing (the caller supplies the context flags).
+ *
+ * @returns ok(ResolvedTarget) on success; err(TargetError) on a hard failure.
+ */
+export function resolveTarget(opts: ResolveTargetOptions): Result<ResolvedTarget, TargetError> {
+  const { pathArg, backlogFlag, isMachineContext, isTTY } = opts;
+
+  // Branch 1: explicit pathArg — context-independent.
+  if (pathArg !== undefined && pathArg !== "") {
+    return resolveConcrete(pathArg, backlogFlag);
+  }
+
+  // Branch 2 & 4: no path, machine context (or neither machine nor TTY →
+  // defensive machine strictness). Never consult listActiveLoops or cwd.
+  if (isMachineContext || !isTTY) {
+    return err({
+      code: "missing_target",
+      message:
+        "A target root is required in machine context (--json or non-TTY). Pass <root> [--backlog <dir>].",
+    });
+  }
+
+  // Branch 3: no path, TTY. Enumerate live loops.
+  const active = listActiveLoops();
+  const loops = active.ok ? active.value : []; // IO_ERROR → treat as zero.
+
+  if (loops.length === 1) {
+    const entry = loops[0];
+    if (entry !== undefined) {
+      return resolveConcrete(entry.projectPath, entry.backlogRoot);
+    }
+  }
+
+  if (loops.length >= 2) {
+    return ok({ kind: "ambiguous", candidates: loops });
+  }
+
+  // Zero active loops → default to cwd.
+  return resolveConcrete(process.cwd(), backlogFlag);
 }
