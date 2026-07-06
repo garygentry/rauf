@@ -494,6 +494,8 @@ Commands to monitor a project's loop state and logs.
 
 Show a status summary for the project at `[path]`.
 
+- **`[path]` is optional on a TTY.** Interactively (a real terminal, no `--json`), a missing `[path]` defaults to the current working directory; if the target is ambiguous (several live loops and no cwd loop) rauf renders an interactive pick list. In a **machine context** (`--json` OR a non-TTY stdout) a missing or ambiguous target is a **hard error** (a structured `TargetError` under `--json`), never a silent scan — see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7.2](./SPEC-BACKLOG-TOOL-CONTRACT.md#a72-canonical-status-surface-rauf-status--json) and `03-target-resolution.md`.
+- **Bare-status broadening:** on a TTY with no `[path]` and no `--backlog`, if the cwd root has **no** live loop but one or more loops are live elsewhere, `status` additionally surfaces the machine-wide `--all` list. If the cwd itself has a live loop it does **not** broaden.
 - Output: loop state, current iteration, current item, elapsed time, backlog counts, lock liveness, and blocked/deferred breakdown
 - **Lock line:** whether `.rauf/.loop.lock` exists and whether its PID is alive (e.g. `Lock: PID 1234 (alive)`, `Lock: stale`, `Lock: none`)
 - **Last signal:** the `lastSignal` from `state.json` (e.g. `clean`, `blocked`, `needs_human`)
@@ -504,6 +506,7 @@ Show a status summary for the project at `[path]`.
 - `--all`: list every live loop machine-wide (reads the active-loop registry), not just the loop at `[path]`
 
 - `--json`: emit the `DerivedStatus` object. This is a **machine-observation surface** with a versioned compatibility promise; see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the canonical field/enum list and the blocked-vs-needsHuman-vs-deferred distinction.
+  - The object now carries a top-level **`statusSchemaVersion: "1"`** marker (mirroring `EVENTS_SCHEMA_VERSION`) and a nested **`health`** block — `{ stuckWarning, iterationFresh, lastActivityAt, secondsSinceActivity }`, or **`null`** when no live iteration exists. Both are **additive** fields; no existing field was renamed or removed. `health` lets a supervisor read the stall hint (`health.stuckWarning`) from this one poll without ever reading `.rauf/iteration-status.json` — see the agent single-poll decision contract in [§A.7.2](./SPEC-BACKLOG-TOOL-CONTRACT.md#a72-canonical-status-surface-rauf-status--json).
 
 **Machine-friendly exit codes for `rauf status`:**
 
@@ -523,10 +526,16 @@ Tail the rauf loop log file (`.rauf/rauf.log`) for the project at `[path]`.
 - `--tail N`: show the last N lines (default: 20)
 - `--follow` / `-f`: stream new lines as they are written (tail -f behavior), runs until Ctrl+C
 
+> **Unchanged.** `rauf log` is the raw `.rauf/rauf.log` tail (and `--follow` its live tail) exactly as before — it carries **no** altitude filter. The item-level narration filter is specific to `rauf follow` (below); do not expect it here.
+
 ### rauf follow [path]
 
 Attach to a loop and stream its events to the terminal: the single canonical live-view verb (replaces the removed `loop follow` and `status --watch`). File-backed: replays the current run's `.rauf/events.ndjson`, then tails it for new events. **Does not require the server.**
 
+- **`[path]` is optional on a TTY** (same resolution rules as `rauf status` — cwd default, ambiguity → pick list; a missing/ambiguous target under `--json`/non-TTY is a hard error).
+- **Item-level narration by default.** On a TTY, the human view renders only **item- and loop-level milestones** (item selected/completed/blocked, needs-human, pauses, review, loop start/complete, stall warnings) plus a **sticky progress header** reprinted on each milestone — e.g. `4/12 done · 1 blocked · on auth-007` (the `1 blocked` segment is elided when zero, the `on <item>` segment when there is no current item, and a leading state label — healthy/blocked/needs-human/paused/sleeping/complete — always precedes it). The per-token / per-tool "firehose" is suppressed.
+- `--verbose`: restore the full token/tool firehose (today's every-event human rendering). No effect under `--json`.
+- **`--json` is unchanged** — it emits **every** `PersistedEvent` as NDJSON with **no** altitude filter. The item-level narration is a **human-render-only** presentation and never touches this machine surface.
 - Replays the current run's events, then follows (`readEvents` + `watchEvents`), polling `state.json` (`deriveStatus`) for the terminal state
 - Replays the **current run only**: it does not stitch the archived (`archive/`) logs
 - `--json`: emit events as NDJSON (one JSON event per line)

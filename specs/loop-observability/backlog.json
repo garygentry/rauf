@@ -176,8 +176,8 @@
         "No web-facing doc is changed (web parity deferred, Q2)",
         "pnpm gate passes"
       ],
-      "status": "pending",
-      "completedAt": null,
+      "status": "done",
+      "completedAt": "2026-07-06T03:54:46.475Z",
       "dependsOn": [
         "001",
         "003",

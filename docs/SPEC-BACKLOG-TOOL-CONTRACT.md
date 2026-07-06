@@ -266,6 +266,40 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
   lock-file liveness for this backlog root.
 - **`sleepUntil?`**: ISO timestamp, present when `loopState` is
   `SLEEPING_LIMIT` or `WEEKLY_LIMIT`.
+- **`statusSchemaVersion`**: the literal `"1"` — a top-level version marker for
+  the `DerivedStatus` surface, mirroring `EVENTS_SCHEMA_VERSION`. It follows the
+  same additive-only-within-a-major discipline (§A.7.3) and starts at `"1"`.
+- **`health`**: a nested block, or **`null`** when no live iteration exists.
+  When present it mirrors `.rauf/iteration-status.json` so a supervisor never
+  has to read that file to decide:
+  - **`stuckWarning`** (`boolean`): the runner's stall hint — an iteration
+    appears to have stopped making progress. A **decision aid, not a verdict**.
+  - **`iterationFresh`** (`boolean`): whether the iteration-status file was
+    updated within the freshness window (60 s).
+  - **`lastActivityAt`** (ISO string): the last activity timestamp.
+  - **`secondsSinceActivity`** (`number ≥ 0`): whole seconds since
+    `lastActivityAt` (clamped to `0` for a future timestamp) — a supplementary
+    time-based signal if an agent prefers age over a poll count.
+
+**The agent single-poll decision contract.** A supervisor answers **all four**
+of its decisions from **one** `rauf status … --json` poll — it **never** reads
+`.rauf/iteration-status.json` or `events.ndjson` to decide (those remain
+available for narration/diagnosis only). Evaluate the branches **top-to-bottom,
+first match wins**:
+
+| #   | Condition (from ONE `status --json` poll)                                                             | Decision                | Action                                                         |
+| --- | ----------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------- |
+| 1   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary` has nothing `pending`/`inProgress`            | **Done**                | Report the outcome and stop.                                   |
+| 2   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**         | Surface to the user — the only true stop. Do not auto-recover. |
+| 3   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**   | Apply the persist-then-escalate recovery ladder.               |
+| 4   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress** | Keep polling at the interval.                                  |
+
+`needs-human` (row 2) outranks the stall hint (row 3); `health` may be `null`
+(no live iteration), so `health?.stuckWarning` short-circuits to falsy and row 3
+does not fire. The **`drive-rauf-loop`** skill is the **authoritative recipe**
+for this loop (poll interval, N=3 escalation threshold, the persist-then-escalate
+ladder, and `reset`-only-on-dead-lock); this contract defines the surface it
+reads.
 
 **Exit-code table** (the unified v0.5.0 scheme; `rauf status` and `rauf loop
 run` share it so a supervisor can branch without parsing JSON):
@@ -289,6 +323,11 @@ runner version of §A.5:
 
 - New event `type` values, new optional event fields, and new optional
   `DerivedStatus` / `backlogSummary` fields MAY be added in a minor release.
+  - The nested **`health`** block and the top-level **`statusSchemaVersion`**
+    marker are exactly such **additive** `DerivedStatus` fields — added, never a
+    rename or removal of any existing field. `statusSchemaVersion` starts at
+    `"1"` and follows the same additive-only-within-a-major discipline as
+    `EVENTS_SCHEMA_VERSION`.
 - Existing event-type discriminator values and their documented fields, the
   `signal` enum, the `loopState` enum values, and the exit-code mapping are
   **stable within a major**: they are not renamed or removed.
@@ -330,6 +369,12 @@ remain version `"1"` and inter-readable.
 **human-formatted** (colors, icons, prose) and carry **no** stability promise;
 a supervisor MUST NOT parse them. Use `--ndjson` for events and `status --json`
 for state.
+
+**The item-level `follow` altitude filter is human-render-only.** `rauf follow`'s
+default item-level narration (and its sticky progress header) is a presentation
+concern of the human view alone — it **never** touches any machine surface.
+`rauf follow --json` and `rauf loop run … --ndjson` emit **every** event with no
+altitude filter applied.
 
 ---
 
