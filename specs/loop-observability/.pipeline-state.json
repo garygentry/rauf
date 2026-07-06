@@ -3,8 +3,8 @@
   "pipelineStatus": "active",
   "branch": "forge/loop-observability",
   "createdAt": "2026-07-05T18:35:45Z",
-  "updatedAt": "2026-07-06T09:10:00Z",
-  "currentStage": "forge-6-docs",
+  "updatedAt": "2026-07-06T09:30:00Z",
+  "currentStage": "complete",
   "artifacts": [
     "specs/loop-observability/00-core-definitions.md",
     "specs/loop-observability/01-architecture-layout.md",
@@ -131,6 +131,23 @@
       "verifiedAt": "2026-07-06T08:15:00Z",
       "verifiedStageVersion": 1,
       "fixedAt": "2026-07-06T09:10:00Z"
+    },
+    "forge-6-docs": {
+      "status": "complete",
+      "completedAt": "2026-07-06T09:30:00Z",
+      "basedOnVersions": {
+        "forge-1-prd": 1,
+        "forge-2-tech": 1,
+        "forge-3-specs": 1,
+        "forge-4-backlog": 1,
+        "forge-5-loop": 1
+      },
+      "artifacts": [
+        "docs/architecture/loop-observability/README.md",
+        "docs/architecture/loop-observability/architecture.md",
+        "docs/architecture/loop-observability/api-reference.md",
+        "docs/architecture/loop-observability/guides/supervision.md"
+      ]
     }
   }
 }
