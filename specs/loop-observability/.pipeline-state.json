@@ -86,7 +86,7 @@
       "artifacts": ["specs/loop-observability/backlog.json"],
       "startedAt": "2026-07-05T22:00:00Z",
       "completedAt": "2026-07-05T22:10:00Z",
-      "commitHash": null,
+      "commitHash": "dde8dd9357567c4ed9848836f786dc0a9a0a7d12",
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 }
     },
     "forge-verify-backlog": {
