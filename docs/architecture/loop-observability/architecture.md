@@ -40,7 +40,7 @@ absent, unparseable, or fails schema validation — a missing/garbled file degra
   — the loop owns the stall decision; the status layer does not re-derive it.
 - `secondsSinceActivity` is the raw whole-second age of `lastActivityAt`, clamped to
   `≥ 0` so a future-skewed clock reads `0` rather than a negative number. It is a
-  measurement; the *interpretation* ("is 90 s too long?") belongs to the supervisor's
+  measurement; the _interpretation_ ("is 90 s too long?") belongs to the supervisor's
   policy, documented in the [supervision guide](./guides/supervision.md).
 - `iterationFresh` answers only "was the iteration file touched within the freshness
   window," reusing the same ~60 s constant that governs loop-liveness derivation, so
@@ -55,13 +55,13 @@ layer, and every consumer.
 `statusSchemaVersion: "1"` is a literal on every `DerivedStatus`. Two rules protect
 consumers:
 
-- **Additive-only enrichment.** The `health` block and the version marker were *added*;
+- **Additive-only enrichment.** The `health` block and the version marker were _added_;
   no existing field was renamed, retyped, or removed. A consumer written before this
   feature ignores the new keys and keeps working — proven by an "existing-shape
   consumer still parses" test.
 - **A literal, not a range.** Because the version is `z.literal("1")`, the schema
   **rejects** any other value (`"2"`, a number, a missing field). That rejection is the
-  guard that protects a machine consumer from a *silently* bumped contract: if the shape
+  guard that protects a machine consumer from a _silently_ bumped contract: if the shape
   ever changes incompatibly, the version must change too, and a strict consumer sees it
   immediately rather than mis-parsing new data as old.
 

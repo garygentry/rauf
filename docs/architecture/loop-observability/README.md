@@ -32,14 +32,21 @@ rauf status . --json
   "statusSchemaVersion": "1",
   "loopState": "RUNNING",
   "currentItem": "auth-007",
-  "backlogSummary": { "pending": 5, "inProgress": 1, "blocked": 0, "needsHuman": 0, "done": 2, "total": 8 },
+  "backlogSummary": {
+    "pending": 5,
+    "inProgress": 1,
+    "blocked": 0,
+    "needsHuman": 0,
+    "done": 2,
+    "total": 8,
+  },
   "lock": { "present": true, "alive": true, "stale": false, "pid": 12345 },
   "health": {
     "stuckWarning": false,
     "iterationFresh": true,
     "lastActivityAt": "2026-07-06T03:10:30.637Z",
-    "secondsSinceActivity": 4
-  }
+    "secondsSinceActivity": 4,
+  },
 }
 ```
 
@@ -101,19 +108,19 @@ machine surfaces.
 
 All of this ships in `@rauf/core` (data + logic) and is wired into the CLI commands.
 
-| Export (`@rauf/core`) | Description |
-|---|---|
-| `deriveStatus(paths)` | Builds the enriched `DerivedStatus` (incl. `health`, `statusSchemaVersion`, `lock`) from a single read pass. |
-| `Health`, `DerivedStatus` (types) | The status contract; `HealthSchema`/`DerivedStatusSchema` validate it. |
-| `resolveTarget(opts)` | Context-aware target resolution → `ResolvedTarget` or a structured `TargetError`. |
-| `TargetErrorCode`, `TargetError`, `ResolvedTarget`, `ResolveTargetOptions` | The resolution contract types. |
-| `eventAltitude(event)` | Classifies a `PersistedEvent` as `"item"` or `"firehose"`. |
-| `EventAltitude` (type) | The altitude union. |
+| Export (`@rauf/core`)                                                      | Description                                                                                                  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `deriveStatus(paths)`                                                      | Builds the enriched `DerivedStatus` (incl. `health`, `statusSchemaVersion`, `lock`) from a single read pass. |
+| `Health`, `DerivedStatus` (types)                                          | The status contract; `HealthSchema`/`DerivedStatusSchema` validate it.                                       |
+| `resolveTarget(opts)`                                                      | Context-aware target resolution → `ResolvedTarget` or a structured `TargetError`.                            |
+| `TargetErrorCode`, `TargetError`, `ResolvedTarget`, `ResolveTargetOptions` | The resolution contract types.                                                                               |
+| `eventAltitude(event)`                                                     | Classifies a `PersistedEvent` as `"item"` or `"firehose"`.                                                   |
+| `EventAltitude` (type)                                                     | The altitude union.                                                                                          |
 
-| CLI surface | Description |
-|---|---|
-| `rauf status [root] [--json] [--all]` | Status poll; enforces machine-context scope strictness; `--all` lists every live loop machine-wide. |
-| `rauf follow [root] [--json] [--verbose]` | Live feed; item-level with sticky header by default, firehose under `--verbose`. |
+| CLI surface                               | Description                                                                                         |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `rauf status [root] [--json] [--all]`     | Status poll; enforces machine-context scope strictness; `--all` lists every live loop machine-wide. |
+| `rauf follow [root] [--json] [--verbose]` | Live feed; item-level with sticky header by default, firehose under `--verbose`.                    |
 
 ## Configuration
 

@@ -19,7 +19,7 @@ spawn a subprocess to ask "is it alive?".
 - **Consuming the event stream as data.** For a machine feed, read `events.ndjson` or
   use `rauf follow --json` (or `--ndjson`) — those emit **every** event, unfiltered.
   Altitude filtering is a terminal-rendering choice; do not rely on it to shape data.
-- **Deciding whether an iteration is "stuck."** `health` gives you the *facts*
+- **Deciding whether an iteration is "stuck."** `health` gives you the _facts_
   (`stuckWarning`, `secondsSinceActivity`); the loop already owns the stall decision via
   `stuckWarning`. Apply your own time threshold to the raw age only as an escalation
   policy, not as a re-derivation of the loop's flag.
@@ -30,12 +30,12 @@ spawn a subprocess to ask "is it alive?".
 
 A single `DerivedStatus` carries everything the decision tree reads:
 
-| Input | Field | Question it answers |
-|---|---|---|
-| Lifecycle | `loopState` | Is it running, paused, complete, errored? |
-| Progress | `health.stuckWarning`, `health.secondsSinceActivity` | Is the live iteration advancing or stalling? |
-| Liveness | `lock.alive` / `lock.stale` | Is a process actually alive on this root? |
-| Human gate | `backlogSummary.needsHuman` | Is any item waiting on a person? |
+| Input      | Field                                                | Question it answers                          |
+| ---------- | ---------------------------------------------------- | -------------------------------------------- |
+| Lifecycle  | `loopState`                                          | Is it running, paused, complete, errored?    |
+| Progress   | `health.stuckWarning`, `health.secondsSinceActivity` | Is the live iteration advancing or stalling? |
+| Liveness   | `lock.alive` / `lock.stale`                          | Is a process actually alive on this root?    |
+| Human gate | `backlogSummary.needsHuman`                          | Is any item waiting on a person?             |
 
 Because they are co-present on one object, a supervisor never has to correlate reads
 across files or worry about a torn view between them.
@@ -65,7 +65,7 @@ lock.stale == true  (present but no live PID)                    → the loop di
 ```
 
 Suggested cadence: poll every **5 s** (a 5–10 s band is fine). Reset any stall timer only
-when the lock goes stale *and* is not alive — a long-but-live iteration is not a dead one.
+when the lock goes stale _and_ is not alive — a long-but-live iteration is not a dead one.
 
 > The stream never decides. Events (`rauf follow`) are a live heads-up; the **status
 > poll** is the authority for every branch above. Do not drive control flow off event
