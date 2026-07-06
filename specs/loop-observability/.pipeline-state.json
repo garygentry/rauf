@@ -3,8 +3,8 @@
   "pipelineStatus": "active",
   "branch": "forge/loop-observability",
   "createdAt": "2026-07-05T18:35:45Z",
-  "updatedAt": "2026-07-05T17:58:00Z",
-  "currentStage": "forge-verify",
+  "updatedAt": "2026-07-05T22:10:00Z",
+  "currentStage": "forge-5-loop",
   "artifacts": [
     "specs/loop-observability/00-core-definitions.md",
     "specs/loop-observability/01-architecture-layout.md",
@@ -79,6 +79,23 @@
       "completedAt": "2026-07-05T17:58:00Z",
       "commitHash": "19e1eb07fbd4d8b3e1c02bd85b4d4a394f67362b",
       "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1 }
+    },
+    "forge-4-backlog": {
+      "status": "complete",
+      "version": 1,
+      "artifacts": ["specs/loop-observability/backlog.json"],
+      "startedAt": "2026-07-05T22:00:00Z",
+      "completedAt": "2026-07-05T22:10:00Z",
+      "commitHash": null,
+      "basedOnVersions": { "forge-1-prd": 1, "forge-2-tech": 1, "forge-3-specs": 1 }
+    },
+    "forge-verify-backlog": {
+      "status": "findings-applied",
+      "findingsFile": ".verification/VERIFY-backlog-2026-07-05.md",
+      "findingsCount": 3,
+      "verifiedAt": "2026-07-05T22:05:00Z",
+      "fixedAt": "2026-07-05T22:10:00Z",
+      "verifiedStageVersion": 1
     }
   }
 }

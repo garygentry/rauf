@@ -1,0 +1,181 @@
+{
+  "project": "rauf — loop-observability",
+  "description": "Make `rauf status --json` a complete single-poll decision surface and prescribe one canonical supervision recipe. Four independently-shippable phases: (1) complete the contract — additive `health` block + `statusSchemaVersion` on DerivedStatus; (2) make it consistent — `resolveTarget()` + CLI wiring + the canonical drive-rauf-loop poll recipe; (3) make it humane — item-level `follow` feed + sticky header via a pure `eventAltitude()` classifier; (4) parity & docs. Prime directive: no machine surface (`--json`/`--ndjson`) is ever altered — all human-render work is additive/presentation-only. Each phase is green under `pnpm gate`.",
+  "items": [
+    {
+      "id": "001",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add health block + statusSchemaVersion to DerivedStatus (Phase 1)",
+      "description": "Complete the machine contract so a single `status --json` poll answers all four agent decisions without reading any raw state file. Two files.\n\n1. `packages/core/src/schemas.ts`: Add `HealthSchema = z.object({ stuckWarning: z.boolean(), iterationFresh: z.boolean(), lastActivityAt: z.string(), secondsSinceActivity: z.number().nonnegative() })` and `export type Health = z.infer<typeof HealthSchema>`. Amend `DerivedStatusSchema` with TWO additive fields ONLY: `statusSchemaVersion: z.literal(\"1\")` and `health: HealthSchema.nullable()`. Do NOT rename or remove any existing field. Leave `BacklogSummarySchema` and `IterationStatusSchema` byte-for-byte unchanged.\n\n2. `packages/core/src/status.ts`: Add `export const STATUS_SCHEMA_VERSION = \"1\" as const`. Add a private `buildHealth(iterationStatus: IterationStatus | null, now: number): Health | null` — returns null when input is null; else mirrors IterationStatus: `stuckWarning` copied; `iterationFresh = !Number.isNaN(updatedAtMs) && now - updatedAtMs < ITERATION_STATUS_FRESH_MS` (reuse the existing 60s ITERATION_STATUS_FRESH_MS constant, NO new threshold); `lastActivityAt` copied; `secondsSinceActivity = Number.isNaN(lastActivityMs) ? 0 : Math.max(0, Math.floor((now - lastActivityMs)/1000))`. It performs NO I/O.\n\n3. Shared-read refactor (REQ-PERF-01): change private `isLoopLive` from reading the file itself to a PURE predicate `isLoopLive(paths, iterationStatus: IterationStatus | null, now)` over an already-read value (keep the lock check). In `deriveFromStateJson`, read `const iterationStatus = readIterationStatus(paths)` ONCE near the top, capture `const now = Date.now()`, feed both the staleness-downgrade `isLoopLive(...)` call and `buildHealth(iterationStatus, now)`.\n\n4. Stamp both new fields on EVERY return path: the Tier-1 `deriveFromStateJson` return literal gets `statusSchemaVersion: STATUS_SCHEMA_VERSION` and `health: buildHealth(iterationStatus, now)`; the Tier-2/`none` `deriveFromLogParsing` paths stamp once on the shared `base` literal with `statusSchemaVersion: STATUS_SCHEMA_VERSION` and `health: null`. `deriveStatus`'s public signature `(paths) => Result<DerivedStatus>` is UNCHANGED.\n\nAppend tests to `status.test.ts` and `schemas.test.ts` (reuse existing `makePaths`/`writeStateJson`/`writeIterationStatusFile` helpers; use `Date.now()`-relative timestamps, no injected clock). If `schema:check` flags a committed snapshot, regenerate it.",
+      "acceptanceCriteria": [
+        "HealthSchema and Health are exported from schemas.ts; DerivedStatusSchema gains statusSchemaVersion (z.literal(\"1\")) and health (HealthSchema.nullable()) with no existing field renamed/removed",
+        "deriveStatus returns health mirroring a fixture iteration-status.json for stuckWarning both true and false",
+        "health === null when iteration-status.json is absent, and when present-but-unparseable/schema-invalid (result stays ok, non-fatal), and on the Tier-2 (log-parsing) and \"none\" paths regardless of any file on disk",
+        "iterationFresh is true when fixture updatedAt is within 60s of now, false when older; secondsSinceActivity === floor((now-lastActivityAt)/1000) and is clamped to 0 for a future lastActivityAt",
+        "statusSchemaVersion === \"1\" is present on every deriveStatus return path (Tier 1, Tier 2, \"none\")",
+        "A read-spy/counter proves readIterationStatus is invoked at most once per deriveStatus on the Tier-1 path and zero times on Tier-2/\"none\"; no subprocess is spawned (C-02)",
+        "An existing-shape consumer parse (no health/statusSchemaVersion awareness) still succeeds against the enriched object; DerivedStatusSchema accepts both health:null and a populated health (REQ-CONTRACT-05)",
+        "The existing >5-min-stale running->PAUSED downgrade tests remain green after the isLoopLive refactor",
+        "BacklogSummarySchema and IterationStatusSchema are unchanged in this diff",
+        "pnpm gate passes (build + schema:check + version:check + typecheck + lint + format:check + test; no package version bump)"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Foundation for the whole feature — the four-way decision tree (item 004) and the docs (007) both read health.stuckWarning off this contract. The shared-read promotion is REQUIRED, not optional (tech-spec §10 OTQ-1): today readIterationStatus is called only conditionally inside isLoopLive at the staleness-downgrade branch (status.ts:179), never on the healthy path — so populating health naively would add a SECOND read and violate REQ-PERF-01. Field/line numbers cited are from spec authoring time; confirm against source before editing.",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "specs/loop-observability/00-core-definitions.md",
+        "specs/loop-observability/02-health-status-contract.md",
+        "specs/loop-observability/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "002",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add resolveTarget() core resolver + contract types (Phase 2a)",
+      "description": "Centralize the wrong-root safety guard in one exported, context-aware resolver. Co-locate everything in `packages/core/src/backlog-root.ts` (NOT a new file) because the load-bearing sandbox-containment seam (`resolveBacklogRoot` at :94, `resolveBacklogPaths` at :128) already lives there.\n\nTypes (defined here per 00 §4): `ResolveTargetOptions { pathArg?: string; backlogFlag?: string; isMachineContext: boolean; isTTY: boolean }`; `ResolvedTarget = { kind:\"resolved\"; root: string; backlogDir: string } | { kind:\"ambiguous\"; candidates: ActiveLoopEntry[] }`; `TargetErrorCode = \"missing_target\" | \"ambiguous_target\" | \"not_found\" | \"outside_sandbox\"`; `TargetError { code: TargetErrorCode; message: string; offending?: string }`.\n\n`export function resolveTarget(opts): Result<ResolvedTarget, TargetError>` algorithm (return Result, never throw):\n1. pathArg given (context-independent): delegate to resolveBacklogRoot(pathArg, backlogFlag) then resolveBacklogPaths; return ok({kind:\"resolved\", root: paths.projectPath, backlogDir: paths.root}). Map delegate PATH_VIOLATION->outside_sandbox, FILE_NOT_FOUND->not_found.\n2. No pathArg AND isMachineContext: return err({code:\"missing_target\", ...}). NEVER consult listActiveLoops() or cwd on this path.\n3. No pathArg AND isTTY (not machine): active = listActiveLoops() (on IO_ERROR treat as zero). Exactly one -> resolve that loop's root (delegate its projectPath+backlogRoot for the same containment guarantee) -> resolved; several -> ok({kind:\"ambiguous\", candidates: active}); zero -> resolve cwd (delegate as in branch 1) -> resolved | not_found.\n4. Neither machine nor TTY: treat as branch 2 (defensive machine strictness).\n\nThe ONLY new import added to backlog-root.ts is `listActiveLoops` from `./loop-registry.js` (core->core). resolveTarget contains NO path.resolve+startsWith of its own — containment is delegated (REQ-SAFE-01). Append tests to `backlog-root.test.ts`: pass isMachineContext/isTTY as booleans and stub listActiveLoops where enumeration is exercised (resolveTarget never probes process).",
+      "acceptanceCriteria": [
+        "resolveTarget is exported from packages/core/src/backlog-root.ts, importable from @rauf/core, with type (opts: ResolveTargetOptions) => Result<ResolvedTarget, TargetError>",
+        "{ isMachineContext: true } with no pathArg returns err(missing_target) and performs NO listActiveLoops or cwd read (asserted via a call-spy)",
+        "On a TTY (not machine) with no pathArg: exactly one active loop -> kind:\"resolved\" for that loop; several -> kind:\"ambiguous\" with those candidates; zero -> cwd default resolution",
+        "An out-of-root pathArg/backlogFlag yields outside_sandbox via resolveBacklogRoot/resolveBacklogPaths (PATH_VIOLATION mapped); a non-existent root yields not_found; resolveTarget has no containment check of its own",
+        "All four TargetErrorCode variants are reachable",
+        "The only new import in backlog-root.ts is listActiveLoops from ./loop-registry.js; core still has zero imports from cli/web (grep -rE 'from \"\\.\\./(cli|web)' packages/core/src returns nothing)",
+        "pnpm gate passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Independent of the health work — core-only, no dependency on item 001. ActiveLoopEntry is the existing type at schemas.ts:757; Result/ok/err, resolveBacklogRoot, resolveBacklogPaths, validatePath, ErrorCodes (PATH_VIOLATION, FILE_NOT_FOUND) are all existing. ambiguous_target is not produced by this algorithm (branch 2 fails fast with missing_target before enumerating) but the code exists in the type surface so the CLI's error switch is exhaustive.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/loop-observability/00-core-definitions.md",
+        "specs/loop-observability/03-target-resolution.md",
+        "specs/loop-observability/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "003",
+      "type": "feature",
+      "priority": 1,
+      "title": "Wire resolveTarget into CLI + bare-status cwd->--all broadening (Phase 2b)",
+      "description": "Rewire the read commands to delegate targeting to resolveTarget (item 002), closing the current gap where a missing positional arg has no --json error path.\n\nIn each handler compute `const isTTY = Boolean(process.stdout.isTTY); const isMachineContext = ctx.globalFlags.json || !isTTY;` and call resolveTarget({ pathArg: ctx.args[0], backlogFlag: <backlog flag> ?? undefined, isMachineContext, isTTY }). On `!res.ok`: `if (ctx.globalFlags.json) outputJson({ error: res.error }); else error(res.error.message); return ExitCode.USAGE;` On `kind:\"ambiguous\"` render the candidate pick list (TTY only) and return SUCCESS. On `kind:\"resolved\"` build BacklogPaths via resolveBacklogPaths(root, backlogDir) and proceed exactly as today.\n\n`packages/cli/src/status-commands.ts`: rewire handleStatus (:44) — replace the `if (!targetPath) { error(...); return USAGE }` preamble; keep the `--all` short-circuit (calls handleStatusAll BEFORE resolveTarget) and the --backlog path. Change handleStatusFollow (:439) signature to `(root: string, backlogDir: string, intervalSeconds: number, json: boolean)` — caller passes the already-resolved target; per-tick body still calls resolveBacklogPaths+deriveStatus but no longer re-derives the root each tick.\n\nBare-status cwd->--all broadening (REQ-SCOPE-03): fires ONLY on a TTY with no pathArg and no --backlog. After deriving status for the cwd root, if there is no live loop locally AND listActiveLoops() returns >=1 loop elsewhere, additionally invoke handleStatusAll(ctx.globalFlags.json) and return its exit code. If cwd itself has a live loop, do NOT broaden.\n\n`packages/cli/src/follow-command.ts`: rewire handleFollow (:52) preamble identically; add `outputJson` to the ./formatter.js import (it is not currently imported). This makes `follow [root]` optional on a TTY and gives `follow --json` with no target a structured missing_target error. Do NOT change the item-level filtering/header (that is item 006). Append tests to status-commands.test.ts.",
+      "acceptanceCriteria": [
+        "handleStatus, handleStatusFollow, and handleFollow delegate targeting to resolveTarget; a missing target under --json now emits structured outputJson({error}) instead of stderr prose",
+        "Each TargetError renders as outputJson({error}) under --json (else stderr error()) and maps to ExitCode.USAGE (2)",
+        "Bare status on a TTY with an idle cwd backlog and >=1 loop live elsewhere additionally surfaces handleStatusAll; with a live cwd loop it does NOT broaden",
+        "--all still short-circuits before resolveTarget; --all --json still emits { loops: ActiveLoopEntry[] }, never a DerivedStatus",
+        "handleStatusFollow takes (root, backlogDir, intervalSeconds, json) and no longer re-resolves the root per tick",
+        "The old ad-hoc \"Missing required argument: <path>\" string no longer appears on the resolver path in handleStatus/handleStatusFollow/handleFollow",
+        "pnpm gate passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["002"],
+      "notes": "ExitCode.USAGE = 2 (commands.ts:94). --all mechanism (handleStatusAll reads listActiveLoops) is unchanged; humane rendering refinements belong to item 006. The existing empty-dir footer (renderInspectedStatus) composes with — does not replace — the broadening.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/loop-observability/03-target-resolution.md",
+        "specs/loop-observability/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "chore",
+      "priority": 1,
+      "title": "Rewrite drive-rauf-loop skill into the canonical poll recipe (Phase 2)",
+      "description": "Make `drive-rauf-loop` THE one authoritative, referenceable supervision contract (poll, not stream). Prose-only change — no new code, no new type. Rewrite `skills/drive-rauf-loop/SKILL.md` from a reference card into the canonical automation recipe, keeping the existing `name`/`description` frontmatter verbatim.\n\nThe rewritten body must prescribe, as an explicit loop:\n1. Start backgrounded: `rauf loop run <root> --backlog <dir> --detached` (survives the session, doesn't block the driver). A start refused for a precondition (dirty tree/protected branch) is a setup error, not a stall.\n2. Poll the single decision surface: `rauf status <root> --backlog <dir> --json`. In machine context <root> + --backlog MUST be explicit; a TargetError (missing_target/ambiguous_target) means 'fix your addressing', not a loop state. KEYSTONE: never read .rauf/iteration-status.json or events.ndjson to DECIDE — one poll is a complete superset including the stall hint via health.stuckWarning.\n3. Prescribe the four-way decision tree (first-match top-to-bottom: Done / Needs-human / Recoverable-stall / Healthy; needs-human outranks the stall hint) exactly as specified in 05-supervision-recipe.md §3.4.\n4. Prescribe the persist-then-escalate recovery ladder (single stuckWarning surfaces only; N=3 consecutive -> resume if paused else --force; reset ONLY when lock.stale && !lock.alive; needs_human never auto-resolves; counter is agent-side state) exactly as in 05-supervision-recipe.md §3.5.\n5. Prescribe poll interval: 5s default, 5-10s band — documented guidance, NOT a code constant.\n6. Stream stays optional: state prominently that agent decisions MUST NEVER depend on the stream (narration/diagnosis only).\n\nRemove the old instruction to read `.rauf/iteration-status.json` for the stall signal; replace with health.stuckWarning from status --json. Keep the status vocabulary / exit-code / recover-command tables as a subordinated reference appendix.\n\nApply an IDENTICAL rewrite to `.codex-plugin/skills/drive-rauf-loop/SKILL.md` so the two files stay byte-identical. Verify `agents/rauf-loop-driver.md` and `.codex/agents/rauf-loop-driver.toml` still defer to the skill with no divergent inline decision rules (no hard-coded interval, no competing stall heuristic) — expected outcome: no edit; if a divergence exists, delete the inline rule and keep the deference.",
+      "acceptanceCriteria": [
+        "skills/drive-rauf-loop/SKILL.md contains the four-way decision tree table, the persist-then-escalate ladder, the 5s default / 5-10s band interval, the N=3 threshold, the reset-only-on-dead-lock rule (lock.stale && !lock.alive), and an explicit 'the stream never decides' statement",
+        "The old instruction to read .rauf/iteration-status.json for the stall signal is removed and replaced by health.stuckWarning from status --json",
+        "The frontmatter (name, description) is unchanged",
+        "`diff skills/drive-rauf-loop/SKILL.md .codex-plugin/skills/drive-rauf-loop/SKILL.md` returns empty (byte-identical)",
+        "agents/rauf-loop-driver.md and .codex/agents/rauf-loop-driver.toml contain no hard-coded poll interval and no stall heuristic other than health.stuckWarning (grep confirms neither an interval literal nor an iteration-status.json read); expected outcome is no edit",
+        "pnpm gate passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001", "003"],
+      "notes": "Depends on 001 (health.stuckWarning must be populated so the recipe is executable from one poll) and 003 (machine-context target strictness the recipe relies on). The feature-forge forge-5-loop / runner-contract.md edit is a DIFFERENT repo and OUT OF SCOPE — the rauf-side deliverable is solely that drive-rauf-loop is the authoritative contract. author-backlog is unaffected. Both SKILL.md copies are byte-identical today (diff empty) — preserve that.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/loop-observability/05-supervision-recipe.md"
+      ]
+    },
+    {
+      "id": "005",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add eventAltitude() classifier for the 24 LoopEvent types (Phase 3a)",
+      "description": "Add the pure, I/O-free classifier that drives the item-level follow feed. In `packages/core/src/events-log.ts`:\n\nAdd `export type EventAltitude = \"item\" | \"firehose\"` and `export function eventAltitude(ev: PersistedEvent): EventAltitude`. Implement as a `switch (ev.type)` over all 24 LoopEvent types.\n\nFIREHOSE (5): iteration_start, llm_spawned, llm_exited, llm_tool_activity, llm_token_update.\nITEM (19, all others): loop_started, item_selected, signal_parsed, item_completed, item_blocked, item_retried, needs_human, loop_paused, usage_limit_hit, usage_limit_cleared, sleep_start, sleep_end, loop_completed, loop_error, loop_cancelled, review_started, review_completed, review_failed, llm_stuck_warning.\n\nThe `default` branch must assign `const _exhaustive: never = ev; void _exhaustive;` (compile-time exhaustiveness — a 25th LoopEvent type without a case fails typecheck) AND THEN `return \"firehose\";` (runtime safety net — an unrecognized runtime type is never silently dropped). Both are required; do not remove the trailing return. The function never throws, does no I/O, and imports nothing from cli/web.\n\nConfirm the 24 type literals against LoopEventSchema in schemas.ts (~:591) at implementation time. Append an exhaustive table test to `events-log.test.ts` covering every one of the 24 types.",
+      "acceptanceCriteria": [
+        "eventAltitude returns the spec-table altitude for each of the 24 LoopEvent types (exhaustive test: the 5 firehose types return \"firehose\", the other 19 return \"item\")",
+        "Adding a synthetic 25th LoopEvent variant without a case in eventAltitude fails pnpm typecheck (the never guard)",
+        "An unrecognized runtime type (crafted record) returns \"firehose\" and does not throw",
+        "EventAltitude is exported as a two-member union and eventAltitude's return type assigns to it",
+        "core still has zero imports from cli/web (grep -rE 'from \"\\.\\./(cli|web)' packages/core/src returns nothing)",
+        "pnpm gate passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": [],
+      "notes": "Independent core item — no dependency on the Phase 1/2 work. This is a presentation classification consumed ONLY by the TTY renderer (item 006); it never touches --json/--ndjson output (the prime directive). Mirrors formatEvent's existing never-guard at event-format.ts:141.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/loop-observability/00-core-definitions.md",
+        "specs/loop-observability/04-event-altitude-follow.md",
+        "specs/loop-observability/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "006",
+      "type": "feature",
+      "priority": 2,
+      "title": "Item-level follow feed + sticky progress header (Phase 3b)",
+      "description": "Make the standalone `follow` command humane by default, changing ONLY the TTY render path (no machine surface altered — the prime directive).\n\n`packages/cli/src/follow-command.ts`: make `emitEvent` altitude-aware. The --json branch MUST be FIRST and return before any classification: `if (opts.json) { process.stdout.write(JSON.stringify(ev)+\"\\n\"); return; }` then `if (!opts.verbose && eventAltitude(ev) !== \"item\") return;` then `print(formatEvent(ev));`. Add a `--verbose` boolean flag (parsed like the existing --json/--interval flags) that restores the full firehose. Thread `verbose` through `followEvents` (:81) into BOTH the replay loop and the tail callback. Precedence: --json wins (verbose has no effect under --json). Import `eventAltitude` from @rauf/core.\n\n`packages/cli/src/event-format.ts`: add `export function formatFollowHeader(status: DerivedStatus, opts: { color: boolean }): string` producing `\"4/12 done · 1 blocked · on auth-007\"` from backlogSummary.done/total, backlogSummary.blocked (segment omitted when 0), and currentItem (segment omitted when null). State is carried by a leading TEXT label via a `deriveStateLabel(status)` helper (healthy/blocked/needs-human/paused/sleeping/complete — reuse getStateLabel from @rauf/core, fold in the needsHuman/blocked distinction). Color (from detectColorSupport()) only RE-EMPHASIZES the already-present text label, never replaces it (REQ-A11Y-01). Confirm backlogSummary field names against BacklogSummarySchema (schemas.ts:249) — do not invent a field.\n\nOn the human (non-JSON) path, followEvents prints the header once after replay and on each item-milestone emit / poll tick where deriveStatus succeeds. 'Sticky' = a reprinted line — NO ANSI cursor addressing (keeps the non-TTY/no-color path structurally identical). `status --follow` (handleStatusFollow) is UNCHANGED; no fourth verb is added. Append tests to follow-command.test.ts and event-format.test.ts (feed an in-memory PersistedEvent[] fixture; stub detectColorSupport/NO_COLOR).",
+      "acceptanceCriteria": [
+        "follow --json emits every PersistedEvent as NDJSON byte-identical to today — the altitude filter is never applied (REQ-CMD-03, prime directive)",
+        "follow --verbose emits every event via formatEvent (today's behavior)",
+        "Default follow (TTY, no flags) emits only events where eventAltitude(ev)===\"item\" (an llm_token_update/llm_tool_activity fixture is suppressed; an item_completed fixture appears)",
+        "formatFollowHeader produces \"4/12 done · 1 blocked · on auth-007\" from a fixture DerivedStatus (backlogSummary {done:4,total:12,blocked:1}, currentItem:\"auth-007\"); the blocked segment is elided when blocked===0 and the on-item segment when currentItem===null",
+        "With NO_COLOR set (or detectColorSupport()===false) the header contains the state text label (blocked/needs-human/healthy) and no ANSI escape sequences",
+        "status --follow (handleStatusFollow) is unchanged in this diff; no fourth verb is added",
+        "pnpm gate passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["005"],
+      "notes": "Depends on 005 (eventAltitude). Does NOT require item 001 — the header reads backlogSummary/currentItem which already exist; it does not need the health field. Reuses readEvents/watchEvents (the replay-then-tail engine) and deriveStatus (already polled at follow-command.ts:130) unchanged — no new scan, no new data model (REQ-CMD-05).",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/loop-observability/04-event-altitude-follow.md",
+        "specs/loop-observability/06-testing-strategy.md"
+      ]
+    },
+    {
+      "id": "007",
+      "type": "chore",
+      "priority": 2,
+      "title": "Document health, item-feed follow, and scope strictness (Phase 4)",
+      "description": "Docs-only phase describing the already-shipped additive behavior from Phases 1-3. Change no code; imply no machine-surface field was renamed/removed (prime directive). Web parity is deferred (Q2) — add NO web-facing doc.\n\n`docs/SPEC-CLI.md`:\n- `### rauf status [path]`: note [path] is now optional on a TTY (cwd default; ambiguous -> interactive pick list) while in machine context (--json/non-TTY) a missing/ambiguous target is a hard error. Document that status --json now carries `statusSchemaVersion: \"1\"` and a nested `health` block `{ stuckWarning, iterationFresh, lastActivityAt, secondsSinceActivity }` (null when no live iteration). Note bare status broadens to --all only when no local live loop exists.\n- `### rauf follow [path]`: document the new item-level narration default (item/loop milestones + sticky progress header `4/12 done · 1 blocked · on auth-007`) and the new --verbose flag that restores the full token/tool firehose. State --json is unchanged (every event, no altitude filter). [path] now optional on TTY.\n- `### rauf log [path]`: state explicitly it is UNCHANGED (raw rauf.log tail; --follow live tail) so a reader doesn't expect a new altitude filter here.\n\n`docs/SPEC-BACKLOG-TOOL-CONTRACT.md`:\n- §A.7.2 Canonical status surface: add `statusSchemaVersion: \"1\"` (top-level marker mirroring EVENTS_SCHEMA_VERSION) and `health?` (the nested block, null when no iteration live) to the field list, describing each field. Add the agent single-poll decision contract: the four-way decision tree (done/needs-human/recoverable-stall/healthy) answered by ONE status --json poll — a supervisor never reads iteration-status.json or events.ndjson to decide. Cross-link drive-rauf-loop as the authoritative recipe.\n- §A.7.3 Compatibility promise: record the new health block and statusSchemaVersion marker as ADDITIVE DerivedStatus fields (no rename/removal); statusSchemaVersion starts at \"1\".\n- §A.7.4 Machine vs human surfaces: reaffirm the item-level follow altitude filter is human-render-only and never touches any machine surface; follow --json and --ndjson emit every event.",
+      "acceptanceCriteria": [
+        "docs/SPEC-CLI.md documents the health block and statusSchemaVersion on status --json, the item-feed follow default + --verbose flag, the machine-context scope strictness (optional-on-TTY / hard-error-in-machine-context), and states rauf log is unchanged",
+        "docs/SPEC-BACKLOG-TOOL-CONTRACT.md §A.7.2 lists health + statusSchemaVersion and carries the four-way single-poll decision contract cross-linking drive-rauf-loop",
+        "docs/SPEC-BACKLOG-TOOL-CONTRACT.md §A.7.3 records health and statusSchemaVersion as additive (no rename/removal); §A.7.4 reaffirms the altitude filter is human-render-only",
+        "No web-facing doc is changed (web parity deferred, Q2)",
+        "pnpm gate passes"
+      ],
+      "status": "pending",
+      "completedAt": null,
+      "dependsOn": ["001", "003", "004", "006"],
+      "notes": "Last phase — docs describe behavior shipped by items 001 (health/version), 003 (scope strictness), 004 (the recipe), and 006 (item-feed follow). Verify the exact section anchors/line numbers against the current docs before editing.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "specs/loop-observability/05-supervision-recipe.md"
+      ]
+    }
+  ]
+}
