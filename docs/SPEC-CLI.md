@@ -327,6 +327,11 @@ Archive completed (`done`) items out of the active backlog into monthly archive 
 
 Orchestrate a full project reset for a fresh backlog cycle.
 
+**When to use:** this is the canonical command for **starting a new backlog cycle** after a
+loop has finished (all items `done`). It archives history and clears state so the backlog can
+be re-populated — the reliable alternative to hand-editing `backlog.json`. The `author-backlog`
+skill invokes it (with `--clear`) before authoring fresh items into a completed backlog.
+
 - `--yes`: required for confirmation
 - `--json`: output the result object as JSON
 
