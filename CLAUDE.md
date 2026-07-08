@@ -207,6 +207,8 @@ This project uses `.rauf/backlog.json` as the persistent task queue for the rauf
 
 This repository IS a rauf-managed project. The `.rauf/` directory at the repo root is this project's own rauf loop state. Run the loop with `rauf loop run` (direct mode) or `rauf loop run --detached` (server mode). The `artifacts/variants/backlog-json/` directory contains the _templates_ used when installing rauf into OTHER projects. Do not confuse them.
 
+To start a fresh backlog cycle after the loop finishes (all items `done`), clear and re-populate the backlog with `rauf backlog reset <path> --clear` — **never** by hand-editing `backlog.json` (that loses history and desyncs state). See the `author-backlog` skill's "Resetting a Completed Backlog" section.
+
 ## Publishing & Releasing
 
 Two separate, **manual, owner-gated** flows — a routine merge to `main` never publishes anything. Both are **PR-based**: like all changes, a release reaches `main` via a PR (see [Branching & merging](#branching--merging)), and only the owner cuts the actual release.

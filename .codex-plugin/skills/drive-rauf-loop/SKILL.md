@@ -116,6 +116,19 @@ Notes:
   `backlogSummary.needsHuman > 0` cover the default "set aside and continue" mode. Any one is
   sufficient. Read `needsHuman` (a disjoint subset), **not** the total `blocked`.
 
+**After the loop completes — starting the next cycle.** When row 1 fires
+(`loopState ∈ {COMPLETE, IDLE}`, nothing `pending`/`inProgress`), the backlog is finished:
+every item is `done` and re-running does nothing until it's repopulated. To start a fresh
+cycle, don't hand-edit `backlog.json` — reset it, then re-author:
+
+```bash
+rauf backlog reset <root> --clear --yes   # archive done items + progress/log, empty the backlog
+```
+
+Then author new items via the **author-backlog** skill (see its
+[Resetting a Completed Backlog](../author-backlog/SKILL.md#resetting-a-completed-backlog)
+section for the full workflow and caveats), validate, and `loop run` again.
+
 ### Step 4 — The persist-then-escalate recovery ladder
 
 A stall hint is a **decision aid, not a verdict**: "an iteration appears to have stopped

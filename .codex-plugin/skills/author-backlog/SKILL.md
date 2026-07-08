@@ -39,8 +39,62 @@ If the caller passed an explicit backlog dir, honor it. Otherwise default to `<p
 1. **Read the input material** — specs, plans, docs, or whatever the user/caller provides.
 2. **Read the target project's structure** if it exists — understand what code is already there.
 3. **Resolve the schema source** (see below) to confirm the exact item shape.
-4. **Check for an existing `backlog.json`** in the target dir — if one exists, understand what's already there before overwriting or appending.
+4. **Check for an existing `backlog.json`** in the target dir. If one exists, understand what's already there, then pick the right path — do NOT hand-edit `backlog.json` to make room:
+   - **All items `done` / nothing `pending`** (a finished cycle) → the backlog must be **reset before authoring**, not hand-edited. Go to [Resetting a Completed Backlog](#resetting-a-completed-backlog).
+   - **Some `pending` / `in_progress` items remain** (an in-flight backlog) → the user wants to **add** items. Append, continuing IDs from the highest existing one — do NOT reset.
+   - **Empty or no backlog** → author normally.
 5. **Read `references/backlog-examples.md`** for gold-standard example items.
+
+## Resetting a Completed Backlog
+
+_Applies to the **default `<project>/.rauf/` backlog** only — see the caveats at the end._
+
+When a loop cycle finishes, `.rauf/backlog.json` is left full of `done` items with nothing
+`pending`, so the loop won't run again. Starting a fresh cycle means **clearing the old
+backlog first, then authoring new items** — but this is where agents commonly go wrong.
+
+**Never hand-edit `backlog.json` to clear it.** Emptying the `items` array by hand loses the
+completed history and desyncs `state.json` / `DONE` / `CANCEL` markers. Use the CLI, which
+archives everything and resets state atomically:
+
+```bash
+rauf backlog reset <projectPath> --clear --yes
+```
+
+**Full reset (`--clear`)** — the normal "new cycle" case — does all of this:
+
+- `done` items → archived to `.rauf/archive/YYYY-MM.json` (grouped by completion month).
+- `progress.md` and `rauf.log` → archived with timestamped names, and a fresh `progress.md`
+  template is redeployed (`rauf.log` is recreated on the next run).
+- The `items` array is **emptied** (top-level `project` / `description` metadata preserved).
+- `state.json` deleted; `DONE` / `CANCEL` markers cleared; any `in_progress` items reset to
+  `pending`.
+
+**Soft reset** (omit `--clear`) archives `done` items and clears state but **keeps** the
+`items` array, `progress.md`, and `rauf.log` — use it only when you're re-running the same
+backlog, not repopulating. `--keep-progress` / `--keep-log` preserve those files during a
+`--clear` reset.
+
+**Propose, then run — don't surprise-destroy.** First show the user what will be archived, then
+run the reset:
+
+```bash
+rauf backlog list <projectPath> --status done   # summarize how many items will be archived
+rauf backlog reset <projectPath> --clear --yes  # then reset
+```
+
+This mirrors the skill's "wait for approval before writing" discipline. After the reset, the
+backlog is empty — **author fresh items** per the rest of this skill and finish with
+`rauf backlog validate` (see [Validate](#validate--run-the-cli)).
+
+**Caveats:**
+
+- **Multi-backlog / feature-pipeline (`--backlog <dir>`):** skip this section entirely. Those
+  backlogs live outside a project `.rauf/` and are managed by the pipeline tool (e.g.
+  feature-forge), not `rauf backlog reset`.
+- **Self-hosting / live loops:** never run `reset` against a project whose loop is currently
+  running (e.g. rauf's own `.rauf/` while it is self-hosting). Reset is a between-cycles
+  operator action, not something to do mid-loop.
 
 ## Schema Source
 
@@ -373,6 +427,7 @@ With `--json`, the CLI emits `{ valid, findings[] }` — parse `findings` to dri
 - [ ] IDs are sequential and zero-padded; all statuses `"pending"`, all `completedAt` `null`.
 - [ ] Only valid enums: `type` in `bug|bugfix|refactor|feature|chore|test`, `status` in `pending|in_progress|done|blocked`.
 - [ ] `project` and `description` accurately describe the work.
+- [ ] If a completed backlog existed, it was **reset via `rauf backlog reset`** (not hand-edited) before authoring.
 - [ ] `rauf backlog validate` exits `0`.
 
 ## Interaction with the User
