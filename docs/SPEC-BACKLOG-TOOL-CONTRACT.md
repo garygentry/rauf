@@ -87,6 +87,18 @@ A runner keeps per-backlog state in a **state directory**, resolved as follows:
   isolated per backlog dir:** two `--backlog` targets (or a per-feature loop
   and the project's own loop) never collide on state.
 
+**One state dir per backlog root — no hand-made parallels.** Every state directory is either
+the project default (`<project>/.rauf/`) or is **derived by the runner** from a `--backlog`
+root via the rule above (`resolveStateDir` in `packages/core/src/backlog-root.ts`). A project
+therefore has exactly one `<project>/.rauf/`, and each feature pipeline gets a `.rauf/` derived
+from _its_ `--backlog` dir. Authors and agents must **not** hand-create a bespoke or nested
+`.rauf/` (e.g. `subdir/.rauf/`, `.rauf-foo/`) to hold a separate backlog: `scanBacklogRoots`
+discovers every directory containing a `backlog.json`, so a stray one becomes noise in
+`status`/root-selection and is never cleaned by the normal lifecycle. A separate batch of work
+belongs in the project's own backlog (reset and reuse it), and a genuine parallel feature
+belongs under a caller-driven `--backlog <specsDir>/<feature>/` — never a self-invented
+directory.
+
 Files within a state directory:
 
 | File                    | Role                                                                            |
