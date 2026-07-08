@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.0
+
 ### Added
 
 - **Loop observability — file-driven loop supervision** (#63). A file-driven

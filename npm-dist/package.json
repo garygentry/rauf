@@ -1,6 +1,6 @@
 {
   "name": "@garygentry/rauf",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Install and run the rauf autonomous coding-loop CLI. Downloads the matching prebuilt binary from GitHub Releases on first run — no Bun or repo checkout required.",
   "type": "module",
   "bin": {
