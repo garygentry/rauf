@@ -740,6 +740,206 @@
         "docs/SPEC-CLI.md",
         "docs/ARCHITECTURE.md"
       ]
+    },
+    {
+      "id": "001",
+      "type": "bugfix",
+      "priority": 1,
+      "title": "Fix needsHuman log-pattern regex to match the runner's '(set aside)' line",
+      "description": "The runner writes the needs-human log line as `Item <id> needs human input (set aside): <reason>` (packages/loop/src/runner.ts:699), but `LOG_PATTERNS.needsHuman` in packages/core/src/schemas.ts (around line 333) is `/Item \\S+ needs human input: (.+)/`, which does NOT match because of the literal ` (set aside)` segment before the colon. As a result rauf's own log-derived status (and any log-fallback consumer) silently misses needs-human events. Fix: widen the regex to tolerate the optional segment, e.g. `/Item \\S+ needs human input(?: \\(set aside\\))?: (.+)/`, keeping the single capture group returning just the reason. Do NOT change the emitted string in runner.ts — align the regex to the real output. Extend the LOG_PATTERNS test (packages/core/src/schemas.test.ts or wherever LOG_PATTERNS is tested) to assert both forms.",
+      "acceptanceCriteria": [
+        "LOG_PATTERNS.needsHuman matches `Item 007 needs human input (set aside): db migration unclear` and captures `db migration unclear`",
+        "The regex still matches the legacy `Item 007 needs human input: reason` form",
+        "A test in packages/core asserts both the (set aside) and legacy forms match and capture the reason",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T02:00:29.099Z",
+      "notes": "Confirmed bug. The capture must return only the reason, not the `(set aside)` text. Source: feature-forge handoff §4.",
+      "estimatedIterations": 1
+    },
+    {
+      "id": "002",
+      "type": "bugfix",
+      "priority": 1,
+      "title": "Redact RAUF_* tokens in the Signal-text log dump",
+      "description": "When a claude iteration exits with no parsed terminal signal, the runner appends a diagnostic `Signal text (source=<src>, len=<n>):\\n<preview>` line to rauf.log, where preview is up to the last 500 chars of raw agent stdout (packages/loop/src/runner.ts:614-618). Agent prose can contain a literal RAUF_DONE / RAUF_BLOCKED / RAUF_NEEDS_HUMAN token, which then false-matches any consumer (or human) grepping rauf.log for terminal signals. Fix: sanitize the preview before logging so the three terminal tokens are no longer literal-token matches — e.g. replace RAUF_DONE -> RAUF·DONE (middle dot) or wrap as ⟨RAUF_DONE⟩, for all three tokens. Keep the `source=` and `len=` diagnostics and the rest of the preview readable. Prefer extracting a small pure helper (e.g. redactSignalTokens(text): string) so it is unit-testable. Add a test (packages/loop/src/runner.test.ts or a focused helper test) asserting a preview containing `... RAUF_DONE ...` in prose is redacted in the appended log line so a token grep no longer matches.",
+      "acceptanceCriteria": [
+        "The Signal-text preview redacts RAUF_DONE / RAUF_BLOCKED / RAUF_NEEDS_HUMAN so they are not literal-token matches in rauf.log",
+        "The `source=` and `len=` diagnostics are preserved",
+        "A test asserts redaction of a terminal token embedded in agent prose",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T03:59:26.562Z",
+      "notes": "Confirmed. rauf.log is a human surface, but this also protects rauf's own log-derived parsing and any log-fallback consumer. Source: feature-forge handoff §5.",
+      "estimatedIterations": 1
+    },
+    {
+      "id": "003",
+      "type": "chore",
+      "priority": 2,
+      "title": "Refresh model guidance to tier aliases + document opus[1m] for 1M items",
+      "description": "Replace stale pinned model ids with tier aliases and add 1M-context guidance. (1) Replace `claude-opus-4-6` -> `opus` and `claude-sonnet-4-6` -> `sonnet` in: skills/author-backlog/SKILL.md, skills/author-backlog/references/backlog-examples.md, skills/review-backlog/SKILL.md, docs/SPEC-CLI.md, docs/SPEC-BACKLOG-TOOL-CONTRACT.md, docs/SCHEMAS.md, and schemas/backlog.schema.json descriptions. Do NOT touch test fixtures (packages/loop/src/*.test.ts) or this repo's own .rauf/backlog.json / .rauf/backlog-v1-initial-build.json (internal test data). (2) Rewrite the author-backlog model-selection guidance: default `opus` (latest Opus, 200K, tracks the tier); `sonnet` for simple/mechanical items; `opus[1m]` ONLY for items that genuinely need the 1M context window (large-codebase reads, long multi-file refactors) — note 1M is opt-in via the `[1m]` suffix and carries NO cost premium over standard Opus (Sonnet 1M needs credits). `claude --model` accepts these verbatim (aliases and the `[1m]` suffix). (3) Verify the backlog `model` field is a free `z.string()` accepting `opus[1m]` (packages/core/src/schemas.ts BacklogItemSchema — loosen if a regex rejects `[`), and that the loop passes the model string verbatim to `claude --model` (packages/loop/src/claude-process.ts). If schemas/backlog.schema.json is generated from zod, regenerate it via the project's generate script (pnpm generate:schemas) rather than hand-editing the generated file.",
+      "acceptanceCriteria": [
+        "No `claude-opus-4-6` / `claude-sonnet-4-6` literals remain in skills/author-backlog, skills/review-backlog, docs/SPEC-CLI.md, docs/SPEC-BACKLOG-TOOL-CONTRACT.md, docs/SCHEMAS.md, schemas/backlog.schema.json (grep clean)",
+        "author-backlog guidance documents opus default / sonnet simple / opus[1m] for 1M-need with the no-cost-premium note and the [1m] opt-in mechanism",
+        "The backlog `model` field accepts `opus`, `sonnet`, and `opus[1m]` (a `rauf backlog validate` run with such a value passes)",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T04:26:27.034Z",
+      "notes": "1M is strictly opt-in via the `[1m]` suffix on aliases or full ids; Opus 1M has no cost premium. Authoritative source: claude --help + code.claude.com/docs/en/model-config. Source: feature-forge handoff §6.",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md",
+        "docs/SPEC-BACKLOG-TOOL-CONTRACT.md",
+        "schemas/backlog.schema.json"
+      ]
+    },
+    {
+      "id": "004",
+      "type": "feature",
+      "priority": 2,
+      "title": "Add config-root product guard (specific dashboard message + Settings validation)",
+      "description": "When the configured rootDirectory does not exist, discoverProjects returns a clear error `Root directory does not exist: <path>` (packages/core/src/discovery.ts:28-47), but the web dashboard renders it as a generic \"Failed to load projects\" and the Settings page does no validation. (1) Dashboard: in the error branch of packages/web/src/client/routes/projects/index.tsx, detect the root-not-found error (by the code/message from the /api/projects 500 response) and show a targeted message naming the path — e.g. \"Root directory `<path>` does not exist — set it in Settings.\" with a link to /settings — instead of the generic box. (2) Settings: in packages/web/src/client/routes/settings.tsx, add pre-save validation of the entered rootDirectory — warn (and/or block save) with a clear message when the path doesn't exist. The server already knows existence via discovery; reuse the existing discovery error, or add a small read-only endpoint (e.g. GET /api/settings/validate-root?path=...) under packages/web/src/server/routes that stat-checks the path and returns { exists: boolean }. Keep any new endpoint read-only and path-sandboxed consistently with existing routes (127.0.0.1 only; X-Rauf-Request header rules apply to mutations, not this GET).",
+      "acceptanceCriteria": [
+        "A nonexistent rootDirectory yields a specific dashboard message naming the path plus a Settings link (not the generic \"Failed to load projects\")",
+        "The Settings page warns when the entered rootDirectory does not exist, before/at save",
+        "Any new endpoint is read-only and validates/sandboxes its input",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T04:35:52.071Z",
+      "notes": "The local ~/.rauf/config.json value itself is fixed manually outside this item; this is the in-product guard so future bad-root cases are clear.",
+      "estimatedIterations": 2
+    },
+    {
+      "id": "005",
+      "type": "bugfix",
+      "priority": 2,
+      "title": "Purge user-facing 'ralph' from the web UI (theme key + command examples)",
+      "description": "Remove pre-rename user-facing `ralph` strings from the web app. (1) Theme key: packages/web/src/client/components/ThemeProvider.tsx line ~13 defines STORAGE_KEY = \"ralph-theme\" (read ~21, write ~44). Change to \"rauf-theme\" and add a one-time migration: on initial read, if \"rauf-theme\" is absent but \"ralph-theme\" is present and valid, adopt that value, write it to \"rauf-theme\", and remove \"ralph-theme\" — so existing users keep their theme. (2) Fix wrong/branded UI strings: packages/web/src/client/routes/install.tsx (~644 \"Add ralph runtime files…\", ~710 \"Smart-merged ralph section\") and packages/web/src/client/routes/init.tsx (~760, ~1085 `ralph backlog add`, ~1116 `ralph loop run`, ~1233) — change `ralph backlog add` -> `rauf backlog add`, `ralph loop run` -> `rauf loop run`, and \"ralph section/infrastructure/runtime files\" -> \"rauf …\". The command examples are currently WRONG (there is no `ralph` command). Do NOT change internal/historical literals: .rauf.json artifactHashes keys, .claude-plugin/plugin.json keywords, archived *-ralph.log filenames.",
+      "acceptanceCriteria": [
+        "ThemeProvider uses \"rauf-theme\" and migrates an existing \"ralph-theme\" value (a seeded ralph-theme is adopted into rauf-theme and the old key removed)",
+        "Command examples in install.tsx/init.tsx read `rauf backlog add` / `rauf loop run`",
+        "`grep -ri ralph packages/web/src` shows no user-facing UI text or command strings (internal identifiers, if any, excluded)",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T04:42:25.757Z",
+      "notes": "Migration matters — existing users have their theme under ralph-theme in localStorage.",
+      "estimatedIterations": 1
+    },
+    {
+      "id": "006",
+      "type": "chore",
+      "priority": 3,
+      "title": "Add a favicon to the web dashboard (dev + compiled binary)",
+      "description": "The web dashboard serves no favicon (404 on /favicon.ico). Add one that works in dev (Vite) and in the compiled binary (embedded assets). (1) Create packages/web/public/favicon.svg — adapt packages/docs/public/favicon.svg into a simple rauf mark (a clean loop/recycle glyph is fine; keep it a small self-contained SVG). (2) Add `publicDir: \"public\"` to packages/web/vite.config.ts so Vite serves it in dev and copies it into build/ on `vite build`. (3) Add `<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\" />` to the <head> of packages/web/index.html. (4) Confirm getAssetMimeType (packages/web/src/server/…) returns image/svg+xml for .svg so the Hono server serves the embedded favicon; the embedded-assets generator (scripts/generate-embedded-assets.ts) auto-collects whatever is in build/, so verify favicon.svg is picked up (no generator change should be needed).",
+      "acceptanceCriteria": [
+        "/favicon.svg returns 200 with content-type image/svg+xml in dev (pnpm dev)",
+        "/favicon.svg is served by the compiled binary (pnpm compile, then run the server) — i.e. it is embedded",
+        "index.html links the favicon",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T05:05:08.344Z",
+      "estimatedIterations": 1
+    },
+    {
+      "id": "007",
+      "type": "chore",
+      "priority": 2,
+      "title": "Document NDJSON events + status --json as a versioned machine contract",
+      "description": "Elevate rauf's machine-observation surfaces to a documented, versioned contract. In docs/SPEC-BACKLOG-TOOL-CONTRACT.md (Part A is the STABLE contract: sections A.1–A.6, A.5 = versioning), add a new Part-A section (e.g. A.7 \"Machine-observation surfaces (versioned)\") documenting, as a promise downstream supervisors may rely on: (1) the `loop run … --ndjson` event vocabulary — the LoopEvent `type` set and base fields { type, timestamp, projectPath } (packages/core/src/schemas.ts:552-576 and :404-407), with payloads for the consumer-critical events item_completed, item_blocked, needs_human, signal_parsed, loop_completed, loop_error, loop_cancelled, llm_stuck_warning; and the two gotchas EXPLICITLY: signal_parsed.signal collapses review->done (runner.ts:607), and a circuit-breaker halt is emitted as loop_error (no distinct circuit_breaker type, runner.ts:1173). State an additive-only / versioned compatibility promise anchored to A.5. (2) `status … --json` DerivedStatus (schemas.ts:263-276) as the canonical status surface — loopState enum, backlogSummary fields (and that blocked vs needsHuman vs deferred are distinct), lock, and the exit-code table (RUNNING->1, PAUSED_HUMAN->2, LIMIT_REACHED->3, else 0). (3) The machine-vs-human distinction: --ndjson and status --json are MACHINE surfaces; `loop follow`, `log --follow`, and rauf.log are HUMAN-formatted and must not be parsed programmatically. Cross-reference from docs/SPEC-CLI.md (the --ndjson / status --json verbs) and docs/SCHEMAS.md (which holds the shapes) to this new section as the source of truth; keep the shapes in SCHEMAS, the promise here. Event/field/enum names must match schemas.ts exactly.",
+      "acceptanceCriteria": [
+        "SPEC-BACKLOG-TOOL-CONTRACT.md has a new Part-A section documenting the NDJSON event vocabulary (with the review->done and circuit-breaker->loop_error gotchas), DerivedStatus + the exit-code table, and the machine-vs-human surface rule",
+        "Event/field/enum names in the doc match packages/core/src/schemas.ts exactly",
+        "docs/SPEC-CLI.md and docs/SCHEMAS.md cross-reference the new section",
+        "Docs build clean: `bash scripts/setup-docs.sh && pnpm --filter @rauf/docs build`, and `git status` is clean after the build",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T04:48:56.029Z",
+      "notes": "Pure docs. These surfaces already exist; this makes them a contract feature-forge can rely on. Source: feature-forge handoff §1, §2, §5-docs.",
+      "estimatedIterations": 1,
+      "specReferences": [
+        "docs/SPEC-BACKLOG-TOOL-CONTRACT.md",
+        "docs/SCHEMAS.md",
+        "docs/SPEC-CLI.md"
+      ]
+    },
+    {
+      "id": "008",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add `loop run --pause-on-needs-human` halt mode (+ loop_paused event + exit code)",
+      "description": "Add an opt-in run mode that halts the loop when an item emits RAUF_NEEDS_HUMAN, so a supervising session can detect the pause. Default behavior MUST be unchanged (today the runner sets the item aside as blocked+needsHuman and keeps running — packages/loop/src/runner.ts:679-701). Steps: (1) Add a `--pause-on-needs-human` boolean flag to `rauf loop run`; thread it through handleLoopRun + LoopStartOptions (packages/cli/src/loop-commands.ts) into LoopRunner options. (2) In the needs_human handler (runner.ts:679-701): when the flag is set, after setting the item aside, HALT — modeled on haltForUsageLimit (runner.ts:1186-1196): writeState(\"paused_human\", null) (clear currentItem), write the pause/DONE marker, and return \"exit\" so the loop stops; when the flag is off, keep today's behavior. (3) Add a new LoopEvent `loop_paused { reason: \"needs_human\", itemId }` to the discriminated union in packages/core/src/schemas.ts AND to the --ndjson subscription list in loop-commands.ts; emit the existing needs_human event then loop_paused at the halt. (4) Add a distinct non-zero exit code for \"halted for human input\" to the ExitCode map (packages/cli/src/commands.ts:91-98) and return it from handleLoopRun when the loop halts in paused_human (status already exits 2 for PAUSED_HUMAN). Add unit tests for the pause-vs-keep-going branch, the loop_paused emission, and the exit code.",
+      "acceptanceCriteria": [
+        "`loop run --pause-on-needs-human` halts in state paused_human on the first needs-human item; WITHOUT the flag, behavior is unchanged (loop keeps running other items)",
+        "A `loop_paused {reason:\"needs_human\", itemId}` NDJSON event is emitted at the halt; the needs_human event is still emitted",
+        "handleLoopRun returns a distinct non-zero exit code on a needs-human halt",
+        "Unit tests cover the branch, the loop_paused event, and the exit code",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T04:10:57.672Z",
+      "notes": "Template = haltForUsageLimit (runner.ts:1186-1196). paused_human already in the state enum (schemas.ts:165) and maps to status exit 2. Document loop_paused/flag/exit-code in item 010. Source: feature-forge handoff §3.",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
+    },
+    {
+      "id": "009",
+      "type": "feature",
+      "priority": 1,
+      "title": "Add `resume --answer <id> \"<text>\"` injecting the answer into the item",
+      "description": "Let a supervisor inject a human's answer into a paused item and resume it. Builds on item 008's paused_human halt. Steps: (1) Extend BacklogItemSchema (packages/core/src/schemas.ts:33-67) with optional `humanAnswer?: string`; if schemas/backlog.schema.json is generated from zod, regenerate via pnpm generate:schemas. (2) Add \"paused_human\" to RESUMABLE_RAW_STATUSES (packages/cli/src/resume-commands.ts:129-136). (3) Add a repeatable `--answer <itemId> \"<text>\"` option to `rauf resume` (handleResume, ~200-372). Before the reconcile/recover step, for each answer pair call updateItem(itemId, { humanAnswer: <text>, status: \"pending\", needsHuman: false, blockedReason: null }) so the item re-queues to pending with its answer attached. (4) Thread the answer into the prompt: in buildPrompt (packages/loop/src/prompt-builder.ts:147-244) add a section immediately AFTER the \"Your Current Task\" section and BEFORE the backlog summary: `## Human's Answer to Your Previous Question\\n\\n<humanAnswer>` — only when item.humanAnswer is set. (5) Auto-clear humanAnswer when the item completes (in the item_completed path in runner.ts where updateItem sets status done) so a later unrelated retry never re-injects a stale answer. Add unit tests for --answer parsing + item mutation, the prompt-builder section presence/absence, and auto-clear on completion.",
+      "acceptanceCriteria": [
+        "`rauf resume . --answer 003 \"use schema v5\"` re-queues item 003 to pending with humanAnswer set and needsHuman cleared",
+        "buildPrompt includes the \"Human's Answer\" section iff item.humanAnswer is set, positioned after the task and before the backlog summary",
+        "humanAnswer is cleared when the item completes",
+        "Unit tests cover --answer parsing, the item mutation, the prompt section, and auto-clear",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T04:21:11.777Z",
+      "dependsOn": [
+        "008"
+      ],
+      "notes": "Answer-persistence semantics: clear-on-done (not a history field). resume is generic over RESUMABLE_RAW_STATUSES; --answer mutation happens before reconcile/recover. Source: feature-forge handoff §3.",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "docs/SPEC-CLI.md"
+      ]
+    },
+    {
+      "id": "010",
+      "type": "test",
+      "priority": 2,
+      "title": "End-to-end sandbox scenario + docs for pause/resume-on-needs-human",
+      "description": "Add an end-to-end test-sandbox scenario for pause->resume-with-answer, and document the new surfaces. (1) test-sandbox: add a scenario where the mock claude script emits RAUF_NEEDS_HUMAN for an item (see test-sandbox/README.md for how scenarios + mock-claude work). Assert that `rauf loop run <sandbox> --pause-on-needs-human` halts in state paused_human, emits needs_human + loop_paused on the --ndjson stream, and exits the distinct needs-human exit code; then `rauf resume <sandbox> --answer <id> \"answer\"` re-queues the item, the next iteration's prompt contains the \"Human's Answer\" section, the item completes, and humanAnswer is cleared. Wire it into test-sandbox/verify.sh so `bash test-sandbox/verify.sh` exercises it. (2) Docs: document the `--pause-on-needs-human` flag and the `resume --answer` verb in docs/SPEC-CLI.md, and add the loop_paused event + the new exit code to the Part-A machine-surface contract section created in item 007. Note the supervisor pattern: run with `--ndjson --pause-on-needs-human`; on loop_paused/needs_human, gather an answer, call `resume --answer`.",
+      "acceptanceCriteria": [
+        "A new test-sandbox scenario exercises the pause (paused_human + loop_paused + the new exit code) then resume --answer (re-queue, answer-in-prompt, completion, humanAnswer cleared)",
+        "`bash test-sandbox/verify.sh` runs the new scenario and passes",
+        "docs/SPEC-CLI.md documents --pause-on-needs-human and resume --answer; the Part-A contract section documents the loop_paused event and the new exit code",
+        "Verification passes: pnpm test && pnpm typecheck && pnpm lint && pnpm format:check (and docs build clean)"
+      ],
+      "status": "done",
+      "completedAt": "2026-06-12T05:02:25.537Z",
+      "dependsOn": [
+        "007",
+        "008",
+        "009"
+      ],
+      "notes": "Closes the loop: e2e proof + the contract/CLI docs for the feature. Source: feature-forge handoff §3.",
+      "estimatedIterations": 2,
+      "specReferences": [
+        "test-sandbox/README.md",
+        "docs/SPEC-CLI.md"
+      ]
     }
   ]
 }
