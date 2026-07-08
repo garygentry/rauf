@@ -209,6 +209,8 @@ This repository IS a rauf-managed project. The `.rauf/` directory at the repo ro
 
 To start a fresh backlog cycle after the loop finishes (all items `done`), clear and re-populate the backlog with `rauf backlog reset <path> --clear` — **never** by hand-editing `backlog.json` (that loses history and desyncs state). See the `author-backlog` skill's "Resetting a Completed Backlog" section.
 
+This project has exactly one backlog home: `.rauf/`. Do **not** create parallel or nested `.rauf/`-style dirs (`subdir/.rauf/`, `.rauf-foo/`) for side work — they become noise in `rauf status`/root selection and are never cleaned up. Reset and reuse the main backlog, or (for a genuine parallel feature under a pipeline) use the `--backlog <specsDir>/<feature>/` convention. See the `author-backlog` skill's "Target Backlog Directory" section.
+
 ## Publishing & Releasing
 
 Two separate, **manual, owner-gated** flows — a routine merge to `main` never publishes anything. Both are **PR-based**: like all changes, a release reaches `main` via a PR (see [Branching & merging](#branching--merging)), and only the owner cuts the actual release.

@@ -27,12 +27,37 @@ The full machine contract — CLI flags, exit codes, JSON shape, schema source r
 
 ## Target Backlog Directory
 
-Decide where the backlog goes before writing anything:
+**There are exactly two valid backlog locations. Do not invent a third.**
 
-- Default (ad-hoc): `<project>/.rauf/backlog.json`.
-- Feature/multi-backlog: the caller supplies a `--backlog <dir>` directory; write `<backlogDir>/backlog.json`. Specs may live in a separate `--specs-dir <dir>`.
+1. **Repo-wide / ad-hoc → `<project>/.rauf/backlog.json`** — the project's one and only state
+   directory. This is where you author when working the repo on your own initiative (no
+   pipeline caller). Even for a "separate" or "temporary" batch of work, this is still the home:
+   one project, one backlog, reused across cycles.
+2. **Feature pipeline / multi-backlog → a caller-supplied `--backlog <specsDir>/<feature>/`** —
+   a feature-scoped directory under the specs tree, its state dir derived automatically as
+   `<backlogDir>/.rauf/`. This is legitimate **only when a caller/pipeline tool (e.g.
+   feature-forge) passes the dir**. Write `<backlogDir>/backlog.json`; specs may live in a
+   separate `--specs-dir <dir>`.
 
-If the caller passed an explicit backlog dir, honor it. Otherwise default to `<project>/.rauf/`.
+**Do NOT create a bespoke or nested `.rauf/`-style directory** — e.g. `subdir/.rauf/`,
+`.rauf-experiment/`, `.rauf-foo/`, or a second top-level backlog — to hold "a separate batch of
+work." `rauf` recursively discovers every directory containing a `backlog.json`, so each stray
+backlog shows up as a candidate in `rauf status` disambiguation and the web root selector,
+cluttering the list and leaving the next reader unable to tell which backlog is live. It is
+never archived or cleaned by the normal lifecycle.
+
+**If you feel the urge to make a new dir, redirect it:**
+
+- _Want to run a focused/temporary batch that isn't the current backlog?_ → use the main
+  `<project>/.rauf/` backlog. If it's full of `done` items, **reset it first** (see
+  [Resetting a Completed Backlog](#resetting-a-completed-backlog)) — don't fork a new dir to
+  avoid the reset.
+- _Genuinely a parallel feature with its own lifecycle?_ → that's the feature-pipeline case:
+  use `--backlog <specsDir>/<feature>/`, and only when a caller/pipeline drives it. Don't
+  conjure one unprompted.
+
+So: if a pipeline **caller** passed an explicit `--backlog` dir, honor it. Otherwise default to
+`<project>/.rauf/` — never substitute a directory of your own making.
 
 ## Before You Start
 
@@ -427,6 +452,7 @@ With `--json`, the CLI emits `{ valid, findings[] }` — parse `findings` to dri
 - [ ] IDs are sequential and zero-padded; all statuses `"pending"`, all `completedAt` `null`.
 - [ ] Only valid enums: `type` in `bug|bugfix|refactor|feature|chore|test`, `status` in `pending|in_progress|done|blocked`.
 - [ ] `project` and `description` accurately describe the work.
+- [ ] Backlog is at one of the two sanctioned locations (`<project>/.rauf/` or a caller-supplied `--backlog <specsDir>/<feature>/`) — no bespoke or nested `.rauf/` dir was invented.
 - [ ] If a completed backlog existed, it was **reset via `rauf backlog reset`** (not hand-edited) before authoring.
 - [ ] `rauf backlog validate` exits `0`.
 
