@@ -312,6 +312,26 @@ describe("scanBacklogRoots", () => {
     expect(result.value.map((r) => r.root)).toEqual([".rauf", "specs/auth"]);
     p.cleanup();
   });
+
+  it("skips artifacts/ so template backlogs are not discovered as noise", () => {
+    const p = createMultiRootProject({ roots: [{ path: "specs/auth" }] });
+    // rauf ships template backlogs under artifacts/ (e.g. artifacts/variants/.rauf/);
+    // these must not surface as candidate roots. Covers both a nested `.rauf` root
+    // and a legacy state dir under an `artifacts/` subtree.
+    for (const rel of ["artifacts/variants/.rauf", "artifacts/legacy/.ralph"]) {
+      const dir = path.join(p.projectPath, rel);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "backlog.json"),
+        JSON.stringify({ schemaVersion: "1", project: "x", description: "", items: [] }),
+      );
+    }
+    const result = scanBacklogRoots(p.projectPath);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unexpected");
+    expect(result.value.map((r) => r.root)).toEqual([".rauf", "specs/auth"]);
+    p.cleanup();
+  });
 });
 
 // ─── resolveTarget ───────────────────────────────────────────────
