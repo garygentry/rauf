@@ -32,10 +32,13 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          # Node 24 bundles npm >= 11.6 (Trusted Publishing/OIDC needs >= 11.5.1),
+          # so we can use the bundled npm directly. Do NOT self-upgrade the global
+          # npm in place (`npm i -g npm@latest`): that upgrade prunes npm's bundled
+          # `sigstore` dependency, breaking `npm publish --provenance` with
+          # "Cannot find module 'sigstore'" (observed on the v0.12.0 publish).
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
-      # Trusted publishing (OIDC) requires npm >= 11.5.1; setup-node ships npm 10.x.
-      - run: npm install -g npm@latest
       # OIDC: no token env — npm detects the trusted-publisher OIDC context in Actions.
       - run: npm publish --access public --provenance --tag "$DIST_TAG"
         env:
