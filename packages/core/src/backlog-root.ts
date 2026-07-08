@@ -12,7 +12,14 @@ import type { ActiveLoopEntry } from "./schemas.js";
 export const LOCK_FILENAME = ".loop.lock";
 
 /** Directories to skip during active root scanning */
-export const SCAN_SKIP_DIRS = ["node_modules", ".git", "dist", "build", "coverage"] as const;
+export const SCAN_SKIP_DIRS = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "coverage",
+  "artifacts",
+] as const;
 
 /** State file name (unified constant) */
 export const STATE_FILENAME = "state.json";
@@ -312,7 +319,8 @@ function walkForBacklogs(
  * Scan a project for every backlog root (any directory with a `backlog.json`,
  * directly or as `.rauf/backlog.json`). Returns `--backlog`-ready relative paths,
  * with the default `.rauf` root flagged. Skips: node_modules, .git, dist, build,
- * coverage. Results are sorted with the default root first, then alphabetically.
+ * coverage, artifacts (the last excludes rauf's own template backlogs, matching
+ * `discoverProjects`). Results are sorted with the default root first, then alphabetically.
  *
  * @param projectPath - Absolute path to the project root
  */
