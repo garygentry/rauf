@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Added
+
+- **Loop observability — file-driven loop supervision** (#63). A file-driven
+  contract for supervising a running loop without invoking subprocesses:
+  a health/status derivation over `state.json` + `events.ndjson`, robust
+  backlog-root/target resolution, event-altitude filtering in `follow` /
+  `log --follow`, and a live item feed. Surfaced through `status` and the
+  follow renderers, with a new supervision guide under the generated docs.
+
+### Fixed
+
+- **`scanBacklogRoots` now skips `artifacts/`** (#67), matching
+  `discoverProjects`. Template backlogs shipped under `artifacts/variants/.rauf/`
+  (and a legacy `_archive/artifacts/.ralph/`) no longer surface as candidate
+  roots in `rauf status` disambiguation or the web root selector.
+
+### Docs
+
+- **`author-backlog` skill prescribes reset-before-repopulate** (#65) — the
+  `rauf backlog reset --clear` workflow is now documented where authoring agents
+  look, with a decision tree and a "Resetting a Completed Backlog" section, so a
+  completed cycle is never cleared by hand-editing `backlog.json`.
+- **Sanctioned backlog locations enforced** (#66, #67) — the `author-backlog`
+  skill now names the only two valid backlog locations and forbids stray parallel
+  `.rauf/`-style dirs; the `review-backlog` skill gained a matching structural
+  check and anti-pattern row to flag bespoke locations.
+
 ## 0.11.0
 
 ### Added
