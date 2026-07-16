@@ -6,8 +6,8 @@
 [![Version](https://img.shields.io/github/v/release/garygentry/rauf)](https://github.com/garygentry/rauf/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **Using a coding agent?** Tell it: *"Install rauf in this project — `npm i -g @garygentry/rauf`
-> (or `npx @garygentry/rauf`), verify with `rauf version`, then run `rauf install .` here."* It
+> **Using a coding agent?** Tell it: _"Install rauf in this project — `npm i -g @garygentry/rauf`
+> (or `npx @garygentry/rauf`), verify with `rauf version`, then run `rauf install .` here."_ It
 > installs the CLI, wires the per-project loop artifacts, and adds the managed `AGENTS.md`/`CLAUDE.md`
 > block. (Most people reach rauf through [feature-forge](https://github.com/garygentry/feature-forge),
 > whose agent-setup flow installs and wires rauf for you.)
