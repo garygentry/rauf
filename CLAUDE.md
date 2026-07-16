@@ -1,5 +1,14 @@
 # Rauf Manager
 
+> **Which task are you here for?** (`AGENTS.md` is a symlink to this file, so this applies to both.)
+> This file is for agents **contributing to the rauf repository itself** — building the CLI,
+> loop, and web packages, running the tests, opening PRs against this repo.
+> If you were asked to **install or use rauf in another project** (run the loop, author a
+> backlog), stop reading this file. Install the CLI and wire it into the project instead:
+> `npm i -g @garygentry/rauf` (or `npx @garygentry/rauf`), then `rauf install .` in the target
+> project — see the [README "Install"](README.md#install) section. Most feature-forge users
+> reach rauf automatically through that pipeline and never need this file.
+
 ## Overview
 
 Rauf Manager is a CLI + web tool for installing, managing, and monitoring rauf autonomous coding loops across local software projects. It provides backlog CRUD, status dashboards, and installation wizards — all backed by a shared `packages/core` library.

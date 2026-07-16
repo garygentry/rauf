@@ -6,6 +6,12 @@
 [![Version](https://img.shields.io/github/v/release/garygentry/rauf)](https://github.com/garygentry/rauf/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+> **Using a coding agent?** Tell it: *"Install rauf in this project — `npm i -g @garygentry/rauf`
+> (or `npx @garygentry/rauf`), verify with `rauf version`, then run `rauf install .` here."* It
+> installs the CLI, wires the per-project loop artifacts, and adds the managed `AGENTS.md`/`CLAUDE.md`
+> block. (Most people reach rauf through [feature-forge](https://github.com/garygentry/feature-forge),
+> whose agent-setup flow installs and wires rauf for you.)
+
 Rauf is a "ralph" runner: it works through a highly structured backlog file one item at a time, gives each item its own fresh agent context, then verifies the result and commits it. You rarely write that backlog by hand. The coding agent usually authors it, using skills that ship with rauf, so you describe what you want and the agent turns it into well-scoped, verifiable items.
 
 Each iteration starts from a clean slate: one item, a focused prompt, and the backlog as read-only context. That fresh-context-per-iteration discipline (the [ralph](https://ghuntley.com/ralph/) pattern) is what keeps long autonomous runs from drifting.
@@ -96,6 +102,15 @@ The quickest way to get `rauf` is from npm, with no clone or build step:
 npm install -g @garygentry/rauf   # the installed command is still `rauf`
 npx @garygentry/rauf status .      # or one-off, no install
 ```
+
+**Verify it's on your PATH** before wiring it into a project:
+
+```bash
+rauf version                       # prints a semver; feature-forge's floor is >= 0.6.0
+```
+
+If `rauf: command not found` after a global install, the npm global bin (or `~/.local/bin` for
+the binary/source paths) isn't on your `PATH` — add it, or fall back to `npx @garygentry/rauf`.
 
 The package is scoped (`@garygentry/rauf`) because the bare `rauf` name is blocked by npm's
 name-similarity filter; the installed command remains `rauf`. The npm launcher fetches the
