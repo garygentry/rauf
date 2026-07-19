@@ -303,6 +303,17 @@ Each criterion is a **verifiable statement** the agent can check. The loop won't
 - "Handles edge cases" — which ones? List them.
 - "Performance is acceptable" — define the threshold.
 
+**Generated artifacts and `--check` freshness gates.** If the project's verify command gates on
+staleness of **generated** artifacts — sub-commands of the shape `<generator> --check` / `--verify`
+/ `:check` that fail when a checked-in generated file is out of date with its source — then an item
+that regenerates **one** such artifact must regenerate **and commit all** the sibling artifacts
+those same `--check` gates depend on. Enumerate the whole gated set from the verify command, not
+just the artifact the item is "about": regenerating `partner-programs` + `analysis` but skipping
+`benchmarks` when the gate runs `build-benchmarks --check` leaves a stale generated file that
+red-gates every commit, even though the code change itself is correct. Spell the full
+regeneration + commit sequence into the item's description/steps and add the verify command as the
+last acceptance criterion so the staleness gate actually runs.
+
 ### `dependsOn` — Execution order constraints
 
 Use `dependsOn` (never `dependencies`). Only add a dependency when there's a genuine technical reason:

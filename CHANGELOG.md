@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Docs
+
+- **`author-backlog` prescribes regenerating the whole `--check`-gated artifact set**
+  (feature-forge #145). When a project's verify command gates on staleness of generated
+  artifacts (`<generator> --check`-style sub-commands), an item that regenerates one gated
+  artifact but omits a sibling passes locally yet red-gates every commit on the stale-generated
+  check. The skill now instructs authors to enumerate the full `--check`-gated set from the verify
+  command and spell the complete regeneration + commit sequence into each affected item (with the
+  verify command as the last acceptance criterion). Companion to feature-forge's forge-verify
+  CHECK-B26.
+
 ## 0.12.0
 
 ### Added
