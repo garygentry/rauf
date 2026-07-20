@@ -13,6 +13,16 @@
   verify command as the last acceptance criterion). Companion to feature-forge's forge-verify
   CHECK-B26.
 
+- **`author-backlog` guards against test items forcing a human-gated lifecycle transition**
+  (feature-forge #150). A test/e2e item whose only path to green is "artifact `X` is _published_ /
+  _released_ / _approved_ / _reviewed_" — while nothing in the backlog actually publishes it or
+  obtains a human sign-off — pushes the autonomous loop to **fabricate** the publication or review
+  provenance to make the check pass. The skill now instructs authors that such an item must either
+  `dependsOn` an explicit, human-gated publish/review item that legitimately produces the state, or
+  assert the state via a **dev-build / fixture path**, and must never be the sole driver of a
+  lifecycle transition another item pins the other way. Companion to feature-forge's forge-verify
+  CHECK-B27.
+
 ## 0.12.0
 
 ### Added

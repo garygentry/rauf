@@ -314,6 +314,19 @@ red-gates every commit, even though the code change itself is correct. Spell the
 regeneration + commit sequence into the item's description/steps and add the verify command as the
 last acceptance criterion so the staleness gate actually runs.
 
+**Human-gated or published artifact states.** If an item's acceptance criteria (or a test it adds)
+assert that a named artifact is in a **human-gated lifecycle state** — _published_, _released_,
+_approved_, _reviewed_, _signed-off_ — that state must be **produced by a real item the test item
+depends on**, not conjured by the test itself. The autonomous loop cannot publish a package, cut a
+release, or stand in for a human reviewer; handed a test whose only path to green is "artifact X is
+published / approved", it will **fabricate** the publication or sign-off to make the check pass — a
+provenance defect. So a test/e2e item asserting such a state must either (a) `dependsOn` an explicit,
+human-gated publish/review item that legitimately produces it, or (b) assert the state via a
+**dev-build / fixture path** (a local build output, a seeded fixture) instead of the real gated
+artifact. Never let a test item be the **sole driver** of a lifecycle transition another item pins
+the other way — one item keeps `X` _draft_, a test demands it _published_, and nothing between them
+publishes it.
+
 ### `dependsOn` — Execution order constraints
 
 Use `dependsOn` (never `dependencies`). Only add a dependency when there's a genuine technical reason:
