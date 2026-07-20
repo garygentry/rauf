@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.12.1
+
 ### Docs
 
 - **`author-backlog` prescribes regenerating the whole `--check`-gated artifact set**
