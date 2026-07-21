@@ -24,8 +24,12 @@ import { registerAgent } from "./registry.js";
  *    output. Added below and argv-verified (reaches the auth wall, not an "unknown option"
  *    error). `--force` stays as the auto-approve flag. End-to-end completion unconfirmed until
  *    run with `cursor-agent login` / `CURSOR_API_KEY`.
+ *  - `pi` (Pi 0.80.10) — VERIFIED end-to-end for the sentinel shape: `pi -p --approve
+ *    --no-session --no-tools "Reply with exactly RAUF_DONE"` exits 0 and prints exactly
+ *    `RAUF_DONE`. The production preset intentionally omits `--no-tools` so loop iterations can
+ *    edit files.
  *
- * None of the three exhibit the codex failure mode (argv rejection / interactive hang). Validated
+ * None of the presets exhibit the codex failure mode (argv rejection / interactive hang). Validated
  * against the real binaries, not docs or literal-asserting unit tests (the blind spot that shipped
  * the broken codex loop in 0.9.0). Re-verify gemini/cursor end-to-end when credentials are present.
  *
@@ -62,6 +66,17 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     // `--print` is the headless/non-interactive trigger (prints responses to stdout for scripts);
     // `--force` auto-approves tool calls. Verified against cursor-agent 2026.06.26 (2026-06-27).
     nonInteractive: ["--print", "--force"],
+    modelFlag: (m) => ["--model", m],
+  },
+  {
+    id: "pi",
+    displayName: "Pi",
+    binary: "pi",
+    promptDelivery: "arg",
+    // `-p` is the print-mode trigger. Keep `--no-tools` out of the production preset: loop
+    // iterations need tools to edit files. Sentinel-only real smoke may add --no-tools externally.
+    buildArgs: () => ["-p"],
+    nonInteractive: ["--approve", "--no-session"],
     modelFlag: (m) => ["--model", m],
   },
 ];

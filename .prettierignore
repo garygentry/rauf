@@ -10,3 +10,4 @@ pnpm-lock.yaml
 schemas
 specs
 .codex-plugin
+adapters/pi

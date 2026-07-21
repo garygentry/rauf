@@ -1,0 +1,16 @@
+{
+  "name": "rauf-pi-adapter",
+  "private": true,
+  "version": "0.12.1",
+  "description": "Generated Pi skill bundle for rauf autonomous coding loops",
+  "keywords": [
+    "pi-package",
+    "rauf",
+    "agent-skills"
+  ],
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}
