@@ -24,10 +24,17 @@ import { registerAgent } from "./registry.js";
  *    output. Added below and argv-verified (reaches the auth wall, not an "unknown option"
  *    error). `--force` stays as the auto-approve flag. End-to-end completion unconfirmed until
  *    run with `cursor-agent login` / `CURSOR_API_KEY`.
- *  - `pi` (Pi 0.80.10) — VERIFIED end-to-end for the sentinel shape: `pi -p --approve
- *    --no-session --no-tools "Reply with exactly RAUF_DONE"` exits 0 and prints exactly
- *    `RAUF_DONE`. The production preset intentionally omits `--no-tools` so loop iterations can
- *    edit files.
+ *  - `pi` (Pi 0.81.1) — VERIFIED end-to-end. Both the sentinel shape (`pi -p --approve
+ *    --no-session --no-tools "Reply with exactly RAUF_DONE"` exits 0, prints exactly `RAUF_DONE`)
+ *    AND the production shape with tools enabled (`pi -p --approve --no-session "Create a file …
+ *    then reply RAUF_DONE"` writes the file and exits 0) were run against the real binary. The
+ *    production preset intentionally omits `--no-tools` so loop iterations can edit files.
+ *    CAVEAT — `--model <value>` is a FUZZY pattern that Pi resolves across ALL configured
+ *    providers, not a literal id: a bare name like `sonnet-4.6` can silently route to whichever
+ *    provider matches (observed: `github-copilot`) and fail on missing credentials rather than
+ *    erroring on an unknown model. Forward a provider-qualified pattern (`openai-codex/gpt-5.4`)
+ *    for deterministic selection, or run Claude-authored backlogs with `--agent pi --no-model` so
+ *    Claude-only aliases are never forwarded to Pi.
  *
  * None of the presets exhibit the codex failure mode (argv rejection / interactive hang). Validated
  * against the real binaries, not docs or literal-asserting unit tests (the blind spot that shipped

@@ -64,14 +64,14 @@ Rauf spawns a coding-agent CLI each iteration. It defaults to and is optimized f
 
 > **Honest testing state.** We are candid about how far each agent's invocation is actually verified against its real CLI — not just against rauf's unit tests. A preset whose flags only pass a literal-asserting unit test can still be rejected by the real binary (this is exactly how the Codex loop shipped broken in 0.9.0, fixed in 0.10.0). Current state:
 >
-> | Agent           | Adapter                              | Verified against the real CLI                                                                                                       |
-> | --------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-> | **Claude Code** | native (default)                     | ✅ Primary target — exercised continuously                                                                                          |
-> | **Codex**       | dedicated provider + JSONL telemetry | ✅ End-to-end (codex-cli 0.141)                                                                                                     |
-> | **Copilot**     | preset                               | ✅ End-to-end — runs headless and emits output (copilot 1.0.65)                                                                     |
-> | **Gemini**      | preset                               | ⚠️ Argv verified to enter headless mode; full run-to-completion not yet confirmed (gemini-cli 0.49)                                 |
-> | **Cursor**      | preset                               | ⚠️ Argv verified (incl. the `--print` headless trigger); full run-to-completion not yet confirmed (cursor-agent 2026.06)            |
-> | **Pi**          | preset                               | ✅ Sentinel end-to-end — `pi -p --approve --no-session` prints parseable output (Pi 0.80.10); production preset keeps tools enabled |
+> | Agent           | Adapter                              | Verified against the real CLI                                                                                                                      |
+> | --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | **Claude Code** | native (default)                     | ✅ Primary target — exercised continuously                                                                                                         |
+> | **Codex**       | dedicated provider + JSONL telemetry | ✅ End-to-end (codex-cli 0.141)                                                                                                                    |
+> | **Copilot**     | preset                               | ✅ End-to-end — runs headless and emits output (copilot 1.0.65)                                                                                    |
+> | **Gemini**      | preset                               | ⚠️ Argv verified to enter headless mode; full run-to-completion not yet confirmed (gemini-cli 0.49)                                                |
+> | **Cursor**      | preset                               | ⚠️ Argv verified (incl. the `--print` headless trigger); full run-to-completion not yet confirmed (cursor-agent 2026.06)                           |
+> | **Pi**          | preset                               | ✅ End-to-end incl. a tool-using run — `pi -p --approve --no-session` writes a file and exits 0 (Pi 0.81.1); production preset keeps tools enabled |
 >
 > "Argv verified" means the real binary accepts the invocation and enters non-interactive/headless mode (no argument rejection, no interactive hang). "End-to-end" additionally means a real run completed and rauf observed the agent's output. The `⚠️` agents need provider credentials to close the last step; their flags are correct, only the authenticated round-trip is unconfirmed. If you hit a spawn or output-capture issue on any agent, please open an issue — that feedback is how these rows move to ✅.
 

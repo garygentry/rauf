@@ -1,5 +1,20 @@
 // @rauf/core — src/state-labels.ts  (shared label map; spec 02 §2 / CANON §4.3)
-import type { LoopStateEnum } from "./schemas.js";
+// NOTE: './schemas.js' is not shipped in this Pi reference bundle; the type(s) it provided are
+// inlined below from their canonical @rauf/core definitions so this file stands alone.
+type LoopStateEnum =
+  | "IDLE"
+  | "RUNNING"
+  | "PAUSED"
+  | "COMPLETE"
+  | "PAUSED_HUMAN"
+  | "ITERATIONS_COMPLETE"
+  | "LIMIT_REACHED"
+  | "ERROR"
+  | "NOT_INSTALLED"
+  | "SLEEPING_LIMIT"
+  | "WEEKLY_LIMIT"
+  | "REVIEWING"
+  | "PAUSED_USAGE_LIMIT";
 
 /** Semantic severity category — surface-agnostic; each consumer maps it to its own palette. */
 export type StateTone = "neutral" | "info" | "success" | "warning" | "danger";

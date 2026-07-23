@@ -16,9 +16,9 @@ describe("preset configs", () => {
     }
   });
 
-  // Real-CLI-verified argv (2026-06-27 and Pi on 2026-07-21) — see the OQ-2 verification block
+  // Real-CLI-verified argv (2026-06-27 and Pi on 2026-07-23) — see the OQ-2 verification block
   // in presets.ts. These literals were checked against the actual binaries (copilot 1.0.65,
-  // gemini 0.49.0, cursor-agent 2026.06.26, pi 0.80.10), not just docs, to avoid the codex-class
+  // gemini 0.49.0, cursor-agent 2026.06.26, pi 0.81.1), not just docs, to avoid the codex-class
   // "literal asserts stay green while the real CLI rejects the argv" blind spot.
   it("gemini: --yolo on stdin, -m <model> (headless via non-TTY stdin)", () => {
     const c = getPresetConfig("gemini")!;

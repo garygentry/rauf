@@ -34,7 +34,7 @@ function readJson(file: string): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>;
 }
 
-function frontmatterKeys(skillMd: string, source: string): string[] {
+export function frontmatterKeys(skillMd: string, source: string): string[] {
   const m = skillMd.match(/^---\n([\s\S]*?)\n---\n/);
   if (!m || m[1] === undefined) {
     throw new Error(`${source}: missing YAML frontmatter (expected leading --- block)`);
@@ -83,6 +83,72 @@ function rewriteCopiedReferenceContent(text: string, extraReferences: Set<string
     extraReferences.add(repoRel);
     return path.basename(repoRel);
   });
+}
+
+const TS_TYPE_IMPORT_RE = /^import\s+type\s*\{\s*([^}]+?)\s*\}\s*from\s*"(\.\/[^"]+)";?[^\n]*$/gm;
+const TS_RELATIVE_IMPORT_RE = /^import\b[^\n]*\bfrom\s*"(\.\/[^"]+)";?[^\n]*$/gm;
+
+/**
+ * Inline the definition of a type that a copied `.ts` reference imported from a sibling core module
+ * NOT shipped in the Pi bundle. Returns `undefined` for any type this generator does not know how to
+ * reconstruct — the caller turns that into a hard error so a new dangling import can never ship
+ * silently. Reconstructions are derived from the copied content itself (never hard-coded literals),
+ * so they cannot drift from the source that `pi:generate` copies.
+ */
+function inlineTypeForReference(name: string, content: string): string | undefined {
+  if (name === "LoopStateEnum") {
+    // Derive the union from STATE_LABELS' own keys (the map is total over the enum), so a new state
+    // added upstream flows through on the next regenerate.
+    const block = content.match(/STATE_LABELS[^=]*=\s*\{([\s\S]*?)\n\};/);
+    if (!block?.[1]) return undefined;
+    const keys = [...block[1].matchAll(/^\s*([A-Z_][A-Z0-9_]*)\s*:/gm)].map((m) => m[1]);
+    if (keys.length === 0) return undefined;
+    return `type LoopStateEnum =\n${keys.map((k) => `  | "${k}"`).join("\n")};`;
+  }
+  return undefined;
+}
+
+/**
+ * Make a copied `.ts` reference self-contained. rauf's canonical `.ts` sources import types from
+ * sibling core modules (e.g. `./schemas.js`) that the bundle does NOT copy, so a verbatim copy would
+ * carry a dangling relative import to a file that is absent beside it. These files ship as READ-ONLY
+ * reference material (no adapter compiles them), so we replace each such `import type` with an inline
+ * reconstruction of the type(s) it provided. Any relative import we cannot fully resolve away is a
+ * hard error — that is the guard against silently shipping a new broken import.
+ */
+export function makeTsReferenceSelfContained(basename: string, content: string): string {
+  const rewritten = content.replace(TS_TYPE_IMPORT_RE, (_full, names: string, spec: string) => {
+    const inlined = names
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((name) => {
+        const decl = inlineTypeForReference(name, content);
+        if (decl === undefined) {
+          throw new Error(
+            `${basename}: copied .ts reference imports type '${name}' from '${spec}', which is not ` +
+              `shipped in the Pi bundle. Teach inlineTypeForReference() in ` +
+              `scripts/build-pi-bundle.ts to reconstruct it before regenerating.`,
+          );
+        }
+        return decl;
+      });
+    return (
+      `// NOTE: '${spec}' is not shipped in this Pi reference bundle; the type(s) it provided are\n` +
+      `// inlined below from their canonical @rauf/core definitions so this file stands alone.\n` +
+      inlined.join("\n")
+    );
+  });
+  // Any remaining relative import points at a sibling the bundle never copies — fail loudly rather
+  // than emit a reference file with a dangling import.
+  const leftover = rewritten.match(TS_RELATIVE_IMPORT_RE);
+  if (leftover) {
+    throw new Error(
+      `${basename}: copied .ts reference has unresolved relative import(s) not shipped in the ` +
+        `bundle: ${leftover.join(" ; ")}. Handle them in scripts/build-pi-bundle.ts.`,
+    );
+  }
+  return rewritten;
 }
 
 function expandRepoReferences(extraReferences: Set<string>): void {
@@ -167,13 +233,14 @@ export function buildBundle(): Map<string, string> {
     }
     expandRepoReferences(extraReferences);
     for (const repoRel of [...extraReferences].sort()) {
-      files.set(
-        path.join("skills", skill.id, piReferencePath(repoRel)),
-        rewriteCopiedReferenceContent(
-          fs.readFileSync(path.join(REPO_ROOT, repoRel), "utf-8"),
-          extraReferences,
-        ),
+      let content = rewriteCopiedReferenceContent(
+        fs.readFileSync(path.join(REPO_ROOT, repoRel), "utf-8"),
+        extraReferences,
       );
+      if (repoRel.endsWith(".ts")) {
+        content = makeTsReferenceSelfContained(path.basename(repoRel), content);
+      }
+      files.set(path.join("skills", skill.id, piReferencePath(repoRel)), content);
     }
     reportRows.push(
       `| \`${skill.id}\` | ${skill.files.size} | ${
