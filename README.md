@@ -54,23 +54,24 @@ See [Multi-Backlog & Multi-Project](https://garygentry.github.io/rauf/guides/mul
 
 ## feature-forge
 
-Rauf is tightly integrated with [feature-forge](https://github.com/garygentry/feature-forge) but does not depend on it. feature-forge is an agent-agnostic spec-and-backlog pipeline that runs on Claude, Codex, Copilot, Cursor, and Gemini. It generates a backlog per feature and hands it to a conforming loop runner; rauf is the default and reference implementation. The two work well together, but rauf runs fine on a hand-rolled or skill-authored backlog without it. See feature-forge's README for the cross-agent install story.
+Rauf is tightly integrated with [feature-forge](https://github.com/garygentry/feature-forge) but does not depend on it. feature-forge is an agent-agnostic spec-and-backlog pipeline that runs on Claude, Codex, Copilot, Cursor, Gemini, and Pi. It generates a backlog per feature and hands it to a conforming loop runner; rauf is the default and reference implementation. The two work well together, but rauf runs fine on a hand-rolled or skill-authored backlog without it. See feature-forge's README for the cross-agent install story.
 
 ---
 
 ## Agents
 
-Rauf spawns a coding-agent CLI each iteration. It defaults to and is optimized for [Claude Code](https://docs.anthropic.com/en/docs/claude-code); other agents are selectable with `--agent <id>` (`codex`, `gemini`, `copilot`, `cursor`).
+Rauf spawns a coding-agent CLI each iteration. It defaults to and is optimized for [Claude Code](https://docs.anthropic.com/en/docs/claude-code); other agents are selectable with `--agent <id>` (`codex`, `gemini`, `copilot`, `cursor`, `pi`). For Pi on Claude-authored backlogs, prefer `rauf loop run <project> --agent pi --no-model` so Claude-only model aliases are not forwarded to Pi.
 
 > **Honest testing state.** We are candid about how far each agent's invocation is actually verified against its real CLI — not just against rauf's unit tests. A preset whose flags only pass a literal-asserting unit test can still be rejected by the real binary (this is exactly how the Codex loop shipped broken in 0.9.0, fixed in 0.10.0). Current state:
 >
-> | Agent           | Adapter                              | Verified against the real CLI                                                                                            |
-> | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-> | **Claude Code** | native (default)                     | ✅ Primary target — exercised continuously                                                                               |
-> | **Codex**       | dedicated provider + JSONL telemetry | ✅ End-to-end (codex-cli 0.141)                                                                                          |
-> | **Copilot**     | preset                               | ✅ End-to-end — runs headless and emits output (copilot 1.0.65)                                                          |
-> | **Gemini**      | preset                               | ⚠️ Argv verified to enter headless mode; full run-to-completion not yet confirmed (gemini-cli 0.49)                      |
-> | **Cursor**      | preset                               | ⚠️ Argv verified (incl. the `--print` headless trigger); full run-to-completion not yet confirmed (cursor-agent 2026.06) |
+> | Agent           | Adapter                              | Verified against the real CLI                                                                                                                      |
+> | --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | **Claude Code** | native (default)                     | ✅ Primary target — exercised continuously                                                                                                         |
+> | **Codex**       | dedicated provider + JSONL telemetry | ✅ End-to-end (codex-cli 0.141)                                                                                                                    |
+> | **Copilot**     | preset                               | ✅ End-to-end — runs headless and emits output (copilot 1.0.65)                                                                                    |
+> | **Gemini**      | preset                               | ⚠️ Argv verified to enter headless mode; full run-to-completion not yet confirmed (gemini-cli 0.49)                                                |
+> | **Cursor**      | preset                               | ⚠️ Argv verified (incl. the `--print` headless trigger); full run-to-completion not yet confirmed (cursor-agent 2026.06)                           |
+> | **Pi**          | preset                               | ✅ End-to-end incl. a tool-using run — `pi -p --approve --no-session` writes a file and exits 0 (Pi 0.81.1); production preset keeps tools enabled |
 >
 > "Argv verified" means the real binary accepts the invocation and enters non-interactive/headless mode (no argument rejection, no interactive hang). "End-to-end" additionally means a real run completed and rauf observed the agent's output. The `⚠️` agents need provider credentials to close the last step; their flags are correct, only the authenticated round-trip is unconfirmed. If you hit a spawn or output-capture issue on any agent, please open an issue — that feedback is how these rows move to ✅.
 
@@ -172,7 +173,25 @@ The same four skills ship as a **Codex plugin** at [`.codex-plugin/`](./.codex-p
 
 rauf also ships two **Codex subagents** — `rauf-backlog-reviewer` and `rauf-loop-driver` — at [`.codex/agents/`](./.codex/agents/), generated from canonical `agents/<name>.md` definitions. They let a Codex session delegate a backlog QA audit or loop supervision to a focused subagent. They are repo-level (available when you run Codex on this repo, or copy them into your project's `.codex/agents/`); `rauf install` does not deploy them.
 
-> Maintainers: never hand-edit `.codex-plugin/` or `.codex/agents/` — edit the canonical `skills/<name>/SKILL.md` / `agents/<name>.md` and run `pnpm codex:generate`.
+### Pi skills (optional)
+
+The same four skills ship as a **Pi package** at [`adapters/pi/`](./adapters/pi/), generated from the canonical `skills/<name>/SKILL.md` sources by `scripts/build-pi-bundle.ts` and guarded by `pnpm pi:check`. The generated bundle rewrites repo-level doc/source references to skill-local `references/*` files so `/skill:author-backlog`, `/skill:review-backlog`, `/skill:drive-rauf-loop`, and `/skill:review-rauf-guidance` work after Pi installs the package.
+
+During development, load it for one run with:
+
+```bash
+pi -e ./adapters/pi
+```
+
+or install it into Pi with:
+
+```bash
+pi install ./adapters/pi
+```
+
+Like the Claude and Codex packages, these skills are an authoring/review convenience — the `rauf` CLI does not require them, and rauf already drives loop iterations under `--agent pi`.
+
+> Maintainers: never hand-edit `.codex-plugin/`, `.codex/agents/`, or `adapters/pi/` — edit the canonical `skills/<name>/SKILL.md` / `agents/<name>.md` and run `pnpm codex:generate` or `pnpm pi:generate`.
 
 ---
 

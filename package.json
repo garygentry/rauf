@@ -8,6 +8,17 @@
     "type": "git",
     "url": "https://github.com/garygentry/rauf.git"
   },
+  "keywords": [
+    "pi-package",
+    "rauf",
+    "autonomous-coding",
+    "agent-skills"
+  ],
+  "pi": {
+    "skills": [
+      "./adapters/pi/skills"
+    ]
+  },
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test && vitest run",
@@ -27,7 +38,9 @@
     "check:docs": "bun run scripts/check-docs.ts",
     "codex:generate": "bun run scripts/build-codex-bundle.ts && bun run scripts/build-codex-agents.ts",
     "codex:check": "bun run scripts/build-codex-bundle.ts --check && bun run scripts/build-codex-agents.ts --check",
-    "gate": "pnpm build && pnpm schema:check && pnpm version:check && pnpm codex:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm check:docs",
+    "pi:generate": "bun run scripts/build-pi-bundle.ts",
+    "pi:check": "bun run scripts/build-pi-bundle.ts --check",
+    "gate": "pnpm build && pnpm schema:check && pnpm version:check && pnpm codex:check && pnpm pi:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm check:docs",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
     "release:prepare": "bun run scripts/release/prepare.ts",
     "rauf": "rauf"

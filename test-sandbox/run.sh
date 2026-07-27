@@ -5,7 +5,7 @@ REPO_ROOT="$(cd "$SANDBOX_DIR/.." && pwd)"
 
 # Usage: run.sh [scenario] [--agent <id>] [--backlog <dir>]
 #   scenario   first positional (default stream-done)
-#   --agent    which mock agent to drive (claude|codex|gemini|copilot|cursor|
+#   --agent    which mock agent to drive (claude|codex|gemini|copilot|cursor|pi|
 #              generic-cli|...); omitted or "claude" = exactly today's path.
 SCENARIO=""
 AGENT="claude"
@@ -45,7 +45,7 @@ fi
 # scenario env, puts the chosen mock binary first on PATH, and runs ONE loop
 # iteration through `rauf loop run ... --agent <id>`. For <agent>=claude (or
 # empty/claude-cli) no --agent flag is passed, so the behavior is exactly today's
-# claude path. All mock binaries (claude, codex, gemini, copilot, cursor-agent,
+# claude path. All mock binaries (claude, codex, gemini, copilot, cursor-agent, pi,
 # mock-generic-agent.sh) live in $SANDBOX_DIR, so putting it first on PATH selects
 # whichever the chosen agent invokes.
 run_agent_scenario() {

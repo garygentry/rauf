@@ -11,15 +11,15 @@ describe("preset configs", () => {
   });
 
   it("still ships the other CLI presets", () => {
-    for (const id of ["gemini", "copilot", "cursor"]) {
+    for (const id of ["gemini", "copilot", "cursor", "pi"]) {
       expect(getPresetConfig(id), `missing preset ${id}`).toBeDefined();
     }
   });
 
-  // Real-CLI-verified argv (2026-06-27) — see the OQ-2 verification block in presets.ts.
-  // These literals were checked against the actual binaries (copilot 1.0.65, gemini 0.49.0,
-  // cursor-agent 2026.06.26), not just docs, to avoid the codex-class "literal asserts stay green
-  // while the real CLI rejects the argv" blind spot.
+  // Real-CLI-verified argv (2026-06-27 and Pi on 2026-07-23) — see the OQ-2 verification block
+  // in presets.ts. These literals were checked against the actual binaries (copilot 1.0.65,
+  // gemini 0.49.0, cursor-agent 2026.06.26, pi 0.81.1), not just docs, to avoid the codex-class
+  // "literal asserts stay green while the real CLI rejects the argv" blind spot.
   it("gemini: --yolo on stdin, -m <model> (headless via non-TTY stdin)", () => {
     const c = getPresetConfig("gemini")!;
     expect(c.binary).toBe("gemini");
@@ -42,6 +42,16 @@ describe("preset configs", () => {
     expect(c.promptDelivery).toBe("arg");
     // --print MUST be present — without it cursor-agent emits no parseable stdout.
     expect(c.nonInteractive).toEqual(["--print", "--force"]);
+    expect(c.modelFlag?.("sonnet-4.6")).toEqual(["--model", "sonnet-4.6"]);
+  });
+
+  it("pi: -p print mode + --approve --no-session, prompt as arg, --model <model>", () => {
+    const c = getPresetConfig("pi")!;
+    expect(c.binary).toBe("pi");
+    expect(c.promptDelivery).toBe("arg");
+    expect(c.buildArgs({})).toEqual(["-p"]);
+    expect(c.nonInteractive).toEqual(["--approve", "--no-session"]);
+    expect(c.nonInteractive).not.toContain("--no-tools");
     expect(c.modelFlag?.("sonnet-4.6")).toEqual(["--model", "sonnet-4.6"]);
   });
 });

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **Pi loop-agent preset** — `rauf loop run <project> --agent pi --no-model` now selects a named
+  Pi CLI provider that invokes `pi -p --approve --no-session` with the prompt as the final argv
+  element and forwards explicit models as `--model <value>`. The production preset keeps tools
+  enabled for loop edits; `--no-tools` remains sentinel-smoke-only.
+- **Generated Pi skill package** — rauf now ships `adapters/pi/` with generated Pi package metadata
+  and the four canonical rauf skills (`author-backlog`, `review-backlog`, `drive-rauf-loop`, and
+  `review-rauf-guidance`). The bundle rewrites repo-level doc/source references to skill-local
+  `references/*` files and is guarded by `pnpm pi:check`.
+
 ## 0.12.1
 
 ### Docs

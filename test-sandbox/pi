@@ -1,0 +1,10 @@
+#!/bin/bash
+# Plain-text mock pi dispatcher. Resolves the scenario like the claude mock
+# (MOCK_AGENT_SCENARIO → MOCK_CLAUDE_SCENARIO → stream-done) but execs it in
+# PLAIN-TEXT mode: the scenario emits human-readable lines + a final-line RAUF_*
+# signal and NO stream-json telemetry. The real Pi preset passes the prompt as
+# the final argv after -p/--approve/--no-session; scenarios that need argv can inspect "$@".
+SCENARIO="${MOCK_AGENT_SCENARIO:-${MOCK_CLAUDE_SCENARIO:-stream-done}}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export MOCK_AGENT_FORMAT=plain
+exec bash "$SCRIPT_DIR/scenarios/${SCENARIO}.sh" "$@"

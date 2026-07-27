@@ -787,7 +787,7 @@ rm -rf "$COMPAT_HOME"
 #     events, skips the Anthropic usage preflight, and emits no token/tool
 #     telemetry — the "telemetry gracefully absent" path (REQ-OBS-02). cursor is
 #     driven via its `cursor-agent` binary but its provider id is "cursor".
-for agent in codex gemini copilot cursor; do
+for agent in codex gemini copilot cursor pi; do
   run_agent_scenario "$agent" "stream-done"
   assert_agent_stream_done "$agent"
 done

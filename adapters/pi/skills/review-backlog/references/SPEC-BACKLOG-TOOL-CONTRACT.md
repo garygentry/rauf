@@ -138,7 +138,7 @@ unreadable file, bad JSON). With `--json` it emits `{ valid, findings[] }`,
 where each finding has `{ severity, code, message, itemId?, path? }`.
 `specReferences` are **project-root-relative** and resolved against the project
 root (so a ref may point inside or outside the specs dir, e.g.
-`docs/SPEC-CORE.md`); a ref that is absolute or escapes the project root is a
+`SPEC-CORE.md`); a ref that is absolute or escapes the project root is a
 `SPEC_PATH_INVALID` error. The existence check runs **only** when `--specs-dir`
 is provided (its presence is the gate, not a resolution base), so the
 repo-wide ad-hoc flow (no `--specs-dir`) is never failed for it.
@@ -973,7 +973,7 @@ const LlmProgressSchema = LoopEventBaseSchema.extend({
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `docs/ARCHITECTURE.md`      | Add provider adapter model diagram; update loop lifecycle to show provider interface; document provider resolution chain |
 | `docs/SCHEMAS.md`           | Update event types; add provider config schemas; add provider field to backlog item and marker options                   |
-| `docs/SPEC-CLI.md`          | Document `--provider` flag on `rauf loop run` (covers `--detached`)                                                      |
+| `SPEC-CLI.md`          | Document `--provider` flag on `rauf loop run` (covers `--detached`)                                                      |
 | `docs/CLAUDE-CODE-TASKS.md` | Reframe as Claude-specific provider notes (not system-wide)                                                              |
 | `CLAUDE.md`                 | Update architectural references                                                                                          |
 

@@ -24,8 +24,19 @@ import { registerAgent } from "./registry.js";
  *    output. Added below and argv-verified (reaches the auth wall, not an "unknown option"
  *    error). `--force` stays as the auto-approve flag. End-to-end completion unconfirmed until
  *    run with `cursor-agent login` / `CURSOR_API_KEY`.
+ *  - `pi` (Pi 0.81.1) — VERIFIED end-to-end. Both the sentinel shape (`pi -p --approve
+ *    --no-session --no-tools "Reply with exactly RAUF_DONE"` exits 0, prints exactly `RAUF_DONE`)
+ *    AND the production shape with tools enabled (`pi -p --approve --no-session "Create a file …
+ *    then reply RAUF_DONE"` writes the file and exits 0) were run against the real binary. The
+ *    production preset intentionally omits `--no-tools` so loop iterations can edit files.
+ *    CAVEAT — `--model <value>` is a FUZZY pattern that Pi resolves across ALL configured
+ *    providers, not a literal id: a bare name like `sonnet-4.6` can silently route to whichever
+ *    provider matches (observed: `github-copilot`) and fail on missing credentials rather than
+ *    erroring on an unknown model. Forward a provider-qualified pattern (`openai-codex/gpt-5.4`)
+ *    for deterministic selection, or run Claude-authored backlogs with `--agent pi --no-model` so
+ *    Claude-only aliases are never forwarded to Pi.
  *
- * None of the three exhibit the codex failure mode (argv rejection / interactive hang). Validated
+ * None of the presets exhibit the codex failure mode (argv rejection / interactive hang). Validated
  * against the real binaries, not docs or literal-asserting unit tests (the blind spot that shipped
  * the broken codex loop in 0.9.0). Re-verify gemini/cursor end-to-end when credentials are present.
  *
@@ -62,6 +73,17 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     // `--print` is the headless/non-interactive trigger (prints responses to stdout for scripts);
     // `--force` auto-approves tool calls. Verified against cursor-agent 2026.06.26 (2026-06-27).
     nonInteractive: ["--print", "--force"],
+    modelFlag: (m) => ["--model", m],
+  },
+  {
+    id: "pi",
+    displayName: "Pi",
+    binary: "pi",
+    promptDelivery: "arg",
+    // `-p` is the print-mode trigger. Keep `--no-tools` out of the production preset: loop
+    // iterations need tools to edit files. Sentinel-only real smoke may add --no-tools externally.
+    buildArgs: () => ["-p"],
+    nonInteractive: ["--approve", "--no-session"],
     modelFlag: (m) => ["--model", m],
   },
 ];
