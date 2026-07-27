@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.13.0
+
 ### Added
 
 - **Pi loop-agent preset** — `rauf loop run <project> --agent pi --no-model` now selects a named

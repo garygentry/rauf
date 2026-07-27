@@ -1,6 +1,6 @@
 {
   "name": "rauf",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "Management tool for rauf autonomous coding loops",
   "private": true,
   "//publish": "The published npm package is the launcher `@garygentry/rauf` in npm-dist/ (a thin binary bootstrapper; bare `rauf` is blocked by npm's similarity filter). This workspace root is NOT published; its version is kept in lockstep (scripts/check-versions.ts + scripts/release/lib.ts) only as the canonical monorepo version.",
