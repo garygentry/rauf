@@ -18,7 +18,8 @@ const CODEX_BINARY = "codex";
  *    subcommand — it is a TOP-LEVEL flag — so the previous preset argv
  *    (`codex exec … --ask-for-approval never`) fails to parse (exit 2) and the loop never spawns.
  *    This provider builds `codex --ask-for-approval never exec [--json] --sandbox workspace-write
- *    [--model <m>] <prompt>`, validated end-to-end against codex 0.141.0.
+ *    [--model <m>] -` and delivers the prompt on stdin. Stdin avoids the per-argument OS limit
+ *    that rejects large backlog/spec prompts with `E2BIG` before Codex can start.
  * 2. **JSONL telemetry.** In `stream-json` mode it adds `--json` and parses the JSON Lines event
  *    stream ({@link CodexStreamParser}) into the runner's `tool_start`/`tool_end`/`token_update`
  *    events and a reconstructed final message — telemetry the generic plain-text `CliAgent`
@@ -32,19 +33,19 @@ export class CodexCliProvider implements LLMProvider {
   readonly displayName = "Codex CLI";
 
   /** Build the argv. Global flags (`--ask-for-approval`) MUST precede the `exec` subcommand. */
-  private buildArgv(prompt: string, options: ExecuteOptions): string[] {
+  private buildArgv(options: ExecuteOptions): string[] {
     const stream = options.outputFormat === "stream-json";
     const argv = ["--ask-for-approval", "never", "exec"];
     if (stream) argv.push("--json");
     argv.push("--sandbox", "workspace-write");
     if (options.model) argv.push("--model", options.model);
-    argv.push(prompt); // prompt delivered as the trailing positional arg
+    argv.push("-"); // explicit stdin prompt; never place unbounded prompt text in argv
     return argv;
   }
 
   async execute(prompt: string, options: ExecuteOptions): Promise<Result<ExecutionResult>> {
     const stream = options.outputFormat === "stream-json";
-    const argv = this.buildArgv(prompt, options);
+    const argv = this.buildArgv(options);
 
     // stream-json: line-split stdout into the JSONL parser, firing onStreamEvent in real time.
     let parser: CodexStreamParser | undefined;
@@ -66,8 +67,8 @@ export class CodexCliProvider implements LLMProvider {
       timeoutMs: options.timeoutMinutes * 60 * 1000,
       signal: options.signal,
       ...(options.env ? { env: options.env } : {}),
-      // Close stdin: `codex exec` otherwise blocks "Reading additional input from stdin…".
-      stdin: "",
+      // Codex accepts `-` as the explicit stdin prompt. This avoids argv's per-argument size limit.
+      stdin: prompt,
       ...(parser
         ? {
             onStdout: (chunk: Buffer) => {

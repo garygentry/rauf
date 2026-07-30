@@ -54,8 +54,10 @@ describe("CodexCliProvider", () => {
       "workspace-write",
       "--model",
       "gpt-5-codex",
-      "the prompt",
+      "-",
     ]);
+    const [, , spawnOptions] = mockSpawn.mock.calls[0]!;
+    expect(spawnOptions?.stdin).toBe("the prompt");
     // The broken (post-exec) approval placement must never reappear.
     const execIdx = (args as string[]).indexOf("exec");
     expect((args as string[]).indexOf("--ask-for-approval")).toBeLessThan(execIdx);
@@ -72,8 +74,21 @@ describe("CodexCliProvider", () => {
       "exec",
       "--sandbox",
       "workspace-write",
-      "p",
+      "-",
     ]);
+    const [, , spawnOptions] = mockSpawn.mock.calls[0]!;
+    expect(spawnOptions?.stdin).toBe("p");
+  });
+
+  it("keeps large prompts out of argv and delivers them on stdin", async () => {
+    const prompt = "x".repeat(256 * 1024);
+    const p = new CodexCliProvider();
+    await p.execute(prompt, { timeoutMinutes: 1 });
+
+    const [, args, spawnOptions] = mockSpawn.mock.calls[0]!;
+    expect((args as string[]).includes(prompt)).toBe(false);
+    expect(args.at(-1)).toBe("-");
+    expect(spawnOptions?.stdin).toBe(prompt);
   });
 
   it("parses streamed JSONL into events and a reconstructed final message", async () => {
