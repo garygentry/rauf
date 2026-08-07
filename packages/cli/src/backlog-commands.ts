@@ -985,6 +985,74 @@ export async function handleBacklogUnblock(ctx: CommandContext): Promise<number>
   return ExitCode.SUCCESS;
 }
 
+// ─── handleBacklogAnswer ──────────────────────────────────────────
+//
+// rauf backlog answer <path> <id> "<text>"
+//
+// Apply-only twin of `resume --answer`'s injection block: thread a human
+// answer into a blocked item and re-queue it to pending, with NO relaunch.
+
+export async function handleBacklogAnswer(ctx: CommandContext): Promise<number> {
+  const targetPath = ctx.args[0];
+  const itemId = ctx.args[1];
+  const text = ctx.args[2];
+  if (!targetPath || !itemId || text === undefined) {
+    error("Missing required arguments: <path> <id> <text>");
+    info('Usage: rauf backlog answer <path> <id> "<text>" [--backlog <dir>] [--json]');
+    return ExitCode.USAGE;
+  }
+
+  const resolved = path.resolve(targetPath);
+  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
+  const backlogRootResult = resolveBacklogRoot(resolved, backlogFlag ?? undefined);
+  if (!backlogRootResult.ok) {
+    error(backlogRootResult.error.message);
+    return ExitCode.USAGE;
+  }
+  const pathsResult = resolveBacklogPaths(resolved, backlogRootResult.value);
+  if (!pathsResult.ok) {
+    error(pathsResult.error.message);
+    return ExitCode.ERROR;
+  }
+  const paths = pathsResult.value;
+
+  // Refuse unless the item is currently `blocked` — mirrors unblockItems'
+  // not-blocked guard so `answer` and `unblock` reject identically. Reading
+  // first also yields a precise "not found" vs "not blocked".
+  const backlogResult = readBacklog(paths);
+  if (!backlogResult.ok) {
+    return handleCoreError(backlogResult.error, ctx, resolved);
+  }
+  const item = backlogResult.value.items.find((i) => i.id === itemId);
+  if (!item) {
+    error(`Item not found: ${itemId}`);
+    return ExitCode.USAGE;
+  }
+  if (item.status !== "blocked") {
+    error(`Item ${itemId} is not blocked (status: ${item.status})`);
+    return ExitCode.USAGE;
+  }
+
+  // Same write as resume --answer's injection — but the command returns
+  // after the write; there is no detection/relaunch step.
+  const result = updateItem(paths, itemId, {
+    humanAnswer: text,
+    status: "pending",
+    needsHuman: false,
+    blockedReason: null,
+  });
+  if (!result.ok) {
+    return handleCoreError(result.error, ctx, resolved);
+  }
+
+  if (ctx.globalFlags.json) {
+    outputJson({ answered: itemId, status: "pending" });
+    return ExitCode.SUCCESS;
+  }
+  success(`Answered ${itemId} — re-queued to pending with the answer threaded.`);
+  return ExitCode.SUCCESS;
+}
+
 // ─── Shared helpers ──────────────────────────────────────────────
 
 /** Map core error codes to CLI exit codes and print with suggested fix */

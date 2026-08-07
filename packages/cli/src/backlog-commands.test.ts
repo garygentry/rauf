@@ -11,6 +11,7 @@ import {
   handleBacklogShow,
   handleBacklogRestore,
   handleBacklogReset,
+  handleBacklogAnswer,
   handleBacklogValidate,
 } from "./backlog-commands.js";
 import { ExitCode } from "./commands.js";
@@ -1069,6 +1070,109 @@ describe("error handling and recovery messages", () => {
   });
 });
 
+// ─── handleBacklogAnswer ────────────────────────────────────────────
+
+describe("handleBacklogAnswer", () => {
+  const BLOCKED_ITEMS = [
+    ...SAMPLE_ITEMS,
+    {
+      id: "004",
+      type: "feature",
+      priority: 1,
+      title: "Paused task",
+      description: "A task paused for a human decision",
+      status: "blocked",
+      completedAt: null,
+      acceptanceCriteria: ["Decision applied"],
+      blockedReason: "Needs a design decision on the API shape",
+      needsHuman: true,
+    },
+  ];
+
+  function readItems(projectDir: string): Array<Record<string, unknown>> {
+    const raw = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+    return JSON.parse(raw).items;
+  }
+
+  it("threads the answer into a blocked item and re-queues it to pending (no relaunch)", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, BLOCKED_ITEMS);
+
+    configureOutput({ noColor: true, quiet: false, json: true });
+    const ctx = makeCtx({
+      args: [projectDir, "004", "Use the REST shape"],
+      globalFlags: { json: true, noColor: true, quiet: false, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogAnswer(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    // JSON output is exactly { answered, status: "pending" } — the handler
+    // returns after the write; there is no detection/relaunch step to report.
+    expect(JSON.parse(output.stdout)).toEqual({ answered: "004", status: "pending" });
+
+    const item = readItems(projectDir).find((i) => i.id === "004")!;
+    expect(item.humanAnswer).toBe("Use the REST shape");
+    expect(item.status).toBe("pending");
+    expect(item.needsHuman).toBe(false);
+    expect(item.blockedReason).toBeUndefined();
+  });
+
+  it("refuses a not-blocked item with exit 2 and mutates nothing", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, BLOCKED_ITEMS);
+    const before = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+
+    configureOutput({ noColor: true, quiet: true, json: false });
+    const ctx = makeCtx({
+      args: [projectDir, "002", "An answer for a running item"],
+      globalFlags: { json: false, noColor: true, quiet: true, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogAnswer(ctx);
+      expect(code).toBe(ExitCode.USAGE);
+    });
+
+    expect(output.stderr).toContain("Item 002 is not blocked (status: in_progress)");
+    const after = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+    expect(after).toBe(before);
+  });
+
+  it("refuses a missing item with exit 2 and mutates nothing", async () => {
+    const projectDir = path.join(tmpDir, "project");
+    createProjectWithBacklog(projectDir, BLOCKED_ITEMS);
+    const before = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+
+    configureOutput({ noColor: true, quiet: true, json: false });
+    const ctx = makeCtx({
+      args: [projectDir, "999", "An answer for nobody"],
+      globalFlags: { json: false, noColor: true, quiet: true, root: null },
+    });
+
+    const output = await captureOutput(async () => {
+      const code = await handleBacklogAnswer(ctx);
+      expect(code).toBe(ExitCode.USAGE);
+    });
+
+    expect(output.stderr).toContain("Item not found: 999");
+    const after = fs.readFileSync(path.join(projectDir, ".rauf", "backlog.json"), "utf-8");
+    expect(after).toBe(before);
+  });
+
+  it("returns USAGE when required arguments are missing", async () => {
+    configureOutput({ noColor: true, quiet: true, json: false });
+
+    expect(await handleBacklogAnswer(makeCtx())).toBe(ExitCode.USAGE);
+    expect(await handleBacklogAnswer(makeCtx({ args: ["/some/path"] }))).toBe(ExitCode.USAGE);
+    expect(await handleBacklogAnswer(makeCtx({ args: ["/some/path", "004"] }))).toBe(
+      ExitCode.USAGE,
+    );
+  });
+});
+
 // ─── Command registry integration ──────────────────────────────────
 
 describe("backlog command registry handlers", () => {
@@ -1079,7 +1183,7 @@ describe("backlog command registry handlers", () => {
 
     const subcommands = backlog!.subcommands!;
     const withHandlers = subcommands.filter((sc) => sc.handler !== undefined);
-    expect(withHandlers).toHaveLength(11);
+    expect(withHandlers).toHaveLength(12);
 
     const names = withHandlers.map((sc) => sc.name);
     expect(names).toContain("list");
@@ -1093,6 +1197,7 @@ describe("backlog command registry handlers", () => {
     expect(names).toContain("archive");
     expect(names).toContain("reset");
     expect(names).toContain("unblock");
+    expect(names).toContain("answer");
   });
 });
 
