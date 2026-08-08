@@ -21,6 +21,7 @@ import {
   handleBacklogArchiveDispatch,
   handleBacklogReset,
   handleBacklogUnblock,
+  handleBacklogAnswer,
   handleBacklogValidate,
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
@@ -328,6 +329,14 @@ export const COMMANDS: CommandDef[] = [
         name: "unblock",
         description: "Unblock items for retry",
         handler: handleBacklogUnblock,
+      },
+      {
+        name: "answer",
+        description:
+          "Apply a human answer to a blocked item (no relaunch): thread the answer " +
+          "into the next run and re-queue the item to pending",
+        usage: 'rauf backlog answer <path> <id> "<text>" [--backlog <dir>] [--json]',
+        handler: handleBacklogAnswer,
       },
     ],
   },

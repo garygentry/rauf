@@ -107,6 +107,7 @@ describe("COMMANDS registry", () => {
       "archive",
       "reset",
       "unblock",
+      "answer",
     ]);
   });
 
