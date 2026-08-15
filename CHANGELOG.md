@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.0
+
 ### Added
 
 - **`backlog answer` subcommand** — `rauf backlog answer <path> <id> "<text>"` resolves a
