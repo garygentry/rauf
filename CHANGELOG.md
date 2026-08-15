@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+- **`backlog answer` subcommand** — `rauf backlog answer <path> <id> "<text>"` resolves a
+  `blocked` item the loop parked for human input: records the operator's answer as `humanAnswer`,
+  sets `status` to `pending`, clears `needsHuman`/`blockedReason`, and emits
+  `{answered, status:'pending'}` JSON. Refuses (exit 2, no mutation) when the item is not
+  `blocked` or not found. Does not relaunch the loop — the operator drives the next run.
+  This is the rauf half of feature-forge's `loop-recovery` feature; the forge half shipped in
+  garygentry/feature-forge#204.
+
+### Fixed
+
+- **Codex prompts delivered on stdin instead of argv** — the `CodexCliProvider` previously passed
+  the prompt as a trailing argv positional; large backlog/spec prompts hit the per-argument
+  `E2BIG` OS limit and failed to spawn. Now builds `codex … exec … -` and delivers the prompt
+  on stdin.
+
 ## 0.13.0
 
 ### Added
