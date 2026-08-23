@@ -13,7 +13,7 @@ vi.mock("../process-group.js", () => ({
 import { spawnProcessGroup } from "../process-group.js";
 import { CodexCliProvider, parseCodexProviderConfig, detectCodexCli } from "./codex-cli.js";
 import { createProvider } from "./registry.js";
-import type { ClaudeStreamEvent } from "../stream-parser.js";
+import type { AgentStreamEvent } from "../stream-parser.js";
 
 const mockSpawn = vi.mocked(spawnProcessGroup);
 
@@ -101,7 +101,7 @@ describe("CodexCliProvider", () => {
       '{"type":"item.started","item":{"id":"cmd_1","type":"command_execution","status":"in_progress"}}\n';
     const aborted = { type: "tool_end", blockIndex: 0, toolUseId: "cmd_1", reason: "aborted" };
     const run = async () => {
-      const events: ClaudeStreamEvent[] = [];
+      const events: AgentStreamEvent[] = [];
       const p = new CodexCliProvider();
       const res = p.execute("go", {
         timeoutMinutes: 1,
@@ -158,7 +158,7 @@ describe("CodexCliProvider", () => {
       return ok(PG_OK);
     });
 
-    const events: ClaudeStreamEvent[] = [];
+    const events: AgentStreamEvent[] = [];
     const p = new CodexCliProvider();
     const res = await p.execute("go", {
       timeoutMinutes: 1,
