@@ -135,6 +135,19 @@ describe("CopilotCliProvider", () => {
     ]);
   });
 
+  it("classifies captured failures without claiming a usage preflight", () => {
+    const provider = new CopilotCliProvider();
+
+    expect(provider.checkUsage).toBeUndefined();
+    expect(
+      provider.classifyFailure({
+        ...PG_OK,
+        exitCode: 1,
+        stderr: "Model nonexistent is not supported",
+      }),
+    ).toEqual({ kind: "invalid_model", exitClass: "infra_error" });
+  });
+
   it.each([
     ["timeout", ok({ ...PG_OK, timedOut: true, exitCode: 1 })],
     ["cancellation", ok({ ...PG_OK, exitCode: 1 })],

@@ -9,7 +9,11 @@ import { EVENTS_SCHEMA_VERSION, ok } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
 import { registerAgent, getAgentDescriptors } from "./providers/registry.js";
-import type { LLMProvider, ExecuteOptions } from "./providers/types.js";
+import type {
+  LLMProvider,
+  ExecuteOptions,
+  ProviderFailureClassification,
+} from "./providers/types.js";
 
 // ─── Test Helpers ────────────────────────────────────────────────────
 
@@ -1608,6 +1612,7 @@ fi`,
         stdout?: string;
         exitCode?: number;
         checkUsage?: boolean;
+        failure?: ProviderFailureClassification;
         available?: boolean;
       } = {},
     ): FakeState {
@@ -1639,11 +1644,38 @@ fi`,
           if (opts.checkUsage) {
             provider.checkUsage = async () => ({ limited: false });
           }
+          if (opts.failure) {
+            provider.classifyFailure = () => opts.failure!;
+          }
           return provider;
         },
       });
       return state;
     }
+
+    it("routes a provider-classified failure through the existing infra outcome", async () => {
+      registerFake("classified-infra", {
+        stdout: '{"type":"result"}\n',
+        failure: { kind: "authentication", exitClass: "infra_error" },
+      });
+      setupProject(tmpDir, [pendingItem("001", "Classified")]);
+
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "classified-infra",
+        maxIterations: 5,
+        circuitBreakerThreshold: 1,
+      });
+      await runner.start();
+
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]?.status).toBe("pending");
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("classified-infra failure classified as authentication (infra_error)");
+      expect(log).toContain("Circuit breaker: 1 consecutive infra failures");
+    });
 
     it("does NOT classify a non-checkUsage agent printing 'rate limit' as usage_limited (no error)", async () => {
       // exitCode 1 + 'rate limit' in output: with checkUsage this would trip the

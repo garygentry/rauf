@@ -1,4 +1,5 @@
 import type { Result } from "@rauf/core";
+import type { ExitClass } from "../exit-classifier.js";
 import type { ParsedSignal } from "../signal-parser.js";
 import type { AgentStreamEvent } from "../stream-parser.js";
 
@@ -24,6 +25,9 @@ export interface LLMProvider {
 
   /** Check provider-specific usage/rate limits. Optional — return undefined if unsupported. */
   checkUsage?(): Promise<UsageLimitResult>;
+
+  /** Classify a no-signal process result using provider-specific diagnostics. */
+  classifyFailure?(result: ExecutionResult): ProviderFailureClassification;
 
   /** Validate that required credentials exist and are readable. Called before the loop starts. */
   validateCredentials(): Result<void>;
@@ -69,6 +73,11 @@ export interface ExecutionResult {
   progressEvents?: ProviderProgressEvent[];
   /** Reconstructed text output (set when outputFormat is stream-json) */
   reconstructedText?: string;
+}
+
+export interface ProviderFailureClassification {
+  kind: string;
+  exitClass: Extract<ExitClass, "timeout" | "infra_error" | "genuine_retry">;
 }
 
 export interface ProviderProgressEvent {

@@ -5,9 +5,15 @@ import { ok } from "@rauf/core";
 import type { Result } from "@rauf/core";
 
 import { spawnProcessGroup } from "../process-group.js";
+import { classifyCopilotFailure } from "./copilot-failure-classifier.js";
 import { CopilotJsonlParser } from "./copilot-jsonl-parser.js";
 import { probeBinaryOnPath, registerAgent } from "./registry.js";
-import type { ExecuteOptions, ExecutionResult, LLMProvider } from "./types.js";
+import type {
+  ExecuteOptions,
+  ExecutionResult,
+  LLMProvider,
+  ProviderFailureClassification,
+} from "./types.js";
 
 export const COPILOT_AGENT_ID = "copilot";
 const COPILOT_BINARY = "copilot";
@@ -72,6 +78,10 @@ export class CopilotCliProvider implements LLMProvider {
 
   validateCredentials(): Result<void> {
     return ok(undefined);
+  }
+
+  classifyFailure(result: ExecutionResult): ProviderFailureClassification {
+    return classifyCopilotFailure(result);
   }
 }
 

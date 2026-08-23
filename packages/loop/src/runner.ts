@@ -1033,6 +1033,12 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "review":
       case "none": {
+        if (this.isCancelled()) {
+          updateItem(this.paths, item.id, { status: "pending" });
+          this.currentItemId = null;
+          return "continue";
+        }
+
         // No explicit signal. A missing signal must NEVER, by itself, mark an
         // item blocked — classify WHY the spawn produced no signal and route on
         // that. usage_limited/infra_error are environmental deaths (item stays
@@ -1042,7 +1048,14 @@ export class LoopRunner extends TypedEventEmitter {
         // "usage_limited" verdict there can only be a false substring match on
         // plain-text output, and must never route into the claude OAuth pause
         // path (REQ-USAGE-02). classifyExit/ExitClass themselves stay unchanged.
-        const rawExitClass = classifyExit(execResult.value, parsed);
+        const providerFailure = provider.classifyFailure?.(execResult.value);
+        if (providerFailure) {
+          appendLog(
+            this.paths,
+            `${provider.id} failure classified as ${providerFailure.kind} (${providerFailure.exitClass})`,
+          );
+        }
+        const rawExitClass = providerFailure?.exitClass ?? classifyExit(execResult.value, parsed);
         const exitClass =
           !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
         switch (exitClass) {
