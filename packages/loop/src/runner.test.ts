@@ -1165,17 +1165,35 @@ echo "RAUF_DONE"`,
   });
 
   describe("git commit on RAUF_DONE", () => {
-    it("auto-commits on completed item", async () => {
+    it("commits child-created work exactly once after a done signal", async () => {
       setupProject(tmpDir, [pendingItem("001", "Commit test")]);
-      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+      writeMockClaude(
+        binDir,
+        `printf 'implemented\n' > "${tmpDir}/implemented.txt"
+echo "RAUF_DONE"`,
+      );
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       await runner.start();
 
-      // Check log for commit message
+      const commitSubjects = execSync('git log --format="%s" --grep="^\\[rauf\\] 001:"', {
+        cwd: tmpDir,
+        encoding: "utf-8",
+      })
+        .trim()
+        .split("\n")
+        .filter(Boolean);
+      expect(commitSubjects).toEqual(["[rauf] 001: Commit test"]);
+
+      const committedFiles = execSync("git show --format= --name-only HEAD", {
+        cwd: tmpDir,
+        encoding: "utf-8",
+      });
+      expect(committedFiles).toContain("implemented.txt");
+
       const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
-      // gitCommit may succeed or fail depending on git setup — verify it was attempted
-      expect(logContent).toMatch(/Committed:|Item 001 completed/);
+      expect(logContent).toContain("Item 001 completed");
+      expect(logContent).toContain("Committed:");
     });
   });
 
