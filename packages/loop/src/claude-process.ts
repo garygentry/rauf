@@ -2,7 +2,7 @@ import type { Result } from "@rauf/core";
 import { ok } from "@rauf/core";
 
 import { spawnProcessGroup, GRACE_PERIOD_MS } from "./process-group.js";
-import { StreamParser, type ClaudeStreamEvent } from "./stream-parser.js";
+import { StreamParser, type AgentStreamEvent } from "./stream-parser.js";
 
 // Re-exported for backwards compatibility; the canonical definition lives in process-group.ts.
 export { GRACE_PERIOD_MS };
@@ -12,7 +12,7 @@ export interface SpawnClaudeOptions {
   model?: string;
   signal?: AbortSignal;
   outputFormat?: "text" | "stream-json";
-  onStreamEvent?: (event: ClaudeStreamEvent) => void;
+  onStreamEvent?: (event: AgentStreamEvent) => void;
   /**
    * Environment variable overrides for the child process. When provided, these
    * are merged over the parent `process.env`. When omitted, the child inherits

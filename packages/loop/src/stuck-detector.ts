@@ -22,7 +22,7 @@
 // Pure: every method takes an explicit `now` (ms since epoch) so the thresholds
 // are testable without timers.
 
-import type { ClaudeStreamEvent, ToolEndEvent, ToolStartEvent } from "./stream-parser.js";
+import type { AgentStreamEvent, ToolEndEvent, ToolStartEvent } from "./stream-parser.js";
 
 /** Default LLM-silence threshold with no tool in flight (`.rauf.json` `options.stuckThresholdMs`). */
 export const DEFAULT_STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -100,7 +100,7 @@ export class StuckDetector {
    * tracks tool boundaries. Returns the ended tool's name for a matched
    * `tool_end`, else undefined.
    */
-  onEvent(event: ClaudeStreamEvent, now: number): string | undefined {
+  onEvent(event: AgentStreamEvent, now: number): string | undefined {
     this.lastActivityAt = now;
     this.warned = false;
     if (

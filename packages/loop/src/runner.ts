@@ -61,7 +61,7 @@ import {
 } from "./providers/index.js";
 import type { LLMProvider } from "./providers/types.js";
 import { resolveAgentId } from "./agent-selection.js";
-import type { ClaudeStreamEvent } from "./stream-parser.js";
+import type { AgentStreamEvent } from "./stream-parser.js";
 import {
   DEFAULT_STUCK_THRESHOLD_MS,
   DEFAULT_TOOL_STUCK_THRESHOLD_MS,
@@ -1266,7 +1266,7 @@ export class LoopRunner extends TypedEventEmitter {
       currentToolStartedAt = tool ? new Date(tool.startedAt).toISOString() : null;
     };
 
-    const onStreamEvent = (event: ClaudeStreamEvent): void => {
+    const onStreamEvent = (event: AgentStreamEvent): void => {
       const now = Date.now();
       lastActivityAt = new Date(now).toISOString();
       stuckWarning = false;
