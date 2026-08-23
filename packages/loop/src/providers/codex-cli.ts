@@ -2,7 +2,7 @@ import { ok } from "@rauf/core";
 import type { Result } from "@rauf/core";
 
 import { spawnProcessGroup } from "../process-group.js";
-import type { ClaudeStreamEvent } from "../stream-parser.js";
+import type { AgentStreamEvent } from "../stream-parser.js";
 import { CodexStreamParser } from "./codex-jsonl-parser.js";
 import { registerAgent, probeBinaryOnPath } from "./registry.js";
 import type { LLMProvider, ExecuteOptions, ExecutionResult } from "./types.js";
@@ -51,7 +51,7 @@ export class CodexCliProvider implements LLMProvider {
     let parser: CodexStreamParser | undefined;
     let lineBuf = "";
     if (stream) {
-      parser = new CodexStreamParser((event: ClaudeStreamEvent) => {
+      parser = new CodexStreamParser((event: AgentStreamEvent) => {
         if (options.onStreamEvent) {
           try {
             options.onStreamEvent(event);

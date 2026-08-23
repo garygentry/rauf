@@ -55,7 +55,7 @@ import { createProvider, getAgentDescriptors, detectAgent } from "./providers/in
 import type { LLMProvider } from "./providers/types.js";
 import { resolveAgentId } from "./agent-selection.js";
 import { GENERIC_AGENT_ID } from "./constants.js";
-import type { ClaudeStreamEvent } from "./stream-parser.js";
+import type { AgentStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { hasUsageLimitInText, classifyExit } from "./exit-classifier.js";
@@ -782,7 +782,7 @@ export class LoopRunner extends TypedEventEmitter {
       }
     }, STUCK_CHECK_INTERVAL_MS);
 
-    const onStreamEvent = (event: ClaudeStreamEvent): void => {
+    const onStreamEvent = (event: AgentStreamEvent): void => {
       lastActivityAt = new Date().toISOString();
       stuckWarning = false;
 

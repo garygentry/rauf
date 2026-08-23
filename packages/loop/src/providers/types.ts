@@ -1,6 +1,6 @@
 import type { Result } from "@rauf/core";
 import type { ParsedSignal } from "../signal-parser.js";
-import type { ClaudeStreamEvent } from "../stream-parser.js";
+import type { AgentStreamEvent } from "../stream-parser.js";
 
 /** Uniquely identifies a provider */
 export type ProviderId = string;
@@ -41,7 +41,7 @@ export interface ExecuteOptions {
   /** Output format for CLI providers */
   outputFormat?: "text" | "stream-json";
   /** Callback for real-time stream events (CLI providers with stream-json) */
-  onStreamEvent?: (event: ClaudeStreamEvent) => void;
+  onStreamEvent?: (event: AgentStreamEvent) => void;
   /**
    * Environment overrides for the agent's child process, merged over `process.env`. The runner
    * passes its resolved `childEnv` here so review-hook suppression and other child-session env
