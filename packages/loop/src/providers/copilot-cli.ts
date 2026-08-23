@@ -6,6 +6,7 @@ import type { Result } from "@rauf/core";
 
 import { spawnProcessGroup } from "../process-group.js";
 import { CopilotJsonlParser } from "./copilot-jsonl-parser.js";
+import { probeBinaryOnPath, registerAgent } from "./registry.js";
 import type { ExecuteOptions, ExecutionResult, LLMProvider } from "./types.js";
 
 export const COPILOT_AGENT_ID = "copilot";
@@ -85,3 +86,11 @@ function sanitizedEnvironment(overrides?: Record<string, string>): Record<string
   }
   return environment;
 }
+
+registerAgent({
+  id: COPILOT_AGENT_ID,
+  displayName: "GitHub Copilot CLI",
+  binaryName: COPILOT_BINARY,
+  factory: () => new CopilotCliProvider(),
+  detect: () => probeBinaryOnPath(COPILOT_BINARY),
+});
