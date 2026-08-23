@@ -81,7 +81,7 @@ async function writePromptToSandboxTempFile(prompt: string): Promise<Result<stri
  * Config-driven CLI coding-agent adapter (REQ-ADP-02, tech-spec §3.4, OQ-3).
  *
  * One engine backs every non-claude CLI agent: the named presets
- * (`codex`/`gemini`/`copilot`/`cursor`, see {@link ./presets.ts}) and the configurable
+ * (`gemini`/`cursor`/`pi`, see {@link ./presets.ts}) and the configurable
  * `generic-cli` adapter ({@link ./generic-cli.ts}). All invocation specifics come from the
  * supplied {@link CliAgentConfig}; this class contains no agent-specific knowledge (REQ-SCALE-01).
  *
