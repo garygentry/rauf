@@ -148,6 +148,18 @@ describe("CopilotCliProvider", () => {
     ).toEqual({ kind: "invalid_model", exitClass: "infra_error" });
   });
 
+  it("denies child commit and push without granting unrestricted tools", async () => {
+    await new CopilotCliProvider().execute("implement the item", { timeoutMinutes: 1 });
+
+    const args = mockSpawn.mock.calls[0]![1];
+    expect(args).toContain("--deny-tool=shell(git commit:*)");
+    expect(args).toContain("--deny-tool=shell(git push:*)");
+    expect(args).not.toContain("--allow-all-tools");
+    expect(args).not.toContain("--allow-all-paths");
+    expect(args).not.toContain("--allow-all");
+    expect(args).not.toContain("--yolo");
+  });
+
   it.each([
     ["timeout", ok({ ...PG_OK, timedOut: true, exitCode: 1 })],
     ["cancellation", ok({ ...PG_OK, exitCode: 1 })],
