@@ -214,6 +214,31 @@ afterEach(() => {
 // ─── POST /:id/loop/start ────────────────────────────────────────
 
 describe("POST /:id/loop/start", () => {
+  it("forwards a typed Copilot provider and rejects arbitrary argv fields", async () => {
+    createProject("test-project", [pendingItem]);
+    const manager = getLoopManager();
+    const start = vi.spyOn(manager, "startLoop").mockReturnValue({ ok: true });
+    const app = makeApp(tmpDir);
+
+    const accepted = await app.request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "copilot", ignoreItemModel: true }),
+    });
+    expect(accepted.status).toBe(200);
+    expect(start.mock.calls[0]?.[1]).toMatchObject({
+      provider: "copilot",
+      ignoreItemModel: true,
+    });
+
+    const rejected = await app.request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "copilot", argv: ["--allow-all-tools"] }),
+    });
+    expect(rejected.status).toBe(400);
+  });
+
   it("starts a loop and returns 200", async () => {
     createProject("test-project", [pendingItem]);
     setupMockClaude();
@@ -401,6 +426,26 @@ describe("POST /:id/loop/stop", () => {
 // ─── POST /:id/loop/review ───────────────────────────────────────
 
 describe("POST /:id/loop/review", () => {
+  it("forwards Copilot provider and no-model policy to review", async () => {
+    createProject("test-project", [pendingItem]);
+    const manager = getLoopManager();
+    const start = vi.spyOn(manager, "startReviewLoop").mockReturnValue({ ok: true });
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/review", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "copilot", ignoreItemModel: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(start.mock.calls[0]?.[1]).toMatchObject({
+      provider: "copilot",
+      ignoreItemModel: true,
+      reviewOnly: true,
+    });
+  });
+
   it("starts a review pass and returns 200 {started:true}", async () => {
     createProject("test-project", [pendingItem]);
     setupMockClaude();

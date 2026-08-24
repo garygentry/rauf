@@ -22,6 +22,7 @@ import {
   type DriftReport,
   type ProfileOverrides,
 } from "@rauf/core";
+import { getAgentDescriptors, type AgentDescriptor } from "@rauf/loop";
 
 import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
@@ -41,13 +42,16 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
   const resolved = path.resolve(targetPath);
   const yes = extractBoolFlag(ctx.flags, "yes");
   const gitignoreScripts = extractBoolFlag(ctx.flags, "gitignore-scripts");
+  const agentResult = resolveInstallAgent(ctx);
+  if (!agentResult.ok) return ExitCode.USAGE;
+  const agent = agentResult.agent;
 
   // Extract profile override flags
   const overrides = extractProfileOverrides(ctx);
 
   // Run preflight first for display (unless --yes)
   if (!yes) {
-    const preflightResult = preflight(resolved);
+    const preflightResult = preflight(resolved, agent);
     printPreflightResults(preflightResult.checks);
 
     if (!preflightResult.passed) {
@@ -70,7 +74,9 @@ export async function handleInstall(ctx: CommandContext): Promise<number> {
     profileOverrides: overrides,
     options: {
       gitignoreScripts,
+      ...(agent ? { provider: agent.id } : {}),
     },
+    agent,
   });
 
   if (!result.ok) {
@@ -103,6 +109,9 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
   const description = extractStringFlag(ctx.flags, "description");
   const stack = extractStringFlag(ctx.flags, "stack");
   const seed = extractStringFlag(ctx.flags, "seed");
+  const agentResult = resolveInstallAgent(ctx);
+  if (!agentResult.ok) return ExitCode.USAGE;
+  const agent = agentResult.agent;
 
   // Extract profile override flags
   const overrides = extractProfileOverrides(ctx);
@@ -135,6 +144,8 @@ export async function handleInit(ctx: CommandContext): Promise<number> {
     profileOverrides: overrides,
     seedFile: seed ?? undefined,
     rootDirectory: ctx.globalFlags.root ?? undefined,
+    options: agent ? { provider: agent.id } : undefined,
+    agent,
   });
 
   if (!result.ok) {
@@ -241,6 +252,22 @@ export async function handleUninstall(ctx: CommandContext): Promise<number> {
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────
+
+function resolveInstallAgent(
+  ctx: CommandContext,
+): { ok: true; agent?: AgentDescriptor } | { ok: false } {
+  const id = extractStringFlag(ctx.flags, "agent");
+  if (id === null) return { ok: true };
+
+  const descriptors = getAgentDescriptors();
+  const agent = descriptors.find((descriptor) => descriptor.id === id);
+  if (!agent) {
+    error(`Unknown agent: "${id}"`);
+    info(`Supported agents: ${descriptors.map((descriptor) => descriptor.id).join(", ")}`);
+    return { ok: false };
+  }
+  return { ok: true, agent };
+}
 
 /** Extract profile override flags from command context */
 function extractProfileOverrides(ctx: CommandContext): ProfileOverrides | undefined {

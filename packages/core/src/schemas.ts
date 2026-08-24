@@ -135,38 +135,48 @@ export const ProjectProfileSchema = z.object({
 
 export const RuntimeSchema = z.enum(["shell", "global"]);
 
-export const MarkerOptionsSchema = z.object({
-  ignoreInTool: z.boolean(),
-  gitignoreScripts: z.boolean(),
-  maxIterations: z.number().int().positive(),
-  model: z.string().optional(),
-  autoSweep: z.boolean().optional(),
-  sweepMinAgeDays: z.number().int().nonnegative().optional(),
-  sessionTimeout: z.number().int().positive().optional(),
-  /** Runtime mode: 'shell' (legacy scripts) or 'global' (TypeScript loop runner). Defaults to 'shell' when omitted for backward compat. */
-  runtime: RuntimeSchema.optional(),
-  provider: z.string().optional(),
-  providerConfig: z.record(z.string(), z.unknown()).optional(),
-  /**
-   * Silence the empty-global-verification launch warning when a project
-   * verifies per item (via each backlog item's `acceptanceCriteria`) rather than
-   * through the global profile commands. Only suppresses the "no global commands"
-   * warning — a stale/misconfigured dispatcher command still warns. (#121)
-   */
-  acknowledgeEmptyVerify: z.boolean().optional(),
-  /**
-   * Ms of stream silence before the loop emits `llm_stuck_warning`; always required,
-   * tool or not. Default 300000 (5 minutes). (#141)
-   */
-  stuckThresholdMs: z.number().int().positive().optional(),
-  /**
-   * Runtime ceiling for a quiet in-flight tool call (e.g. a long, silent foreground
-   * verification command): until the oldest such call has run this long, silence
-   * does not raise `llm_stuck_warning`. Measured from the call's start, so later
-   * stream activity never extends it. Default 1800000 (30 minutes). (#141)
-   */
-  toolStuckThresholdMs: z.number().int().positive().optional(),
-});
+export const MarkerOptionsSchema = z
+  .object({
+    ignoreInTool: z.boolean(),
+    gitignoreScripts: z.boolean(),
+    maxIterations: z.number().int().positive(),
+    model: z.string().optional(),
+    autoSweep: z.boolean().optional(),
+    sweepMinAgeDays: z.number().int().nonnegative().optional(),
+    sessionTimeout: z.number().int().positive().optional(),
+    /** Runtime mode: 'shell' (legacy scripts) or 'global' (TypeScript loop runner). Defaults to 'shell' when omitted for backward compat. */
+    runtime: RuntimeSchema.optional(),
+    provider: z.string().optional(),
+    providerConfig: z.record(z.string(), z.unknown()).optional(),
+    /**
+     * Silence the empty-global-verification launch warning when a project
+     * verifies per item (via each backlog item's `acceptanceCriteria`) rather than
+     * through the global profile commands. Only suppresses the "no global commands"
+     * warning — a stale/misconfigured dispatcher command still warns. (#121)
+     */
+    acknowledgeEmptyVerify: z.boolean().optional(),
+    /**
+     * Ms of stream silence before the loop emits `llm_stuck_warning`; always required,
+     * tool or not. Default 300000 (5 minutes). (#141)
+     */
+    stuckThresholdMs: z.number().int().positive().optional(),
+    /**
+     * Runtime ceiling for a quiet in-flight tool call (e.g. a long, silent foreground
+     * verification command): until the oldest such call has run this long, silence
+     * does not raise `llm_stuck_warning`. Measured from the call's start, so later
+     * stream activity never extends it. Default 1800000 (30 minutes). (#141)
+     */
+    toolStuckThresholdMs: z.number().int().positive().optional(),
+  })
+  .superRefine((options, ctx) => {
+    if (options.provider === "copilot" && options.providerConfig !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["providerConfig"],
+        message: 'providerConfig is not supported for the dedicated "copilot" provider',
+      });
+    }
+  });
 
 // ─── MarkerFile (.rauf.json) ──────────────────────────────────────
 
