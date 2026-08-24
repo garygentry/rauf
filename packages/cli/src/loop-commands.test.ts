@@ -1226,7 +1226,7 @@ describe("loop run --detached", () => {
     }
   });
 
-  it("forwards --agent <id> as body.provider in the POST body (REQ-SEL-01)", async () => {
+  it("forwards --agent copilot as body.provider in the detached POST (REQ-SEL-01)", async () => {
     const { port, close, startCalls } = await startMockServer();
     try {
       writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
@@ -1237,7 +1237,7 @@ describe("loop run --detached", () => {
         args: [proj],
         flags: new Map<string, string | true>([
           ["detached", true],
-          ["agent", "codex"],
+          ["agent", "copilot"],
         ]),
       });
 
@@ -1248,7 +1248,7 @@ describe("loop run --detached", () => {
 
       expect(code).toBe(ExitCode.SUCCESS);
       expect(startCalls.length).toBe(1);
-      expect((startCalls[0]!.body as Record<string, unknown>).provider).toBe("codex");
+      expect((startCalls[0]!.body as Record<string, unknown>).provider).toBe("copilot");
     } finally {
       removeServerState();
       await close();

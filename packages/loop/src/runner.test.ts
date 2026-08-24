@@ -1445,7 +1445,11 @@ fi`,
      * object instrumenting construction / dispose / execute options. Registered with last-write-wins
      * so re-registering the same id in another test is safe (module-level registry persists).
      */
-    function registerFakeAgent(id: string, stdout = "RAUF_DONE\n"): FakeAgentState {
+    function registerFakeAgent(
+      id: string,
+      stdout = "RAUF_DONE\n",
+      reconstructedText?: string,
+    ): FakeAgentState {
       const state: FakeAgentState = {
         constructCount: 0,
         disposeCount: 0,
@@ -1472,6 +1476,7 @@ fi`,
                 exitCode: 0,
                 timedOut: false,
                 durationMs: 1,
+                ...(reconstructedText !== undefined ? { reconstructedText } : {}),
               });
             },
             validateCredentials() {
@@ -1580,6 +1585,27 @@ fi`,
       await runner.start();
 
       expect(state.outputFormats[0]).toBe("stream-json");
+    });
+
+    it("uses Copilot reconstructed text for both work and review passes", async () => {
+      const state = registerFakeAgent(
+        "copilot-review-matrix",
+        '{"type":"assistant.message","data":{"content":"RAUF_DONE"}}\n',
+        "RAUF_DONE",
+      );
+      setupProject(tmpDir, [pendingItem("001", "Copilot review")]);
+      const reviewEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "copilot-review-matrix",
+        review: true,
+      });
+      runner.on("review_completed", (event) => reviewEvents.push(event));
+
+      await runner.start();
+
+      expect(state.outputFormats).toEqual(["stream-json", undefined]);
+      expect(reviewEvents).toHaveLength(1);
     });
 
     it("turns an unknown agent id into a Result error listing supported ids (no throw)", async () => {
@@ -1824,9 +1850,8 @@ fi`,
     it("applies neutralizeForDetection before parseSignal at both work and review sites", () => {
       const here = path.dirname(fileURLToPath(import.meta.url));
       const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
-      // Work iteration (signalText) and review pass (stdout).
-      expect(src).toMatch(/parseSignal\(neutralizeForDetection\(signalText\)\)/);
-      expect(src).toMatch(/parseSignal\(neutralizeForDetection\(stdout\)\)/);
+      // Work iteration and review pass both normalize their provider signalText.
+      expect(src.match(/parseSignal\(neutralizeForDetection\(signalText\)\)/g)).toHaveLength(2);
       // The log-preview redactSignalTokens use is retained.
       expect(src).toMatch(/redactSignalTokens\(/);
     });

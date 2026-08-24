@@ -2,8 +2,21 @@
 # shellcheck source=_emit.sh
 source "$(cd "$(dirname "$0")" && pwd)/_emit.sh"
 cat > /dev/null
+SANDBOX_ROOT="${GIT_WORK_TREE:-$(cd "$(dirname "$0")/.." && pwd)}"
+printf '%s\n' "implemented by the iteration child" >"$SANDBOX_ROOT/scenario-work.txt"
 
 if is_plain; then
+  emit_done "All changes complete."
+  exit 0
+fi
+
+if is_copilot; then
+  echo '{"type":"session.start","data":{"sessionId":"sandbox"}}'
+  echo '{"type":"assistant.message","data":{"content":"Analyzing the task..."}}'
+  echo '{"type":"tool.execution_start","data":{"toolCallId":"tool-1","toolName":"read"}}'
+  echo '{"type":"tool.execution_complete","data":{"toolCallId":"tool-1"}}'
+  echo '{"type":"tool.execution_start","data":{"toolCallId":"tool-2","toolName":"write"}}'
+  echo '{"type":"tool.execution_complete","data":{"toolCallId":"tool-2"}}'
   emit_done "All changes complete."
   exit 0
 fi

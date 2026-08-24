@@ -12,6 +12,8 @@ vi.mock("../process-group.js", () => ({
 }));
 
 import { spawnProcessGroup } from "../process-group.js";
+import { parseSignal } from "../signal-parser.js";
+import { neutralizeForDetection } from "../signal-redactor.js";
 import type { AgentStreamEvent } from "../stream-parser.js";
 import { CopilotCliProvider } from "./copilot-cli.js";
 
@@ -159,6 +161,100 @@ describe("CopilotCliProvider", () => {
     expect(args).not.toContain("--allow-all");
     expect(args).not.toContain("--yolo");
   });
+
+  it.each([
+    {
+      name: "done",
+      jsonl: '{"type":"assistant.message","data":{"content":"RAUF_DONE"}}\n',
+      process: {},
+      expected: { signal: "done" },
+    },
+    {
+      name: "blocked",
+      jsonl: '{"type":"assistant.message","data":{"content":"RAUF_BLOCKED:dependency"}}\n',
+      process: {},
+      expected: { signal: "blocked", reason: "dependency" },
+    },
+    {
+      name: "needs-human",
+      jsonl: '{"type":"assistant.message","data":{"content":"RAUF_NEEDS_HUMAN:region"}}\n',
+      process: {},
+      expected: { signal: "needs_human", reason: "region" },
+    },
+    {
+      name: "no signal",
+      jsonl: '{"type":"session.start","data":{"sessionId":"sandbox"}}\n',
+      process: {},
+      expected: { failure: "missing_signal", exitClass: "genuine_retry" },
+    },
+    {
+      name: "malformed JSONL",
+      jsonl: "not-json\n{broken\n",
+      process: { exitCode: 1 },
+      expected: { failure: "malformed_output", exitClass: "genuine_retry" },
+    },
+    {
+      name: "unknown JSONL",
+      jsonl: '{"type":"future.unknown","data":{"content":"RAUF_DONE"}}\n',
+      process: {},
+      expected: { failure: "missing_signal", exitClass: "genuine_retry" },
+    },
+    {
+      name: "nonzero infrastructure exit",
+      jsonl: "",
+      process: { exitCode: 1, stderr: "socket closed" },
+      expected: { failure: "infrastructure", exitClass: "infra_error" },
+    },
+    {
+      name: "invalid model",
+      jsonl: "",
+      process: { exitCode: 1, stderr: "Model nonexistent is not supported" },
+      expected: { failure: "invalid_model", exitClass: "infra_error" },
+    },
+    {
+      name: "authentication",
+      jsonl: "",
+      process: { exitCode: 1, stderr: "You are not logged in. Please sign in." },
+      expected: { failure: "authentication", exitClass: "infra_error" },
+    },
+    {
+      name: "permission denial",
+      jsonl: '{"type":"error","data":{"code":"denied"}}\n',
+      process: {},
+      expected: { failure: "permission_denied", exitClass: "infra_error" },
+    },
+    {
+      name: "timeout",
+      jsonl: "",
+      process: { exitCode: 1, timedOut: true },
+      expected: { failure: "timeout", exitClass: "timeout" },
+    },
+  ] as const)(
+    "maps the $name runtime fixture",
+    async ({ jsonl, process: processResult, expected }) => {
+      const rawResult = { ...PG_OK, stdout: jsonl, stderr: "", ...processResult };
+      mockSpawn.mockImplementation(async (_command, _args, spawnOptions) => {
+        if (jsonl) spawnOptions.onStdout?.(Buffer.from(jsonl));
+        return ok(rawResult);
+      });
+      const provider = new CopilotCliProvider();
+
+      const result = await provider.execute("go", { timeoutMinutes: 1 });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const signal = parseSignal(neutralizeForDetection(result.value.reconstructedText ?? ""));
+      if ("signal" in expected) {
+        expect(signal).toEqual(expected);
+      } else {
+        expect(signal).toEqual({ signal: "none" });
+        expect(provider.classifyFailure(result.value)).toEqual({
+          kind: expected.failure,
+          exitClass: expected.exitClass,
+        });
+      }
+    },
+  );
 
   it.each([
     ["timeout", ok({ ...PG_OK, timedOut: true, exitCode: 1 })],

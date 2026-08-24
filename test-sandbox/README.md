@@ -6,7 +6,9 @@
 
 **backlog → prompt → spawn → stream parse → signal → status files**
 
-No API credits are used. The mock `claude` script reads `$MOCK_CLAUDE_SCENARIO` and replays a pre-recorded NDJSON stream from `test-sandbox/scenarios/`.
+No API credits are used. Mock agent dispatchers read `$MOCK_AGENT_SCENARIO` and replay sanitized
+scenario output. Claude emits its stream JSON shape, Copilot emits the captured Copilot JSONL shape,
+and generic preset agents emit plain text.
 
 ## Quick Start
 
@@ -23,14 +25,19 @@ bash test-sandbox/verify.sh
 
 ## Available Scenarios
 
-| Scenario                   | Signal                           | Tools Emitted          | Timing       | Tests                                                                                                                                                                     |
-| -------------------------- | -------------------------------- | ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stream-done`              | `RAUF_DONE`                      | Read, Edit             | 300ms sleeps | Basic done flow with tool activity                                                                                                                                        |
-| `stream-blocked`           | `RAUF_BLOCKED`                   | None                   | Instant      | Blocked signal parsing, reason extraction                                                                                                                                 |
-| `stream-tools`             | `RAUF_DONE`                      | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use                                                                                                                            |
-| `slow-stream`              | `RAUF_DONE`                      | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience                                                                                                                                 |
-| `stream-needs-human`       | `RAUF_NEEDS_HUMAN`               | None                   | Instant      | Needs-human signal: item set aside (blocked+needsHuman), loop continues                                                                                                   |
-| `pause-resume-needs-human` | `RAUF_NEEDS_HUMAN` → `RAUF_DONE` | None                   | Instant      | Two-phase: `--pause-on-needs-human` halt (paused_human + loop_paused + exit 6), then `resume --answer` injects the answer, the next prompt carries it, the item completes |
+| Scenario                    | Signal                           | Tools Emitted          | Timing       | Tests                                                                                                                                                                     |
+| --------------------------- | -------------------------------- | ---------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stream-done`               | `RAUF_DONE`                      | Read, Edit             | 300ms sleeps | Basic done flow with tool activity                                                                                                                                        |
+| `stream-blocked`            | `RAUF_BLOCKED`                   | None                   | Instant      | Blocked signal parsing, reason extraction                                                                                                                                 |
+| `stream-tools`              | `RAUF_DONE`                      | Read, Glob, Edit, Bash | 200ms sleeps | Multi-tool activity, done after heavy tool use                                                                                                                            |
+| `slow-stream`               | `RAUF_DONE`                      | Read, Edit             | 2s sleeps    | Slow stream completion, timing resilience                                                                                                                                 |
+| `stream-needs-human`        | `RAUF_NEEDS_HUMAN`               | None                   | Instant      | Needs-human signal: item set aside (blocked+needsHuman), loop continues                                                                                                   |
+| `pause-resume-needs-human`  | `RAUF_NEEDS_HUMAN` → `RAUF_DONE` | None                   | Instant      | Two-phase: `--pause-on-needs-human` halt (paused_human + loop_paused + exit 6), then `resume --answer` injects the answer, the next prompt carries it, the item completes |
+| `copilot-no-signal`         | None                             | None                   | Instant      | Valid Copilot JSONL without assistant completion                                                                                                                          |
+| `copilot-malformed-unknown` | None                             | None                   | Instant      | Malformed and unknown Copilot records cannot complete an item                                                                                                             |
+| `copilot-auth`              | None                             | None                   | Instant      | Captured authentication-class stderr and nonzero exit                                                                                                                     |
+| `copilot-invalid-model`     | None                             | None                   | Instant      | Captured invalid-model stderr and nonzero exit                                                                                                                            |
+| `copilot-permission`        | None                             | None                   | Instant      | Captured in-band permission denial with exit 0                                                                                                                            |
 
 ## What to Observe
 

@@ -286,6 +286,20 @@ assert_no_agent_telemetry() {
   fi
 }
 
+assert_copilot_telemetry() {
+  local events="$SANDBOX_DIR/.rauf/events.ndjson"
+  if jq -s -e 'any(.[]; .type=="llm_tool_activity")' "$events" >/dev/null; then
+    pass "Copilot JSONL emitted tool activity"
+  else
+    fail "Copilot JSONL emitted no tool activity"
+  fi
+  if jq -s -e 'any(.[]; .type=="llm_token_update")' "$events" >/dev/null; then
+    fail "Copilot emitted unsupported token telemetry"
+  else
+    pass "Copilot token telemetry degrades cleanly when unavailable"
+  fi
+}
+
 # assert_agent_stream_done <id>
 # The full SC-1/SC-4 per-agent stream-done assertion bundle: item done + DONE
 # file + limit_reached + exactly one [rauf] 001 commit + real provider id + no
@@ -294,7 +308,7 @@ assert_agent_stream_done() {
   local id="$1"
   assert_item_status "001" "done"
   assert_done_file_exists
-  assert_state_status "limit_reached"
+  assert_state_status "iterations_complete"
   assert_dogfood_commit
   assert_event_provider "$id"
   assert_no_usage_preflight
@@ -386,7 +400,7 @@ run_scenario "stream-done"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 # Event-log integration (item 014): events.ndjson and state.json never contradict,
 # and the per-item commit obeys the runner-owns-commit rule without committing
 # the live event log.
@@ -398,21 +412,21 @@ run_scenario "stream-blocked"
 assert_item_status "001" "blocked"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "complete"
 
 # 3. stream-tools: Multi-tool RAUF_DONE works
 run_scenario "stream-tools"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 
 # 4. slow-stream: Slow stream completes
 run_scenario "slow-stream"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 
 # 5. stream-needs-human: RAUF_NEEDS_HUMAN sets the item aside (blocked) and the
 #    loop continues/ends naturally instead of halting in_progress.
@@ -445,7 +459,7 @@ assert_dir_exists "$SANDBOX_DIR/specs/feature-a/.rauf" "specs/feature-a/.rauf st
 
 # Assert state.json written to custom root state dir
 assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "specs/feature-a/.rauf/state.json"
-assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "limit_reached"
+assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "complete"
 
 # Assert rauf.log written to custom root state dir
 assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/rauf.log" "specs/feature-a/.rauf/rauf.log"
@@ -725,7 +739,7 @@ rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 || true
 
 # The loop completed the item despite the unwritable event log.
 assert_item_status "001" "done"
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 assert_done_file_exists
 
 # Persistence failure was silent: no events were written (path stayed a dir).
@@ -782,14 +796,58 @@ rm -rf "$COMPAT_HOME"
 
 # ─── Cross-agent: per-agent stream-done (SC-1, SC-4) ─────────────────
 
-# 13. Each shipped non-claude preset drives the stream-done scenario (plain-text)
+# 13. Each shipped plain-text non-claude preset drives the stream-done scenario
 #     end-to-end: reaches RAUF_DONE, commits, reports its REAL provider id in the
 #     events, skips the Anthropic usage preflight, and emits no token/tool
 #     telemetry — the "telemetry gracefully absent" path (REQ-OBS-02). cursor is
 #     driven via its `cursor-agent` binary but its provider id is "cursor".
-for agent in codex gemini copilot cursor pi; do
+for agent in codex gemini cursor pi; do
   run_agent_scenario "$agent" "stream-done"
   assert_agent_stream_done "$agent"
+done
+
+# 13b. Copilot uses its dedicated JSONL provider rather than the plain-text
+# preset path. It completes, reports the stable provider id, emits tool activity,
+# omits unsupported token telemetry, and keeps rauf as the commit owner.
+run_agent_scenario "copilot" "stream-done"
+assert_item_status "001" "done"
+assert_done_file_exists
+assert_dogfood_commit
+assert_event_provider "copilot"
+assert_no_usage_preflight
+assert_copilot_telemetry
+assert_events_never_contradict
+
+# 13c. Copilot signal outcomes from sanitized JSONL fixtures.
+run_agent_scenario "copilot" "stream-blocked"
+assert_item_status "001" "blocked"
+assert_event_provider "copilot"
+
+run_agent_scenario "copilot" "stream-needs-human"
+assert_item_status "001" "blocked"
+assert_done_file_contains "needs_human"
+assert_event_provider "copilot"
+
+# 13d. Missing and malformed/unknown JSONL never complete an item.
+for scenario in copilot-no-signal copilot-malformed-unknown; do
+  run_agent_scenario "copilot" "$scenario"
+  assert_item_status "001" "pending"
+  assert_event_provider "copilot"
+  if grep -q "copilot failure classified as" "$SANDBOX_DIR/.rauf/rauf.log"; then
+    pass "$scenario produced a Copilot failure classification"
+  else
+    fail "$scenario missing Copilot failure classification"
+  fi
+done
+
+# 13e. Captured pre-session and in-band diagnostics stay recoverable and are
+# bounded by the existing infrastructure circuit breaker.
+for scenario in copilot-auth copilot-invalid-model copilot-permission; do
+  run_agent_scenario "copilot" "$scenario"
+  assert_item_status "001" "pending"
+  assert_state_status "error"
+  assert_done_file_contains "Circuit breaker"
+  assert_event_provider "copilot"
 done
 
 # 14. The reserved generic-cli adapter, driven by a marker providerConfig pointing
