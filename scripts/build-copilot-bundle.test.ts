@@ -45,15 +45,27 @@ describe("buildBundle", () => {
   });
 
   it("emits both operator agents with explicit bounded policy", () => {
-    const agents = [...bundle].filter(([relative]) => relative.startsWith("agents/"));
-    expect(agents).toHaveLength(2);
-    for (const [relative, content] of agents) {
-      expect(relative).toMatch(/\.agent\.md$/);
+    const reviewer = bundle.get("agents/rauf-backlog-reviewer.agent.md")!;
+    const driver = bundle.get("agents/rauf-loop-driver.agent.md")!;
+    for (const content of [reviewer, driver]) {
       expect(content).toContain("tools:\n  - read\n  - search\n  - execute");
+      expect(content).not.toMatch(/^\s+- edit$/m);
       expect(content).toContain("agents: []");
       expect(content).toContain("user-invocable: false");
       expect(content).toContain("Source: agents/");
     }
+    expect(reviewer).toContain("You only review and report.");
+    expect(driver).toContain("you DRIVE rauf from the outside");
+    expect(driver).toContain("You do NOT behave as a loop iteration");
+  });
+
+  it("fails on unknown Copilot tool aliases", () => {
+    expect(() =>
+      buildBundle({
+        "rauf-backlog-reviewer": { tools: ["read", "search", "execute", "mystery-tool"] },
+        "rauf-loop-driver": { tools: ["read", "search", "execute"] },
+      }),
+    ).toThrow("unknown Copilot tool alias(es): mystery-tool");
   });
 
   it("records every source mapping and explicit drop result", () => {

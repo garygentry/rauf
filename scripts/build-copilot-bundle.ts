@@ -9,6 +9,7 @@ const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const AGENTS_DIR = path.join(REPO_ROOT, "agents");
 const OUTPUT_DIR = path.join(REPO_ROOT, "adapters", "copilot");
 const SUPPORTED_FRONTMATTER_KEYS = new Set(["name", "description"]);
+const SUPPORTED_COPILOT_TOOL_ALIASES = new Set(["read", "search", "execute", "edit"]);
 
 interface CanonicalDocument {
   name: string;
@@ -98,7 +99,9 @@ function readTree(root: string): Map<string, string> {
   return files;
 }
 
-export function buildBundle(): Map<string, string> {
+export function buildBundle(
+  agentPolicies: Readonly<Record<string, AgentPolicy>> = AGENT_POLICIES,
+): Map<string, string> {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
     version: string;
     description: string;
@@ -163,9 +166,13 @@ export function buildBundle(): Map<string, string> {
     if (path.basename(file, ".md") !== document.name) {
       throw new Error(`${source}: frontmatter name '${document.name}' must match filename`);
     }
-    const policy = AGENT_POLICIES[document.name];
+    const policy = agentPolicies[document.name];
     if (!policy)
       throw new Error(`${source}: no explicit Copilot agent policy for '${document.name}'`);
+    const unknownTools = policy.tools.filter((tool) => !SUPPORTED_COPILOT_TOOL_ALIASES.has(tool));
+    if (unknownTools.length > 0) {
+      throw new Error(`${source}: unknown Copilot tool alias(es): ${unknownTools.join(", ")}`);
+    }
     seenPolicies.add(document.name);
     const output = `agents/${document.name}.agent.md`;
     files.set(output, renderAgent(document, source, policy));
@@ -173,7 +180,7 @@ export function buildBundle(): Map<string, string> {
       `| Agent | \`${source}\` | \`${output}\` | name, description, body; tools=${policy.tools.join(",")}; agents=[]; user-invocable=false | none |`,
     );
   }
-  const orphanedPolicies = Object.keys(AGENT_POLICIES).filter((name) => !seenPolicies.has(name));
+  const orphanedPolicies = Object.keys(agentPolicies).filter((name) => !seenPolicies.has(name));
   if (orphanedPolicies.length > 0) {
     throw new Error(
       `Copilot agent policies have no canonical source: ${orphanedPolicies.join(", ")}`,
