@@ -1887,10 +1887,12 @@ export class LoopRunner extends TypedEventEmitter {
         return "failed";
       }
 
-      const { stdout, stderr } = execResult.value;
+      const { stdout, stderr, reconstructedText } = execResult.value;
+      const signalText =
+        reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
 
       // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
-      const parsed = parseSignal(neutralizeForDetection(stdout));
+      const parsed = parseSignal(neutralizeForDetection(signalText));
 
       if (parsed.signal === "done") {
         this.resetUsageStreaks();
