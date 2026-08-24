@@ -45,7 +45,9 @@ const StartLoopBodySchema = z
     backlogRoot: z.string().optional(),
     suppressIterationReview: z.boolean().optional(),
     ignoreItemModel: z.boolean().optional(),
+    provider: z.string().optional(),
   })
+  .strict()
   .optional();
 
 const StopLoopBodySchema = z
@@ -59,6 +61,8 @@ const StopLoopBodySchema = z
 const ReviewBodySchema = z
   .object({
     model: z.string().optional(),
+    provider: z.string().optional(),
+    ignoreItemModel: z.boolean().optional(),
     sessionTimeoutMinutes: z.number().int().positive().optional(),
     backlogRoot: z.string().optional(),
   })
@@ -161,6 +165,7 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       ),
       maxRetries: body.maxRetries ?? DEFAULT_MAX_RETRIES,
       model: body.model,
+      provider: body.provider,
       sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,
       backlogRoot,
       ...(body.suppressIterationReview ? { suppressIterationReview: true } : {}),
@@ -275,6 +280,8 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       // sessionTimeoutMinutes is REQUIRED by the schema — reuse the start route's default.
       sessionTimeoutMinutes: body.sessionTimeoutMinutes ?? DEFAULT_SESSION_TIMEOUT_MINUTES,
       model: body.model,
+      provider: body.provider,
+      ...(body.ignoreItemModel ? { ignoreItemModel: true } : {}),
       backlogRoot,
     });
 
