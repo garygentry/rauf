@@ -125,6 +125,8 @@ export interface InstallOptions {
   profileOverrides?: ProfileOverrides;
   /** Marker file options overrides */
   options?: Partial<MarkerOptions>;
+  /** Selected provider executable for provider-aware preflight */
+  agent?: PreflightAgent;
   /** Project name for backlog.json */
   projectName?: string;
   /** Project description for backlog.json */
@@ -183,12 +185,17 @@ export interface PreflightResult {
   checks: PreflightCheck[];
 }
 
+export interface PreflightAgent {
+  id: string;
+  binaryName?: string;
+}
+
 // ─── preflight ────────────────────────────────────────────────────
 //
 // Run preflight checks before installation. Returns a structured
 // result with individual check results and an overall pass/fail.
 
-export function preflight(projectPath: string): PreflightResult {
+export function preflight(projectPath: string, agent?: PreflightAgent): PreflightResult {
   const resolved = path.resolve(projectPath);
   const checks: PreflightCheck[] = [];
 
@@ -223,16 +230,19 @@ export function preflight(projectPath: string): PreflightResult {
     severity: "error",
   });
 
-  // 4. claude in PATH?
-  const hasClaude = isCommandInPath("claude");
-  checks.push({
-    name: "claude_available",
-    passed: hasClaude,
-    message: hasClaude
-      ? "claude found in PATH"
-      : "claude CLI not found in PATH (required to run the loop)",
-    severity: "warning",
-  });
+  // 4. Selected provider binary in PATH? Binary-less providers own their custom
+  // detection in the loop registry and cannot be checked by this synchronous core path.
+  if (agent?.binaryName) {
+    const binaryAvailable = isCommandInPath(agent.binaryName);
+    checks.push({
+      name: "agent_binary_available",
+      passed: binaryAvailable,
+      message: binaryAvailable
+        ? `${agent.binaryName} found in PATH for agent "${agent.id}"`
+        : `${agent.binaryName} not found in PATH (required by agent "${agent.id}")`,
+      severity: "warning",
+    });
+  }
 
   // Overall pass: all error-severity checks must pass
   const passed = checks.filter((c) => c.severity === "error").every((c) => c.passed);
@@ -252,7 +262,7 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   const warnings: string[] = [];
 
   // 1. Preflight checks
-  const preflightResult = preflight(resolved);
+  const preflightResult = preflight(resolved, options.agent);
   for (const check of preflightResult.checks) {
     if (!check.passed && check.severity === "warning") {
       warnings.push(check.message);

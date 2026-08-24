@@ -111,6 +111,10 @@ export type AgentAdapter = LLMProvider;
 export interface DetectionResult {
   /** True when the agent's CLI can be invoked (e.g. its binary resolves on PATH). */
   available: boolean;
+  /** Whether the configured executable is present. Undefined only for legacy custom detectors. */
+  binaryAvailable?: boolean;
+  /** Authenticated readiness: null when no safe, non-mutating auth probe exists. */
+  authenticated?: boolean | null;
   /**
    * Human-readable detail for discovery output and fail-fast remediation messages
    * (e.g. "found at /usr/local/bin/codex", or "binary 'codex' not found on PATH").

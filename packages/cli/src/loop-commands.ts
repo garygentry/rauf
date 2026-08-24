@@ -1128,13 +1128,16 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
 
-  const model = extractStringFlag(ctx.flags, "model") ?? undefined;
+  const { model, ignoreItemModel } = resolveModelOverride(ctx.flags);
+  const agent = extractStringFlag(ctx.flags, "agent") ?? undefined;
   const timeout = extractNumberFlag(ctx.flags, "timeout") ?? DEFAULT_SESSION_TIMEOUT_MINUTES;
 
   const options = LoopStartOptionsSchema.parse({
     maxIterations: 1,
     maxRetries: 1,
     model,
+    provider: agent,
+    ignoreItemModel,
     sessionTimeoutMinutes: timeout,
     review: true,
     reviewOnly: true,
@@ -1238,13 +1241,20 @@ export async function handleAgents(ctx: CommandContext): Promise<number> {
   const columns: TableColumn[] = [
     { header: "ID", key: "id" },
     { header: "NAME", key: "name" },
-    { header: "AVAILABLE", key: "available" },
+    { header: "BINARY", key: "binary" },
+    { header: "AUTH", key: "auth" },
     { header: "DETAIL", key: "detail" },
   ];
   const tableRows = rows.map((r) => ({
     id: r.id,
     name: r.displayName,
-    available: r.available ? c.green("yes") : c.yellow("no"),
+    binary: r.binaryAvailable ? c.green("present") : c.yellow("missing"),
+    auth:
+      r.authenticated === true
+        ? c.green("ready")
+        : r.authenticated === false
+          ? c.yellow("not ready")
+          : c.dim("unknown"),
     detail: r.detail ?? "",
   }));
   print(renderTable(columns, tableRows));

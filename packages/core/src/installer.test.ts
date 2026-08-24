@@ -127,10 +127,20 @@ describe("preflight", () => {
     expect(installedCheck?.passed).toBe(false);
   });
 
-  it("returns 4 checks total", () => {
+  it("checks the selected provider binary without naming Claude", () => {
+    createFakeProject(tmpDir, { git: true });
+    const result = preflight(tmpDir, { id: "copilot", binaryName: "missing-copilot-test-binary" });
+    expect(result.checks).toHaveLength(4);
+    const agentCheck = result.checks.find((check) => check.name === "agent_binary_available");
+    expect(agentCheck?.passed).toBe(false);
+    expect(agentCheck?.message).toContain('agent "copilot"');
+    expect(agentCheck?.message).not.toContain("claude");
+  });
+
+  it("omits a binary check when no provider is selected", () => {
     createFakeProject(tmpDir, { git: true });
     const result = preflight(tmpDir);
-    expect(result.checks).toHaveLength(4);
+    expect(result.checks).toHaveLength(3);
   });
 });
 
@@ -1053,10 +1063,10 @@ describe("edge cases", () => {
 // ─── preflight checks (updated) ────────────────────────────────────────
 
 describe("preflight — no jq check", () => {
-  it("returns 4 checks total (no jq check)", () => {
+  it("returns 3 checks total when no provider is selected (no jq check)", () => {
     createFakeProject(tmpDir, { git: true });
     const result = preflight(tmpDir);
-    expect(result.checks).toHaveLength(4);
+    expect(result.checks).toHaveLength(3);
     expect(result.checks.find((c) => c.name === "jq_available")).toBeUndefined();
   });
 });

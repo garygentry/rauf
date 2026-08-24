@@ -16,6 +16,7 @@ import { parseSignal } from "../signal-parser.js";
 import { neutralizeForDetection } from "../signal-redactor.js";
 import type { AgentStreamEvent } from "../stream-parser.js";
 import { CopilotCliProvider } from "./copilot-cli.js";
+import { getAgentDescriptors } from "./registry.js";
 
 const mockSpawn = vi.mocked(spawnProcessGroup);
 const originalCwd = process.cwd();
@@ -40,6 +41,16 @@ describe("CopilotCliProvider", () => {
     process.chdir(originalCwd);
     if (originalCopilotAgent === undefined) delete process.env.COPILOT_AGENT;
     else process.env.COPILOT_AGENT = originalCopilotAgent;
+  });
+
+  it("reports binary presence separately from unknown authenticated readiness", async () => {
+    const descriptor = getAgentDescriptors().find((agent) => agent.id === "copilot");
+    expect(descriptor?.detect).toBeDefined();
+
+    const detection = await descriptor!.detect!();
+    expect(typeof detection.binaryAvailable).toBe("boolean");
+    expect(detection.authenticated).toBeNull();
+    expect(detection.detail).toMatch(/authentication not checked|not found on PATH/);
   });
 
   it("uses the frozen argv, bounded prompt file, sanitized env, and forwarded controls", async () => {

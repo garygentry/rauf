@@ -77,6 +77,8 @@ export class CopilotCliProvider implements LLMProvider {
   }
 
   validateCredentials(): Result<void> {
+    // CLI 1.0.78 exposes no safe, non-mutating auth-status command. Authentication
+    // remains unknown until execute() returns a classified startup failure.
     return ok(undefined);
   }
 
@@ -102,5 +104,7 @@ registerAgent({
   displayName: "GitHub Copilot CLI",
   binaryName: COPILOT_BINARY,
   factory: () => new CopilotCliProvider(),
+  // PATH presence is observable without spawning; authenticated readiness is
+  // deliberately reported as unknown by probeBinaryOnPath.
   detect: () => probeBinaryOnPath(COPILOT_BINARY),
 });
