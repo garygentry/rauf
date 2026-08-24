@@ -1,0 +1,7 @@
+{
+  "name": "rauf",
+  "description": "Management tool for rauf autonomous coding loops",
+  "version": "0.14.0",
+  "agents": "agents/",
+  "skills": "skills/"
+}
