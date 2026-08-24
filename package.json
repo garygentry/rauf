@@ -41,6 +41,8 @@
     "codex:check": "bun run scripts/build-codex-bundle.ts --check && bun run scripts/build-codex-agents.ts --check",
     "pi:generate": "bun run scripts/build-pi-bundle.ts",
     "pi:check": "bun run scripts/build-pi-bundle.ts --check",
+    "copilot:generate": "bun run scripts/build-copilot-bundle.ts",
+    "copilot:check": "bun run scripts/build-copilot-bundle.ts --check",
     "npm-dist:generate": "bun run scripts/build-npm-dist-pi-skills.ts",
     "npm-dist:check": "bun run scripts/build-npm-dist-pi-skills.ts --check",
     "sandbox:verify": "bash test-sandbox/verify.sh",
