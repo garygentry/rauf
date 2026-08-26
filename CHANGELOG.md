@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- **Copilot operator agents carry their required canonical skill contracts** — generated backlog
+  reviewer and loop-driver agents now compose `review-backlog` and `drive-rauf-loop` respectively,
+  fail generation on unknown dependencies, and retain read/search/execute-only boundaries. Portable
+  backlog-authoring guidance now names the host's subagent/delegation mechanism instead of Claude's
+  `Task tool`, with Codex, Copilot, and Pi outputs regenerated.
+
 ## 0.14.0
 
 ### Added
