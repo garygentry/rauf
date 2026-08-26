@@ -19,11 +19,18 @@ interface CanonicalDocument {
 
 interface AgentPolicy {
   tools: readonly string[];
+  requiredSkill: string;
 }
 
 const AGENT_POLICIES: Readonly<Record<string, AgentPolicy>> = {
-  "rauf-backlog-reviewer": { tools: ["read", "search", "execute"] },
-  "rauf-loop-driver": { tools: ["read", "search", "execute"] },
+  "rauf-backlog-reviewer": {
+    tools: ["read", "search", "execute"],
+    requiredSkill: "review-backlog",
+  },
+  "rauf-loop-driver": {
+    tools: ["read", "search", "execute"],
+    requiredSkill: "drive-rauf-loop",
+  },
 };
 
 function parseFrontmatter(text: string, source: string): CanonicalDocument {
@@ -67,10 +74,16 @@ function withProvenance(text: string, source: string): string {
   );
 }
 
-function renderAgent(document: CanonicalDocument, source: string, policy: AgentPolicy): string {
+function renderAgent(
+  document: CanonicalDocument,
+  source: string,
+  policy: AgentPolicy,
+  requiredSkill: CanonicalDocument,
+  requiredSkillSource: string,
+): string {
   return [
     "---",
-    `# GENERATED — DO NOT EDIT. Source: ${source}. Regenerate: bun run scripts/build-copilot-bundle.ts`,
+    `# GENERATED — DO NOT EDIT. Sources: ${source}; ${requiredSkillSource}. Regenerate: bun run scripts/build-copilot-bundle.ts`,
     `name: ${document.name}`,
     `description: ${JSON.stringify(document.description)}`,
     "tools:",
@@ -78,7 +91,14 @@ function renderAgent(document: CanonicalDocument, source: string, policy: AgentP
     "agents: []",
     "user-invocable: false",
     "---",
-    document.body,
+    document.body.trimEnd(),
+    "",
+    `## Required canonical skill contract: \`${requiredSkill.name}\``,
+    "",
+    `The Copilot custom-agent schema has no declarative skill-dependency field. The generator therefore composes the complete canonical \`${requiredSkill.name}\` skill below so its contract is always present in this agent context. Follow it as the authoritative procedure while retaining the agent boundary above.`,
+    "",
+    requiredSkill.body.trim(),
+    "",
   ].join("\n");
 }
 
@@ -123,6 +143,7 @@ export function buildBundle(
   );
 
   const reportRows: string[] = [];
+  const skillDocuments = new Map<string, CanonicalDocument>();
   const skillDirectories = fs
     .readdirSync(SKILLS_DIR, { withFileTypes: true })
     .filter(
@@ -141,6 +162,7 @@ export function buildBundle(
         `${source}: frontmatter name '${skillDocument.name}' must match directory '${id}'`,
       );
     }
+    skillDocuments.set(id, skillDocument);
     for (const [relative, content] of skillFiles) {
       files.set(
         path.join("skills", id, relative),
@@ -173,11 +195,16 @@ export function buildBundle(
     if (unknownTools.length > 0) {
       throw new Error(`${source}: unknown Copilot tool alias(es): ${unknownTools.join(", ")}`);
     }
+    const requiredSkill = skillDocuments.get(policy.requiredSkill);
+    if (!requiredSkill) {
+      throw new Error(`${source}: unknown required Copilot skill '${policy.requiredSkill}'`);
+    }
+    const requiredSkillSource = `skills/${policy.requiredSkill}/SKILL.md`;
     seenPolicies.add(document.name);
     const output = `agents/${document.name}.agent.md`;
-    files.set(output, renderAgent(document, source, policy));
+    files.set(output, renderAgent(document, source, policy, requiredSkill, requiredSkillSource));
     reportRows.push(
-      `| Agent | \`${source}\` | \`${output}\` | name, description, body; tools=${policy.tools.join(",")}; agents=[]; user-invocable=false | none |`,
+      `| Agent | \`${source}\` + \`${requiredSkillSource}\` | \`${output}\` | name, description, body; composed-skill=${policy.requiredSkill}; tools=${policy.tools.join(",")}; agents=[]; user-invocable=false | none |`,
     );
   }
   const orphanedPolicies = Object.keys(agentPolicies).filter((name) => !seenPolicies.has(name));
