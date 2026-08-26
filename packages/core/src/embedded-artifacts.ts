@@ -28,7 +28,6 @@ Individual commands:
 - Format: \`{{formatCommand}}\`
 
 If any command is not configured (empty), skip it.
-<!-- rauf:managed:end -->
 
 ## Workflow
 
@@ -100,9 +99,10 @@ Items may also include a \`specReferences\` field listing paths to specification
 - DO append new learnings to \`progress.md\` if you discover important patterns
 - The backlog.json file is your source of truth for what to work on
 - Any subagents/subtasks you run internally are your own planning — they don't affect the backlog
+<!-- rauf:managed:end -->
 
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive rauf update -->
+<!-- Add custom instructions below this line — they survive rauf update and uninstall -->
 `,
   ],
   [

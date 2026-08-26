@@ -4,6 +4,11 @@
 
 ### Changed
 
+- **Installed child instructions now have ownership-safe lifecycle boundaries** — the complete
+  `.rauf/RAUF.md` iteration contract is managed separately from project-specific content, legacy
+  layouts migrate without user-data loss, repeated updates are idempotent, malformed sentinels fail
+  closed, and uninstall removes only rauf-owned content. Host-neutral `AGENTS.md`, Claude-specific
+  `CLAUDE.md`, and isolated Copilot prompt injection remain independent.
 - **Copilot operator agents carry their required canonical skill contracts** — generated backlog
   reviewer and loop-driver agents now compose `review-backlog` and `drive-rauf-loop` respectively,
   fail generation on unknown dependencies, and retain read/search/execute-only boundaries. Portable

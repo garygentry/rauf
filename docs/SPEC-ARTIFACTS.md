@@ -360,7 +360,12 @@ The runner picks the model by precedence (highest wins):
 
 ## RAUF.md.tmpl: Per-Iteration Prompt
 
-Contains two sections: managed (tool-updated) and user-customizable.
+Contains two ownership regions: the complete rauf iteration contract is bounded by the managed
+sentinels and may be updated or removed by the installer; project-specific content belongs below
+the explicit user anchor and survives install, repeated update, and uninstall. Pre-RAUF-203 files
+whose sentinels bounded only verification commands migrate by preserving bytes below the old user
+anchor. Existing files with no ownership sentinels are preserved verbatim below the new managed
+contract. Malformed or duplicate sentinels fail closed without rewriting the file.
 
 ```markdown
 # Rauf — Per-Iteration Instructions
@@ -384,7 +389,6 @@ Individual commands:
 - Format: `{{formatCommand}}`
 
 If any command is not configured (empty), skip it.
-<!-- rauf:managed:end -->
 
 ## Workflow
 
@@ -426,8 +430,10 @@ The runner resolves which model drives an iteration by this precedence
 - provider default — if none of the above is set, no model is forced and the
   provider/CLI uses its own configured default.
 
+<!-- rauf:managed:end -->
+
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive rauf update -->
+<!-- Add custom instructions below this line — they survive rauf update and uninstall -->
 ```
 
 ## backlog.json: Empty Template
