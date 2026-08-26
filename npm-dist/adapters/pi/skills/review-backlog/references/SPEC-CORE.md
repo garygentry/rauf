@@ -297,16 +297,17 @@ Full installation flow for existing projects:
 3. **Create .rauf/ directory**
 
 4. **Deploy artifacts** (§6.2)
-   - RAUF.md: render from template with profile vars, respect sentinels
+   - RAUF.md: render the complete tool-owned contract inside managed sentinels; preserve explicit
+     project-specific content below its user anchor; migrate old bounded/unbounded layouts without
+     discarding user bytes; fail closed on malformed or duplicate sentinels
    - REVIEW.md: render from REVIEW.md.tmpl with profile vars
    - backlog.json: copy empty template if not exists, validate if exists
    - progress.md: copy template if not exists
 
-5. **CLAUDE.md smart merge** (§9.3)
-   - Search for `<!-- rauf:start -->` / `<!-- rauf:end -->`
-   - If not found: append block
-   - If found and current: skip
-   - If found but different: replace bounded block only
+5. **Instruction-file smart merge** (§9.3)
+   - Merge host-neutral `AGENTS.md` content within `<!-- rauf:agents:start/end -->`
+   - Independently merge Claude specialization within `<!-- rauf:start/end -->` in `CLAUDE.md`
+   - Preserve unrelated/user-owned regions in both files
 
 6. **Write .rauf.json** with profile, hashes, options
 
@@ -316,15 +317,18 @@ Full installation flow for existing projects:
 
 Re-sync artifacts:
 
-- Re-render RAUF.md managed sections
+- Re-render RAUF.md managed instructions while preserving content below the user anchor
 - Re-render REVIEW.md (preserves user-customized versions)
-- Update CLAUDE.md rauf section
+- Update the independent CLAUDE.md and AGENTS.md rauf sections
 - Never touch backlog.json or progress.md
 - Update artifactHashes for updated files
 
 ### uninstall(projectPath, options) → Result<void>
 
-Remove rauf artifacts (including RAUF.md and REVIEW.md). Preserve backlog/progress/log per user choice.
+Remove rauf-owned artifacts and sentinel regions. Remove only the managed region from RAUF.md;
+delete the file when no project-specific content exists, otherwise preserve content below the user
+anchor. Remove only rauf's independent AGENTS.md and CLAUDE.md regions. Malformed RAUF.md ownership
+markers fail closed before the marker file is deleted. Preserve backlog/progress/log per user choice.
 
 ## Module: greenfield.ts
 
@@ -442,7 +446,7 @@ Archive naming uses compact timestamps (`YYYYMMDD-HHmmss`), so it never overwrit
 | backlog.ts       | `.rauf/backlog.json`, `.rauf/backlog.json.bak`                              |
 | archive.ts       | `.rauf/archive/YYYY-MM.json`                                                |
 | reset.ts         | `.rauf/archive/YYYYMMDD-HHmmss-*`, `.rauf/state.json`, `.rauf/backlog.json` |
-| installer.ts     | All `.rauf/` files, CLAUDE.md, `.rauf.json`                                 |
+| installer.ts     | All `.rauf/` files, AGENTS.md, CLAUDE.md, `.rauf.json`                      |
 | greenfield.ts    | All of installer + directory creation + git init                            |
 | status.ts        | `.rauf/state.json`, `.rauf/rauf.log`, `.rauf/DONE`, `.rauf/CANCEL`          |
 | discovery.ts     | (read-only)                                                                 |
