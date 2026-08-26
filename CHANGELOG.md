@@ -17,7 +17,6 @@
 
 ### Changed
 
-- **Publishing now goes through one approval (#166, ADR 0046 A4).** `release.yml` is the only workflow that publishes. A `v*` tag runs a credential-free `verify` job, which writes a release summary (changelog, diff stat, a warning if `.github/` changed) to the run page. A `publish` job behind the `release` environment then waits for the operator's approval. It attests the binaries and `SHA256SUMS` with build provenance, creates the GitHub Release and publishes `@garygentry/rauf` with npm provenance (prereleases to dist-tag `next`). The launcher no longer ships separately from the binaries. `npm-publish.yml` (manual dispatch) is removed.
 
 - **`author-backlog` no longer names Claude's `Task tool`.** The `agentDelegation` guidance now says the loop agent uses its host's subagent or delegation mechanism when one is available. The Codex, Pi and Copilot copies were regenerated.
 
