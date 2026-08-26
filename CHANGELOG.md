@@ -4,6 +4,10 @@
 
 ### Changed
 
+- **Copilot adapter drift, version, and distribution checks are release-blocking** — `pnpm gate`
+  now runs the deterministic Copilot drift guard, version checks include the generated plugin
+  manifest, and a distribution guard verifies repository artifacts, built provider/instruction
+  surfaces, the thin npm launcher allowlist, and optional compiled-binary provider discovery.
 - **Installed child instructions now have ownership-safe lifecycle boundaries** — the complete
   `.rauf/RAUF.md` iteration contract is managed separately from project-specific content, legacy
   layouts migrate without user-data loss, repeated updates are idempotent, malformed sentinels fail
