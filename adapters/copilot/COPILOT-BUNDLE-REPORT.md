@@ -12,5 +12,5 @@ Unsupported canonical fields fail generation unless an explicit mapping or drop 
 | Skill | `skills/drive-rauf-loop/SKILL.md` | `skills/drive-rauf-loop/SKILL.md` | name, description, body, 0 bundled file(s) | none |
 | Skill | `skills/review-backlog/SKILL.md` | `skills/review-backlog/SKILL.md` | name, description, body, 0 bundled file(s) | none |
 | Skill | `skills/review-rauf-guidance/SKILL.md` | `skills/review-rauf-guidance/SKILL.md` | name, description, body, 0 bundled file(s) | none |
-| Agent | `agents/rauf-backlog-reviewer.md` | `agents/rauf-backlog-reviewer.agent.md` | name, description, body; tools=read,search,execute; agents=[]; user-invocable=false | none |
-| Agent | `agents/rauf-loop-driver.md` | `agents/rauf-loop-driver.agent.md` | name, description, body; tools=read,search,execute; agents=[]; user-invocable=false | none |
+| Agent | `agents/rauf-backlog-reviewer.md` + `skills/review-backlog/SKILL.md` | `agents/rauf-backlog-reviewer.agent.md` | name, description, body; composed-skill=review-backlog; tools=read,search,execute; agents=[]; user-invocable=false | none |
+| Agent | `agents/rauf-loop-driver.md` + `skills/drive-rauf-loop/SKILL.md` | `agents/rauf-loop-driver.agent.md` | name, description, body; composed-skill=drive-rauf-loop; tools=read,search,execute; agents=[]; user-invocable=false | none |

@@ -52,26 +52,54 @@ describe("buildBundle", () => {
       expect(content).not.toMatch(/^\s+- edit$/m);
       expect(content).toContain("agents: []");
       expect(content).toContain("user-invocable: false");
-      expect(content).toContain("Source: agents/");
+      expect(content).toContain("Sources: agents/");
     }
     expect(reviewer).toContain("You only review and report.");
+    expect(reviewer).toContain("Required canonical skill contract: `review-backlog`");
+    expect(reviewer).toContain("## Review Dimensions");
     expect(driver).toContain("you DRIVE rauf from the outside");
     expect(driver).toContain("You do NOT behave as a loop iteration");
+    expect(driver).toContain("Required canonical skill contract: `drive-rauf-loop`");
+    expect(driver).toContain("### The stream never decides");
   });
 
   it("fails on unknown Copilot tool aliases", () => {
     expect(() =>
       buildBundle({
-        "rauf-backlog-reviewer": { tools: ["read", "search", "execute", "mystery-tool"] },
-        "rauf-loop-driver": { tools: ["read", "search", "execute"] },
+        "rauf-backlog-reviewer": {
+          tools: ["read", "search", "execute", "mystery-tool"],
+          requiredSkill: "review-backlog",
+        },
+        "rauf-loop-driver": {
+          tools: ["read", "search", "execute"],
+          requiredSkill: "drive-rauf-loop",
+        },
       }),
     ).toThrow("unknown Copilot tool alias(es): mystery-tool");
+  });
+
+  it("fails on unknown required Copilot skills", () => {
+    expect(() =>
+      buildBundle({
+        "rauf-backlog-reviewer": {
+          tools: ["read", "search", "execute"],
+          requiredSkill: "missing-skill",
+        },
+        "rauf-loop-driver": {
+          tools: ["read", "search", "execute"],
+          requiredSkill: "drive-rauf-loop",
+        },
+      }),
+    ).toThrow("unknown required Copilot skill 'missing-skill'");
   });
 
   it("records every source mapping and explicit drop result", () => {
     const report = bundle.get("COPILOT-BUNDLE-REPORT.md")!;
     expect(report).toContain("| Skill | `skills/author-backlog/SKILL.md`");
-    expect(report).toContain("| Agent | `agents/rauf-loop-driver.md`");
+    expect(report).toContain(
+      "| Agent | `agents/rauf-loop-driver.md` + `skills/drive-rauf-loop/SKILL.md`",
+    );
+    expect(report).toContain("composed-skill=drive-rauf-loop");
     expect(report).toContain("| none |");
   });
 
