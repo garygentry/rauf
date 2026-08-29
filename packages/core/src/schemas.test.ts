@@ -52,6 +52,34 @@ const validMarkerOptions = {
   maxIterations: 20,
 };
 
+describe("MarkerOptionsSchema provider config", () => {
+  it("preserves the persisted copilot provider without providerConfig", () => {
+    expect(MarkerOptionsSchema.parse({ ...validMarkerOptions, provider: "copilot" }).provider).toBe(
+      "copilot",
+    );
+  });
+
+  it("rejects arbitrary argv config for the dedicated copilot provider", () => {
+    expect(() =>
+      MarkerOptionsSchema.parse({
+        ...validMarkerOptions,
+        provider: "copilot",
+        providerConfig: { args: ["--allow-all-tools"] },
+      }),
+    ).toThrow(/providerConfig is not supported/);
+  });
+
+  it("retains providerConfig compatibility for generic-cli", () => {
+    expect(
+      MarkerOptionsSchema.parse({
+        ...validMarkerOptions,
+        provider: "generic-cli",
+        providerConfig: { binary: "custom-agent", args: ["--json"] },
+      }).providerConfig,
+    ).toEqual({ binary: "custom-agent", args: ["--json"] });
+  });
+});
+
 const validMarkerFile = {
   rauf: true as const,
   version: "1",

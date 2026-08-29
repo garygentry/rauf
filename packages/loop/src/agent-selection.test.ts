@@ -66,6 +66,12 @@ describe("resolveAgentId — precedence matrix (04 §3.1)", () => {
     ).toBe("cursor");
   });
 
+  it("preserves the existing copilot id at item, project, and global layers", () => {
+    expect(resolveAgentId({ itemProvider: "copilot" })).toBe("copilot");
+    expect(resolveAgentId({ projectProvider: "copilot" })).toBe("copilot");
+    expect(resolveAgentId({ globalProvider: "copilot" })).toBe("copilot");
+  });
+
   it("empty-string layers are skipped at every position", () => {
     expect(resolveAgentId({ itemProvider: "" })).toBe(DEFAULT_AGENT_ID);
     expect(resolveAgentId({ itemProvider: "", runProvider: "", projectProvider: "codex" })).toBe(

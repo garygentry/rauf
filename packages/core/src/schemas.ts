@@ -135,19 +135,29 @@ export const ProjectProfileSchema = z.object({
 
 export const RuntimeSchema = z.enum(["shell", "global"]);
 
-export const MarkerOptionsSchema = z.object({
-  ignoreInTool: z.boolean(),
-  gitignoreScripts: z.boolean(),
-  maxIterations: z.number().int().positive(),
-  model: z.string().optional(),
-  autoSweep: z.boolean().optional(),
-  sweepMinAgeDays: z.number().int().nonnegative().optional(),
-  sessionTimeout: z.number().int().positive().optional(),
-  /** Runtime mode: 'shell' (legacy scripts) or 'global' (TypeScript loop runner). Defaults to 'shell' when omitted for backward compat. */
-  runtime: RuntimeSchema.optional(),
-  provider: z.string().optional(),
-  providerConfig: z.record(z.string(), z.unknown()).optional(),
-});
+export const MarkerOptionsSchema = z
+  .object({
+    ignoreInTool: z.boolean(),
+    gitignoreScripts: z.boolean(),
+    maxIterations: z.number().int().positive(),
+    model: z.string().optional(),
+    autoSweep: z.boolean().optional(),
+    sweepMinAgeDays: z.number().int().nonnegative().optional(),
+    sessionTimeout: z.number().int().positive().optional(),
+    /** Runtime mode: 'shell' (legacy scripts) or 'global' (TypeScript loop runner). Defaults to 'shell' when omitted for backward compat. */
+    runtime: RuntimeSchema.optional(),
+    provider: z.string().optional(),
+    providerConfig: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((options, ctx) => {
+    if (options.provider === "copilot" && options.providerConfig !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["providerConfig"],
+        message: 'providerConfig is not supported for the dedicated "copilot" provider',
+      });
+    }
+  });
 
 // ─── MarkerFile (.rauf.json) ──────────────────────────────────────
 

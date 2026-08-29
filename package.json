@@ -40,7 +40,10 @@
     "codex:check": "bun run scripts/build-codex-bundle.ts --check && bun run scripts/build-codex-agents.ts --check",
     "pi:generate": "bun run scripts/build-pi-bundle.ts",
     "pi:check": "bun run scripts/build-pi-bundle.ts --check",
-    "gate": "pnpm build && pnpm schema:check && pnpm version:check && pnpm codex:check && pnpm pi:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm check:docs",
+    "copilot:generate": "bun run scripts/build-copilot-bundle.ts",
+    "copilot:check": "bun run scripts/build-copilot-bundle.ts --check",
+    "copilot:package:check": "bun run scripts/check-copilot-distribution.ts",
+    "gate": "pnpm build && pnpm schema:check && pnpm version:check && pnpm codex:check && pnpm pi:check && pnpm copilot:check && pnpm copilot:package:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm check:docs",
     "generate:diagrams": "bun run scripts/generate-diagrams.ts",
     "release:prepare": "bun run scripts/release/prepare.ts",
     "rauf": "rauf"

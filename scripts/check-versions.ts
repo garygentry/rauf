@@ -43,6 +43,17 @@ for (const rel of manifests) {
   }
 }
 
+// The generated Copilot plugin is a release coordinate too (DEC-08 / RAUF-204). Keep this
+// explicit even though copilot:check also regenerates from package.json: version:check should name
+// a stale plugin version directly, before any adapter drift command runs.
+const copilotManifest = "adapters/copilot/plugin.json";
+const copilot = JSON.parse(readFileSync(join(repoRoot, copilotManifest), "utf8")) as {
+  version?: string;
+};
+if (copilot.version !== expected) {
+  mismatches.push(`  ${copilotManifest}: ${copilot.version ?? "(none)"} (expected ${expected})`);
+}
+
 if (mismatches.length > 0) {
   console.error(
     `✗ Version mismatch — version.ts is ${expected}, but these disagree:\n${mismatches.join("\n")}\n` +
@@ -52,5 +63,5 @@ if (mismatches.length > 0) {
 }
 
 console.log(
-  `Versions in sync: all manifests are ${expected} (matches packages/core/src/version.ts).`,
+  `Versions in sync: all package and Copilot manifests are ${expected} (matches packages/core/src/version.ts).`,
 );

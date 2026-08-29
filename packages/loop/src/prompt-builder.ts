@@ -142,7 +142,7 @@ function formatEstimatedIterationsHint(item: BacklogItem): string {
 }
 
 /**
- * Builds the complete prompt string sent to `claude -p`.
+ * Builds the complete prompt string sent to the selected provider.
  *
  * Reads RAUF.md and progress.md from the project's .rauf/ directory,
  * formats the current backlog item and backlog summary, and assembles

@@ -205,6 +205,48 @@ describe("handleInstall", () => {
     const markerContent = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
     expect(markerContent.options.gitignoreScripts).toBe(true);
   });
+
+  it("install --agent copilot persists the provider across reinstall", async () => {
+    const projectDir = path.join(tmpDir, "copilot-project");
+    createFakeProject(projectDir, { git: true });
+
+    const installCode = await handleInstall(
+      makeCtx({
+        args: [projectDir],
+        flags: new Map<string, string | true>([
+          ["yes", true],
+          ["agent", "copilot"],
+        ]),
+      }),
+    );
+    expect(installCode).toBe(ExitCode.SUCCESS);
+
+    const reinstallCode = await handleInstall(
+      makeCtx({ args: [projectDir], flags: new Map([["yes", true]]) }),
+    );
+    expect(reinstallCode).toBe(ExitCode.SUCCESS);
+
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
+    expect(marker.options.provider).toBe("copilot");
+  });
+
+  it("rejects an argv-shaped install agent value", async () => {
+    const projectDir = path.join(tmpDir, "unknown-agent");
+    createFakeProject(projectDir, { git: true });
+
+    const code = await handleInstall(
+      makeCtx({
+        args: [projectDir],
+        flags: new Map<string, string | true>([
+          ["yes", true],
+          ["agent", "copilot --allow-all-tools"],
+        ]),
+      }),
+    );
+
+    expect(code).toBe(ExitCode.USAGE);
+    expect(fs.existsSync(path.join(projectDir, ".rauf.json"))).toBe(false);
+  });
 });
 
 // ─── handleInit ────────────────────────────────────────────────────
@@ -329,6 +371,20 @@ describe("handleInit", () => {
     const gitignore = fs.readFileSync(path.join(projectDir, ".gitignore"), "utf-8");
     expect(gitignore).toContain("__pycache__");
     expect(gitignore).toContain(".venv");
+  });
+
+  it("init --agent copilot persists the project provider", async () => {
+    const projectDir = path.join(tmpDir, "copilot-init");
+    const code = await handleInit(
+      makeCtx({
+        args: [projectDir],
+        flags: new Map<string, string | true>([["agent", "copilot"]]),
+      }),
+    );
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
+    expect(marker.options.provider).toBe("copilot");
   });
 });
 

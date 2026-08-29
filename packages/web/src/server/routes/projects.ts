@@ -113,6 +113,8 @@ const ResumeBodySchema = z
   .object({
     backlogRoot: z.string().optional(),
     retryBlocked: z.boolean().optional(),
+    provider: z.string().optional(),
+    ignoreItemModel: z.boolean().optional(),
     answers: z.array(z.object({ itemId: z.string(), text: z.string() }).strict()).optional(),
   })
   .strict();
@@ -898,6 +900,8 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
             maxRetries: DEFAULT_MAX_RETRIES,
             sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
             backlogRoot: resolvedBacklogRoot,
+            provider: body.provider,
+            ...(body.ignoreItemModel ? { ignoreItemModel: true } : {}),
           });
         }
       }

@@ -12,7 +12,7 @@ vi.mock("../process-group.js", () => ({
 
 import { spawnProcessGroup } from "../process-group.js";
 import { CodexCliProvider } from "./codex-cli.js";
-import type { ClaudeStreamEvent } from "../stream-parser.js";
+import type { AgentStreamEvent } from "../stream-parser.js";
 
 const mockSpawn = vi.mocked(spawnProcessGroup);
 
@@ -104,7 +104,7 @@ describe("CodexCliProvider", () => {
       return ok(PG_OK);
     });
 
-    const events: ClaudeStreamEvent[] = [];
+    const events: AgentStreamEvent[] = [];
     const p = new CodexCliProvider();
     const res = await p.execute("go", {
       timeoutMinutes: 1,

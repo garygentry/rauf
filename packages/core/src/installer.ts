@@ -57,9 +57,14 @@ const CLAUDE_ADDON_FILE = "CLAUDE_ADDON.md";
 /** Template used for AGENTS.md merge (cross-agent instructions) — not deployed directly */
 const AGENTS_ADDON_FILE = "AGENTS_ADDON.md";
 
-/** Sentinels for the managed block in RAUF.md */
+/** Sentinels for the tool-owned block in RAUF.md. User content lives below its anchor. */
 const RAUF_MD_MANAGED_START = "<!-- rauf:managed:start -->";
 const RAUF_MD_MANAGED_END = "<!-- rauf:managed:end -->";
+const RAUF_MD_USER_HEADING = "## Project-Specific Instructions";
+const RAUF_MD_USER_ANCHOR =
+  "<!-- Add custom instructions below this line — they survive rauf update and uninstall -->";
+const RAUF_MD_LEGACY_USER_ANCHOR =
+  "<!-- Add custom instructions below this line — they survive rauf update -->";
 
 /**
  * Runtime files the loop writes into a target project's .rauf/ dir. These must never be
@@ -125,6 +130,8 @@ export interface InstallOptions {
   profileOverrides?: ProfileOverrides;
   /** Marker file options overrides */
   options?: Partial<MarkerOptions>;
+  /** Selected provider executable for provider-aware preflight */
+  agent?: PreflightAgent;
   /** Project name for backlog.json */
   projectName?: string;
   /** Project description for backlog.json */
@@ -183,12 +190,17 @@ export interface PreflightResult {
   checks: PreflightCheck[];
 }
 
+export interface PreflightAgent {
+  id: string;
+  binaryName?: string;
+}
+
 // ─── preflight ────────────────────────────────────────────────────
 //
 // Run preflight checks before installation. Returns a structured
 // result with individual check results and an overall pass/fail.
 
-export function preflight(projectPath: string): PreflightResult {
+export function preflight(projectPath: string, agent?: PreflightAgent): PreflightResult {
   const resolved = path.resolve(projectPath);
   const checks: PreflightCheck[] = [];
 
@@ -223,16 +235,19 @@ export function preflight(projectPath: string): PreflightResult {
     severity: "error",
   });
 
-  // 4. claude in PATH?
-  const hasClaude = isCommandInPath("claude");
-  checks.push({
-    name: "claude_available",
-    passed: hasClaude,
-    message: hasClaude
-      ? "claude found in PATH"
-      : "claude CLI not found in PATH (required to run the loop)",
-    severity: "warning",
-  });
+  // 4. Selected provider binary in PATH? Binary-less providers own their custom
+  // detection in the loop registry and cannot be checked by this synchronous core path.
+  if (agent?.binaryName) {
+    const binaryAvailable = isCommandInPath(agent.binaryName);
+    checks.push({
+      name: "agent_binary_available",
+      passed: binaryAvailable,
+      message: binaryAvailable
+        ? `${agent.binaryName} found in PATH for agent "${agent.id}"`
+        : `${agent.binaryName} not found in PATH (required by agent "${agent.id}")`,
+      severity: "warning",
+    });
+  }
 
   // Overall pass: all error-severity checks must pass
   const passed = checks.filter((c) => c.severity === "error").every((c) => c.passed);
@@ -252,7 +267,7 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   const warnings: string[] = [];
 
   // 1. Preflight checks
-  const preflightResult = preflight(resolved);
+  const preflightResult = preflight(resolved, options.agent);
   for (const check of preflightResult.checks) {
     if (!check.passed && check.severity === "warning") {
       warnings.push(check.message);
@@ -628,8 +643,9 @@ export function uninstall(projectPath: string, options: UninstallOptions = {}): 
   const removeClaudeMdSection = options.removeClaudeMdSection ?? true;
   const removeAgentsMdSection = options.removeAgentsMdSection ?? true;
 
-  // Remove RAUF.md and REVIEW.md (always)
-  safeUnlink(path.join(resolved, DOT_RAUF, "RAUF.md"));
+  // Remove only rauf-owned RAUF.md instructions; preserve project-specific content.
+  const raufMdRemoval = removeRaufMdManagedSection(path.join(resolved, DOT_RAUF, "RAUF.md"));
+  if (!raufMdRemoval.ok) return raufMdRemoval;
   safeUnlink(path.join(resolved, DOT_RAUF, "REVIEW.md"));
 
   // Remove backlog.schema.json (tool-managed)
@@ -709,6 +725,91 @@ function extractManagedBlock(rendered: string): string | null {
   return inner;
 }
 
+/** Count exact marker occurrences so malformed/duplicate ownership boundaries fail closed. */
+function countOccurrences(content: string, marker: string): number {
+  let count = 0;
+  let offset = 0;
+  while ((offset = content.indexOf(marker, offset)) !== -1) {
+    count++;
+    offset += marker.length;
+  }
+  return count;
+}
+
+/** Locate the explicit user-content boundary used by current and legacy templates. */
+function findRaufUserAnchor(content: string): { index: number; marker: string } | null {
+  for (const marker of [RAUF_MD_USER_ANCHOR, RAUF_MD_LEGACY_USER_ANCHOR]) {
+    const index = content.indexOf(marker);
+    if (index !== -1) return { index, marker };
+  }
+  return null;
+}
+
+/** Join a freshly rendered template to bytes that were explicitly placed below the user anchor. */
+function appendPreservedUserContent(rendered: string, userSuffix: string): string {
+  if (userSuffix.trim() === "") return rendered;
+  return rendered.replace(/\s*$/, "\n") + userSuffix.replace(/^\r?\n/, "\n");
+}
+
+/**
+ * Remove only the managed RAUF.md region. A fresh managed-only file is deleted; content below the
+ * explicit project-specific anchor survives. Malformed ownership markers fail closed.
+ */
+function removeRaufMdManagedSection(filePath: string): Result<void> {
+  if (!fileExists(filePath)) return ok(undefined);
+
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch (e) {
+    return err({
+      code: ErrorCodes.FILE_NOT_FOUND,
+      message: `Unable to read RAUF.md during uninstall: ${filePath}`,
+      details: { path: filePath, cause: e instanceof Error ? e.message : String(e) },
+    });
+  }
+
+  const startCount = countOccurrences(content, RAUF_MD_MANAGED_START);
+  const endCount = countOccurrences(content, RAUF_MD_MANAGED_END);
+  if (startCount !== 1 || endCount !== 1) {
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR,
+      message: "RAUF.md has malformed or duplicate managed sentinels; refusing to remove it",
+      details: { path: filePath, startCount, endCount },
+    });
+  }
+
+  const startIdx = content.indexOf(RAUF_MD_MANAGED_START);
+  const endIdx = content.indexOf(RAUF_MD_MANAGED_END);
+  if (endIdx <= startIdx) {
+    return err({
+      code: ErrorCodes.VALIDATION_ERROR,
+      message: "RAUF.md managed sentinels are out of order; refusing to remove it",
+      details: { path: filePath },
+    });
+  }
+
+  const anchor = findRaufUserAnchor(content);
+  if (anchor && anchor.index > endIdx) {
+    const userSuffix = content.slice(anchor.index + anchor.marker.length);
+    if (userSuffix.trim() === "") {
+      safeUnlink(filePath);
+      return ok(undefined);
+    }
+    const preserved = `${RAUF_MD_USER_HEADING}\n${RAUF_MD_USER_ANCHOR}${userSuffix}`;
+    return atomicWrite(filePath, preserved);
+  }
+
+  let endOffset = endIdx + RAUF_MD_MANAGED_END.length;
+  if (content[endOffset] === "\n") endOffset++;
+  const outside = content.slice(0, startIdx) + content.slice(endOffset);
+  if (outside.trim() === "" || outside.trim() === "# Rauf — Per-Iteration Instructions") {
+    safeUnlink(filePath);
+    return ok(undefined);
+  }
+  return atomicWrite(filePath, outside);
+}
+
 /** Render RAUF.md from template with profile variables */
 function deployRaufMd(
   raufDir: string,
@@ -739,17 +840,54 @@ function deployRaufMd(
       });
     }
 
-    // Extract just the managed block from the freshly rendered template
+    // Extract just the managed block from the freshly rendered template.
     const newManagedContent = extractManagedBlock(rendered);
+    if (newManagedContent === null) {
+      return err({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message: "RAUF.md template is missing its managed sentinel block",
+      });
+    }
 
-    if (newManagedContent !== null && current.includes(RAUF_MD_MANAGED_START)) {
-      // Sentinel-aware update: replace only the managed block
-      const updated = updateSentinelBlock(
-        current,
-        RAUF_MD_MANAGED_START,
-        RAUF_MD_MANAGED_END,
-        newManagedContent,
-      );
+    const startCount = countOccurrences(current, RAUF_MD_MANAGED_START);
+    const endCount = countOccurrences(current, RAUF_MD_MANAGED_END);
+    if ((startCount === 0) !== (endCount === 0) || startCount > 1 || endCount > 1) {
+      return err({
+        code: ErrorCodes.VALIDATION_ERROR,
+        message: "RAUF.md has malformed or duplicate managed sentinels; refusing to update it",
+        details: { path: outputPath, startCount, endCount },
+      });
+    }
+
+    if (startCount === 1 && endCount === 1) {
+      const startIdx = current.indexOf(RAUF_MD_MANAGED_START);
+      const endIdx = current.indexOf(RAUF_MD_MANAGED_END);
+      if (endIdx <= startIdx) {
+        return err({
+          code: ErrorCodes.VALIDATION_ERROR,
+          message: "RAUF.md managed sentinels are out of order; refusing to update it",
+          details: { path: outputPath },
+        });
+      }
+
+      const anchor = findRaufUserAnchor(current);
+      const contentBetweenManagedEndAndAnchor = anchor
+        ? current.slice(endIdx + RAUF_MD_MANAGED_END.length, anchor.index)
+        : "";
+      let updated: string;
+      if (anchor && contentBetweenManagedEndAndAnchor.includes("## Workflow")) {
+        // Pre-RAUF-203 templates bounded only verification commands. Everything below the explicit
+        // user anchor is user-owned; migrate that suffix into the new full-contract boundary.
+        const userSuffix = current.slice(anchor.index + anchor.marker.length);
+        updated = appendPreservedUserContent(rendered, userSuffix);
+      } else {
+        updated = updateSentinelBlock(
+          current,
+          RAUF_MD_MANAGED_START,
+          RAUF_MD_MANAGED_END,
+          newManagedContent,
+        );
+      }
 
       if (updated === current) {
         return ok({
@@ -761,30 +899,35 @@ function deployRaufMd(
 
       const writeResult = atomicWrite(outputPath, updated);
       if (!writeResult.ok) return writeResult;
-
       return ok({
         file: ".rauf/RAUF.md",
         action: "updated" as const,
-        detail: "RAUF.md managed section updated, project-specific content preserved",
+        detail: "RAUF.md managed instructions updated, project-specific content preserved",
       });
     }
 
-    // Legacy file without sentinels or template without sentinels — full overwrite
-    if (current === rendered) {
+    if (current.trim() === "") {
+      const writeResult = atomicWrite(outputPath, rendered);
+      if (!writeResult.ok) return writeResult;
       return ok({
         file: ".rauf/RAUF.md",
-        action: "skipped" as const,
-        detail: "RAUF.md already up to date",
+        action: "rendered" as const,
+        detail: "RAUF.md rendered from template",
       });
     }
 
-    const writeResult = atomicWrite(outputPath, rendered);
+    // An unbounded legacy file has no trustworthy ownership boundary. Preserve every byte as user
+    // content beneath the new managed contract rather than overwriting it.
+    const migrated = appendPreservedUserContent(
+      rendered,
+      `\n\n### Preserved pre-managed instructions\n\n${current}`,
+    );
+    const writeResult = atomicWrite(outputPath, migrated);
     if (!writeResult.ok) return writeResult;
-
     return ok({
       file: ".rauf/RAUF.md",
-      action: "rendered" as const,
-      detail: "RAUF.md re-rendered from template (no managed sentinels found)",
+      action: "updated" as const,
+      detail: "RAUF.md managed instructions added; unbounded legacy content preserved",
     });
   }
 

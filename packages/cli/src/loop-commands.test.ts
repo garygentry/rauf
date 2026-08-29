@@ -18,6 +18,7 @@ import {
   createLoopBranch,
   buildPreconditionRemediation,
   handleLoopRun,
+  handleLoopReview,
   handleAgents,
   loopRunExitCode,
   resolveModelOverride,
@@ -1226,7 +1227,7 @@ describe("loop run --detached", () => {
     }
   });
 
-  it("forwards --agent <id> as body.provider in the POST body (REQ-SEL-01)", async () => {
+  it("forwards --agent copilot as body.provider in the detached POST (REQ-SEL-01)", async () => {
     const { port, close, startCalls } = await startMockServer();
     try {
       writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
@@ -1237,7 +1238,7 @@ describe("loop run --detached", () => {
         args: [proj],
         flags: new Map<string, string | true>([
           ["detached", true],
-          ["agent", "codex"],
+          ["agent", "copilot"],
         ]),
       });
 
@@ -1248,7 +1249,7 @@ describe("loop run --detached", () => {
 
       expect(code).toBe(ExitCode.SUCCESS);
       expect(startCalls.length).toBe(1);
-      expect((startCalls[0]!.body as Record<string, unknown>).provider).toBe("codex");
+      expect((startCalls[0]!.body as Record<string, unknown>).provider).toBe("copilot");
     } finally {
       removeServerState();
       await close();
@@ -1353,6 +1354,53 @@ describe("loop run --agent plumbing (in-process)", () => {
   });
 });
 
+describe("loop review provider plumbing", () => {
+  it("forwards --agent copilot and --no-model to the standalone review runner", async () => {
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-review-provider-"));
+    fs.mkdirSync(path.join(projectDir, ".rauf"), { recursive: true });
+    let captured: Record<string, unknown> | undefined;
+    const createSpy = vi.spyOn(LoopRunner, "create").mockImplementation((_path, options) => {
+      captured = options as unknown as Record<string, unknown>;
+      return {
+        ok: true,
+        value: {
+          on: vi.fn(),
+          requestGracefulStop: vi.fn(),
+          cancel: vi.fn(),
+          startReviewOnly: vi.fn().mockResolvedValue({
+            completedCount: 0,
+            blockedCount: 0,
+            cancelled: false,
+          }),
+        },
+      } as never;
+    });
+
+    try {
+      const code = await handleLoopReview(
+        makeCtx({
+          args: [projectDir],
+          flags: new Map<string, string | true>([
+            ["agent", "copilot"],
+            ["no-model", true],
+          ]),
+        }),
+      );
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(captured).toMatchObject({
+        provider: "copilot",
+        ignoreItemModel: true,
+        reviewOnly: true,
+      });
+      expect(captured?.model).toBeUndefined();
+    } finally {
+      createSpy.mockRestore();
+      fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("loop run --agent help enumeration (06 §3.2)", () => {
   it("the --agent FlagDef description enumerates getAgentDescriptors() ids (sync, no probe)", () => {
     const run = findCommand("loop")!.subcommands!.find((s) => s.name === "run")!;
@@ -1384,8 +1432,9 @@ describe("rauf agents command (06 §3.3)", () => {
       expect(out.stdout).toContain(r.id);
       expect(out.stdout).toContain(r.displayName);
     }
-    // Header columns present.
-    expect(out.stdout).toContain("AVAILABLE");
+    // Binary presence and authenticated readiness are separate signals.
+    expect(out.stdout).toContain("BINARY");
+    expect(out.stdout).toContain("AUTH");
     expect(out.stdout).toContain("DETAIL");
   });
 
@@ -1400,11 +1449,20 @@ describe("rauf agents command (06 §3.3)", () => {
     });
     configureOutput({ noColor: true, quiet: false, json: false });
     expect(code).toBe(ExitCode.SUCCESS);
-    const parsed = JSON.parse(out.stdout) as { agents: Array<{ id: string; available: boolean }> };
+    const parsed = JSON.parse(out.stdout) as {
+      agents: Array<{
+        id: string;
+        available: boolean;
+        binaryAvailable: boolean;
+        authenticated: boolean | null;
+      }>;
+    };
     expect(Array.isArray(parsed.agents)).toBe(true);
     const expected = await listAgents();
     expect(parsed.agents.map((a) => a.id)).toEqual(expected.map((a) => a.id));
     expect(parsed.agents[0]).toHaveProperty("available");
+    expect(parsed.agents[0]).toHaveProperty("binaryAvailable");
+    expect(parsed.agents[0]).toHaveProperty("authenticated");
   });
 });
 

@@ -55,7 +55,7 @@ import { createProvider, getAgentDescriptors, detectAgent } from "./providers/in
 import type { LLMProvider } from "./providers/types.js";
 import { resolveAgentId } from "./agent-selection.js";
 import { GENERIC_AGENT_ID } from "./constants.js";
-import type { ClaudeStreamEvent } from "./stream-parser.js";
+import type { AgentStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { hasUsageLimitInText, classifyExit } from "./exit-classifier.js";
@@ -782,7 +782,7 @@ export class LoopRunner extends TypedEventEmitter {
       }
     }, STUCK_CHECK_INTERVAL_MS);
 
-    const onStreamEvent = (event: ClaudeStreamEvent): void => {
+    const onStreamEvent = (event: AgentStreamEvent): void => {
       lastActivityAt = new Date().toISOString();
       stuckWarning = false;
 
@@ -1033,6 +1033,12 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "review":
       case "none": {
+        if (this.isCancelled()) {
+          updateItem(this.paths, item.id, { status: "pending" });
+          this.currentItemId = null;
+          return "continue";
+        }
+
         // No explicit signal. A missing signal must NEVER, by itself, mark an
         // item blocked — classify WHY the spawn produced no signal and route on
         // that. usage_limited/infra_error are environmental deaths (item stays
@@ -1042,7 +1048,14 @@ export class LoopRunner extends TypedEventEmitter {
         // "usage_limited" verdict there can only be a false substring match on
         // plain-text output, and must never route into the claude OAuth pause
         // path (REQ-USAGE-02). classifyExit/ExitClass themselves stay unchanged.
-        const rawExitClass = classifyExit(execResult.value, parsed);
+        const providerFailure = provider.classifyFailure?.(execResult.value);
+        if (providerFailure) {
+          appendLog(
+            this.paths,
+            `${provider.id} failure classified as ${providerFailure.kind} (${providerFailure.exitClass})`,
+          );
+        }
+        const rawExitClass = providerFailure?.exitClass ?? classifyExit(execResult.value, parsed);
         const exitClass =
           !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
         switch (exitClass) {
@@ -1235,10 +1248,12 @@ export class LoopRunner extends TypedEventEmitter {
       return "failed";
     }
 
-    const { stdout } = execResult.value;
+    const { stdout, reconstructedText } = execResult.value;
+    const signalText =
+      reconstructedText && reconstructedText.length > 0 ? reconstructedText : stdout;
 
     // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
-    const parsed = parseSignal(neutralizeForDetection(stdout));
+    const parsed = parseSignal(neutralizeForDetection(signalText));
 
     if (parsed.signal === "done") {
       appendLog(this.paths, "Review pass: clean — no issues found");

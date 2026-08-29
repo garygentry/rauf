@@ -20,6 +20,10 @@ export interface AgentAvailability {
   binaryName?: string;
   /** Whether the agent's CLI / credentials are currently available (from `detect`). */
   available: boolean;
+  /** Whether the executable itself is present. */
+  binaryAvailable: boolean;
+  /** Authenticated readiness, or null when the provider has no safe auth probe. */
+  authenticated: boolean | null;
   /** Human-readable detail (PATH location, "not found", or credential status). */
   detail?: string;
 }
@@ -92,9 +96,19 @@ export async function probeBinaryOnPath(binaryName: string): Promise<DetectionRe
   if (isAbsolute(binaryName)) {
     try {
       await access(binaryName, constants.X_OK);
-      return { available: true, detail: `found at ${binaryName}` };
+      return {
+        available: true,
+        binaryAvailable: true,
+        authenticated: null,
+        detail: `found at ${binaryName}; authentication not checked`,
+      };
     } catch {
-      return { available: false, detail: `binary "${binaryName}" not found on PATH` };
+      return {
+        available: false,
+        binaryAvailable: false,
+        authenticated: null,
+        detail: `binary "${binaryName}" not found on PATH`,
+      };
     }
   }
 
@@ -104,12 +118,22 @@ export async function probeBinaryOnPath(binaryName: string): Promise<DetectionRe
     const candidate = join(dir, binaryName);
     try {
       await access(candidate, constants.X_OK);
-      return { available: true, detail: `found at ${candidate}` };
+      return {
+        available: true,
+        binaryAvailable: true,
+        authenticated: null,
+        detail: `found at ${candidate}; authentication not checked`,
+      };
     } catch {
       // not here / not executable — try next PATH entry
     }
   }
-  return { available: false, detail: `binary "${binaryName}" not found on PATH` };
+  return {
+    available: false,
+    binaryAvailable: false,
+    authenticated: null,
+    detail: `binary "${binaryName}" not found on PATH`,
+  };
 }
 
 /**
@@ -129,6 +153,8 @@ export async function detectAgent(
       .join(", ");
     return {
       available: false,
+      binaryAvailable: false,
+      authenticated: null,
       detail: `Unknown agent "${id}". Supported agents: ${ids || "(none)"}.`,
     };
   }
@@ -144,6 +170,8 @@ export async function detectAgent(
   if (!descriptor.binaryName) {
     return {
       available: false,
+      binaryAvailable: false,
+      authenticated: null,
       detail: `agent "${id}" has no binaryName and no detect override (registration bug)`,
     };
   }
@@ -163,6 +191,8 @@ export async function listAgents(): Promise<AgentAvailability[]> {
       displayName: d.displayName,
       binaryName: d.binaryName,
       available: result.available,
+      binaryAvailable: result.binaryAvailable ?? result.available,
+      authenticated: result.authenticated ?? null,
       detail: result.detail,
     });
   }

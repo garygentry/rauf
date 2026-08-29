@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { CodexStreamParser } from "./codex-jsonl-parser.js";
-import type { ClaudeStreamEvent } from "../stream-parser.js";
+import type { AgentStreamEvent } from "../stream-parser.js";
 
 const FIXTURES = join(import.meta.dirname, "__fixtures__");
 
-function run(fixture: string): { events: ClaudeStreamEvent[]; text: string } {
-  const events: ClaudeStreamEvent[] = [];
+function run(fixture: string): { events: AgentStreamEvent[]; text: string } {
+  const events: AgentStreamEvent[] = [];
   const parser = new CodexStreamParser((e) => events.push(e));
   const jsonl = readFileSync(join(FIXTURES, fixture), "utf-8");
   for (const line of jsonl.split("\n")) if (line.trim()) parser.feed(line);
@@ -45,7 +45,7 @@ describe("CodexStreamParser", () => {
   });
 
   it("ignores malformed / non-JSON lines without throwing", () => {
-    const events: ClaudeStreamEvent[] = [];
+    const events: AgentStreamEvent[] = [];
     const parser = new CodexStreamParser((e) => events.push(e));
     expect(() => {
       parser.feed("not json at all");
@@ -57,7 +57,7 @@ describe("CodexStreamParser", () => {
   });
 
   it("pairs a tool item that only appears on completion (no started event)", () => {
-    const events: ClaudeStreamEvent[] = [];
+    const events: AgentStreamEvent[] = [];
     const parser = new CodexStreamParser((e) => events.push(e));
     parser.feed(
       '{"type":"item.completed","item":{"id":"x","type":"mcp_tool_call","status":"completed"}}',

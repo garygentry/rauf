@@ -10,11 +10,6 @@ import { registerAgent } from "./registry.js";
  *
  * OQ-2 verification status (real-CLI checked 2026-06-27; a wrong flag is a one-line config fix
  * here, never an engine change):
- *  - `copilot` (@github/copilot 1.0.65) — VERIFIED end-to-end: `copilot --allow-all-tools` with
- *    the prompt on stdin runs headlessly and emits the agent's text on stdout (real run exited 0
- *    with the expected sentinel). All three CLIs auto-detect a non-TTY stdin and go headless, so
- *    the engine's stdin/arg delivery is enough — no explicit `-p/--prompt` is needed for copilot
- *    or gemini.
  *  - `gemini` (@google/gemini-cli 0.49.0) — argv VERIFIED to reach headless execution: `gemini
  *    --yolo` with the prompt on stdin parses, enters non-interactive mode, and consumes the
  *    prompt (run reached the auth wall — `GEMINI_API_KEY` not set in this env). Completion +
@@ -53,15 +48,6 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     buildArgs: () => [],
     nonInteractive: ["--yolo"],
     modelFlag: (m) => ["-m", m],
-  },
-  {
-    id: "copilot",
-    displayName: "GitHub Copilot CLI",
-    binary: "copilot",
-    promptDelivery: "stdin",
-    buildArgs: () => [],
-    nonInteractive: ["--allow-all-tools"],
-    modelFlag: (m) => ["--model", m],
   },
   {
     id: "cursor",

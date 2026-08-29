@@ -6,6 +6,7 @@ SANDBOX_DIR="$(pwd)"
 # Remove transient state files
 rm -f .rauf/state.json .rauf/rauf.log .rauf/DONE .rauf/CANCEL
 rm -f .rauf/iteration-status.json .rauf/backlog.json.bak .rauf/answer-proof.txt
+rm -f scenario-work.txt
 # events.ndjson is a per-run runtime file the runner writes (rotating any prior
 # one into archive/). Remove both so each run starts from a clean slate and a
 # stale event log / archive never leaks into the sandbox's throwaway commits.
@@ -48,6 +49,12 @@ if [ ! -d "$SBX_GIT_DIR" ]; then
   # Use a non-default branch so the loop's protected-branch guard passes.
   sbx_git symbolic-ref HEAD refs/heads/sandbox
 fi
+# Rauf's post-signal commit invokes plain `git commit`, so persist identity and
+# signing policy in the throwaway repository rather than only overriding the
+# baseline command. This must never depend on the developer's global git config.
+sbx_git config user.email "sandbox@rauf.test"
+sbx_git config user.name "Rauf Sandbox"
+sbx_git config commit.gpgsign false
 # Keep the git dir itself AND the loop's runtime files out of the work tree's
 # status. gitCommit (git add -A) excludes these runtime files per-commit, so
 # without ignoring them here a freshly-committed tree would still read "dirty"
