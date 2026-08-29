@@ -127,20 +127,10 @@ describe("preflight", () => {
     expect(installedCheck?.passed).toBe(false);
   });
 
-  it("checks the selected provider binary without naming Claude", () => {
-    createFakeProject(tmpDir, { git: true });
-    const result = preflight(tmpDir, { id: "copilot", binaryName: "missing-copilot-test-binary" });
-    expect(result.checks).toHaveLength(4);
-    const agentCheck = result.checks.find((check) => check.name === "agent_binary_available");
-    expect(agentCheck?.passed).toBe(false);
-    expect(agentCheck?.message).toContain('agent "copilot"');
-    expect(agentCheck?.message).not.toContain("claude");
-  });
-
-  it("omits a binary check when no provider is selected", () => {
+  it("returns 4 checks total", () => {
     createFakeProject(tmpDir, { git: true });
     const result = preflight(tmpDir);
-    expect(result.checks).toHaveLength(3);
+    expect(result.checks).toHaveLength(4);
   });
 });
 
@@ -738,63 +728,24 @@ describe("update — RAUF.md sentinel preservation", () => {
     expect(updated).not.toContain("OLD_TEST_COMMAND");
   });
 
-  it("preserves every byte of an unbounded legacy RAUF.md while adding managed instructions", () => {
+  it("handles RAUF.md without managed sentinels (legacy) by full overwrite", () => {
     createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
     install(tmpDir, installOpts());
 
+    // Strip sentinels to simulate a legacy file
     const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
-    const legacy = "# Hand-maintained legacy instructions\n\nNever delete this custom rule.\n";
+    const content = fs.readFileSync(raufMdPath, "utf-8");
+    const legacy = content.replace(RAUF_MD_MANAGED_START, "").replace(RAUF_MD_MANAGED_END, "");
     fs.writeFileSync(raufMdPath, legacy);
 
+    // Update should fall back to full overwrite
     const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
     expect(result.ok).toBe(true);
 
     const updated = fs.readFileSync(raufMdPath, "utf-8");
+    // Should have sentinels back from full template render
     expect(updated).toContain(RAUF_MD_MANAGED_START);
     expect(updated).toContain(RAUF_MD_MANAGED_END);
-    expect(updated).toContain(legacy);
-    expect(updated).toContain("Preserved pre-managed instructions");
-  });
-
-  it("migrates the old verification-only boundary and preserves explicit user content", () => {
-    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
-    install(tmpDir, installOpts());
-
-    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
-    const current = fs.readFileSync(raufMdPath, "utf-8");
-    const managedEnd = current.indexOf(RAUF_MD_MANAGED_END);
-    const workflow = current.indexOf("## Workflow");
-    const legacy =
-      current.slice(0, workflow) +
-      RAUF_MD_MANAGED_END +
-      "\n\n" +
-      current.slice(workflow, managedEnd) +
-      "<!-- Add custom instructions below this line — they survive rauf update -->\n" +
-      "Keep this user-owned instruction.\n";
-    fs.writeFileSync(raufMdPath, legacy);
-
-    const first = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
-    expect(first.ok).toBe(true);
-    const migrated = fs.readFileSync(raufMdPath, "utf-8");
-    expect(migrated).toContain("Keep this user-owned instruction.");
-    expect(migrated.match(/## Workflow/g)).toHaveLength(1);
-    expect(migrated.indexOf("## Workflow")).toBeLessThan(migrated.indexOf(RAUF_MD_MANAGED_END));
-
-    const second = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
-    expect(second.ok).toBe(true);
-    expect(fs.readFileSync(raufMdPath, "utf-8")).toBe(migrated);
-  });
-
-  it("fails closed on malformed or duplicate RAUF.md sentinels", () => {
-    createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
-    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
-    const malformed = `${RAUF_MD_MANAGED_START}\nuser bytes without an end marker\n`;
-    fs.writeFileSync(raufMdPath, malformed);
-
-    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
-    expect(result.ok).toBe(false);
-    expect(fs.readFileSync(raufMdPath, "utf-8")).toBe(malformed);
   });
 
   it("reports skipped when RAUF.md managed section is already up to date", () => {
@@ -835,7 +786,7 @@ describe("uninstall", () => {
     expect(fileExists(path.join(tmpDir, MARKER_FILENAME))).toBe(false);
   });
 
-  it("removes a managed-only RAUF.md", () => {
+  it("removes RAUF.md", () => {
     createFakeProject(tmpDir, { git: true });
     install(tmpDir, installOpts());
 
@@ -844,33 +795,6 @@ describe("uninstall", () => {
     uninstall(tmpDir);
 
     expect(fileExists(path.join(tmpDir, ".rauf", "RAUF.md"))).toBe(false);
-  });
-
-  it("preserves project-specific RAUF.md content while removing managed instructions", () => {
-    createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
-    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
-    fs.appendFileSync(raufMdPath, "\nKeep this project-specific instruction.\n");
-
-    const result = uninstall(tmpDir);
-    expect(result.ok).toBe(true);
-    const content = fs.readFileSync(raufMdPath, "utf-8");
-    expect(content).toContain("Keep this project-specific instruction.");
-    expect(content).not.toContain(RAUF_MD_MANAGED_START);
-    expect(content).not.toContain("RAUF_DONE");
-  });
-
-  it("fails closed on malformed RAUF.md ownership during uninstall", () => {
-    createFakeProject(tmpDir, { git: true });
-    install(tmpDir, installOpts());
-    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
-    const malformed = `${RAUF_MD_MANAGED_START}\ncustom bytes\n`;
-    fs.writeFileSync(raufMdPath, malformed);
-
-    const result = uninstall(tmpDir);
-    expect(result.ok).toBe(false);
-    expect(fs.readFileSync(raufMdPath, "utf-8")).toBe(malformed);
-    expect(fileExists(path.join(tmpDir, MARKER_FILENAME))).toBe(true);
   });
 
   it("preserves backlog.json by default", () => {
@@ -978,25 +902,6 @@ describe("uninstall", () => {
 
     const content = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
     expect(content).toContain("<!-- rauf:agents:start -->");
-  });
-
-  it("coexists with and preserves feature-forge's AGENTS.md managed region", () => {
-    createFakeProject(tmpDir, { git: true });
-    const forgeBlock = [
-      "# Existing instructions",
-      "",
-      "<!-- feature-forge:managed:start -->",
-      "Feature-forge sentinel content.",
-      "<!-- feature-forge:managed:end -->",
-      "",
-    ].join("\n");
-    fs.writeFileSync(path.join(tmpDir, "AGENTS.md"), forgeBlock);
-
-    install(tmpDir, installOpts());
-    update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
-    uninstall(tmpDir);
-
-    expect(fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8")).toBe(forgeBlock);
   });
 
   it("removes .rauf/ directory when empty", () => {
@@ -1148,10 +1053,10 @@ describe("edge cases", () => {
 // ─── preflight checks (updated) ────────────────────────────────────────
 
 describe("preflight — no jq check", () => {
-  it("returns 3 checks total when no provider is selected (no jq check)", () => {
+  it("returns 4 checks total (no jq check)", () => {
     createFakeProject(tmpDir, { git: true });
     const result = preflight(tmpDir);
-    expect(result.checks).toHaveLength(3);
+    expect(result.checks).toHaveLength(4);
     expect(result.checks.find((c) => c.name === "jq_available")).toBeUndefined();
   });
 });

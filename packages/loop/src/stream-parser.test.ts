@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { StreamParser, type AgentStreamEvent } from "./stream-parser.js";
+import { StreamParser, type ClaudeStreamEvent } from "./stream-parser.js";
 
-function collectEvents(lines: string[]): AgentStreamEvent[] {
-  const events: AgentStreamEvent[] = [];
+function collectEvents(lines: string[]): ClaudeStreamEvent[] {
+  const events: ClaudeStreamEvent[] = [];
   const parser = new StreamParser((e) => events.push(e));
   for (const line of lines) {
     parser.feed(line);
@@ -104,7 +104,7 @@ describe("StreamParser", () => {
   });
 
   it("handles a realistic multi-turn stream", () => {
-    const events: AgentStreamEvent[] = [];
+    const events: ClaudeStreamEvent[] = [];
     const parser = new StreamParser((e) => events.push(e));
 
     // message_start with input tokens
@@ -288,7 +288,7 @@ describe("StreamParser", () => {
     });
 
     it("handles realistic CLI multi-turn stream", () => {
-      const events: AgentStreamEvent[] = [];
+      const events: ClaudeStreamEvent[] = [];
       const parser = new StreamParser((e) => events.push(e));
 
       // System init event (ignored)

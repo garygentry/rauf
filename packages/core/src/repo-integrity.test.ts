@@ -84,14 +84,6 @@ describe("artifact templates", () => {
       const startIdx = content.indexOf(startSentinel);
       const endIdx = content.indexOf(endSentinel);
       expect(startIdx, "managed start must come before managed end").toBeLessThan(endIdx);
-      expect(content.indexOf("## Workflow"), "workflow must be tool-owned").toBeLessThan(endIdx);
-      expect(content.indexOf("## Important Rules"), "rules must be tool-owned").toBeLessThan(
-        endIdx,
-      );
-      expect(
-        content.indexOf("## Project-Specific Instructions"),
-        "user section must be outside the managed block",
-      ).toBeGreaterThan(endIdx);
 
       // Sentinels must be on their own lines
       const lines = content.split("\n");

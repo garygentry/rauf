@@ -8,11 +8,6 @@ if is_plain; then
   exit 0
 fi
 
-if is_copilot; then
-  emit_needs_human "I need a decision." "Should the API use REST or GraphQL?"
-  exit 0
-fi
-
 echo '{"type":"message_start","message":{"usage":{"input_tokens":14000}}}'
 echo '{"type":"content_block_start","index":0,"content_block":{"type":"text"}}'
 echo '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I need a decision.\n\nRAUF_NEEDS_HUMAN:Should the API use REST or GraphQL?"}}'

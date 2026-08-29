@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { ensureDir, atomicWrite, validatePath } from "./fs-utils.js";
 import { renderTemplate } from "./template.js";
-import { install, type InstallOptions, type PreflightAgent, readArtifact } from "./installer.js";
+import { install, type InstallOptions, readArtifact } from "./installer.js";
 import { getPreset, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
 import { writeMarkerFile, readMarkerFile } from "./config.js";
 import { addItem, type CreateItemInput } from "./backlog.js";
@@ -94,8 +94,6 @@ export interface InitOptions {
   rootDirectory?: string;
   /** Marker file options */
   options?: Partial<MarkerOptions>;
-  /** Selected provider executable for provider-aware preflight */
-  agent?: PreflightAgent;
 }
 
 // ─── initProject ──────────────────────────────────────────────────
@@ -157,7 +155,6 @@ export function initProject(targetPath: string, options: InitOptions): Result<In
     projectName,
     projectDescription: options.projectDescription,
     options: options.options,
-    agent: options.agent,
   };
 
   const installResult = install(resolved, installOpts);

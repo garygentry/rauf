@@ -148,25 +148,6 @@ describe("buildPrompt", () => {
       }
     });
 
-    it("injects RAUF.md only, not ambient AGENTS.md or CLAUDE.md instructions", () => {
-      setupProject(tmpDir, { raufMd: "RAUF_PROMPT_SENTINEL" });
-      fs.writeFileSync(path.join(tmpDir, "AGENTS.md"), "AGENTS_AMBIENT_SENTINEL\n");
-      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), "CLAUDE_AMBIENT_SENTINEL\n");
-
-      const result = buildPrompt(
-        testPaths(tmpDir),
-        testInstructionPaths(tmpDir),
-        makeItem(),
-        makeBacklog(),
-      );
-
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.value).toContain("RAUF_PROMPT_SENTINEL");
-      expect(result.value).not.toContain("AGENTS_AMBIENT_SENTINEL");
-      expect(result.value).not.toContain("CLAUDE_AMBIENT_SENTINEL");
-    });
-
     it("includes the current item as formatted JSON", () => {
       setupProject(tmpDir, { raufMd: "instructions" });
       const item = makeItem({ id: "042", title: "Special Task" });

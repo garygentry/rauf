@@ -1,7 +1,7 @@
 // ─── Codex JSONL Stream Parser ──────────────────────────────────
 //
 // Parses the `codex exec --json` JSON Lines event stream (one JSON object per
-// line on stdout) into the same {@link AgentStreamEvent}s the runner already
+// line on stdout) into the same {@link ClaudeStreamEvent}s the runner already
 // consumes (`tool_start` / `tool_end` / `token_update`), and reconstructs the
 // final agent text so signal parsing (RAUF_DONE etc.) works under `--agent codex`
 // — the JSONL stdout is NOT the bare final message.
@@ -18,7 +18,7 @@
 // Deliberately structurally aligned with {@link StreamParser} (the Claude parser):
 // same callback shape, same reconstructed-text accessor, malformed lines ignored.
 
-import type { AgentStreamEvent } from "../stream-parser.js";
+import type { ClaudeStreamEvent } from "../stream-parser.js";
 
 /** Codex `item.type`s that represent a tool/command activity (→ tool_start/tool_end). */
 const TOOL_ITEM_TYPES = new Set([
@@ -30,7 +30,7 @@ const TOOL_ITEM_TYPES = new Set([
 ]);
 
 export class CodexStreamParser {
-  private readonly onEvent: (event: AgentStreamEvent) => void;
+  private readonly onEvent: (event: ClaudeStreamEvent) => void;
   /** Maps Codex item id → the synthetic blockIndex used in tool_start/tool_end. */
   private toolBlocks = new Map<string, number>();
   private nextBlockIndex = 0;
@@ -39,7 +39,7 @@ export class CodexStreamParser {
   private inputTokens = 0;
   private outputTokens = 0;
 
-  constructor(onEvent: (event: AgentStreamEvent) => void) {
+  constructor(onEvent: (event: ClaudeStreamEvent) => void) {
     this.onEvent = onEvent;
   }
 

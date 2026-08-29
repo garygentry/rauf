@@ -39,20 +39,17 @@ export interface ApiRetryEvent {
   type: "api_retry";
 }
 
-export type AgentStreamEvent =
+export type ClaudeStreamEvent =
   | ToolStartEvent
   | ToolEndEvent
   | TokenUpdateEvent
   | MessageStopEvent
   | ApiRetryEvent;
 
-/** @deprecated Use AgentStreamEvent. */
-export type ClaudeStreamEvent = AgentStreamEvent;
-
 // ─── Parser ─────────────────────────────────────────────────────
 
 export class StreamParser {
-  private readonly onEvent: (event: AgentStreamEvent) => void;
+  private readonly onEvent: (event: ClaudeStreamEvent) => void;
   /** Maps content block index → true if the block is a tool_use block */
   private toolBlocks = new Map<number, boolean>();
   /** Accumulated text fragments from text_delta events */
@@ -61,7 +58,7 @@ export class StreamParser {
   private inputTokens = 0;
   private outputTokens = 0;
 
-  constructor(onEvent: (event: AgentStreamEvent) => void) {
+  constructor(onEvent: (event: ClaudeStreamEvent) => void) {
     this.onEvent = onEvent;
   }
 

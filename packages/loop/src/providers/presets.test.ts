@@ -3,16 +3,15 @@ import { describe, it, expect } from "vitest";
 import { getPresetConfig, PRESET_CONFIGS } from "./presets.js";
 
 describe("preset configs", () => {
-  // Codex and Copilot have dedicated adapters with structured output handling. Their provider
-  // tests own invocation assertions; this suite proves they cannot regress into generic presets.
-  it.each(["codex", "copilot"])("does not register %s as a generic preset", (id) => {
-    expect(getPresetConfig(id)).toBeUndefined();
-    expect(PRESET_CONFIGS.some((config) => config.id === id)).toBe(false);
+  // codex is no longer a generic preset — it has a dedicated adapter (CodexCliProvider) with the
+  // corrected current argv and JSONL telemetry. See codex-cli.test.ts for its invocation asserts.
+  it("does not register codex as a generic preset", () => {
+    expect(getPresetConfig("codex")).toBeUndefined();
+    expect(PRESET_CONFIGS.some((c) => c.id === "codex")).toBe(false);
   });
 
   it("still ships the other CLI presets", () => {
-    expect(PRESET_CONFIGS).toHaveLength(3);
-    for (const id of ["gemini", "cursor", "pi"]) {
+    for (const id of ["gemini", "copilot", "cursor", "pi"]) {
       expect(getPresetConfig(id), `missing preset ${id}`).toBeDefined();
     }
   });
@@ -27,6 +26,14 @@ describe("preset configs", () => {
     expect(c.promptDelivery).toBe("stdin");
     expect(c.nonInteractive).toEqual(["--yolo"]);
     expect(c.modelFlag?.("gemini-2.5-pro")).toEqual(["-m", "gemini-2.5-pro"]);
+  });
+
+  it("copilot: --allow-all-tools on stdin, --model <model> (VERIFIED end-to-end)", () => {
+    const c = getPresetConfig("copilot")!;
+    expect(c.binary).toBe("copilot");
+    expect(c.promptDelivery).toBe("stdin");
+    expect(c.nonInteractive).toEqual(["--allow-all-tools"]);
+    expect(c.modelFlag?.("gpt-5.4")).toEqual(["--model", "gpt-5.4"]);
   });
 
   it("cursor: --print (headless trigger) + --force, prompt as arg, --model <model>", () => {

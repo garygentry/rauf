@@ -20,32 +20,14 @@ export function redactSignalTokens(text: string): string {
  * whose trimmed content IS the signal is preserved untouched.
  */
 export function neutralizeForDetection(text: string): string {
-  let fence: { marker: "`" | "~"; length: number } | undefined;
-
   return text
     .split("\n")
     .map((line) => {
-      const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
-      const insideFence = fence !== undefined;
-      if (fenceMatch) {
-        const markerRun = fenceMatch[1]!;
-        const marker = markerRun[0] as "`" | "~";
-        if (!fence) {
-          fence = { marker, length: markerRun.length };
-        } else if (
-          marker === fence.marker &&
-          markerRun.length >= fence.length &&
-          line.slice(fenceMatch[0].length).trim().length === 0
-        ) {
-          fence = undefined;
-        }
-      }
-
       const trimmed = line.trim();
       const isSignalLine = SIGNAL_TOKENS.some(
         (token) => trimmed === token || trimmed.startsWith(`${token}:`),
       );
-      if (!insideFence && !fenceMatch && isSignalLine) return line;
+      if (isSignalLine) return line;
 
       let result = line;
       for (const token of SIGNAL_TOKENS) {

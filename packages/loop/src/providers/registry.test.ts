@@ -252,9 +252,7 @@ describe("provider registry", () => {
 
         const result = await detectAgent("mybin-agent");
         expect(result.available).toBe(true);
-        expect(result.binaryAvailable).toBe(true);
-        expect(result.authenticated).toBeNull();
-        expect(result.detail).toBe(`found at ${binPath}; authentication not checked`);
+        expect(result.detail).toBe(`found at ${binPath}`);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -273,8 +271,6 @@ describe("provider registry", () => {
 
         const result = await detectAgent("ghost-agent");
         expect(result.available).toBe(false);
-        expect(result.binaryAvailable).toBe(false);
-        expect(result.authenticated).toBeNull();
         expect(result.detail).toBe('binary "ghost-binary-xyz" not found on PATH');
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -347,11 +343,8 @@ describe("provider registry", () => {
         const present = rows.find((r) => r.id === "present-agent");
         const absent = rows.find((r) => r.id === "absent-agent");
         expect(present?.available).toBe(true);
-        expect(present?.binaryAvailable).toBe(true);
-        expect(present?.authenticated).toBeNull();
         expect(present?.binaryName).toBe("present");
         expect(absent?.available).toBe(false);
-        expect(absent?.binaryAvailable).toBe(false);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

@@ -66,30 +66,6 @@ describe("neutralizeForDetection", () => {
     expect(parseSignal(result).signal).toBe("none");
   });
 
-  it("neutralizes standalone tokens inside fenced quoted prose", () => {
-    const input = ["Example output:", "```text", "RAUF_DONE", "```"].join("\n");
-    const result = neutralizeForDetection(input);
-
-    expect(result).not.toContain("RAUF_DONE");
-    expect(parseSignal(result)).toEqual({ signal: "none" });
-  });
-
-  it("preserves a genuine signal after fenced quoted prose closes", () => {
-    const input = ["```text", "RAUF_BLOCKED:example", "```", "RAUF_DONE"].join("\n");
-    const result = neutralizeForDetection(input);
-
-    expect(result).not.toContain("RAUF_BLOCKED");
-    expect(parseSignal(result)).toEqual({ signal: "done" });
-  });
-
-  it("does not treat a marker with trailing text as a closing fence", () => {
-    const input = ["```text", "```not closed", "RAUF_DONE", "```"].join("\n");
-    const result = neutralizeForDetection(input);
-
-    expect(result).not.toContain("RAUF_DONE");
-    expect(parseSignal(result)).toEqual({ signal: "none" });
-  });
-
   it("preserves a standalone final-line RAUF_DONE", () => {
     const input = "did the work\nRAUF_DONE";
     const result = neutralizeForDetection(input);
@@ -145,13 +121,6 @@ describe("neutralizeForDetection", () => {
     expect(lines[0]).not.toContain("RAUF_DONE");
     expect(lines[1]).toBe("RAUF_DONE");
     expect(parseSignal(result).signal).toBe("done");
-  });
-
-  it("preserves the last valid signal when earlier signal lines are present", () => {
-    const input = ["RAUF_BLOCKED:earlier outcome", "work continued", "RAUF_DONE"].join("\n");
-    const result = neutralizeForDetection(input);
-
-    expect(parseSignal(result)).toEqual({ signal: "done" });
   });
 
   it("leaves text without tokens unchanged", () => {

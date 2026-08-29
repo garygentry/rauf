@@ -250,22 +250,7 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "review",
         description: "Review completed items and create fix items",
-        usage: "rauf loop review [path] [--agent ID] [--model MODEL|--no-model] [--timeout N]",
-        flags: [
-          {
-            name: "--agent <id>",
-            description: `Coding agent CLI for the review. Supported: ${SUPPORTED_AGENT_IDS}`,
-          },
-          {
-            name: "--model <name>",
-            description: "Model to pass to the selected agent; omit for the provider default",
-          },
-          {
-            name: "--no-model",
-            description: "Ignore project/item model pins and use the provider default",
-          },
-          { name: "--timeout <N>", description: "Review timeout in minutes" },
-        ],
+        usage: "rauf loop review [path] [--model MODEL] [--timeout N]",
         handler: handleLoopReview,
       },
     ],
@@ -274,24 +259,12 @@ export const COMMANDS: CommandDef[] = [
     name: "install",
     description: "Install rauf into an existing project",
     usage: "rauf install <path> [options]",
-    flags: [
-      {
-        name: "--agent <id>",
-        description: `Set the project default coding agent. Supported: ${SUPPORTED_AGENT_IDS}`,
-      },
-    ],
     handler: handleInstall,
   },
   {
     name: "init",
     description: "Initialize a new project with rauf",
     usage: "rauf init <path> [options]",
-    flags: [
-      {
-        name: "--agent <id>",
-        description: `Set the project default coding agent. Supported: ${SUPPORTED_AGENT_IDS}`,
-      },
-    ],
     handler: handleInit,
   },
   {

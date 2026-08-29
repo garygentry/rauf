@@ -1,7 +1,6 @@
 import type { Result } from "@rauf/core";
-import type { ExitClass } from "../exit-classifier.js";
 import type { ParsedSignal } from "../signal-parser.js";
-import type { AgentStreamEvent } from "../stream-parser.js";
+import type { ClaudeStreamEvent } from "../stream-parser.js";
 
 /** Uniquely identifies a provider */
 export type ProviderId = string;
@@ -26,9 +25,6 @@ export interface LLMProvider {
   /** Check provider-specific usage/rate limits. Optional — return undefined if unsupported. */
   checkUsage?(): Promise<UsageLimitResult>;
 
-  /** Classify a no-signal process result using provider-specific diagnostics. */
-  classifyFailure?(result: ExecutionResult): ProviderFailureClassification;
-
   /** Validate that required credentials exist and are readable. Called before the loop starts. */
   validateCredentials(): Result<void>;
 
@@ -45,7 +41,7 @@ export interface ExecuteOptions {
   /** Output format for CLI providers */
   outputFormat?: "text" | "stream-json";
   /** Callback for real-time stream events (CLI providers with stream-json) */
-  onStreamEvent?: (event: AgentStreamEvent) => void;
+  onStreamEvent?: (event: ClaudeStreamEvent) => void;
   /**
    * Environment overrides for the agent's child process, merged over `process.env`. The runner
    * passes its resolved `childEnv` here so review-hook suppression and other child-session env
@@ -73,11 +69,6 @@ export interface ExecutionResult {
   progressEvents?: ProviderProgressEvent[];
   /** Reconstructed text output (set when outputFormat is stream-json) */
   reconstructedText?: string;
-}
-
-export interface ProviderFailureClassification {
-  kind: string;
-  exitClass: Extract<ExitClass, "timeout" | "infra_error" | "genuine_retry">;
 }
 
 export interface ProviderProgressEvent {
@@ -111,10 +102,6 @@ export type AgentAdapter = LLMProvider;
 export interface DetectionResult {
   /** True when the agent's CLI can be invoked (e.g. its binary resolves on PATH). */
   available: boolean;
-  /** Whether the configured executable is present. Undefined only for legacy custom detectors. */
-  binaryAvailable?: boolean;
-  /** Authenticated readiness: null when no safe, non-mutating auth probe exists. */
-  authenticated?: boolean | null;
   /**
    * Human-readable detail for discovery output and fail-fast remediation messages
    * (e.g. "found at /usr/local/bin/codex", or "binary 'codex' not found on PATH").
