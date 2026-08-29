@@ -39,13 +39,11 @@ interface ExecuteOptions {
   signal?: AbortSignal;
   onProgress?: (event: ProviderProgressEvent) => void;
   outputFormat?: "text" | "stream-json";
-  onStreamEvent?: (event: AgentStreamEvent) => void;
+  onStreamEvent?: (event: ClaudeStreamEvent) => void;
   /** Env overrides for the agent's child process, merged over process.env (SC-2). */
   env?: Record<string, string>;
 }
 ```
-
-`ClaudeStreamEvent` remains an exported compatibility alias for `AgentStreamEvent`.
 
 - `env` — the runner passes its resolved `childEnv` here. `ClaudeCliProvider` forwards it
   to `spawnClaude`; `CliAgent` merges it **over** `CliAgentConfig.env`. Omitted ⇒ the child

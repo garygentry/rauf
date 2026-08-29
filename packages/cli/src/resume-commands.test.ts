@@ -70,7 +70,7 @@ function commitItemWork(projectDir: string, id: string): void {
 }
 
 /** Write a minimal valid .rauf.json marker carrying a verify command. */
-function writeMarker(projectDir: string, verify: string, provider?: string): void {
+function writeMarker(projectDir: string, verify: string): void {
   const marker = {
     rauf: true,
     version: "1.0.0",
@@ -85,12 +85,7 @@ function writeMarker(projectDir: string, verify: string, provider?: string): voi
       verify,
     },
     artifactHashes: {},
-    options: {
-      ignoreInTool: false,
-      gitignoreScripts: false,
-      maxIterations: 20,
-      ...(provider ? { provider } : {}),
-    },
+    options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
   };
   fs.writeFileSync(path.join(projectDir, ".rauf.json"), JSON.stringify(marker, null, 2) + "\n");
 }
@@ -238,22 +233,6 @@ describe("handleResume — resumable-state detection", () => {
 
     expect(code).toBe(ExitCode.SUCCESS);
     expect(calls).toHaveLength(1);
-  });
-
-  it("preserves a project-level Copilot provider when relaunching", async () => {
-    const projectDir = createProject([item("001", "pending")]);
-    writeMarker(projectDir, "pnpm test", "copilot");
-    writeState(projectDir, "error");
-
-    const { calls, runLoop } = captureRunLoop();
-    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
-
-    expect(code).toBe(ExitCode.SUCCESS);
-    expect(calls).toHaveLength(1);
-    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8")) as {
-      options: { provider?: string };
-    };
-    expect(marker.options.provider).toBe("copilot");
   });
 });
 

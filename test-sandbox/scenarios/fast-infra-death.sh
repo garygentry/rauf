@@ -15,11 +15,6 @@ if is_plain; then
   exit 1
 fi
 
-if is_copilot; then
-  echo '{"type":"assistant.message","data":{"content":"starting work"}}'
-  exit 1
-fi
-
 echo '{"type":"message_start","message":{"usage":{"input_tokens":3000}}}'
 echo '{"type":"content_block_start","index":0,"content_block":{"type":"text"}}'
 echo '{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"starting work"}}'

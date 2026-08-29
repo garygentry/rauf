@@ -20,8 +20,6 @@ export interface SpawnProcessGroupOptions {
   cwd?: string;
   /** Env overrides merged over `process.env`; when omitted the child inherits the parent env. */
   env?: Record<string, string>;
-  /** Use `env` as the complete child environment instead of merging it over `process.env`. */
-  replaceEnv?: boolean;
   /** When set, written to the child's stdin then closed (EPIPE ignored). Omit for no stdin input. */
   stdin?: string;
   /**
@@ -86,9 +84,7 @@ export async function spawnProcessGroup(
       ...(options.cwd ? { cwd: options.cwd } : {}),
       // Only override env when explicit overrides are supplied; otherwise let
       // the child inherit the parent environment as-is (default behavior).
-      ...(options.env
-        ? { env: options.replaceEnv ? options.env : { ...process.env, ...options.env } }
-        : {}),
+      ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
     });
   } catch (e) {
     return err({

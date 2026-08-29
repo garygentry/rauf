@@ -34,15 +34,12 @@ export { PRESET_CONFIGS, getPresetConfig } from "./presets.js";
 export { createGenericCliProvider, configToCliAgentConfig } from "./generic-cli.js";
 
 export { CodexCliProvider, CODEX_AGENT_ID } from "./codex-cli.js";
-export { CopilotCliProvider, COPILOT_AGENT_ID } from "./copilot-cli.js";
 
 // Side-effect import: registers claude-cli as the default provider
 import "./claude-cli.js";
-// Side-effect import: registers the shipped presets (gemini/cursor/pi)
+// Side-effect import: registers the shipped presets (gemini/copilot/cursor)
 import "./presets.js";
 // Side-effect import: registers the dedicated codex adapter (overrides any preset for "codex")
 import "./codex-cli.js";
-// Side-effect import: registers the dedicated Copilot adapter
-import "./copilot-cli.js";
 // Side-effect import: registers the reserved generic-cli adapter
 import "./generic-cli.js";

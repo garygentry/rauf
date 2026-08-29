@@ -1,8 +1,9 @@
 #!/bin/bash
-# Copilot JSONL mock dispatcher. Resolves the scenario like the claude mock
-# (MOCK_AGENT_SCENARIO → MOCK_CLAUDE_SCENARIO → stream-done) but selects the
-# captured Copilot CLI event shape consumed by CopilotJsonlParser.
+# Plain-text mock copilot dispatcher. Resolves the scenario like the claude
+# mock (MOCK_AGENT_SCENARIO → MOCK_CLAUDE_SCENARIO → stream-done) but execs it in
+# PLAIN-TEXT mode: the scenario emits human-readable lines + a final-line RAUF_*
+# signal and NO stream-json telemetry.
 SCENARIO="${MOCK_AGENT_SCENARIO:-${MOCK_CLAUDE_SCENARIO:-stream-done}}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-export MOCK_AGENT_FORMAT=copilot-jsonl
+export MOCK_AGENT_FORMAT=plain
 exec bash "$SCRIPT_DIR/scenarios/${SCENARIO}.sh" "$@"

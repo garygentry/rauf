@@ -353,7 +353,7 @@ Most items take 1 iteration (the default). Set 2+ only when the work realistical
 
 ### `agentDelegation` — Parallel execution
 
-Use `agentDelegation` when a task has clearly independent subtasks that can run in parallel and share a single verification step. The loop agent uses its host's subagent or delegation mechanism for each subtask when that mechanism is available.
+Use `agentDelegation` when a task has clearly independent subtasks that can run in parallel and share a single verification step. The loop agent spawns sub-agents (via the Task tool) for each subtask.
 
 ```json
 {
