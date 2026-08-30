@@ -12,19 +12,25 @@ describe("hasSandboxDenialSignature", () => {
     "connect ETIMEDOUT 1.2.3.4:443",
     "Network is unreachable",
     "spawnSync node EPERM",
-    "Error: operation not permitted",
+    "spawnSync grep EPERM",
+    "spawn ts-json-schema-generator operation not permitted",
   ])("matches %s", (text) => {
     expect(hasSandboxDenialSignature(text)).toBe(true);
   });
 
   it("is case-insensitive", () => {
     expect(hasSandboxDenialSignature("COULD NOT RESOLVE HOST")).toBe(true);
+    expect(hasSandboxDenialSignature("SPAWNSYNC NODE EPERM")).toBe(true);
   });
 
   it.each([
     "pnpm install completed successfully",
     "TypeError: Cannot read properties of undefined",
     "AssertionError: expected 1 to equal 2",
+    // EPERM/"operation not permitted" alone, with no subprocess-spawn context, is too generic
+    // to attribute to Codex's sandbox — a locked file or host ACL can produce the same text.
+    "Error: EACCES: permission denied, open '/etc/shadow'",
+    "chmod: changing permissions of 'foo.sh': Operation not permitted",
   ])("does not match unrelated text: %s", (text) => {
     expect(hasSandboxDenialSignature(text)).toBe(false);
   });

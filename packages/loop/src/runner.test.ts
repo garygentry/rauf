@@ -1840,6 +1840,41 @@ fi`,
       expect(backlog.items[0]!.status).toBe("pending");
     });
 
+    it("a broken per-item provider OVERRIDE no longer aborts the WHOLE run at setup (adversarial review regression)", async () => {
+      // Project default is a fake agent (config-agnostic, always available) with a providerConfig
+      // shaped for IT, not for generic-cli. Item 002 overrides to generic-cli (a documented,
+      // first-class per-item feature) with no providerConfig of its own — generic-cli inherently
+      // requires its own "binary" field to construct at all, so item 002 can never actually run
+      // without one; that is a separate, pre-existing limitation (no per-item providerConfig
+      // surface exists), not what this test targets.
+      //
+      // What this targets: BEFORE the fix, detectAllCandidateAgents handed EVERY candidate
+      // (including the generic-cli override) the primary's mismatched config; generic-cli's
+      // detect rejected it (missing "binary") and — since generic-cli has no checkUsage — that
+      // was FATAL, aborting the WHOLE RUN at setup before item 001 (a perfectly runnable,
+      // unrelated item) ever got a chance to execute. After the fix, only item 002 fails (per-item,
+      // at iteration time, reset to pending) while item 001 completes normally.
+      registerFake("fake-primary");
+      setupProject(tmpDir, [
+        pendingItem("001", "Primary item"),
+        pendingItem("002", "Generic override", { provider: "generic-cli" }),
+      ]);
+      const markerPath = path.join(tmpDir, ".rauf.json");
+      const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+      marker.options.provider = "fake-primary";
+      marker.options.providerConfig = { sandboxMode: "danger-full-access" }; // no "binary" field
+      fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      const result = await runner.start();
+
+      expect(result.completedCount).toBeGreaterThanOrEqual(1);
+      const backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      ) as Backlog;
+      expect(backlog.items[0]!.status).toBe("done");
+    });
+
     it("applies neutralizeForDetection before parseSignal at both work and review sites", () => {
       const here = path.dirname(fileURLToPath(import.meta.url));
       const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");

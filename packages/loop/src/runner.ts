@@ -483,6 +483,23 @@ export class LoopRunner extends TypedEventEmitter {
   }
 
   /**
+   * Annotate a `blocked`/`needs_human` reason with the codex sandbox-denial hint when
+   * applicable (#84, #95) — shared by both signal cases so the gate/combined-output text stays
+   * identical between them. Annotate ONLY codex's own reasons — the hint would be misleading
+   * for a provider with no such sandbox.
+   */
+  private annotateBlockedReason(
+    provider: LLMProvider,
+    rawReason: string,
+    stdout: string,
+    stderr: string,
+    signalText: string,
+  ): string {
+    if (provider.id !== CODEX_AGENT_ID) return rawReason;
+    return annotateCodexSandboxHint(rawReason, `${stdout}\n${stderr}\n${signalText}`);
+  }
+
+  /**
    * Resolve and construct the provider for one iteration. Per-item agent wins
    * (REQ-SEL-04), then run-level, then project, then global, then DEFAULT_AGENT_ID
    * (resolveAgentId, 04). Caches one instance per distinct agent id (REQ-PERF-01).
@@ -514,11 +531,24 @@ export class LoopRunner extends TypedEventEmitter {
     const cached = this.providerCache.get(agentId);
     if (cached) return ok(cached);
 
+    // `this.projectProviderConfig` is ONE untyped blob associated with the project's single
+    // declared `provider` (schemas.ts MarkerOptions: `provider` + `providerConfig` is a pair,
+    // not a per-id map) — pass it ONLY when the resolved id IS that primary/default provider. A
+    // per-item `provider` OVERRIDE has no config of its own; handing it the primary's (mismatched)
+    // config could fail its factory's validation for a documented, otherwise-valid per-item
+    // override (same root cause as the detectAllCandidateAgents fix above).
+    const primaryAgentId = resolveAgentId({
+      runProvider: this.options.provider,
+      projectProvider: this.projectProvider,
+      globalProvider: this.globalProvider,
+    });
+    const config = agentId === primaryAgentId ? this.projectProviderConfig : undefined;
+
     try {
-      // Pass the marker providerConfig to every factory — `generic-cli` resolves its binary
-      // from it (03 §7.2) and `codex` reads its typed sandbox/network/approval config (#94);
-      // any factory that doesn't read the arg (claude-cli, presets) simply ignores it.
-      const provider = createProvider(agentId, this.projectProviderConfig); // may throw on unknown id
+      // `generic-cli` resolves its binary from the config (03 §7.2) and `codex` reads its typed
+      // sandbox/network/approval config (#94); any factory that doesn't read the arg (claude-cli,
+      // presets) simply ignores it.
+      const provider = createProvider(agentId, config); // may throw on unknown id
       this.providerCache.set(agentId, provider);
       return ok(provider);
     } catch (e) {
@@ -545,13 +575,12 @@ export class LoopRunner extends TypedEventEmitter {
   private async detectAllCandidateAgents(
     pendingItems: readonly BacklogItem[],
   ): Promise<Result<void>> {
-    const candidateIds = new Set<string>([
-      resolveAgentId({
-        runProvider: this.options.provider,
-        projectProvider: this.projectProvider,
-        globalProvider: this.globalProvider,
-      }),
-    ]);
+    const primaryAgentId = resolveAgentId({
+      runProvider: this.options.provider,
+      projectProvider: this.projectProvider,
+      globalProvider: this.globalProvider,
+    });
+    const candidateIds = new Set<string>([primaryAgentId]);
     for (const item of pendingItems) {
       candidateIds.add(
         resolveAgentId({
@@ -564,12 +593,16 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     for (const id of candidateIds) {
-      // Hand every candidate the project providerConfig so a config-aware `detect` (generic-cli's
-      // binary resolution, codex's config validation, #94) fails setup here — before any
-      // state/backlog mutation — instead of throwing later from createProvider during iteration
-      // (P1 review). A `detect` override that ignores config (the PATH-probe default) is
-      // unaffected by receiving it.
-      const result = await detectAgent(id, this.projectProviderConfig); // never throws
+      // `this.projectProviderConfig` is ONE untyped blob associated with the project's single
+      // declared `provider` (schemas.ts MarkerOptions: `provider` + `providerConfig` is a pair,
+      // not a per-id map) — hand it ONLY to the primary/default agent's detect, so a config-aware
+      // `detect` (generic-cli's binary resolution, codex's config validation, #94) fails setup
+      // here before any state/backlog mutation (P1 review). A per-item `provider` OVERRIDE to a
+      // different agent has no config of its own; passing the primary agent's (mismatched) config
+      // to it would validate the wrong shape and could fatally fail setup for a documented,
+      // otherwise-valid mixed-provider backlog (adversarial review finding).
+      const config = id === primaryAgentId ? this.projectProviderConfig : undefined;
+      const result = await detectAgent(id, config); // never throws
       if (result.available) continue;
 
       // Unavailable. Discriminate by capability (not by id), matching item 010's
@@ -991,15 +1024,13 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "blocked": {
         this.consecutiveInfraFailures = 0;
-        const rawReason = parsed.reason ?? "No reason provided";
-        // Codex's default sandbox blocks network + restricts subprocess spawning, which
-        // often surfaces as a plausible-looking environmental error (DNS/connectivity, EPERM)
-        // that hides the real cause. Annotate ONLY codex's own blocked reasons (#84, #95) —
-        // the hint would be misleading for a provider with no such sandbox.
-        const reason =
-          provider.id === CODEX_AGENT_ID
-            ? annotateCodexSandboxHint(rawReason, `${stdout}\n${stderr}\n${signalText}`)
-            : rawReason;
+        const reason = this.annotateBlockedReason(
+          provider,
+          parsed.reason ?? "No reason provided",
+          stdout,
+          stderr,
+          signalText,
+        );
         updateItem(this.paths, item.id, {
           status: "blocked",
           blockedReason: reason,
@@ -1017,11 +1048,13 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "needs_human": {
         this.consecutiveInfraFailures = 0;
-        const rawReason = parsed.reason ?? "No reason provided";
-        const reason =
-          provider.id === CODEX_AGENT_ID
-            ? annotateCodexSandboxHint(rawReason, `${stdout}\n${stderr}\n${signalText}`)
-            : rawReason;
+        const reason = this.annotateBlockedReason(
+          provider,
+          parsed.reason ?? "No reason provided",
+          stdout,
+          stderr,
+          signalText,
+        );
         // Set the item aside as blocked + needsHuman so it is NOT reselected
         // (selectNextItem only picks pending) and is distinguishable from a
         // code-level blocker. Do NOT halt the loop — keep working other

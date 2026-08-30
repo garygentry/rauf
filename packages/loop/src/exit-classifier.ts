@@ -1,4 +1,5 @@
 import type { ParsedSignal } from "./signal-parser.js";
+import { matchesAnyPattern } from "./text-pattern-match.js";
 
 /** Usage limit patterns detected in claude output (case-insensitive substring match). */
 const USAGE_LIMIT_PATTERNS = [
@@ -14,8 +15,7 @@ const USAGE_LIMIT_PATTERNS = [
  * Matching is case-insensitive substring matching.
  */
 export function hasUsageLimitInText(text: string): boolean {
-  const lower = text.toLowerCase();
-  return USAGE_LIMIT_PATTERNS.some((pattern) => lower.includes(pattern));
+  return matchesAnyPattern(text, USAGE_LIMIT_PATTERNS);
 }
 
 /** Classification of a finished claude spawn. */
