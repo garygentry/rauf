@@ -721,16 +721,54 @@ const raufSignal = tool(
 );
 ```
 
-### 5.3 `openai-codex`: OpenAI Codex CLI
+### 5.3 `codex`: OpenAI Codex CLI
 
-| Aspect      | Detail                                            |
-| ----------- | ------------------------------------------------- |
-| Binary      | `codex`                                           |
-| Flags       | TBD (headless mode, auto-approve)                 |
-| Credentials | `OPENAI_API_KEY` env var                          |
-| Signal      | Text parsing from stdout (`RAUF_DONE` convention) |
-| Usage       | OpenAI rate limit headers / API errors            |
-| Billing     | OpenAI API (pay-per-token)                        |
+| Aspect      | Detail                                                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Binary      | `codex`                                                                                                                                      |
+| Flags       | `--ask-for-approval <policy> exec [--json] --sandbox <mode> [-c sandbox_workspace_write.network_access=true] [...extraArgs] [--model <m>] -` |
+| Credentials | Codex CLI's own configured auth (checked via PATH probe, not read by rauf)                                                                   |
+| Signal      | Text parsing from stdout, or reconstructed text from JSONL (`--json`) telemetry (`RAUF_DONE` convention)                                     |
+| Usage       | None in rauf; codex has no Anthropic-style usage semantics                                                                                   |
+| Billing     | Whatever OpenAI/Codex plan the `codex` CLI is configured to use                                                                              |
+
+**Dedicated adapter, not `generic-cli`.** `codex` has its own adapter
+(`packages/loop/src/providers/codex-cli.ts`) rather than the generic preset, because current
+Codex CLI rejects `--ask-for-approval` placed after `exec` (it's a top-level flag) and because it
+parses Codex's JSONL event stream for streaming telemetry the generic adapter can't produce.
+
+**Configuration** (`providerConfig`, same delivery mechanism as `generic-cli` — see §5.6):
+
+```json
+{
+  "provider": "codex",
+  "providerConfig": {
+    "sandboxMode": "workspace-write",
+    "networkAccess": true,
+    "approvalPolicy": "never",
+    "extraArgs": []
+  }
+}
+```
+
+| Key              | Default             | Meaning                                                                                                                                                                                                                |
+| ---------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sandboxMode`    | `"workspace-write"` | `"read-only"` \| `"workspace-write"` \| `"danger-full-access"` — passed as `--sandbox <mode>`                                                                                                                          |
+| `networkAccess`  | `true`              | Appends `-c sandbox_workspace_write.network_access=true` when `sandboxMode` is `"workspace-write"`. Set `false` to restore Codex's fully network-restricted default. Ignored for `"read-only"`/`"danger-full-access"`. |
+| `approvalPolicy` | `"never"`           | Passed as `--ask-for-approval <policy>`                                                                                                                                                                                |
+| `extraArgs`      | `[]`                | Appended verbatim before `--model`/the trailing stdin marker, for flags not otherwise modeled                                                                                                                          |
+
+**Why network defaults on:** network-dependent loop work (dependency installs, lockfile
+generation, schema/binary fetches) is a first-class use case and must work out of the box,
+matching `claude-cli`'s unconditional `--dangerously-skip-permissions` trust posture. Codex's
+`workspace-write` sandbox still confines file writes to the project tree — only the network
+restriction is lifted by default.
+
+**Sandbox-denial diagnostics (#84, #95):** when a `codex`-driven iteration's `RAUF_BLOCKED` /
+`RAUF_NEEDS_HUMAN` reason (or a fast signal-less exit) looks like a sandbox denial (DNS/
+connectivity errors, `EPERM` on a subprocess spawn), rauf appends a hint to the stored reason
+pointing at this config surface — see `packages/loop/src/codex-sandbox-diagnostics.ts`. This
+heuristic is scoped to the `codex` provider; other providers' block reasons are never annotated.
 
 ### 5.4 `gemini-cli`: Google Gemini CLI
 

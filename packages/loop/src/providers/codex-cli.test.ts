@@ -11,7 +11,8 @@ vi.mock("../process-group.js", () => ({
 }));
 
 import { spawnProcessGroup } from "../process-group.js";
-import { CodexCliProvider } from "./codex-cli.js";
+import { CodexCliProvider, parseCodexProviderConfig, detectCodexCli } from "./codex-cli.js";
+import { createProvider } from "./registry.js";
 import type { ClaudeStreamEvent } from "../stream-parser.js";
 
 const mockSpawn = vi.mocked(spawnProcessGroup);
@@ -52,6 +53,8 @@ describe("CodexCliProvider", () => {
       "--json",
       "--sandbox",
       "workspace-write",
+      "-c",
+      "sandbox_workspace_write.network_access=true",
       "--model",
       "gpt-5-codex",
       "-",
@@ -74,6 +77,8 @@ describe("CodexCliProvider", () => {
       "exec",
       "--sandbox",
       "workspace-write",
+      "-c",
+      "sandbox_workspace_write.network_access=true",
       "-",
     ]);
     const [, , spawnOptions] = mockSpawn.mock.calls[0]!;
@@ -117,5 +122,138 @@ describe("CodexCliProvider", () => {
     expect(res.value.reconstructedText).toBe("RAUF_DONE");
     expect(events.some((e) => e.type === "tool_start")).toBe(true);
     expect(events.some((e) => e.type === "token_update")).toBe(true);
+  });
+
+  describe("config-driven argv overrides (#93, #94)", () => {
+    it("omits the network-access override for sandboxMode read-only", async () => {
+      const p = new CodexCliProvider({ sandboxMode: "read-only" });
+      await p.execute("p", { timeoutMinutes: 1 });
+      const [, args] = mockSpawn.mock.calls[0]!;
+      expect(args).toEqual(["--ask-for-approval", "never", "exec", "--sandbox", "read-only", "-"]);
+    });
+
+    it("omits the network-access override for sandboxMode danger-full-access (already unrestricted)", async () => {
+      const p = new CodexCliProvider({ sandboxMode: "danger-full-access" });
+      await p.execute("p", { timeoutMinutes: 1 });
+      const [, args] = mockSpawn.mock.calls[0]!;
+      expect(args).toEqual([
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--sandbox",
+        "danger-full-access",
+        "-",
+      ]);
+    });
+
+    it("omits the network-access override when networkAccess is explicitly false", async () => {
+      const p = new CodexCliProvider({ networkAccess: false });
+      await p.execute("p", { timeoutMinutes: 1 });
+      const [, args] = mockSpawn.mock.calls[0]!;
+      expect(args).toEqual([
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "-",
+      ]);
+    });
+
+    it("overrides the approval policy", async () => {
+      const p = new CodexCliProvider({ approvalPolicy: "on-failure" });
+      await p.execute("p", { timeoutMinutes: 1 });
+      const [, args] = mockSpawn.mock.calls[0]!;
+      expect((args as string[]).slice(0, 2)).toEqual(["--ask-for-approval", "on-failure"]);
+    });
+
+    it("appends extraArgs before --model and the trailing stdin marker", async () => {
+      const p = new CodexCliProvider({ extraArgs: ["--profile", "ci"] });
+      await p.execute("p", { timeoutMinutes: 1, model: "gpt-5-codex" });
+      const [, args] = mockSpawn.mock.calls[0]!;
+      expect(args).toEqual([
+        "--ask-for-approval",
+        "never",
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "--profile",
+        "ci",
+        "--model",
+        "gpt-5-codex",
+        "-",
+      ]);
+    });
+  });
+
+  describe("parseCodexProviderConfig", () => {
+    it("defaults to an empty config for undefined/empty input", () => {
+      expect(parseCodexProviderConfig(undefined)).toEqual(ok({}));
+      expect(parseCodexProviderConfig({})).toEqual(ok({}));
+    });
+
+    it("rejects an invalid sandboxMode", () => {
+      const res = parseCodexProviderConfig({ sandboxMode: "yolo" });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error.message).toMatch(/sandboxMode/);
+    });
+
+    it("rejects a non-boolean networkAccess", () => {
+      const res = parseCodexProviderConfig({ networkAccess: "true" });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error.message).toMatch(/networkAccess/);
+    });
+
+    it("rejects a non-array extraArgs", () => {
+      const res = parseCodexProviderConfig({ extraArgs: "--profile ci" });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error.message).toMatch(/extraArgs/);
+    });
+
+    it("accepts a fully-specified valid config", () => {
+      const res = parseCodexProviderConfig({
+        sandboxMode: "danger-full-access",
+        networkAccess: false,
+        approvalPolicy: "on-failure",
+        extraArgs: ["--profile", "ci"],
+      });
+      expect(res).toEqual(
+        ok({
+          sandboxMode: "danger-full-access",
+          networkAccess: false,
+          approvalPolicy: "on-failure",
+          extraArgs: ["--profile", "ci"],
+        }),
+      );
+    });
+  });
+
+  describe("factory + detect wiring (#94)", () => {
+    it("createProvider('codex', config) threads the config into the constructed provider", async () => {
+      const provider = createProvider("codex", { sandboxMode: "read-only" });
+      await provider.execute("p", { timeoutMinutes: 1 });
+      const [, args] = mockSpawn.mock.calls[0]!;
+      expect(args).toEqual(["--ask-for-approval", "never", "exec", "--sandbox", "read-only", "-"]);
+    });
+
+    it("createProvider('codex', config) throws on a malformed config", () => {
+      expect(() => createProvider("codex", { sandboxMode: "yolo" })).toThrow(/sandboxMode/);
+    });
+
+    it("detectCodexCli with no config behaves like the default PATH probe", async () => {
+      const result = await detectCodexCli(undefined);
+      expect(typeof result.available).toBe("boolean");
+    });
+
+    it("detectCodexCli reports unavailable with a clear message for a malformed config", async () => {
+      const result = await detectCodexCli({ networkAccess: "yes" });
+      expect(result.available).toBe(false);
+      expect(result.detail).toMatch(/networkAccess/);
+    });
   });
 });

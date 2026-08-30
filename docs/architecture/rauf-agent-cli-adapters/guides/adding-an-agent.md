@@ -29,6 +29,24 @@ rauf agents
 If a preset's flags are stale (an upstream CLI changed its interface), don't fork the
 code — override it with a `generic-cli` config (Option 2) using the same binary.
 
+**`codex` has its own `providerConfig`.** Unlike the other presets, `codex` reads a typed
+config block (sandbox mode, network access, approval policy, extra args) instead of requiring
+the `generic-cli` escape hatch — select `--agent codex` and supply `providerConfig`:
+
+```jsonc
+// .rauf.json options.providerConfig, with provider: "codex"
+{
+  "sandboxMode": "workspace-write", // "read-only" | "workspace-write" | "danger-full-access"
+  "networkAccess": true, // default true; set false to restore Codex's network-restricted default
+  "approvalPolicy": "never",
+  "extraArgs": [],
+}
+```
+
+Network access is **on by default** (matching `claude-cli`'s unconditional trust posture) so
+network-dependent work (installs, lockfiles, fetches) isn't falsely blocked by Codex's sandbox.
+See `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §5.3 for the full field table.
+
 ## Option 2 — `generic-cli` (no code)
 
 Use the reserved `generic-cli` agent to drive any CLI that fits the declarative shape:

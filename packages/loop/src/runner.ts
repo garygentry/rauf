@@ -51,14 +51,22 @@ import {
 import { TypedEventEmitter } from "./events.js";
 // Import from the providers barrel (not registry.js directly) so the side-effect
 // registrations of claude-cli + presets + generic-cli run before createProvider is called.
-import { createProvider, getAgentDescriptors, detectAgent } from "./providers/index.js";
+import {
+  createProvider,
+  getAgentDescriptors,
+  detectAgent,
+  CODEX_AGENT_ID,
+} from "./providers/index.js";
 import type { LLMProvider } from "./providers/types.js";
 import { resolveAgentId } from "./agent-selection.js";
-import { GENERIC_AGENT_ID } from "./constants.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import { hasUsageLimitInText, classifyExit } from "./exit-classifier.js";
+import {
+  annotateCodexSandboxHint,
+  hasSandboxDenialSignature,
+} from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import { gitCommit } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
@@ -507,9 +515,9 @@ export class LoopRunner extends TypedEventEmitter {
     if (cached) return ok(cached);
 
     try {
-      // Pass the marker providerConfig so the config-driven `generic-cli` factory
-      // (and any named config-driven factory) resolves its binary (03 §7.2). The
-      // preset/claude factories ignore the config arg, so this is safe for all ids.
+      // Pass the marker providerConfig to every factory — `generic-cli` resolves its binary
+      // from it (03 §7.2) and `codex` reads its typed sandbox/network/approval config (#94);
+      // any factory that doesn't read the arg (claude-cli, presets) simply ignores it.
       const provider = createProvider(agentId, this.projectProviderConfig); // may throw on unknown id
       this.providerCache.set(agentId, provider);
       return ok(provider);
@@ -556,13 +564,12 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     for (const id of candidateIds) {
-      // For generic-cli, hand the project providerConfig to detection so a missing/invalid
-      // config fails setup here (before any state/backlog mutation) instead of throwing later
-      // from createProvider during iteration (P1 review). Other agents take the PATH probe.
-      const result = await detectAgent(
-        id,
-        id === GENERIC_AGENT_ID ? this.projectProviderConfig : undefined,
-      ); // never throws
+      // Hand every candidate the project providerConfig so a config-aware `detect` (generic-cli's
+      // binary resolution, codex's config validation, #94) fails setup here — before any
+      // state/backlog mutation — instead of throwing later from createProvider during iteration
+      // (P1 review). A `detect` override that ignores config (the PATH-probe default) is
+      // unaffected by receiving it.
+      const result = await detectAgent(id, this.projectProviderConfig); // never throws
       if (result.available) continue;
 
       // Unavailable. Discriminate by capability (not by id), matching item 010's
@@ -980,7 +987,15 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "blocked": {
         this.consecutiveInfraFailures = 0;
-        const reason = parsed.reason ?? "No reason provided";
+        const rawReason = parsed.reason ?? "No reason provided";
+        // Codex's default sandbox blocks network + restricts subprocess spawning, which
+        // often surfaces as a plausible-looking environmental error (DNS/connectivity, EPERM)
+        // that hides the real cause. Annotate ONLY codex's own blocked reasons (#84, #95) —
+        // the hint would be misleading for a provider with no such sandbox.
+        const reason =
+          provider.id === CODEX_AGENT_ID
+            ? annotateCodexSandboxHint(rawReason, `${stdout}\n${stderr}\n${signalText}`)
+            : rawReason;
         updateItem(this.paths, item.id, {
           status: "blocked",
           blockedReason: reason,
@@ -998,7 +1013,11 @@ export class LoopRunner extends TypedEventEmitter {
 
       case "needs_human": {
         this.consecutiveInfraFailures = 0;
-        const reason = parsed.reason ?? "No reason provided";
+        const rawReason = parsed.reason ?? "No reason provided";
+        const reason =
+          provider.id === CODEX_AGENT_ID
+            ? annotateCodexSandboxHint(rawReason, `${stdout}\n${stderr}\n${signalText}`)
+            : rawReason;
         // Set the item aside as blocked + needsHuman so it is NOT reselected
         // (selectNextItem only picks pending) and is distinguishable from a
         // code-level blocker. Do NOT halt the loop — keep working other
@@ -1081,9 +1100,16 @@ export class LoopRunner extends TypedEventEmitter {
             // breaker (item 008). Do NOT block a real work item on a flaky spawn.
             this.consecutiveInfraFailures++;
             updateItem(this.paths, item.id, { status: "pending" });
+            // A fast EPERM-shaped exit under codex is often its sandbox denying a subprocess
+            // spawn (#84), not a flaky/genuine infra failure — hint at it in the log so repeated
+            // circuit-breaker trips don't get misdiagnosed as environment noise unrelated to codex.
+            const infraHint =
+              provider.id === CODEX_AGENT_ID && hasSandboxDenialSignature(`${stdout}\n${stderr}`)
+                ? " (possible Codex sandbox denial — see providerConfig.sandboxMode/networkAccess)"
+                : "";
             appendLog(
               this.paths,
-              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending`,
+              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}`,
             );
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.

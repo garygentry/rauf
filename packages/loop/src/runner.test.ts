@@ -1588,6 +1588,45 @@ fi`,
       const src = fs.readFileSync(path.join(here, "runner.ts"), "utf-8");
       expect(src).not.toMatch(/spawnClaude\(/);
     });
+
+    describe("codex sandbox-denial blocked-reason annotation (#84, #95)", () => {
+      it("annotates a codex-provider blocked reason that looks like a sandbox network denial", async () => {
+        registerFakeAgent(
+          "codex",
+          "RAUF_BLOCKED:curl: (6) Could not resolve host: registry.npmjs.org\n",
+        );
+        setupProject(tmpDir, [pendingItem("001", "Install deps")]);
+
+        const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "codex" });
+        await runner.start();
+
+        const backlog = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+        ) as Backlog;
+        const reason = backlog.items[0]!.blockedReason ?? "";
+        expect(reason).toContain("Could not resolve host");
+        expect(reason).toContain("Codex's sandbox policy");
+        expect(reason).toContain("providerConfig");
+      });
+
+      it("does NOT annotate a non-codex provider's blocked reason, even with denial-shaped text", async () => {
+        registerFakeAgent(
+          "some-other-agent",
+          "RAUF_BLOCKED:curl: (6) Could not resolve host: registry.npmjs.org\n",
+        );
+        setupProject(tmpDir, [pendingItem("001", "Install deps")]);
+
+        const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "some-other-agent" });
+        await runner.start();
+
+        const backlog = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+        ) as Backlog;
+        const reason = backlog.items[0]!.blockedReason ?? "";
+        expect(reason).toBe("curl: (6) Could not resolve host: registry.npmjs.org");
+        expect(reason).not.toContain("Codex's sandbox policy");
+      });
+    });
   });
 
   describe("usage gating + fail-fast + neutralization (item 010)", () => {
