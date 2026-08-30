@@ -124,6 +124,32 @@ describe("CodexCliProvider", () => {
     expect(events.some((e) => e.type === "token_update")).toBe(true);
   });
 
+  describe("describeConfig (#84 item 3 — effective policy in run diagnostics)", () => {
+    it("summarizes the default resolved policy", () => {
+      expect(new CodexCliProvider().describeConfig()).toBe(
+        "sandbox=workspace-write network=true approval=never",
+      );
+    });
+
+    it("reflects overrides, omitting the network note for non-workspace-write sandboxes", () => {
+      expect(new CodexCliProvider({ sandboxMode: "danger-full-access" }).describeConfig()).toBe(
+        "sandbox=danger-full-access approval=never",
+      );
+      expect(new CodexCliProvider({ networkAccess: false }).describeConfig()).toBe(
+        "sandbox=workspace-write network=false approval=never",
+      );
+      expect(new CodexCliProvider({ approvalPolicy: "on-failure" }).describeConfig()).toBe(
+        "sandbox=workspace-write network=true approval=on-failure",
+      );
+    });
+
+    it("includes extraArgs when configured", () => {
+      expect(new CodexCliProvider({ extraArgs: ["--profile", "ci"] }).describeConfig()).toBe(
+        'sandbox=workspace-write network=true approval=never extraArgs=["--profile","ci"]',
+      );
+    });
+  });
+
   describe("config-driven argv overrides (#93, #94)", () => {
     it("omits the network-access override for sandboxMode read-only", async () => {
       const p = new CodexCliProvider({ sandboxMode: "read-only" });

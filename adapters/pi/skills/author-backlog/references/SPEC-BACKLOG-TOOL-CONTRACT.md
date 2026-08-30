@@ -764,11 +764,19 @@ matching `claude-cli`'s unconditional `--dangerously-skip-permissions` trust pos
 `workspace-write` sandbox still confines file writes to the project tree — only the network
 restriction is lifted by default.
 
-**Sandbox-denial diagnostics (#84, #95):** when a `codex`-driven iteration's `RAUF_BLOCKED` /
-`RAUF_NEEDS_HUMAN` reason (or a fast signal-less exit) looks like a sandbox denial (DNS/
-connectivity errors, `EPERM` on a subprocess spawn), rauf appends a hint to the stored reason
-pointing at this config surface — see `packages/loop/src/codex-sandbox-diagnostics.ts`. This
-heuristic is scoped to the `codex` provider; other providers' block reasons are never annotated.
+**Effective policy in run diagnostics (#84 item 3):** every spawn (each iteration and the
+review pass) logs the resolved `sandbox`/`network`/`approval` values to `rauf.log` — e.g.
+`Spawning codex for item 001 [sandbox=workspace-write network=true approval=never]` — so an
+operator can see what policy a run actually used without reconstructing argv by hand. Backed by
+the optional `LLMProvider.describeConfig()` hook (`packages/loop/src/providers/types.ts`); any
+provider with a configurable execution policy can implement it.
+
+**Sandbox-denial diagnostics (#84 item 4, #95):** when a `codex`-driven iteration's
+`RAUF_BLOCKED` / `RAUF_NEEDS_HUMAN` reason (or a fast signal-less exit) looks like a sandbox
+denial (DNS/connectivity errors, `EPERM` on a subprocess spawn), rauf appends a hint to the
+stored reason pointing at this config surface — see `packages/loop/src/codex-sandbox-diagnostics.ts`.
+This heuristic is scoped to the `codex` provider; other providers' block reasons are never
+annotated.
 
 ### 5.4 `gemini-cli`: Google Gemini CLI
 

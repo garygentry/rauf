@@ -1626,6 +1626,36 @@ fi`,
         expect(reason).toBe("curl: (6) Could not resolve host: registry.npmjs.org");
         expect(reason).not.toContain("Codex's sandbox policy");
       });
+
+      it("logs the provider's effective resolved config at spawn time (#84 item 3)", async () => {
+        registerAgent({
+          id: "codex",
+          displayName: "codex",
+          detect: async () => ({ available: true }),
+          factory: (): LLMProvider => ({
+            id: "codex",
+            displayName: "codex",
+            async execute() {
+              return ok({
+                stdout: "RAUF_DONE\n",
+                stderr: "",
+                exitCode: 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            },
+            validateCredentials: () => ok(undefined),
+            describeConfig: () => "sandbox=workspace-write network=true approval=never",
+          }),
+        });
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+
+        const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "codex" });
+        await runner.start();
+
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).toContain("[sandbox=workspace-write network=true approval=never]");
+      });
     });
   });
 

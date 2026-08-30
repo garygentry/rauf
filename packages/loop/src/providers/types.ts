@@ -30,6 +30,13 @@ export interface LLMProvider {
 
   /** Provider-specific cleanup (kill orphaned processes, close connections). */
   dispose?(): Promise<void>;
+
+  /**
+   * One-line human-readable summary of this provider's EFFECTIVE per-run config (resolved
+   * defaults included), for spawn-time diagnostics (e.g. "sandbox=workspace-write network=true
+   * approval=never"). Optional — a provider with no configurable execution policy can omit it.
+   */
+  describeConfig?(): string;
 }
 
 export interface ExecuteOptions {

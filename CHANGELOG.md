@@ -11,8 +11,11 @@
 - **Sandbox-denial hint on Codex block reasons** — a `codex`-driven `RAUF_BLOCKED`/
   `RAUF_NEEDS_HUMAN` reason (or a fast signal-less exit) that looks like a sandbox denial
   (DNS/connectivity errors, `EPERM` on a subprocess spawn) now gets an appended hint pointing at
-  the sandbox/network config instead of reading as a plain environmental outage. (Closes #84,
-  #95.)
+  the sandbox/network config instead of reading as a plain environmental outage. (Closes #95.)
+- **Effective provider config surfaced in run diagnostics** — every spawn (each iteration and
+  the review pass) now logs the resolved policy for providers that expose one, e.g.
+  `Spawning codex for item 001 [sandbox=workspace-write network=true approval=never]`, via a new
+  optional `LLMProvider.describeConfig()` hook. (Closes #84.)
 
 ### Changed
 

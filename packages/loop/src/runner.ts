@@ -751,9 +751,13 @@ export class LoopRunner extends TypedEventEmitter {
       model: resolvedModel,
       timeoutMinutes: this.options.sessionTimeoutMinutes,
     });
+    // #84 item 3: surface the provider's EFFECTIVE resolved execution policy (sandbox/network/
+    // approval for codex) in run diagnostics, not just on a subsequent failure's blocked-reason
+    // hint. Optional — most providers have no configurable execution policy to report.
+    const configNote = provider.describeConfig ? ` [${provider.describeConfig()}]` : "";
     appendLog(
       this.paths,
-      `Spawning ${provider.id} for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}`,
+      `Spawning ${provider.id} for item ${item.id}${resolvedModel ? ` (model: ${resolvedModel})` : ""}${configNote}`,
     );
 
     // Set up iteration status tracking
@@ -1243,7 +1247,8 @@ export class LoopRunner extends TypedEventEmitter {
     }
     const provider = providerResult.value;
 
-    appendLog(this.paths, `Spawning ${provider.id} for review pass`);
+    const reviewConfigNote = provider.describeConfig ? ` [${provider.describeConfig()}]` : "";
+    appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
     // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
     // preserves today's text review behavior (tech-spec §3.2, SC-2).

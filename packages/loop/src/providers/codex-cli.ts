@@ -134,12 +134,37 @@ export class CodexCliProvider implements LLMProvider {
 
   constructor(private readonly config: CodexProviderConfig = {}) {}
 
+  /** Resolve configured overrides against their defaults — shared by `buildArgv` and `describeConfig`. */
+  private resolveConfig(): {
+    sandboxMode: CodexSandboxMode;
+    networkAccess: boolean;
+    approvalPolicy: string;
+  } {
+    return {
+      sandboxMode: this.config.sandboxMode ?? "workspace-write",
+      networkAccess: this.config.networkAccess ?? true,
+      approvalPolicy: this.config.approvalPolicy ?? "never",
+    };
+  }
+
+  /**
+   * One-line summary of the EFFECTIVE resolved policy (issue #84 item 3 — surface it in run
+   * diagnostics so an operator can see what sandbox/network/approval a run actually used
+   * without reconstructing argv by hand).
+   */
+  describeConfig(): string {
+    const { sandboxMode, networkAccess, approvalPolicy } = this.resolveConfig();
+    const networkNote = sandboxMode === "workspace-write" ? ` network=${networkAccess}` : "";
+    const extra = this.config.extraArgs?.length
+      ? ` extraArgs=${JSON.stringify(this.config.extraArgs)}`
+      : "";
+    return `sandbox=${sandboxMode}${networkNote} approval=${approvalPolicy}${extra}`;
+  }
+
   /** Build the argv. Global flags (`--ask-for-approval`) MUST precede the `exec` subcommand. */
   private buildArgv(options: ExecuteOptions): string[] {
     const stream = options.outputFormat === "stream-json";
-    const sandboxMode = this.config.sandboxMode ?? "workspace-write";
-    const networkAccess = this.config.networkAccess ?? true;
-    const approvalPolicy = this.config.approvalPolicy ?? "never";
+    const { sandboxMode, networkAccess, approvalPolicy } = this.resolveConfig();
 
     const argv = ["--ask-for-approval", approvalPolicy, "exec"];
     if (stream) argv.push("--json");
