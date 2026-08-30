@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Added
+
+- **Configurable Codex provider sandbox/network/approval** — the built-in `codex` provider now
+  reads a typed `providerConfig` block (`sandboxMode`, `networkAccess`, `approvalPolicy`,
+  `extraArgs`), previously ignored entirely. See `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §5.3.
+  (Closes #94.)
+- **Sandbox-denial hint on Codex block reasons** — a `codex`-driven `RAUF_BLOCKED`/
+  `RAUF_NEEDS_HUMAN` reason (or a fast signal-less exit) that looks like a sandbox denial
+  (DNS/connectivity errors, `EPERM` on a subprocess spawn) now gets an appended hint pointing at
+  the sandbox/network config instead of reading as a plain environmental outage. (Closes #95.)
+- **Effective provider config surfaced in run diagnostics** — every spawn (each iteration and
+  the review pass) now logs the resolved policy for providers that expose one, e.g.
+  `Spawning codex for item 001 [sandbox=workspace-write network=true approval=never]`, via a new
+  optional `LLMProvider.describeConfig()` hook. (Closes #84.)
+
+### Changed
+
+- **Codex provider now enables network access by default** — `CodexCliProvider` previously
+  hardcoded `--sandbox workspace-write` with no network override, so any network-dependent
+  backlog item (dependency installs, lockfile generation, fetches) falsely blocked under
+  `--agent codex` even though the host had full network access. It now appends
+  `-c sandbox_workspace_write.network_access=true` by default, matching `claude-cli`'s
+  unconditional trust posture. Set `providerConfig.networkAccess: false` to restore the old
+  fully-restricted behavior. (Closes #93.)
+
 ## 0.14.0
 
 ### Added
