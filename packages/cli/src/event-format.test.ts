@@ -107,6 +107,52 @@ describe("formatEvent", () => {
     expect(out).not.toContain("\n");
     expect(out.length).toBeLessThan(160);
   });
+
+  it("notes a captured diagnostic tail on item_blocked when present (#74)", () => {
+    const out = formatEvent(
+      ev({
+        seq: 8,
+        type: "item_blocked",
+        itemId: "001",
+        reason: "No signal after 2 attempts (deferred by runner)",
+        stdoutTail: "random output from the agent",
+        stderrTail: "some warning on stderr",
+      }),
+    );
+    expect(out).toContain("item blocked");
+    expect(out).toContain("diagnostic tail captured");
+    expect(out).toContain("rauf.log");
+  });
+
+  it("omits the diagnostic tail note on item_blocked when absent", () => {
+    const out = formatEvent(
+      ev({ seq: 8, type: "item_blocked", itemId: "001", reason: "API key missing" }),
+    );
+    expect(out).not.toContain("diagnostic tail");
+  });
+
+  it("notes a captured diagnostic tail on item_retried when present (#74)", () => {
+    const out = formatEvent(
+      ev({
+        seq: 9,
+        type: "item_retried",
+        itemId: "001",
+        attempt: 1,
+        maxRetries: 2,
+        stdoutTail: "random output from the agent",
+        stderrTail: "some warning on stderr",
+      }),
+    );
+    expect(out).toContain("item retried");
+    expect(out).toContain("diagnostic tail captured");
+  });
+
+  it("omits the diagnostic tail note on item_retried when absent", () => {
+    const out = formatEvent(
+      ev({ seq: 9, type: "item_retried", itemId: "001", attempt: 1, maxRetries: 2 }),
+    );
+    expect(out).not.toContain("diagnostic tail");
+  });
 });
 
 function status(partial: Partial<DerivedStatus>): DerivedStatus {

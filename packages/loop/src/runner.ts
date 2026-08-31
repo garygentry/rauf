@@ -1113,6 +1113,21 @@ export class LoopRunner extends TypedEventEmitter {
         const rawExitClass = classifyExit(execResult.value, parsed);
         const exitClass =
           !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+
+        // Diagnostic tails for infra_error/genuine_retry (#74): tail the same
+        // `signalText` the signal parser and its "Signal text" preview logging
+        // above already prefer, NOT raw `stdout` — in production both providers
+        // run with `outputFormat: "stream-json"`, so raw stdout is an NDJSON
+        // event stream, not human-readable text (see codex-cli.ts's
+        // reconstructedText comment). Tailing raw stdout would surface an
+        // unreadable JSON fragment instead of a diagnosable pass/fail summary or
+        // crash trace. Raw `stderr` needs no such treatment: neither provider
+        // routes stderr through stream-json reconstruction. Redact literal
+        // RAUF_* signal tokens (matching the sibling "Signal text" preview a
+        // few lines above) so raw agent output can't leak an unredacted
+        // signal-shaped substring into logs/events.
+        const stdoutTail = redactSignalTokens(tail(signalText));
+        const stderrTail = redactSignalTokens(tail(stderr));
         switch (exitClass) {
           case "usage_limited": {
             // Belt-and-suspenders with the pre-signal usage check (item 005):
@@ -1164,8 +1179,8 @@ export class LoopRunner extends TypedEventEmitter {
             appendLog(
               this.paths,
               `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}\n` +
-                `stdout tail: ${tail(stdout)}\n` +
-                `stderr tail: ${tail(stderr)}`,
+                `stdout tail: ${stdoutTail}\n` +
+                `stderr tail: ${stderrTail}`,
             );
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.
@@ -1188,12 +1203,12 @@ export class LoopRunner extends TypedEventEmitter {
             const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
             this.retryCounts.set(item.id, retries);
 
-            // Surface the already-captured output on both the retry and the
-            // eventual exhausted-retries block, so a genuine_retry death (e.g. a
-            // flaky non-zero gate exit) is diagnosable without re-running the
-            // iteration (#74).
-            const stdoutTail = tail(stdout);
-            const stderrTail = tail(stderr);
+            // Surface the already-captured output (via the shared stdoutTail/
+            // stderrTail computed above) on both the retry and the eventual
+            // exhausted-retries block, so a genuine_retry death (e.g. a flaky
+            // non-zero gate exit) is diagnosable without re-running the
+            // iteration (#74) — written to rauf.log same as infra_error, so
+            // `rauf log` (text-only) surfaces it too, not just events.ndjson.
             if (retries >= this.options.maxRetries) {
               // Runner gives up — DEFER (a false block), not a genuine agent block.
               const reason = `No signal after ${retries} attempts (deferred by runner)`;
@@ -1204,7 +1219,12 @@ export class LoopRunner extends TypedEventEmitter {
               });
               this.deferredItemIds.push(item.id);
               this.emitEvent("item_blocked", { itemId: item.id, reason, stdoutTail, stderrTail });
-              appendLog(this.paths, `Item ${item.id} deferred after ${retries} attempts`);
+              appendLog(
+                this.paths,
+                `Item ${item.id} deferred after ${retries} attempts\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
               this.writeState("running", null, "error");
             } else {
               // Re-queue: reset to pending for retry
@@ -1216,7 +1236,12 @@ export class LoopRunner extends TypedEventEmitter {
                 stdoutTail,
                 stderrTail,
               });
-              appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
+              appendLog(
+                this.paths,
+                `Item ${item.id} retry ${retries}/${this.options.maxRetries}\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
             }
             break;
           }
