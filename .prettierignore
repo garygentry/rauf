@@ -11,3 +11,4 @@ schemas
 specs
 .codex-plugin
 adapters/pi
+npm-dist/adapters/pi
