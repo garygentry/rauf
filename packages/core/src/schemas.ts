@@ -588,6 +588,10 @@ const ReviewCompletedSchema = LoopEventBaseSchema.extend({
 const ReviewFailedSchema = LoopEventBaseSchema.extend({
   type: z.literal("review_failed"),
   reason: z.string(),
+  /** Truncated (last 500 chars) stdout tail from the final failed review spawn, when available. */
+  stdoutTail: z.string().optional(),
+  /** Truncated (last 500 chars) stderr tail from the final failed review spawn, when available. */
+  stderrTail: z.string().optional(),
 });
 
 const LlmToolActivitySchema = LoopEventBaseSchema.extend({

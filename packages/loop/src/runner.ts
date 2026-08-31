@@ -116,6 +116,16 @@ const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
 
+/**
+ * Truncates text to its last `n` characters, prefixing an ellipsis when
+ * truncated. Shared tail-truncation convention used for diagnostic previews
+ * (signal-text logging, review-failure stdout/stderr tails) — keep this the
+ * single source of the 500-char default rather than inlining ad hoc slices.
+ */
+function tail(text: string, n = 500): string {
+  return text.length > n ? `…${text.slice(-n)}` : text;
+}
+
 // ─── LoopRunner ─────────────────────────────────────────────────────
 
 export class LoopRunner extends TypedEventEmitter {
@@ -958,9 +968,7 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal === "none") {
       const textSource =
         reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
-      const preview = redactSignalTokens(
-        signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText,
-      );
+      const preview = redactSignalTokens(tail(signalText));
       appendLog(
         this.paths,
         `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`,
@@ -1281,78 +1289,121 @@ export class LoopRunner extends TypedEventEmitter {
     const provider = providerResult.value;
 
     const reviewConfigNote = provider.describeConfig ? ` [${provider.describeConfig()}]` : "";
-    appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
-    // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
-    // preserves today's text review behavior (tech-spec §3.2, SC-2).
-    const execResult = await provider.execute(promptResult.value, {
-      signal: this.abortController.signal,
-      model: resolvedModel,
-      timeoutMinutes: this.options.sessionTimeoutMinutes,
-      ...(this.childEnv ? { env: this.childEnv } : {}),
-    });
-
-    if (!execResult.ok) {
-      const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
-      appendLog(this.paths, reason);
-      this.emitEvent("review_failed", { reason });
-      return "failed";
-    }
-
-    const { stdout } = execResult.value;
-
-    // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
-    const parsed = parseSignal(neutralizeForDetection(stdout));
-
-    if (parsed.signal === "done") {
-      appendLog(this.paths, "Review pass: clean — no issues found");
-      this.emitEvent("review_completed", {
-        itemsCreated: 0,
-        summary: "No issues found",
-      });
-      return "clean";
-    }
-
-    if (parsed.signal === "review" && parsed.reviewPayload) {
-      const batch = new Date().toISOString();
-      let created = 0;
-
-      for (const reviewItem of parsed.reviewPayload.items) {
-        const result = addItem(this.paths, {
-          type: reviewItem.type,
-          priority: reviewItem.priority,
-          title: reviewItem.title,
-          description: reviewItem.description,
-          acceptanceCriteria: reviewItem.acceptanceCriteria,
-          source: "review",
-          reviewBatch: batch,
-        });
-        if (result.ok) {
-          created++;
-          appendLog(this.paths, `Review created item: ${result.value.id} — ${reviewItem.title}`);
-        }
+    // A review spawn that produces no recognized signal gets the same bounded
+    // retry treatment as a work-iteration "none" signal (reusing
+    // options.maxRetries — there is no separate review-retry knob). A review
+    // pass runs at most once per loop, so a local counter is enough; unlike
+    // per-item work iterations, the review pass does not participate in the
+    // retryCounts Map or the circuit breaker.
+    let reviewRetryCount = 0;
+    for (;;) {
+      // Mirrors the sibling post-review retry loop's cancellation check
+      // (`if (this.isCancelled()) break;` above): bail before spawning another
+      // attempt rather than let a cancelled run keep retrying.
+      if (this.isCancelled()) {
+        appendLog(this.paths, "Review pass cancelled");
+        return "failed";
       }
 
-      this.reviewItemsCreated = created;
-      this.reviewSummary = parsed.reviewPayload.summary;
+      appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
-      appendLog(
-        this.paths,
-        `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
-      );
-      this.emitEvent("review_completed", {
-        itemsCreated: created,
-        summary: parsed.reviewPayload.summary,
+      // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
+      // preserves today's text review behavior (tech-spec §3.2, SC-2).
+      const execResult = await provider.execute(promptResult.value, {
+        signal: this.abortController.signal,
+        model: resolvedModel,
+        timeoutMinutes: this.options.sessionTimeoutMinutes,
+        ...(this.childEnv ? { env: this.childEnv } : {}),
       });
 
-      return created > 0 ? "continue" : "clean";
-    }
+      if (!execResult.ok) {
+        const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
+        appendLog(this.paths, reason);
+        this.emitEvent("review_failed", { reason });
+        return "failed";
+      }
 
-    // Other signal or parse failure — non-fatal
-    const reason = `Review returned unexpected signal: ${parsed.signal}`;
-    appendLog(this.paths, reason);
-    this.emitEvent("review_failed", { reason });
-    return "failed";
+      const { stdout, stderr } = execResult.value;
+
+      // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
+      const parsed = parseSignal(neutralizeForDetection(stdout));
+
+      if (parsed.signal === "done") {
+        appendLog(this.paths, "Review pass: clean — no issues found");
+        this.emitEvent("review_completed", {
+          itemsCreated: 0,
+          summary: "No issues found",
+        });
+        return "clean";
+      }
+
+      if (parsed.signal === "review" && parsed.reviewPayload) {
+        const batch = new Date().toISOString();
+        let created = 0;
+
+        for (const reviewItem of parsed.reviewPayload.items) {
+          const result = addItem(this.paths, {
+            type: reviewItem.type,
+            priority: reviewItem.priority,
+            title: reviewItem.title,
+            description: reviewItem.description,
+            acceptanceCriteria: reviewItem.acceptanceCriteria,
+            source: "review",
+            reviewBatch: batch,
+          });
+          if (result.ok) {
+            created++;
+            appendLog(this.paths, `Review created item: ${result.value.id} — ${reviewItem.title}`);
+          }
+        }
+
+        this.reviewItemsCreated = created;
+        this.reviewSummary = parsed.reviewPayload.summary;
+
+        appendLog(
+          this.paths,
+          `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
+        );
+        this.emitEvent("review_completed", {
+          itemsCreated: created,
+          summary: parsed.reviewPayload.summary,
+        });
+
+        return created > 0 ? "continue" : "clean";
+      }
+
+      // Other signal or parse failure. Classify WHY the spawn produced no
+      // recognized signal the same way a work iteration does — only a
+      // genuine_retry (clean/long no-signal exit) is worth re-spawning. A
+      // classified usage_limited/timeout/infra_error death falls straight
+      // through to review_failed below; the review pass has no usage-sleep or
+      // circuit-breaker handling of its own to route those into.
+      // Downgrade a usage_limited classification to genuine_retry when the
+      // review-pass provider has no usage semantics (no checkUsage) — same
+      // rationale as the work-iteration path above: a "usage_limited" verdict
+      // there can only be a false substring match on plain-text output.
+      const rawExitClass = classifyExit(execResult.value, parsed);
+      const exitClass =
+        !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+      if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
+        reviewRetryCount++;
+        appendLog(
+          this.paths,
+          `Review pass: no recognized signal (${parsed.signal}) — retrying (attempt ${
+            reviewRetryCount + 1
+          }/${this.options.maxRetries})`,
+        );
+        continue;
+      }
+
+      const reason = `Review returned unexpected signal: ${parsed.signal}`;
+      const stdoutTail = redactSignalTokens(tail(stdout));
+      const stderrTail = redactSignalTokens(tail(stderr));
+      appendLog(this.paths, `${reason}\nstdout tail:\n${stdoutTail}\nstderr tail:\n${stderrTail}`);
+      this.emitEvent("review_failed", { reason, stdoutTail, stderrTail });
+      return "failed";
+    }
   }
 
   // ─── Git helpers ──────────────────────────────────────────────────
