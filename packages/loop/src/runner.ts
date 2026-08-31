@@ -128,7 +128,6 @@ function tail(text: string, n = 500): string {
   return text.length > n ? `…${text.slice(-n)}` : text;
 }
 
-
 // ─── LoopRunner ─────────────────────────────────────────────────────
 
 export class LoopRunner extends TypedEventEmitter {
