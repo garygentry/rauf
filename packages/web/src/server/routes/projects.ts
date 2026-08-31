@@ -898,6 +898,12 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
             maxRetries: DEFAULT_MAX_RETRIES,
             sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
             backlogRoot: resolvedBacklogRoot,
+            // Mirrors the CLI's `rauf resume` (loop-commands.ts): recovery just
+            // above rewrote backlog.json, and a needs-human pause deliberately
+            // left its item's work uncommitted — the runner's pre-iteration
+            // clean-baseline guard must not treat that as unexpected dirt (#105
+            // review, bug 2).
+            allowDirty: true,
           });
         }
       }

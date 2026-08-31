@@ -39,6 +39,7 @@ import {
   ensureStateDir,
   acquireLock,
   releaseLock,
+  MARKER_FILENAME,
   type BacklogPaths,
   type InstructionPaths,
   type Result,
@@ -141,6 +142,18 @@ export class LoopRunner extends TypedEventEmitter {
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
+  /**
+   * Item id left PENDING by the just-finished iteration's outcome
+   * (usage_limited / infra_error / a genuine_retry that hasn't exhausted
+   * maxRetries yet) — the cases that deliberately retry the SAME item next
+   * without reverting its in-progress, uncommitted work. Recomputed at the
+   * end of every runIteration call (reset to null, then set only inside those
+   * retry branches) so it always reflects the MOST RECENT iteration's outcome,
+   * never a stale one. Consumed by the pre-iteration clean-baseline guard
+   * (#83/#105) to distinguish "this iteration's own expected residue" from
+   * unexpected dirt when the same item is reselected next.
+   */
+  private lastPendingRetryItemId: string | null = null;
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
@@ -753,7 +766,37 @@ export class LoopRunner extends TypedEventEmitter {
     // agent is spawned) is both cheaper (no wasted spawn) and simpler than
     // checking at commit time, where "this item's own changes" and "leftover
     // residue from a different item" can no longer be told apart.
-    {
+    //
+    // The guard must NOT fire for three ordinary, healthy cases that leave the
+    // tree dirty for reasons that have nothing to do with a failed revert
+    // (adversarial review of #105):
+    //   1. A same-item retry (infra_error / usage_limited / a genuine_retry
+    //      short of maxRetries) deliberately leaves THIS item's own in-progress
+    //      work uncommitted so the next iteration continues it — detected via
+    //      lastPendingRetryItemId (set at the end of the previous iteration).
+    //   2. `allowDirty` (threaded from `rauf resume` / the web resume route):
+    //      recovery reconciliation rewrites backlog.json, and a needs-human
+    //      pause deliberately leaves its item's work uncommitted for a human
+    //      to inspect/resume — both make the tree dirty by construction on the
+    //      very first iteration of a resumed run.
+    //   3. `.rauf.json` (the marker/profile file, e.g. from `rauf profile
+    //      set`) is durable project config, not loop runtime state — it is
+    //      legitimately committed as part of normal project history (unlike
+    //      state.json/DONE/etc., which are gitignored and never committed) but
+    //      isn't auto-committed by the loop itself, so an operator's un-added
+    //      edit must not read as contamination.
+    const isSameItemRetry = this.lastPendingRetryItemId === item.id;
+    if (this.options.allowDirty === true) {
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (allowDirty — resuming onto a run-managed dirty tree).`,
+      );
+    } else if (isSameItemRetry) {
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (same-item retry — expected leftover work from the previous iteration).`,
+      );
+    } else {
       const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
       const backlogRel = path.relative(this.projectPath, this.paths.backlog);
       const pathspecs = [
@@ -762,6 +805,7 @@ export class LoopRunner extends TypedEventEmitter {
         `:(exclude)${stateDirRel}`,
         `:(exclude)${backlogRel}`,
         `:(exclude)${backlogRel}.bak`,
+        `:(exclude)${MARKER_FILENAME}`,
       ];
       try {
         const preStatus = await execGit(this.projectPath, [
@@ -1022,10 +1066,18 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal !== "done") {
       const recovered = await this.reconcileCommittedWork(item);
       if (recovered) {
+        this.lastPendingRetryItemId = null;
         this.currentItemId = null;
         return "continue";
       }
     }
+
+    // Recompute lastPendingRetryItemId for THIS iteration's outcome (consumed by
+    // the pre-iteration clean-baseline guard on the NEXT call): default to
+    // "no expected residue", overridden below only by the same-item-retry
+    // branches (usage_limited / infra_error / genuine_retry short of
+    // maxRetries) that deliberately leave this item's work uncommitted.
+    this.lastPendingRetryItemId = null;
 
     // Handle signal
     switch (parsed.signal) {
@@ -1149,6 +1201,9 @@ export class LoopRunner extends TypedEventEmitter {
             // route environmental usage death to the sleep-or-exit handler.
             appendLog(this.paths, "Usage limit detected (post-signal classification)");
             updateItem(this.paths, item.id, { status: "pending" });
+            // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+            // from this item's own leftover uncommitted work (bug 1, #105 review).
+            this.lastPendingRetryItemId = item.id;
             this.currentItemId = null;
             // No-op death — don't charge the iteration budget (item 007).
             this.uncountIteration("usage_limited");
@@ -1179,6 +1234,9 @@ export class LoopRunner extends TypedEventEmitter {
             // breaker (item 008). Do NOT block a real work item on a flaky spawn.
             this.consecutiveInfraFailures++;
             updateItem(this.paths, item.id, { status: "pending" });
+            // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+            // from this item's own leftover uncommitted work (bug 1, #105 review).
+            this.lastPendingRetryItemId = item.id;
             // A fast EPERM-shaped exit under codex is often its sandbox denying a subprocess
             // spawn (#84), not a flaky/genuine infra failure — hint at it in the log so repeated
             // circuit-breaker trips don't get misdiagnosed as environment noise unrelated to codex.
@@ -1226,6 +1284,9 @@ export class LoopRunner extends TypedEventEmitter {
             } else {
               // Re-queue: reset to pending for retry
               updateItem(this.paths, item.id, { status: "pending" });
+              // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+              // from this item's own leftover uncommitted work (bug 1, #105 review).
+              this.lastPendingRetryItemId = item.id;
               this.emitEvent("item_retried", {
                 itemId: item.id,
                 attempt: retries,

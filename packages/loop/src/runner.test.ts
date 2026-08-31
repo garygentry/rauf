@@ -1444,6 +1444,154 @@ echo "RAUF_DONE"`,
     });
   });
 
+  describe("pre-iteration clean-baseline guard scoping (#105 adversarial review fixes)", () => {
+    it("does not false-halt on an ordinary same-item retry after infra_error (bug 1)", async () => {
+      // infra_error leaves the item PENDING (not blocked) so the SAME item is
+      // reselected next iteration, on purpose, with its own leftover
+      // uncommitted work still in the tree (revertAbandonedWork is never
+      // called for a pending outcome). The clean-baseline guard must recognize
+      // this as expected residue from the item it's about to retry, not
+      // contamination from a different item's failed revert.
+      setupProject(tmpDir, [pendingItem("001", "Flaky task")]);
+
+      const counter = path.join(tmpDir, ".claude-invocations");
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then
+  echo "leftover in-progress work" > "${tmpDir}/partial-work.txt"
+  echo "boom" >&2
+  exit 1
+fi
+echo "RAUF_DONE"`,
+      );
+
+      const loopErrorEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
+      runner.on("loop_error", (e) => loopErrorEvents.push(e));
+      const result = await runner.start();
+
+      // No false halt — the retry ran and completed normally.
+      expect(loopErrorEvents).toHaveLength(0);
+      expect(result.completedCount).toBe(1);
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("done");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).not.toBe("error");
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("same-item retry");
+
+      // The leftover file was committed as part of the item's own eventual
+      // work, not stashed away — the retry-exemption is scoped to skipping the
+      // GUARD, not to reverting the tree.
+      expect(fs.existsSync(path.join(tmpDir, "partial-work.txt"))).toBe(true);
+    });
+
+    it("does not false-halt when resuming a needs-human pause with allowDirty (bug 2)", async () => {
+      // haltForNeedsHuman returns BEFORE the abandoned-work-revert block, so a
+      // needs-human item's uncommitted work is deliberately left in the tree
+      // for a human to inspect/resume. Relaunching (as `rauf resume --answer`
+      // does, via allow-dirty → LoopStartOptions.allowDirty) must not have the
+      // guard immediately re-halt on that intentionally-preserved dirty tree.
+      setupProject(tmpDir, [pendingItem("001", "Needs a decision")]);
+
+      const counter = path.join(tmpDir, ".claude-invocations");
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then
+  echo "investigation notes" > "${tmpDir}/notes.txt"
+  echo "RAUF_NEEDS_HUMAN:Which approach?"
+else
+  echo "RAUF_DONE"
+fi`,
+      );
+
+      // First run: pauses on needs_human, leaving notes.txt uncommitted.
+      const firstRunner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        pauseOnNeedsHuman: true,
+      });
+      const firstResult = await firstRunner.start();
+      expect(firstResult.pausedReason).toBe("needs_human");
+
+      const backlogPath = path.join(tmpDir, ".rauf", "backlog.json");
+      const pausedBacklog: Backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+      expect(pausedBacklog.items[0]?.status).toBe("blocked");
+      expect(fs.existsSync(path.join(tmpDir, "notes.txt"))).toBe(true);
+
+      // Simulate `rauf resume --answer 001 "..."`: re-queue the item to
+      // pending with the block cleared (resume-commands.ts does this via
+      // updateItem before relaunching).
+      pausedBacklog.items[0]!.status = "pending";
+      pausedBacklog.items[0]!.needsHuman = false;
+      delete pausedBacklog.items[0]!.blockedReason;
+      fs.writeFileSync(backlogPath, JSON.stringify(pausedBacklog, null, 2));
+
+      // Relaunch (a fresh LoopRunner, as `rauf resume` does) with allowDirty,
+      // mirroring the CLI's unconditional `--allow-dirty` on resume relaunch.
+      const loopErrorEvents: LoopEvent[] = [];
+      const resumeRunner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        allowDirty: true,
+      });
+      resumeRunner.on("loop_error", (e) => loopErrorEvents.push(e));
+      const resumeResult = await resumeRunner.start();
+
+      expect(loopErrorEvents).toHaveLength(0);
+      expect(resumeResult.completedCount).toBe(1);
+
+      const finalBacklog: Backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+      expect(finalBacklog.items[0]?.status).toBe("done");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).not.toBe("error");
+    });
+
+    it("does not false-halt on an uncommitted .rauf.json profile edit (rauf profile set) (bug 3)", async () => {
+      // `.rauf.json` is durable, versioned project config (tracked in this
+      // very repo, not gitignored) — but the loop never auto-commits it.
+      // `rauf profile set` writes it directly with no accompanying commit, so
+      // a perfectly healthy first iteration must not read that as
+      // contamination.
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+
+      const markerPath = path.join(tmpDir, ".rauf.json");
+      const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+      marker.options.maxIterations = 42;
+      fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      const loopErrorEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("loop_error", (e) => loopErrorEvents.push(e));
+      const result = await runner.start();
+
+      expect(loopErrorEvents).toHaveLength(0);
+      expect(result.completedCount).toBe(1);
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      expect(backlog.items[0]?.status).toBe("done");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).not.toBe("error");
+    });
+  });
+
   describe("LoopResult", () => {
     it("returns correct counts on normal completion", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
