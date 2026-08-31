@@ -117,10 +117,12 @@ const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
 
 /**
- * Truncates text to its last `n` characters, prefixing an ellipsis when
- * truncated. Shared tail-truncation convention used for diagnostic previews
- * (signal-text logging, review-failure stdout/stderr tails) — keep this the
- * single source of the 500-char default rather than inlining ad hoc slices.
+ * Truncates `text` to its trailing `n` characters, prefixed with an ellipsis
+ * when truncated. Mirrors the existing usage-limit-banner preview truncation
+ * (see the `signalText.slice(-500)` preview below) so infra_error /
+ * genuine_retry diagnostics use the same convention: a tail is far more
+ * likely than a head to contain a test-runner's pass/fail summary or a crash
+ * trace (#74).
  */
 function tail(text: string, n = 500): string {
   return text.length > n ? `…${text.slice(-n)}` : text;
@@ -1119,6 +1121,21 @@ export class LoopRunner extends TypedEventEmitter {
         const rawExitClass = classifyExit(execResult.value, parsed);
         const exitClass =
           !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+
+        // Diagnostic tails for infra_error/genuine_retry (#74): tail the same
+        // `signalText` the signal parser and its "Signal text" preview logging
+        // above already prefer, NOT raw `stdout` — in production both providers
+        // run with `outputFormat: "stream-json"`, so raw stdout is an NDJSON
+        // event stream, not human-readable text (see codex-cli.ts's
+        // reconstructedText comment). Tailing raw stdout would surface an
+        // unreadable JSON fragment instead of a diagnosable pass/fail summary or
+        // crash trace. Raw `stderr` needs no such treatment: neither provider
+        // routes stderr through stream-json reconstruction. Redact literal
+        // RAUF_* signal tokens (matching the sibling "Signal text" preview a
+        // few lines above) so raw agent output can't leak an unredacted
+        // signal-shaped substring into logs/events.
+        const stdoutTail = redactSignalTokens(tail(signalText));
+        const stderrTail = redactSignalTokens(tail(stderr));
         switch (exitClass) {
           case "usage_limited": {
             // Belt-and-suspenders with the pre-signal usage check (item 005):
@@ -1162,9 +1179,16 @@ export class LoopRunner extends TypedEventEmitter {
               provider.id === CODEX_AGENT_ID && hasSandboxDenialSignature(`${stdout}\n${stderr}`)
                 ? " (possible Codex sandbox denial — see providerConfig.sandboxMode/networkAccess)"
                 : "";
+            // Surface the already-captured output so a flaky non-zero exit (e.g. a
+            // test-runner crash unrelated to test results) is diagnosable from the
+            // log alone — a fast infra death otherwise has zero output evidence
+            // attached (#74). stdout first: a test runner's pass/fail summary is
+            // typically there, while stderr more often carries a crash trace.
             appendLog(
               this.paths,
-              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}`,
+              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}\n` +
+                `stdout tail: ${stdoutTail}\n` +
+                `stderr tail: ${stderrTail}`,
             );
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.
@@ -1187,6 +1211,12 @@ export class LoopRunner extends TypedEventEmitter {
             const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
             this.retryCounts.set(item.id, retries);
 
+            // Surface the already-captured output (via the shared stdoutTail/
+            // stderrTail computed above) on both the retry and the eventual
+            // exhausted-retries block, so a genuine_retry death (e.g. a flaky
+            // non-zero gate exit) is diagnosable without re-running the
+            // iteration (#74) — written to rauf.log same as infra_error, so
+            // `rauf log` (text-only) surfaces it too, not just events.ndjson.
             if (retries >= this.options.maxRetries) {
               // Runner gives up — DEFER (a false block), not a genuine agent block.
               const reason = `No signal after ${retries} attempts (deferred by runner)`;
@@ -1196,8 +1226,13 @@ export class LoopRunner extends TypedEventEmitter {
                 deferred: true,
               });
               this.deferredItemIds.push(item.id);
-              this.emitEvent("item_blocked", { itemId: item.id, reason });
-              appendLog(this.paths, `Item ${item.id} deferred after ${retries} attempts`);
+              this.emitEvent("item_blocked", { itemId: item.id, reason, stdoutTail, stderrTail });
+              appendLog(
+                this.paths,
+                `Item ${item.id} deferred after ${retries} attempts\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
               this.writeState("running", null, "error");
             } else {
               // Re-queue: reset to pending for retry
@@ -1206,8 +1241,15 @@ export class LoopRunner extends TypedEventEmitter {
                 itemId: item.id,
                 attempt: retries,
                 maxRetries: this.options.maxRetries,
+                stdoutTail,
+                stderrTail,
               });
-              appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
+              appendLog(
+                this.paths,
+                `Item ${item.id} retry ${retries}/${this.options.maxRetries}\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
             }
             break;
           }

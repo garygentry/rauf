@@ -16,6 +16,15 @@
   the review pass) now logs the resolved policy for providers that expose one, e.g.
   `Spawning codex for item 001 [sandbox=workspace-write network=true approval=never]`, via a new
   optional `LLMProvider.describeConfig()` hook. (Closes #84.)
+- **Stdout/stderr diagnostic tail on infra/genuine-retry exits** — an `infra_error` (fast
+  non-zero exit) or `genuine_retry` (no-signal exit) death now carries a truncated
+  human-readable tail of the spawn's captured output, so a flake is diagnosable without
+  re-running the iteration. `rauf.log` gets it inline for both cases (previously only
+  `infra_error` did); the new optional `stdoutTail`/`stderrTail` fields on the
+  `item_blocked`/`item_retried` events surface it in `events.ndjson`, `rauf log --follow`, and
+  the web dashboard's event feed. The tail prefers the same reconstructed human text the signal
+  parser uses (raw stdout is an NDJSON event stream under `stream-json` mode, not readable
+  text) and is redacted the same as the sibling signal-preview logging. (Closes #74.)
 
 ### Changed
 

@@ -557,7 +557,26 @@ else echo "RAUF_DONE"; fi`,
       // Mock claude that produces no signal and exits cleanly (code 0) — a
       // genuine_retry, not an infra death. A missing signal must never, by
       // itself, mark an item blocked: after maxRetries it is DEFERRED.
-      writeMockClaude(binDir, 'echo "random output"');
+      //
+      // The runner always requests outputFormat "stream-json" (production
+      // shape), so stdout here is NDJSON: a raw tool_use event line (whose
+      // marker text is never reconstructed) plus a "result" event whose
+      // `result` field is the human-readable text the stream parser
+      // reconstructs — and which itself embeds a literal RAUF_DONE token
+      // inline (sharing a line with other text, so it is neutralized for
+      // signal detection, not a real completion signal). This lets the tests
+      // assert BOTH that the tail is built from reconstructedText, not raw
+      // stdout (#74's regression), AND that the tail is redacted before
+      // emission/logging so the embedded RAUF_DONE substring never appears
+      // literally.
+      writeMockClaude(
+        binDir,
+        [
+          `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo TOOL_USE_MARKER_ONLY_IN_RAW_JSON"}}]}}'`,
+          `echo '{"type":"result","result":"random output from the agent - token RAUF_DONE appears inline here"}'`,
+          `echo "some warning on stderr" >&2`,
+        ].join("\n"),
+      );
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxRetries: 2 });
@@ -570,7 +589,19 @@ else echo "RAUF_DONE"; fi`,
       expect(result.blockedCount).toBe(0);
       const retryEvents = events.filter((e) => e.type === "item_retried");
       expect(retryEvents).toHaveLength(1);
-      expect((retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>).attempt).toBe(1);
+      const retryEvent = retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>;
+      expect(retryEvent.attempt).toBe(1);
+      expect(retryEvent.stdoutTail).toBeTruthy();
+      expect(retryEvent.stdoutTail).toContain("random output from the agent");
+      // Reconstructed text, not raw NDJSON: the tool_use event's raw-JSON-only
+      // marker must never appear.
+      expect(retryEvent.stdoutTail).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(retryEvent.stdoutTail).not.toContain('"type":"assistant"');
+      // Redacted: the inline RAUF_DONE substring must not leak literally.
+      expect(retryEvent.stdoutTail).not.toContain("RAUF_DONE");
+      expect(retryEvent.stdoutTail).toContain("RAUF·DONE");
+      expect(retryEvent.stderrTail).toBeTruthy();
+      expect(retryEvent.stderrTail).toContain("some warning on stderr");
 
       // The item ends status 'blocked' with the deferred flag and a runner reason.
       const backlog: Backlog = JSON.parse(
@@ -581,10 +612,33 @@ else echo "RAUF_DONE"; fi`,
       expect(item?.deferred).toBe(true);
       expect(item?.blockedReason).toContain("deferred by runner");
 
+      // The exhausted-retries item_blocked also carries the tail fields.
+      const blockedEvents = events.filter((e) => e.type === "item_blocked");
+      expect(blockedEvents).toHaveLength(1);
+      const blockedEvent = blockedEvents[0] as Extract<LoopEvent, { type: "item_blocked" }>;
+      expect(blockedEvent.stdoutTail).toBeTruthy();
+      expect(blockedEvent.stdoutTail).toContain("random output from the agent");
+      expect(blockedEvent.stdoutTail).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(blockedEvent.stdoutTail).not.toContain("RAUF_DONE");
+      expect(blockedEvent.stderrTail).toBeTruthy();
+      expect(blockedEvent.stderrTail).toContain("some warning on stderr");
+
       // It is tracked in state.deferredItems, not blockedItems.
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.deferredItems).toContain("001");
       expect(state.blockedItems).not.toContain("001");
+
+      // rauf.log (text-only, no events.ndjson) now surfaces the tail for the
+      // genuine_retry case too, not just infra_error (#74 fix 3a) — both the
+      // mid-retry attempt and the exhausted-retries block write it.
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Item 001 retry 1/2");
+      expect(log).toContain("Item 001 deferred after 2 attempts");
+      const stdoutTailOccurrences = log.split("stdout tail:").length - 1;
+      expect(stdoutTailOccurrences).toBeGreaterThanOrEqual(2);
+      expect(log).toContain("random output from the agent");
+      expect(log).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(log).not.toContain("RAUF_DONE");
     });
 
     it("review pass retries a missing signal once and recovers within maxRetries", async () => {
@@ -1133,17 +1187,26 @@ echo "RAUF_DONE"`,
     it("does not charge the iteration budget for an infra_error no-op", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       const counter = path.join(tmpDir, "attempt-count");
-      // First spawn fast-fails (infra_error, no banner); second succeeds.
+      // First spawn fast-fails (infra_error, no banner); second succeeds. The
+      // runner always requests outputFormat "stream-json" (production shape),
+      // so the first attempt's stdout is NDJSON — a raw tool_use event line
+      // (marker only present in the raw JSON, never reconstructed to text) plus
+      // a "result" event whose `result` field is the human-readable text the
+      // stream parser reconstructs. This proves the tail is built from
+      // reconstructedText, not raw stdout (#74's actual regression — a fix that
+      // merely tailed raw stdout would leak the JSON marker into the log).
       writeMockClaude(
         binDir,
         `n=$(cat "${counter}" 2>/dev/null || echo 0)
 n=$((n + 1))
 echo "$n" > "${counter}"
 if [ "$n" -eq 1 ]; then
-  echo "boom" >&2
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo TOOL_USE_MARKER_ONLY_IN_RAW_JSON"}}]}}'
+  echo '{"type":"result","result":"1388 tests passing"}'
+  echo "coverage-collector-tmp-race: EBUSY" >&2
   exit 1
 fi
-echo "RAUF_DONE"`,
+echo '{"type":"result","result":"RAUF_DONE"}'`,
       );
 
       const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
@@ -1156,6 +1219,20 @@ echo "RAUF_DONE"`,
       const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       expect(log).toContain("Iteration not counted (infra_error)");
       expect(log).toContain("budget preserved at 0/5");
+
+      // The infra_error log line surfaces the captured stdout/stderr tail, so a
+      // flake (e.g. a coverage-collector crash despite all tests passing) is
+      // diagnosable from the log alone (#74) — using the RECONSTRUCTED text,
+      // not the raw NDJSON stream.
+      expect(log).toContain("stdout tail:");
+      expect(log).toContain("1388 tests passing");
+      expect(log).toContain("stderr tail:");
+      expect(log).toContain("coverage-collector-tmp-race: EBUSY");
+      // The raw JSONL event data must NOT leak into the log — only the
+      // reconstructed human text.
+      expect(log).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(log).not.toContain('"type":"assistant"');
+      expect(log).not.toContain('"type":"result"');
     });
 
     it("halts via the circuit breaker after consecutive infra failures", async () => {
