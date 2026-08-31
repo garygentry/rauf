@@ -881,16 +881,26 @@ export class LoopRunner extends TypedEventEmitter {
       }
     };
 
-    const execResult = await provider.execute(promptResult.value, {
-      outputFormat: "stream-json",
-      onStreamEvent,
-      signal: this.abortController.signal,
-      model: resolvedModel,
-      timeoutMinutes: this.options.sessionTimeoutMinutes,
-      ...(this.childEnv ? { env: this.childEnv } : {}),
-    });
-
-    clearInterval(stuckTimer);
+    // #103 follow-up: provider.execute() must never leave `stuckTimer` running.
+    // Before this repo switched the CLI entry points from process.exit() to
+    // process.exitCode (stdout-truncation fix), a leaked interval here was
+    // masked by the forced exit. With graceful draining, an uncaught
+    // throw/rejection from execute() (which CliAgentBase.execute()'s
+    // try/finally — with no catch — can still propagate) would otherwise keep
+    // the event loop alive forever. Guarantee cleanup on every exit path.
+    let execResult: Awaited<ReturnType<typeof provider.execute>>;
+    try {
+      execResult = await provider.execute(promptResult.value, {
+        outputFormat: "stream-json",
+        onStreamEvent,
+        signal: this.abortController.signal,
+        model: resolvedModel,
+        timeoutMinutes: this.options.sessionTimeoutMinutes,
+        ...(this.childEnv ? { env: this.childEnv } : {}),
+      });
+    } finally {
+      clearInterval(stuckTimer);
+    }
     clearIterationStatus(this.paths);
 
     if (!execResult.ok) {
