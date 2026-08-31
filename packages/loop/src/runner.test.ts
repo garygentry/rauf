@@ -1348,6 +1348,53 @@ echo "RAUF_DONE"`,
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.currentItem).toBeNull();
     });
+
+    it("clears the stuck-detection timer even when provider.execute() throws (#103 follow-up)", async () => {
+      // #103 switched the CLI entry points from process.exit() to
+      // process.exitCode so stdout flushes before the process drains
+      // naturally. That exposed a real risk: runner.ts starts a stuck-
+      // iteration `setInterval` before spawning the provider and previously
+      // only cleared it AFTER `provider.execute()` resolved, with no
+      // try/finally. If execute() throws/rejects instead (e.g. an error
+      // CliAgentBase.execute()'s try/finally — which has no catch — can't
+      // convert to a Result), the interval leaked and, without a forced
+      // process.exit(), could keep `rauf loop run` hanging forever. Assert
+      // the leaked-interval path is now impossible: setInterval's timer id
+      // must be handed to clearInterval even when execute() throws.
+      const agentId = "throwing-agent";
+      registerAgent({
+        id: agentId,
+        displayName: agentId,
+        detect: async () => ({ available: true }),
+        factory: (): LLMProvider => ({
+          id: agentId,
+          displayName: agentId,
+          execute() {
+            throw new Error("simulated provider crash");
+          },
+          validateCredentials() {
+            return ok(undefined);
+          },
+        }),
+      });
+      setupProject(tmpDir, [pendingItem("001", "Crash on execute")]);
+
+      const setIntervalSpy = vi.spyOn(global, "setInterval");
+      const clearIntervalSpy = vi.spyOn(global, "clearInterval");
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: agentId });
+
+      await expect(runner.start()).rejects.toThrow("simulated provider crash");
+
+      // The stuck-detection interval was started, and it was cleared with
+      // the exact same timer id — not merely "some" clearInterval call.
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+      const timerId = setIntervalSpy.mock.results[0]?.value;
+      expect(clearIntervalSpy).toHaveBeenCalledWith(timerId);
+
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    });
   });
 
   describe("dependency-aware item selection", () => {
