@@ -1406,7 +1406,13 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       break;
 
     case "review_failed":
-      print(`${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}`);
+      print(
+        `${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}${
+          event.stdoutTail || event.stderrTail
+            ? ` ${c.dim("(diagnostic tail captured \u2014 see rauf.log)")}`
+            : ""
+        }`,
+      );
       break;
   }
 }

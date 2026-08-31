@@ -24,11 +24,17 @@ if (process.argv.includes("--internal-server")) {
   startServer({ port: port && !isNaN(port) ? port : undefined });
 } else {
   // ─── Normal CLI mode ────────────────────────────────────
+  // Use process.exitCode (not process.exit()) so the event loop drains
+  // naturally — stdout writes to a pipe are async, and process.exit()
+  // terminates before anything still queued past the pipe buffer flushes,
+  // silently truncating large --json output (#81, #82).
   runCli()
-    .then((code) => process.exit(code))
+    .then((code) => {
+      process.exitCode = code;
+    })
     .catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error(`Unexpected error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     });
 }

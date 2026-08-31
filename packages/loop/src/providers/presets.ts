@@ -79,7 +79,11 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     id: "pi",
     displayName: "Pi",
     binary: "pi",
-    promptDelivery: "arg",
+    // stdin (not "arg"): a large aggregated prompt (e.g. the post-loop review prompt) as a single
+    // argv element can exceed the OS per-argument limit and fail with E2BIG before Pi even starts
+    // (GH #90). Pi, like gemini/copilot above, auto-detects non-TTY stdin and goes headless in
+    // print mode, so this is a pure config change — no engine change required.
+    promptDelivery: "stdin",
     // `-p` is the print-mode trigger. Keep `--no-tools` out of the production preset: loop
     // iterations need tools to edit files. Sentinel-only real smoke may add --no-tools externally.
     buildArgs: () => ["-p"],
