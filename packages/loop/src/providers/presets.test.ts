@@ -36,10 +36,15 @@ describe("preset configs", () => {
     expect(c.modelFlag?.("gpt-5.4")).toEqual(["--model", "gpt-5.4"]);
   });
 
-  it("cursor: --print (headless trigger) + --force, prompt as arg, --model <model>", () => {
+  it("cursor: --print (headless trigger) + --force, prompt via file indirection, --model <model>", () => {
     const c = getPresetConfig("cursor")!;
     expect(c.binary).toBe("cursor-agent");
-    expect(c.promptDelivery).toBe("arg");
+    // "file", not "arg": a large prompt as a single argv element can hit E2BIG (GH #108),
+    // and cursor-agent's stdin support for a full prompt is unconfirmed (unlike gemini/copilot/pi).
+    expect(c.promptDelivery).toBe("file");
+    const args = c.buildArgs({ promptFile: "/tmp/prompt-abc123.txt" });
+    expect(args).toHaveLength(1);
+    expect(args[0]).toContain("/tmp/prompt-abc123.txt");
     // --print MUST be present — without it cursor-agent emits no parseable stdout.
     expect(c.nonInteractive).toEqual(["--print", "--force"]);
     expect(c.modelFlag?.("sonnet-4.6")).toEqual(["--model", "sonnet-4.6"]);

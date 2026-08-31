@@ -21,9 +21,24 @@ import { registerAgent } from "./registry.js";
  *    stdout capture remains unconfirmed until run with a real key; flags themselves are correct.
  *  - `cursor` (cursor-agent 2026.06.26) — `--print` is the headless trigger ("Print responses to
  *    console for scripts/non-interactive use"); WITHOUT it cursor-agent would not emit parseable
- *    output. Added below and argv-verified (reaches the auth wall, not an "unknown option"
- *    error). `--force` stays as the auto-approve flag. End-to-end completion unconfirmed until
+ *    output. `--force` stays as the auto-approve flag. End-to-end completion unconfirmed until
  *    run with `cursor-agent login` / `CURSOR_API_KEY`.
+ *    CAVEAT — `promptDelivery: "file"`, not `"stdin"` (GH #108): cursor-agent's own docs
+ *    (cursor.com/docs/cli/headless) show the prompt passed as a positional argv argument, and
+ *    their piped-stdin examples use stdin as additional context ALONGSIDE an argv `-p "..."`
+ *    string, not as a full prompt replacement — unlike gemini/copilot/pi above, nothing confirms
+ *    cursor-agent reads a whole prompt from stdin alone. A large aggregated prompt (e.g. the
+ *    post-loop review prompt) as a single argv element can still exceed the OS per-argument limit
+ *    and fail with E2BIG (the same bug GH #90 fixed for `pi`), so the real prompt is written to a
+ *    sandboxed temp file and a short positional indirection instruction pointing at it is passed
+ *    instead — mirroring the handoff-file pattern used by the `cursor-agent` adapter in the
+ *    `pi-subagents` package, which deliberately avoids stdin for this CLI for the same reason.
+ *    ARGV ORDER — the engine always places `buildArgs(ctx)`'s output BEFORE `nonInteractive`, so
+ *    this preset's positional indirection string now comes before `--print --force [--model]`,
+ *    reversing the flags-then-prompt order the original "arg"-delivery shape used. Real-CLI
+ *    argv-verified (2026-08-31, cursor-agent 2026.06.26): both orderings reach the identical
+ *    "Authentication required" error — cursor-agent's parser does not require flags before the
+ *    positional prompt.
  *  - `pi` (Pi 0.81.1) — VERIFIED end-to-end. Both the sentinel shape (`pi -p --approve
  *    --no-session --no-tools "Reply with exactly RAUF_DONE"` exits 0, prints exactly `RAUF_DONE`)
  *    AND the production shape with tools enabled (`pi -p --approve --no-session "Create a file …
@@ -68,8 +83,17 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     displayName: "Cursor Agent CLI",
     // NOTE: the binary ("cursor-agent") deliberately differs from the agent id ("cursor").
     binary: "cursor-agent",
-    promptDelivery: "arg",
-    buildArgs: () => [],
+    // "file" (not "arg" or "stdin"): avoids the E2BIG exposure of "arg" (GH #108) without
+    // depending on cursor-agent's unconfirmed stdin support — see the CAVEAT above. The real
+    // prompt is written to a sandboxed temp file by the engine; this positional argument is just
+    // a short pointer at it.
+    promptDelivery: "file",
+    // ctx.promptFile is only unset if this config's promptDelivery were something other than
+    // "file" — it's always populated here by the engine before buildArgs runs. Asserted (not
+    // silently interpolated as "undefined") so a future config error fails loudly.
+    buildArgs: (ctx) => [
+      `Read the complete task instructions from the file at ${ctx.promptFile!} and follow them completely.`,
+    ],
     // `--print` is the headless/non-interactive trigger (prints responses to stdout for scripts);
     // `--force` auto-approves tool calls. Verified against cursor-agent 2026.06.26 (2026-06-27).
     nonInteractive: ["--print", "--force"],

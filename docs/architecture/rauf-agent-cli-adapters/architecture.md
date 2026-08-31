@@ -118,7 +118,7 @@ The four presets are `CliAgentConfig` literals:
 | `codex`   | `codex`        | `arg`    | `--sandbox workspace-write --ask-for-approval never` | `--model <m>` |
 | `gemini`  | `gemini`       | `stdin`  | `--yolo`                                             | `-m <m>`      |
 | `copilot` | `copilot`      | `stdin`  | `--allow-all-tools`                                  | `--model <m>` |
-| `cursor`  | `cursor-agent` | `arg`    | `--force`                                            | `--model <m>` |
+| `cursor`  | `cursor-agent` | `file`   | `--print --force`                                    | `--model <m>` |
 
 > Note `cursor`'s binary (`cursor-agent`) deliberately differs from its agent id
 > (`cursor`). Codex is driven through `codex exec` with explicit sandbox/approval

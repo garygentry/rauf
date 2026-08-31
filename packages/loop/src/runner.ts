@@ -166,6 +166,14 @@ export class LoopRunner extends TypedEventEmitter {
    * unexpected dirt when the same item is reselected next.
    */
   private lastPendingRetryItemId: string | null = null;
+  /**
+   * Consumable copy of `options.allowDirty` (#109): the clean-baseline guard reads THIS field,
+   * not `options.allowDirty` directly, and clears it to `false` the first time it suppresses the
+   * guard. `options.allowDirty` exists to excuse the run-managed dirty tree a resume relaunches
+   * onto (needs-human/recovery reconciliation) — it must protect only that first iteration, not
+   * silently disable the guard for the rest of a long-running resumed run.
+   */
+  private allowDirtyRemaining: boolean;
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
@@ -208,6 +216,7 @@ export class LoopRunner extends TypedEventEmitter {
     this.projectPath = projectPath;
     this.paths = paths;
     this.options = options;
+    this.allowDirtyRemaining = options.allowDirty === true;
     this.childEnv = resolveChildEnv({
       suppressIterationReview: options.suppressIterationReview,
       childEnv: options.childEnv,
@@ -790,7 +799,10 @@ export class LoopRunner extends TypedEventEmitter {
     //      recovery reconciliation rewrites backlog.json, and a needs-human
     //      pause deliberately leaves its item's work uncommitted for a human
     //      to inspect/resume — both make the tree dirty by construction on the
-    //      very first iteration of a resumed run.
+    //      very first iteration of a resumed run. Consumed via
+    //      `allowDirtyRemaining` (#109) so it excuses only that first
+    //      iteration — a later, unrelated item hitting a genuine failed-revert
+    //      scenario mid-run must still be caught.
     //   3. `.rauf.json` (the marker/profile file, e.g. from `rauf profile
     //      set`) is durable project config, not loop runtime state — it is
     //      legitimately committed as part of normal project history (unlike
@@ -798,7 +810,8 @@ export class LoopRunner extends TypedEventEmitter {
     //      isn't auto-committed by the loop itself, so an operator's un-added
     //      edit must not read as contamination.
     const isSameItemRetry = this.lastPendingRetryItemId === item.id;
-    if (this.options.allowDirty === true) {
+    if (this.allowDirtyRemaining) {
+      this.allowDirtyRemaining = false;
       appendLog(
         this.paths,
         `Clean-baseline guard skipped for item ${item.id} (allowDirty — resuming onto a run-managed dirty tree).`,

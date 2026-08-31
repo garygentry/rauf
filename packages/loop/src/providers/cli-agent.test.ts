@@ -162,6 +162,30 @@ describe("CliAgent", () => {
       expect(mockUnlink).toHaveBeenCalledWith(writtenPath);
     });
 
+    it("'file' delivers a large prompt (exceeding typical OS argv limits) via the temp file, never argv", async () => {
+      // Regression for GH #108: cursor-agent's stdin support for a full prompt is unconfirmed
+      // (unlike gemini/copilot/pi), so it uses "file" delivery instead of "stdin" — but it must
+      // get the same E2BIG protection: a large prompt must never land in argv, only in the file.
+      const largePrompt = "x".repeat(500_000);
+      const agent = new CliAgent(
+        baseConfig({
+          promptDelivery: "file",
+          buildArgs: (ctx) => [`Read the file at ${ctx.promptFile} and follow it.`],
+          modelFlag: undefined,
+        }),
+      );
+      await agent.execute(largePrompt, { timeoutMinutes: 1 });
+
+      expect(mockWriteFile).toHaveBeenCalledTimes(1);
+      const [writtenPath, writtenContent] = mockWriteFile.mock.calls[0]!;
+      expect(writtenContent).toBe(largePrompt);
+
+      const [, args, opts] = mockSpawn.mock.calls[0]!;
+      expect(opts.stdin).toBeUndefined();
+      expect(args.join(" ")).not.toContain(largePrompt);
+      expect(args.join(" ")).toContain(writtenPath as string);
+    });
+
     it("'file' delivery unlinks the temp file even when spawn fails", async () => {
       mockSpawn.mockResolvedValue(err({ code: ErrorCodes.FILE_NOT_FOUND, message: "boom" }));
       const agent = new CliAgent(
