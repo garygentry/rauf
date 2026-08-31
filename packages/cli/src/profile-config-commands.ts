@@ -26,6 +26,7 @@ import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { c, info, print, error, success, outputJson, renderTable, symbols } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
+import { printWarnings } from "./install-commands.js";
 
 // ─── PROFILE SHOW ──────────────────────────────────────────────────
 
@@ -75,7 +76,13 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
     return ExitCode.SUCCESS;
   }
 
-  print(c.bold("Detected Profile (read-only — use 'rauf profile set' or 'rauf update' to apply):"));
+  print(
+    c.bold(
+      "Detected Profile (read-only — apply with 'rauf profile set <path> <key> <value>' for " +
+        "one field, or re-run 'rauf install <path>' to re-detect everything and resync RAUF.md's " +
+        "managed section):",
+    ),
+  );
   print("");
   printProfile(detected);
   return ExitCode.SUCCESS;
@@ -164,6 +171,10 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
   );
   if (updateResult.ok) {
     info("RAUF.md verification commands synced.");
+    // update() already ran detectVerificationWarnings — surface them the same
+    // way `rauf update <path>` does (printUpdateReport → printWarnings), so an
+    // empty/dispatcher-guessed verify command doesn't go unreported here too.
+    printWarnings(updateResult.value.warnings);
   }
   return ExitCode.SUCCESS;
 }

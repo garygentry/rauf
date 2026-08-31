@@ -25,6 +25,7 @@ import {
   detectMigrationState,
   readBacklog,
   readMarkerFile,
+  detectVerificationWarnings,
   formatBudgetMath,
   resolveMaxIterations,
   formatMaxIterationsSource,
@@ -126,6 +127,23 @@ function resolveLoopMaxIterations(
   }
   info(c.dim(formatMaxIterationsSource(resolved)));
   return resolved.value;
+}
+
+/**
+ * Non-blocking startup check: warn (never fail) when the project's stored
+ * profile has empty or dispatcher-guessed verification commands. `rauf
+ * install`/`init`/`update` already surface this via their own warnings[],
+ * but an already-installed project whose profile was never re-detected
+ * (or was hand-edited) wouldn't otherwise get a signal until an iteration
+ * silently skips verification. Best-effort — a missing/unreadable marker
+ * is silently skipped (readMarkerFile's own errors surface elsewhere).
+ */
+function warnStaleVerificationProfile(projectPath: string): void {
+  const markerResult = readMarkerFile(projectPath);
+  if (!markerResult.ok) return;
+  for (const w of detectVerificationWarnings(projectPath, markerResult.value.profile)) {
+    warn(w);
+  }
 }
 
 /**
@@ -437,12 +455,19 @@ async function runDetached(ctx: CommandContext): Promise<number> {
     });
 
     if (resp.ok) {
+      const data = (await resp.json()) as { data?: { warnings?: string[] } };
       if (ctx.globalFlags.json) {
-        const data = await resp.json();
         outputJson(data);
       } else {
         success(`Loop started for ${c.cyan(id)} ${c.dim("(detached, server-owned)")}`);
         info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
+        // Surfaces the same empty/dispatcher-guessed-verification warning the
+        // in-process path prints via warnStaleVerificationProfile — the
+        // detached start reaches it through the server's response instead of
+        // a local marker read (this process never sees the marker directly).
+        for (const w of data.data?.warnings ?? []) {
+          warn(w);
+        }
       }
       return ExitCode.SUCCESS;
     }
@@ -787,6 +812,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
   const paths = pathsResult.value;
+
+  // Non-blocking: warn if the project's stored profile has empty or
+  // dispatcher-guessed verification commands (item catches already-installed
+  // projects that a fresh `rauf install` re-run wouldn't otherwise reach).
+  warnStaleVerificationProfile(projectPath);
 
   // Create & switch to a feature branch first (before the precondition check)
   // so `--create-branch feat/x` takes a project off a protected/dirty branch

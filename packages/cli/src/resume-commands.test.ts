@@ -371,6 +371,51 @@ describe("handleResume — interrupted iterations", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("--recover halts (never executes) an unvalidated dispatcher-guessed command when the stored profile is empty", async () => {
+    // Real-world scenario the adversarial review flagged: a stale/empty
+    // stored profile.verify falls back to a fresh detectProfile() scan in
+    // resolveVerifyCommand(). Before the fix, if a dispatcher script (e.g.
+    // this repo's own scripts/verify.sh pattern) was present, that fallback
+    // would guess a `bash scripts/verify.sh <subcommand>` command and
+    // EXECUTE it here to decide whether to auto-commit interrupted work —
+    // even though the guessed subcommand names were never validated against
+    // what the script actually supports. A script that exits 0 for ANY
+    // subcommand (a common shell-script default) would then get interrupted,
+    // unverified work silently auto-committed as "verified".
+    const projectDir = createProject([item("001", "in_progress")]);
+    writeState(projectDir, "error");
+    writeMarker(projectDir, ""); // empty stored verify → resolveVerifyCommand falls back to detectProfile()
+    fs.mkdirSync(path.join(projectDir, "scripts"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, "scripts", "verify.sh"),
+      "#!/usr/bin/env bash\nexit 0\n", // exits 0 for literally any argument
+    );
+    fs.writeFileSync(path.join(projectDir, "work.txt"), "unverified work\n");
+
+    const verifyCalls: string[] = [];
+    const runVerify = async (_cwd: string, command: string) => {
+      verifyCalls.push(command);
+      return { passed: true, output: "ok" }; // would report "passed" if it were ever run
+    };
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["recover", true]]) }),
+      { runLoop, runVerify },
+    );
+
+    // Same halt behavior as "no verify command configured" — before dispatcher
+    // guessing existed, an empty profile with no verify command deterministically
+    // halted recovery this way. Fix 1 restores that behavior for this specific
+    // path instead of substituting an unvalidated guess.
+    expect(code).toBe(ExitCode.ERROR);
+    expect(verifyCalls).toEqual([]); // the guessed command was NEVER executed
+    expect(readBacklogItems(projectDir)["001"]?.status).toBe("in_progress");
+    expect(fs.existsSync(path.join(projectDir, "work.txt"))).toBe(true);
+    expect(raufCommitSubjects(projectDir, "001")).toBe("");
+    expect(calls).toHaveLength(0); // no relaunch
+  });
+
   it("--recover leaves the work untouched and reports when re-verify fails", async () => {
     const projectDir = createProject([item("001", "in_progress")]);
     writeState(projectDir, "error");

@@ -224,6 +224,22 @@ export function fileExists(filePath: string): boolean {
   }
 }
 
+// ─── isRegularFile ────────────────────────────────────────────────
+//
+// Non-throwing REGULAR FILE check. Unlike fileExists (which matches any
+// path — files, directories, etc.), this only returns true for a regular
+// file. Use it wherever a directory of the same name must NOT count as a
+// match (e.g. a script-path guess that would otherwise false-positive on
+// a same-named directory).
+
+export function isRegularFile(filePath: string): boolean {
+  try {
+    return fs.statSync(path.resolve(filePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 // ─── ensureDir ────────────────────────────────────────────────────
 //
 // Create a directory and all parent directories (mkdir -p equivalent).

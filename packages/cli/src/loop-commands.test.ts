@@ -952,6 +952,48 @@ describe("createLoopBranch & loop preconditions", () => {
     expect(gitSubjects(proj)).not.toContain("[rauf] backlog: seed");
     expect(gitStatus(proj)).not.toBe("");
   });
+
+  // ─── stale/empty verification-profile startup warning (GH#85) ───
+
+  it("warns at startup when the installed project's stored profile has no verification commands", async () => {
+    const proj = makeProject([]);
+    git(proj, "switch -c feat/verify-warn");
+
+    fs.writeFileSync(
+      path.join(proj, ".rauf.json"),
+      JSON.stringify(
+        {
+          rauf: true,
+          version: "1",
+          variant: "backlog-json",
+          installedAt: new Date().toISOString(),
+          installedBy: "rauf-manager@test",
+          profile: {
+            stack: "unknown",
+            packageManager: null,
+            monorepo: false,
+            commands: { test: null, typecheck: null, lint: null, build: null, format: null },
+            verify: "",
+          },
+          artifactHashes: {},
+          options: { ignoreInTool: false, gitignoreScripts: false, maxIterations: 20 },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    git(proj, "add -A");
+    git(proj, 'commit -m "add empty-profile marker"');
+
+    const ctx = makeCtx({ args: [proj] });
+    const out = await captureOutput(async () => {
+      const code = await handleLoopRun(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+
+    const all = out.stdout + out.stderr;
+    expect(all).toContain("No verification commands detected");
+  });
 });
 
 // ─── --pause-on-needs-human exit code (item 008) ───

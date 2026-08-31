@@ -21,6 +21,8 @@ import {
   readEvents,
   watchEvents,
   listActiveLoops,
+  readMarkerFile,
+  detectVerificationWarnings,
 } from "@rauf/core";
 
 import { errorResponse } from "../app.js";
@@ -172,7 +174,19 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse("CONFLICT", result.error), 409);
     }
 
-    return c.json({ data: { started: true, projectPath } });
+    // Non-blocking: warn (never fail the start) when the project's stored
+    // profile has empty or dispatcher-guessed verification commands. This is
+    // the ONE route both the web UI's "Run Loop" button and the CLI's
+    // `--detached` path funnel through, so it's the shared point that makes
+    // the equivalent in-process `warnStaleVerificationProfile` startup check
+    // (packages/cli/src/loop-commands.ts) reach both of them too. Best-effort
+    // — a missing/unreadable marker is silently skipped.
+    const markerResult = readMarkerFile(projectPath);
+    const warnings = markerResult.ok
+      ? detectVerificationWarnings(projectPath, markerResult.value.profile)
+      : [];
+
+    return c.json({ data: { started: true, projectPath, warnings } });
   });
 
   // ── POST /:id/loop/stop ───────────────────────────────────────

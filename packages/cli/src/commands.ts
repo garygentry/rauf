@@ -257,14 +257,73 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     name: "install",
-    description: "Install rauf into an existing project",
+    description:
+      "Install rauf into an existing project — re-running on an already-installed project " +
+      "re-detects the profile and resyncs only RAUF.md's managed section",
     usage: "rauf install <path> [options]",
+    flags: [
+      { name: "--yes", description: "Skip the preflight-check confirmation prompt" },
+      {
+        name: "--gitignore-scripts",
+        description: "Mark this install's option to gitignore legacy shell scripts",
+      },
+      {
+        name: "--test-cmd <cmd>",
+        description: "Override the detected test command (empty string disables it)",
+      },
+      {
+        name: "--typecheck-cmd <cmd>",
+        description: "Override the detected typecheck command (empty string disables it)",
+      },
+      {
+        name: "--lint-cmd <cmd>",
+        description: "Override the detected lint command (empty string disables it)",
+      },
+      {
+        name: "--build-cmd <cmd>",
+        description: "Override the detected build command (empty string disables it)",
+      },
+      {
+        name: "--format-cmd <cmd>",
+        description: "Override the detected format command (empty string disables it)",
+      },
+    ],
     handler: handleInstall,
   },
   {
     name: "init",
     description: "Initialize a new project with rauf",
     usage: "rauf init <path> [options]",
+    flags: [
+      { name: "--name <name>", description: "Project name (defaults to directory basename)" },
+      { name: "--description <text>", description: "Project description" },
+      {
+        name: "--stack <preset>",
+        description:
+          "Tech stack preset: node-typescript, node-javascript, python, go, rust, or custom",
+      },
+      { name: "--seed <file>", description: "Seed the backlog from a .json or .md file" },
+      {
+        name: "--test-cmd <cmd>",
+        description: "Override the preset's test command (empty string disables it)",
+      },
+      {
+        name: "--typecheck-cmd <cmd>",
+        description: "Override the preset's typecheck command (empty string disables it)",
+      },
+      {
+        name: "--lint-cmd <cmd>",
+        description: "Override the preset's lint command (empty string disables it)",
+      },
+      {
+        name: "--build-cmd <cmd>",
+        description: "Override the preset's build command (empty string disables it)",
+      },
+      {
+        name: "--format-cmd <cmd>",
+        description: "Override the preset's format command (empty string disables it)",
+      },
+    ],
     handler: handleInit,
   },
   {
