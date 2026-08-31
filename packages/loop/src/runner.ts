@@ -39,6 +39,7 @@ import {
   ensureStateDir,
   acquireLock,
   releaseLock,
+  MARKER_FILENAME,
   type BacklogPaths,
   type InstructionPaths,
   type Result,
@@ -68,7 +69,7 @@ import {
   hasSandboxDenialSignature,
 } from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
-import { gitCommit } from "./git-commit.js";
+import { gitCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -153,6 +154,18 @@ export class LoopRunner extends TypedEventEmitter {
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
+  /**
+   * Item id left PENDING by the just-finished iteration's outcome
+   * (usage_limited / infra_error / a genuine_retry that hasn't exhausted
+   * maxRetries yet) — the cases that deliberately retry the SAME item next
+   * without reverting its in-progress, uncommitted work. Recomputed at the
+   * end of every runIteration call (reset to null, then set only inside those
+   * retry branches) so it always reflects the MOST RECENT iteration's outcome,
+   * never a stale one. Consumed by the pre-iteration clean-baseline guard
+   * (#83/#105) to distinguish "this iteration's own expected residue" from
+   * unexpected dirt when the same item is reselected next.
+   */
+  private lastPendingRetryItemId: string | null = null;
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
@@ -757,6 +770,79 @@ export class LoopRunner extends TypedEventEmitter {
     }
     this.writeState("running", item.id);
 
+    // Pre-iteration clean-baseline guard (#83): before spawning the agent for
+    // this item, verify the tree is clean aside from loop bookkeeping. With the
+    // halt added to revertAbandonedWork above, a revert failure now halts the
+    // loop before another iteration can begin — so the only way this guard can
+    // fire is if something slipped through undetected. Halting HERE (before the
+    // agent is spawned) is both cheaper (no wasted spawn) and simpler than
+    // checking at commit time, where "this item's own changes" and "leftover
+    // residue from a different item" can no longer be told apart.
+    //
+    // The guard must NOT fire for three ordinary, healthy cases that leave the
+    // tree dirty for reasons that have nothing to do with a failed revert
+    // (adversarial review of #105):
+    //   1. A same-item retry (infra_error / usage_limited / a genuine_retry
+    //      short of maxRetries) deliberately leaves THIS item's own in-progress
+    //      work uncommitted so the next iteration continues it — detected via
+    //      lastPendingRetryItemId (set at the end of the previous iteration).
+    //   2. `allowDirty` (threaded from `rauf resume` / the web resume route):
+    //      recovery reconciliation rewrites backlog.json, and a needs-human
+    //      pause deliberately leaves its item's work uncommitted for a human
+    //      to inspect/resume — both make the tree dirty by construction on the
+    //      very first iteration of a resumed run.
+    //   3. `.rauf.json` (the marker/profile file, e.g. from `rauf profile
+    //      set`) is durable project config, not loop runtime state — it is
+    //      legitimately committed as part of normal project history (unlike
+    //      state.json/DONE/etc., which are gitignored and never committed) but
+    //      isn't auto-committed by the loop itself, so an operator's un-added
+    //      edit must not read as contamination.
+    const isSameItemRetry = this.lastPendingRetryItemId === item.id;
+    if (this.options.allowDirty === true) {
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (allowDirty — resuming onto a run-managed dirty tree).`,
+      );
+    } else if (isSameItemRetry) {
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (same-item retry — expected leftover work from the previous iteration).`,
+      );
+    } else {
+      const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
+      const backlogRel = path.relative(this.projectPath, this.paths.backlog);
+      const pathspecs = [
+        ".",
+        ...RUNTIME_EXCLUDE_PATHSPECS,
+        `:(exclude)${stateDirRel}`,
+        `:(exclude)${backlogRel}`,
+        `:(exclude)${backlogRel}.bak`,
+        `:(exclude)${MARKER_FILENAME}`,
+      ];
+      try {
+        const preStatus = await execGit(this.projectPath, [
+          "status",
+          "--porcelain",
+          "--",
+          ...pathspecs,
+        ]);
+        if (preStatus.trim() !== "") {
+          this.currentItemId = null;
+          return this.haltForGitSafetyFailure(
+            `Working tree is not clean before starting item ${item.id} — a prior revert may have failed silently. Halting to avoid contaminating this item's commit.`,
+          );
+        }
+      } catch (e) {
+        // Best-effort, matching isTreeClean's convention: an unrelated git
+        // failure (e.g. not a git repository) must not become a false-positive
+        // halt — log and skip the check.
+        appendLog(
+          this.paths,
+          `Clean-baseline guard skipped (git status failed) for item ${item.id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     // Resolve model: item.model > options.model > projectModel.
     // When `ignoreItemModel` is set (rauf loop run --no-model / --model none),
     // skip the per-item override so a backlog carrying Claude-only tier aliases
@@ -1000,10 +1086,18 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal !== "done") {
       const recovered = await this.reconcileCommittedWork(item);
       if (recovered) {
+        this.lastPendingRetryItemId = null;
         this.currentItemId = null;
         return "continue";
       }
     }
+
+    // Recompute lastPendingRetryItemId for THIS iteration's outcome (consumed by
+    // the pre-iteration clean-baseline guard on the NEXT call): default to
+    // "no expected residue", overridden below only by the same-item-retry
+    // branches (usage_limited / infra_error / genuine_retry short of
+    // maxRetries) that deliberately leave this item's work uncommitted.
+    this.lastPendingRetryItemId = null;
 
     // Handle signal
     switch (parsed.signal) {
@@ -1142,6 +1236,9 @@ export class LoopRunner extends TypedEventEmitter {
             // route environmental usage death to the sleep-or-exit handler.
             appendLog(this.paths, "Usage limit detected (post-signal classification)");
             updateItem(this.paths, item.id, { status: "pending" });
+            // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+            // from this item's own leftover uncommitted work (bug 1, #105 review).
+            this.lastPendingRetryItemId = item.id;
             this.currentItemId = null;
             // No-op death — don't charge the iteration budget (item 007).
             this.uncountIteration("usage_limited");
@@ -1172,6 +1269,9 @@ export class LoopRunner extends TypedEventEmitter {
             // breaker (item 008). Do NOT block a real work item on a flaky spawn.
             this.consecutiveInfraFailures++;
             updateItem(this.paths, item.id, { status: "pending" });
+            // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+            // from this item's own leftover uncommitted work (bug 1, #105 review).
+            this.lastPendingRetryItemId = item.id;
             // A fast EPERM-shaped exit under codex is often its sandbox denying a subprocess
             // spawn (#84), not a flaky/genuine infra failure — hint at it in the log so repeated
             // circuit-breaker trips don't get misdiagnosed as environment noise unrelated to codex.
@@ -1237,6 +1337,9 @@ export class LoopRunner extends TypedEventEmitter {
             } else {
               // Re-queue: reset to pending for retry
               updateItem(this.paths, item.id, { status: "pending" });
+              // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+              // from this item's own leftover uncommitted work (bug 1, #105 review).
+              this.lastPendingRetryItemId = item.id;
               this.emitEvent("item_retried", {
                 itemId: item.id,
                 attempt: retries,
@@ -1271,7 +1374,13 @@ export class LoopRunner extends TypedEventEmitter {
       const after = readBacklog(this.paths);
       const status = after.ok ? after.value.items.find((i) => i.id === item.id)?.status : undefined;
       if (status === "blocked") {
-        await this.revertAbandonedWork(item.id);
+        const revertResult = await this.revertAbandonedWork(item.id);
+        if (!revertResult.ok) {
+          this.currentItemId = null;
+          return this.haltForGitSafetyFailure(
+            `Failed to revert abandoned work for item ${item.id}: ${revertResult.error.message}`,
+          );
+        }
       }
     }
 
@@ -1560,18 +1669,25 @@ export class LoopRunner extends TypedEventEmitter {
    * backlog files). Stashes the abandoned changes (a recoverable note) so the
    * next iteration starts from a clean tree and a later `git add -A` commit
    * can't sweep up the dead work. A no-op when only loop bookkeeping is dirty.
-   * Best-effort: a git failure is logged, never thrown. (item 009)
+   *
+   * Returns `ok({ reverted: false })` for the no-op path, `ok({ reverted: true })`
+   * on a successful stash, and `err(...)` when the underlying git status/stash
+   * call fails — the caller halts the loop on failure (#83) rather than silently
+   * continuing with a possibly-dirty tree. (item 009, #83)
    */
-  private async revertAbandonedWork(itemId: string): Promise<void> {
+  private async revertAbandonedWork(itemId: string): Promise<Result<{ reverted: boolean }>> {
     // Positive `.` plus exclude pathspecs so the loop's own state is never
-    // touched. Scope the exclusions to THIS loop's resolved runtime dir and
-    // backlog (+ .bak) — relative to projectPath — instead of a repo-wide
-    // `**/backlog.json` glob, so an unrelated application file that happens to
-    // be named backlog.json elsewhere in the tree is NOT preserved. (item 019)
+    // touched. Layers the shared repo-wide RUNTIME_EXCLUDE_PATHSPECS (also used
+    // by gitCommit) with this run's own state dir + backlog (+ .bak) — relative
+    // to projectPath. The shared list keeps OTHER backlog roots' `.rauf/` dirs
+    // (e.g. specs/<feature>/.rauf/ in a multi-backlog-root project) out of this
+    // stash too, fixing a drift bug where this method's own exclude list only
+    // ever covered THIS run's `.rauf/` dir. (item 019, #83)
     const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
     const backlogRel = path.relative(this.projectPath, this.paths.backlog);
     const pathspecs = [
       ".",
+      ...RUNTIME_EXCLUDE_PATHSPECS,
       `:(exclude)${stateDirRel}`,
       `:(exclude)${backlogRel}`,
       `:(exclude)${backlogRel}.bak`,
@@ -1581,7 +1697,7 @@ export class LoopRunner extends TypedEventEmitter {
       if (status.trim() === "") {
         // Only loop bookkeeping is dirty (normal between iterations) — nothing
         // to revert.
-        return;
+        return ok({ reverted: false });
       }
       await execGit(this.projectPath, [
         "stash",
@@ -1596,11 +1712,11 @@ export class LoopRunner extends TypedEventEmitter {
         this.paths,
         `Reverted dirty working tree after item ${itemId} (stashed abandoned uncommitted work)`,
       );
+      return ok({ reverted: true });
     } catch (e) {
-      appendLog(
-        this.paths,
-        `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      const message = `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`;
+      appendLog(this.paths, message);
+      return err({ code: ErrorCodes.CONFLICT, message });
     }
   }
 
@@ -1737,6 +1853,25 @@ export class LoopRunner extends TypedEventEmitter {
     this.writeState("error", null, "error", message);
     // Include "error" so parseDoneFileState classifies the derived status ERROR.
     writeDoneFile(this.paths, `error: ${message}\n${this.buildSummary()}`);
+    return "exit";
+  }
+
+  /**
+   * Halt the loop when a git safety check fails: either a blocked item's
+   * dirty-tree rollback (revertAbandonedWork) errors, or the pre-iteration
+   * clean-baseline guard finds the tree unexpectedly dirty. Without this, the
+   * loop would silently continue and a later item's `git add -A` commit could
+   * sweep up a prior item's leftover, uncommitted files — breaking per-item
+   * commit isolation and desyncing backlog status from git history (#83).
+   * Modeled on haltForCircuitBreaker: writes an `error` state plus a DONE
+   * summary, emits a loop_error, and signals the caller to exit.
+   */
+  private haltForGitSafetyFailure(reason: string): "exit" {
+    appendLog(this.paths, reason);
+    this.emitEvent("loop_error", { error: reason });
+    this.writeState("error", null, "error", reason);
+    // Include "error" so parseDoneFileState classifies the derived status ERROR.
+    writeDoneFile(this.paths, `error: ${reason}\n${this.buildSummary()}`);
     return "exit";
   }
 

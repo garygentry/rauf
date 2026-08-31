@@ -403,6 +403,8 @@ interface LoopStartOptions {
   sleepOnLimit?: boolean; // When false, halt with paused_usage_limit instead of sleeping at a usage limit. Default: true (sleep and continue).
   circuitBreakerThreshold?: number; // Halt after N consecutive infra_error spawn deaths (fast non-zero exits, no usage banner). Default: 3.
   pauseOnNeedsHuman?: boolean; // When true, halt the loop in paused_human (emitting loop_paused) on the first needs-human item instead of setting it aside and continuing. Default: false. See `rauf loop run --pause-on-needs-human`.
+  ignoreItemModel?: boolean; // Ignore each item's `model` field for this run, falling back to options.model / projectModel. See `rauf loop run --no-model`.
+  allowDirty?: boolean; // Skip the pre-iteration clean-baseline guard for this run (recovery/resume relaunches onto a tree it just rewrote, or a needs-human pause it deliberately left dirty). Set by `rauf resume` (mirrors `checkLoopPreconditions({ allowDirty })`) and the web resume route. Default: false.
 }
 ```
 

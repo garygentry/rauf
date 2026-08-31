@@ -866,6 +866,12 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     pauseOnNeedsHuman,
     ignoreItemModel,
     backlogRoot: backlogRootResult.value,
+    // Thread through to the runner so its pre-iteration clean-baseline guard
+    // (packages/loop/src/runner.ts) knows this run is intentionally relaunching
+    // onto a tree `rauf resume` (or the web resume route) just rewrote —
+    // mirrors how checkLoopPreconditions({ allowDirty }) already relaxes the
+    // launch-time dirty-tree guard above for the same flag (#105 review).
+    allowDirty,
   });
 
   info(`Running loop directly for ${c.cyan(path.basename(projectPath))}`);

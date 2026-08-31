@@ -452,6 +452,19 @@ export const LoopStartOptionsSchema = z.object({
    * Resolution drops to `model > projectModel` — `item.model` is skipped.
    */
   ignoreItemModel: z.boolean().optional(),
+  /**
+   * Opt-in: the caller (currently only `rauf resume` / the web resume route)
+   * is intentionally relaunching onto a tree it just rewrote — recovery
+   * reconciliation edits backlog.json, and a needs-human pause deliberately
+   * leaves an in-progress item's work uncommitted for a human to inspect. When
+   * true, the runner's pre-iteration clean-baseline guard (#83/#105) is
+   * skipped for the run, mirroring how `checkLoopPreconditions({ allowDirty })`
+   * already relaxes the CLI's launch-time dirty-tree guard for the same
+   * relaunch. Branch protection and every OTHER safety check are unaffected —
+   * this only widens what the clean-baseline guard tolerates. Default
+   * (unset/false): unchanged, the guard runs on every iteration as before.
+   */
+  allowDirty: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
