@@ -119,7 +119,7 @@ export function formatEvent(ev: PersistedEvent): string {
     case "review_failed":
       return line(
         c.red("review failed"),
-        (ev.stdoutTail ?? ev.stderrTail)
+        ev.stdoutTail || ev.stderrTail
           ? `${clip(ev.reason)} ${c.dim("(diagnostic tail captured — see rauf.log)")}`
           : c.dim(clip(ev.reason)),
       );

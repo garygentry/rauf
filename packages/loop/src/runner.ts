@@ -1298,6 +1298,14 @@ export class LoopRunner extends TypedEventEmitter {
     // retryCounts Map or the circuit breaker.
     let reviewRetryCount = 0;
     for (;;) {
+      // Mirrors the sibling post-review retry loop's cancellation check
+      // (`if (this.isCancelled()) break;` above): bail before spawning another
+      // attempt rather than let a cancelled run keep retrying.
+      if (this.isCancelled()) {
+        appendLog(this.paths, "Review pass cancelled");
+        return "failed";
+      }
+
       appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
       // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
@@ -1371,7 +1379,13 @@ export class LoopRunner extends TypedEventEmitter {
       // classified usage_limited/timeout/infra_error death falls straight
       // through to review_failed below; the review pass has no usage-sleep or
       // circuit-breaker handling of its own to route those into.
-      const exitClass = classifyExit(execResult.value, parsed);
+      // Downgrade a usage_limited classification to genuine_retry when the
+      // review-pass provider has no usage semantics (no checkUsage) — same
+      // rationale as the work-iteration path above: a "usage_limited" verdict
+      // there can only be a false substring match on plain-text output.
+      const rawExitClass = classifyExit(execResult.value, parsed);
+      const exitClass =
+        !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
       if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
         reviewRetryCount++;
         appendLog(
@@ -1384,8 +1398,8 @@ export class LoopRunner extends TypedEventEmitter {
       }
 
       const reason = `Review returned unexpected signal: ${parsed.signal}`;
-      const stdoutTail = tail(stdout);
-      const stderrTail = tail(stderr);
+      const stdoutTail = redactSignalTokens(tail(stdout));
+      const stderrTail = redactSignalTokens(tail(stderr));
       appendLog(this.paths, `${reason}\nstdout tail:\n${stdoutTail}\nstderr tail:\n${stderrTail}`);
       this.emitEvent("review_failed", { reason, stdoutTail, stderrTail });
       return "failed";
