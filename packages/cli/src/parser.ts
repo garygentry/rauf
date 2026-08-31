@@ -173,6 +173,15 @@ export function parseArgs(argv: string[], subcommandNames?: Set<string>): Parsed
 
 /**
  * Extract a boolean flag from a flags map, removing it if present.
+ *
+ * DESTRUCTIVE READ: the flag is deleted from `flags` on read, so a second
+ * caller reading the same name from the same Map afterward always gets the
+ * not-present result, even if the flag was actually passed. If a value needs
+ * to be read by more than one function during a single command invocation,
+ * extract it once and pass the extracted value through as a parameter —
+ * never have a shared helper re-extract a flag its caller may have already
+ * read (see #107, where a helper's internal re-extraction of an
+ * already-consumed `--backlog` silently fell back to the default).
  */
 export function extractBoolFlag(flags: Map<string, string | true>, name: string): boolean {
   if (flags.has(name)) {
@@ -184,6 +193,9 @@ export function extractBoolFlag(flags: Map<string, string | true>, name: string)
 
 /**
  * Extract a string-valued flag from a flags map, removing it if present.
+ *
+ * DESTRUCTIVE READ: see the `extractBoolFlag` doc comment above — the same
+ * one-shot hazard applies here.
  */
 export function extractStringFlag(flags: Map<string, string | true>, name: string): string | null {
   const val = flags.get(name);
