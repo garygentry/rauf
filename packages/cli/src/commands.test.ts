@@ -361,6 +361,36 @@ describe("help command", () => {
     expect(output.stdout).toContain("--seed");
   });
 
+  it("renders subcommand usage + flags for `help backlog reset` (not the bare-name fallback)", async () => {
+    const cmd = findCommand("help")!;
+    const ctx = makeCtx({ args: ["backlog", "reset"] });
+    const output = await captureOutput(async () => {
+      const code = await cmd.handler!(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+    expect(output.stdout).toContain("Usage:");
+    expect(output.stdout).toContain("rauf backlog reset <path>");
+    expect(output.stdout).toContain("--clear");
+    expect(output.stdout).toContain("Flags:");
+    expect(output.stdout).toContain("--keep-progress");
+    expect(output.stdout).toContain("--keep-log");
+    expect(output.stdout).toContain("--yes");
+  });
+
+  it("renders subcommand usage + flags for `help backlog sweep` (not the bare-name fallback)", async () => {
+    const cmd = findCommand("help")!;
+    const ctx = makeCtx({ args: ["backlog", "sweep"] });
+    const output = await captureOutput(async () => {
+      const code = await cmd.handler!(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+    expect(output.stdout).toContain("Usage:");
+    expect(output.stdout).toContain("rauf backlog sweep <path>");
+    expect(output.stdout).toContain("--min-age-days");
+    expect(output.stdout).toContain("Flags:");
+    expect(output.stdout).toContain("--dry-run");
+  });
+
   it("returns USAGE for unknown command in help", async () => {
     const cmd = findCommand("help")!;
     const ctx = makeCtx({ args: ["nonexistent"] });

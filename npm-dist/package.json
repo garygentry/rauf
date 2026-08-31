@@ -9,8 +9,14 @@
   "files": [
     "rauf.mjs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "adapters/pi/skills"
   ],
+  "pi": {
+    "skills": [
+      "./adapters/pi/skills"
+    ]
+  },
   "engines": {
     "node": ">=18"
   },

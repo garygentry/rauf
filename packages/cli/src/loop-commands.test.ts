@@ -448,6 +448,20 @@ describe("formatAndPrintEvent", () => {
     const output = captureOutput(() => formatAndPrintEvent(event));
     expect(output.stdout).toContain("Blocked #012");
     expect(output.stdout).toContain("API key missing");
+    expect(output.stdout).not.toContain("diagnostic tail");
+  });
+
+  it("notes a captured diagnostic tail on item_blocked when present (#74)", () => {
+    const event = baseEvent("item_blocked", {
+      itemId: "012",
+      reason: "No signal after 2 attempts (deferred by runner)",
+      stdoutTail: "random output from the agent",
+      stderrTail: "some warning on stderr",
+    });
+    const output = captureOutput(() => formatAndPrintEvent(event));
+    expect(output.stdout).toContain("Blocked #012");
+    expect(output.stdout).toContain("diagnostic tail captured");
+    expect(output.stdout).toContain("rauf.log");
   });
 
   it("formats item_retried event", () => {
@@ -459,6 +473,20 @@ describe("formatAndPrintEvent", () => {
     const output = captureOutput(() => formatAndPrintEvent(event));
     expect(output.stdout).toContain("Retry #012");
     expect(output.stdout).toContain("2/3");
+    expect(output.stdout).not.toContain("diagnostic tail");
+  });
+
+  it("notes a captured diagnostic tail on item_retried when present (#74)", () => {
+    const event = baseEvent("item_retried", {
+      itemId: "012",
+      attempt: 2,
+      maxRetries: 3,
+      stdoutTail: "random output from the agent",
+      stderrTail: "some warning on stderr",
+    });
+    const output = captureOutput(() => formatAndPrintEvent(event));
+    expect(output.stdout).toContain("Retry #012");
+    expect(output.stdout).toContain("diagnostic tail captured");
   });
 
   it("formats needs_human event", () => {

@@ -98,6 +98,36 @@ describe("formatEvent", () => {
     expect(out).toContain("0 blocked");
   });
 
+  it("shows the diagnostic-tail hint on review_failed when stdout is empty but stderr has content", () => {
+    // tail() in runner.ts always returns "" (not undefined) for empty input, so
+    // stdoutTail is often a defined-but-empty string. The hint must still show
+    // when stderrTail alone has content — `??` would wrongly suppress it since
+    // "" is not null/undefined.
+    const out = formatEvent(
+      ev({
+        seq: 8,
+        type: "review_failed",
+        reason: "Review returned unexpected signal: none",
+        stdoutTail: "",
+        stderrTail: "some real stderr diagnostic output",
+      }),
+    );
+    expect(out).toContain("diagnostic tail captured");
+  });
+
+  it("omits the diagnostic-tail hint on review_failed when both tails are empty", () => {
+    const out = formatEvent(
+      ev({
+        seq: 8,
+        type: "review_failed",
+        reason: "Failed to read backlog for review: boom",
+        stdoutTail: "",
+        stderrTail: "",
+      }),
+    );
+    expect(out).not.toContain("diagnostic tail captured");
+  });
+
   it("clips an overly long review summary to one line", () => {
     const long = "x".repeat(200);
     const out = formatEvent(
@@ -106,6 +136,52 @@ describe("formatEvent", () => {
     expect(out).toContain("…");
     expect(out).not.toContain("\n");
     expect(out.length).toBeLessThan(160);
+  });
+
+  it("notes a captured diagnostic tail on item_blocked when present (#74)", () => {
+    const out = formatEvent(
+      ev({
+        seq: 8,
+        type: "item_blocked",
+        itemId: "001",
+        reason: "No signal after 2 attempts (deferred by runner)",
+        stdoutTail: "random output from the agent",
+        stderrTail: "some warning on stderr",
+      }),
+    );
+    expect(out).toContain("item blocked");
+    expect(out).toContain("diagnostic tail captured");
+    expect(out).toContain("rauf.log");
+  });
+
+  it("omits the diagnostic tail note on item_blocked when absent", () => {
+    const out = formatEvent(
+      ev({ seq: 8, type: "item_blocked", itemId: "001", reason: "API key missing" }),
+    );
+    expect(out).not.toContain("diagnostic tail");
+  });
+
+  it("notes a captured diagnostic tail on item_retried when present (#74)", () => {
+    const out = formatEvent(
+      ev({
+        seq: 9,
+        type: "item_retried",
+        itemId: "001",
+        attempt: 1,
+        maxRetries: 2,
+        stdoutTail: "random output from the agent",
+        stderrTail: "some warning on stderr",
+      }),
+    );
+    expect(out).toContain("item retried");
+    expect(out).toContain("diagnostic tail captured");
+  });
+
+  it("omits the diagnostic tail note on item_retried when absent", () => {
+    const out = formatEvent(
+      ev({ seq: 9, type: "item_retried", itemId: "001", attempt: 1, maxRetries: 2 }),
+    );
+    expect(out).not.toContain("diagnostic tail");
   });
 });
 

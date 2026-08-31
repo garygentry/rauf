@@ -1534,6 +1534,36 @@ describe("LoopEventSchema", () => {
         }),
       ).toThrow();
     });
+
+    it("accepts optional stdoutTail/stderrTail (#74 flake diagnostics)", () => {
+      const result = LoopEventSchema.parse({
+        ...base,
+        type: "item_blocked",
+        itemId: "001",
+        reason: "No signal after 2 attempts (deferred by runner)",
+        stdoutTail: "…1388 tests passing",
+        stderrTail: "…coverage-collector-tmp-race: EBUSY",
+      });
+      expect(result.type).toBe("item_blocked");
+      if (result.type === "item_blocked") {
+        expect(result.stdoutTail).toBe("…1388 tests passing");
+        expect(result.stderrTail).toBe("…coverage-collector-tmp-race: EBUSY");
+      }
+    });
+
+    it("parses without stdoutTail/stderrTail (backward compatible)", () => {
+      const result = LoopEventSchema.parse({
+        ...base,
+        type: "item_blocked",
+        itemId: "001",
+        reason: "Timed out after 3600s",
+      });
+      expect(result.type).toBe("item_blocked");
+      if (result.type === "item_blocked") {
+        expect(result.stdoutTail).toBeUndefined();
+        expect(result.stderrTail).toBeUndefined();
+      }
+    });
   });
 
   describe("item_retried", () => {
@@ -1562,6 +1592,23 @@ describe("LoopEventSchema", () => {
           maxRetries: 3,
         }),
       ).toThrow();
+    });
+
+    it("accepts optional stdoutTail/stderrTail (#74 flake diagnostics)", () => {
+      const result = LoopEventSchema.parse({
+        ...base,
+        type: "item_retried",
+        itemId: "001",
+        attempt: 1,
+        maxRetries: 3,
+        stdoutTail: "…1388 tests passing",
+        stderrTail: "…coverage-collector-tmp-race: EBUSY",
+      });
+      expect(result.type).toBe("item_retried");
+      if (result.type === "item_retried") {
+        expect(result.stdoutTail).toBe("…1388 tests passing");
+        expect(result.stderrTail).toBe("…coverage-collector-tmp-race: EBUSY");
+      }
     });
   });
 

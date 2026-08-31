@@ -39,6 +39,7 @@ import {
   ensureStateDir,
   acquireLock,
   releaseLock,
+  MARKER_FILENAME,
   type BacklogPaths,
   type InstructionPaths,
   type Result,
@@ -68,7 +69,7 @@ import {
   hasSandboxDenialSignature,
 } from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
-import { gitCommit } from "./git-commit.js";
+import { gitCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -116,6 +117,18 @@ const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
 
+/**
+ * Truncates `text` to its trailing `n` characters, prefixed with an ellipsis
+ * when truncated. Mirrors the existing usage-limit-banner preview truncation
+ * (see the `signalText.slice(-500)` preview below) so infra_error /
+ * genuine_retry diagnostics use the same convention: a tail is far more
+ * likely than a head to contain a test-runner's pass/fail summary or a crash
+ * trace (#74).
+ */
+function tail(text: string, n = 500): string {
+  return text.length > n ? `…${text.slice(-n)}` : text;
+}
+
 // ─── LoopRunner ─────────────────────────────────────────────────────
 
 export class LoopRunner extends TypedEventEmitter {
@@ -141,6 +154,18 @@ export class LoopRunner extends TypedEventEmitter {
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
+  /**
+   * Item id left PENDING by the just-finished iteration's outcome
+   * (usage_limited / infra_error / a genuine_retry that hasn't exhausted
+   * maxRetries yet) — the cases that deliberately retry the SAME item next
+   * without reverting its in-progress, uncommitted work. Recomputed at the
+   * end of every runIteration call (reset to null, then set only inside those
+   * retry branches) so it always reflects the MOST RECENT iteration's outcome,
+   * never a stale one. Consumed by the pre-iteration clean-baseline guard
+   * (#83/#105) to distinguish "this iteration's own expected residue" from
+   * unexpected dirt when the same item is reselected next.
+   */
+  private lastPendingRetryItemId: string | null = null;
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
@@ -745,6 +770,79 @@ export class LoopRunner extends TypedEventEmitter {
     }
     this.writeState("running", item.id);
 
+    // Pre-iteration clean-baseline guard (#83): before spawning the agent for
+    // this item, verify the tree is clean aside from loop bookkeeping. With the
+    // halt added to revertAbandonedWork above, a revert failure now halts the
+    // loop before another iteration can begin — so the only way this guard can
+    // fire is if something slipped through undetected. Halting HERE (before the
+    // agent is spawned) is both cheaper (no wasted spawn) and simpler than
+    // checking at commit time, where "this item's own changes" and "leftover
+    // residue from a different item" can no longer be told apart.
+    //
+    // The guard must NOT fire for three ordinary, healthy cases that leave the
+    // tree dirty for reasons that have nothing to do with a failed revert
+    // (adversarial review of #105):
+    //   1. A same-item retry (infra_error / usage_limited / a genuine_retry
+    //      short of maxRetries) deliberately leaves THIS item's own in-progress
+    //      work uncommitted so the next iteration continues it — detected via
+    //      lastPendingRetryItemId (set at the end of the previous iteration).
+    //   2. `allowDirty` (threaded from `rauf resume` / the web resume route):
+    //      recovery reconciliation rewrites backlog.json, and a needs-human
+    //      pause deliberately leaves its item's work uncommitted for a human
+    //      to inspect/resume — both make the tree dirty by construction on the
+    //      very first iteration of a resumed run.
+    //   3. `.rauf.json` (the marker/profile file, e.g. from `rauf profile
+    //      set`) is durable project config, not loop runtime state — it is
+    //      legitimately committed as part of normal project history (unlike
+    //      state.json/DONE/etc., which are gitignored and never committed) but
+    //      isn't auto-committed by the loop itself, so an operator's un-added
+    //      edit must not read as contamination.
+    const isSameItemRetry = this.lastPendingRetryItemId === item.id;
+    if (this.options.allowDirty === true) {
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (allowDirty — resuming onto a run-managed dirty tree).`,
+      );
+    } else if (isSameItemRetry) {
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (same-item retry — expected leftover work from the previous iteration).`,
+      );
+    } else {
+      const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
+      const backlogRel = path.relative(this.projectPath, this.paths.backlog);
+      const pathspecs = [
+        ".",
+        ...RUNTIME_EXCLUDE_PATHSPECS,
+        `:(exclude)${stateDirRel}`,
+        `:(exclude)${backlogRel}`,
+        `:(exclude)${backlogRel}.bak`,
+        `:(exclude)${MARKER_FILENAME}`,
+      ];
+      try {
+        const preStatus = await execGit(this.projectPath, [
+          "status",
+          "--porcelain",
+          "--",
+          ...pathspecs,
+        ]);
+        if (preStatus.trim() !== "") {
+          this.currentItemId = null;
+          return this.haltForGitSafetyFailure(
+            `Working tree is not clean before starting item ${item.id} — a prior revert may have failed silently. Halting to avoid contaminating this item's commit.`,
+          );
+        }
+      } catch (e) {
+        // Best-effort, matching isTreeClean's convention: an unrelated git
+        // failure (e.g. not a git repository) must not become a false-positive
+        // halt — log and skip the check.
+        appendLog(
+          this.paths,
+          `Clean-baseline guard skipped (git status failed) for item ${item.id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     // Resolve model: item.model > options.model > projectModel.
     // When `ignoreItemModel` is set (rauf loop run --no-model / --model none),
     // skip the per-item override so a backlog carrying Claude-only tier aliases
@@ -881,16 +979,26 @@ export class LoopRunner extends TypedEventEmitter {
       }
     };
 
-    const execResult = await provider.execute(promptResult.value, {
-      outputFormat: "stream-json",
-      onStreamEvent,
-      signal: this.abortController.signal,
-      model: resolvedModel,
-      timeoutMinutes: this.options.sessionTimeoutMinutes,
-      ...(this.childEnv ? { env: this.childEnv } : {}),
-    });
-
-    clearInterval(stuckTimer);
+    // #103 follow-up: provider.execute() must never leave `stuckTimer` running.
+    // Before this repo switched the CLI entry points from process.exit() to
+    // process.exitCode (stdout-truncation fix), a leaked interval here was
+    // masked by the forced exit. With graceful draining, an uncaught
+    // throw/rejection from execute() (which CliAgentBase.execute()'s
+    // try/finally — with no catch — can still propagate) would otherwise keep
+    // the event loop alive forever. Guarantee cleanup on every exit path.
+    let execResult: Awaited<ReturnType<typeof provider.execute>>;
+    try {
+      execResult = await provider.execute(promptResult.value, {
+        outputFormat: "stream-json",
+        onStreamEvent,
+        signal: this.abortController.signal,
+        model: resolvedModel,
+        timeoutMinutes: this.options.sessionTimeoutMinutes,
+        ...(this.childEnv ? { env: this.childEnv } : {}),
+      });
+    } finally {
+      clearInterval(stuckTimer);
+    }
     clearIterationStatus(this.paths);
 
     if (!execResult.ok) {
@@ -958,9 +1066,7 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal === "none") {
       const textSource =
         reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
-      const preview = redactSignalTokens(
-        signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText,
-      );
+      const preview = redactSignalTokens(tail(signalText));
       appendLog(
         this.paths,
         `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`,
@@ -980,10 +1086,18 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal !== "done") {
       const recovered = await this.reconcileCommittedWork(item);
       if (recovered) {
+        this.lastPendingRetryItemId = null;
         this.currentItemId = null;
         return "continue";
       }
     }
+
+    // Recompute lastPendingRetryItemId for THIS iteration's outcome (consumed by
+    // the pre-iteration clean-baseline guard on the NEXT call): default to
+    // "no expected residue", overridden below only by the same-item-retry
+    // branches (usage_limited / infra_error / genuine_retry short of
+    // maxRetries) that deliberately leave this item's work uncommitted.
+    this.lastPendingRetryItemId = null;
 
     // Handle signal
     switch (parsed.signal) {
@@ -1101,12 +1215,30 @@ export class LoopRunner extends TypedEventEmitter {
         const rawExitClass = classifyExit(execResult.value, parsed);
         const exitClass =
           !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+
+        // Diagnostic tails for infra_error/genuine_retry (#74): tail the same
+        // `signalText` the signal parser and its "Signal text" preview logging
+        // above already prefer, NOT raw `stdout` — in production both providers
+        // run with `outputFormat: "stream-json"`, so raw stdout is an NDJSON
+        // event stream, not human-readable text (see codex-cli.ts's
+        // reconstructedText comment). Tailing raw stdout would surface an
+        // unreadable JSON fragment instead of a diagnosable pass/fail summary or
+        // crash trace. Raw `stderr` needs no such treatment: neither provider
+        // routes stderr through stream-json reconstruction. Redact literal
+        // RAUF_* signal tokens (matching the sibling "Signal text" preview a
+        // few lines above) so raw agent output can't leak an unredacted
+        // signal-shaped substring into logs/events.
+        const stdoutTail = redactSignalTokens(tail(signalText));
+        const stderrTail = redactSignalTokens(tail(stderr));
         switch (exitClass) {
           case "usage_limited": {
             // Belt-and-suspenders with the pre-signal usage check (item 005):
             // route environmental usage death to the sleep-or-exit handler.
             appendLog(this.paths, "Usage limit detected (post-signal classification)");
             updateItem(this.paths, item.id, { status: "pending" });
+            // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+            // from this item's own leftover uncommitted work (bug 1, #105 review).
+            this.lastPendingRetryItemId = item.id;
             this.currentItemId = null;
             // No-op death — don't charge the iteration budget (item 007).
             this.uncountIteration("usage_limited");
@@ -1137,6 +1269,9 @@ export class LoopRunner extends TypedEventEmitter {
             // breaker (item 008). Do NOT block a real work item on a flaky spawn.
             this.consecutiveInfraFailures++;
             updateItem(this.paths, item.id, { status: "pending" });
+            // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+            // from this item's own leftover uncommitted work (bug 1, #105 review).
+            this.lastPendingRetryItemId = item.id;
             // A fast EPERM-shaped exit under codex is often its sandbox denying a subprocess
             // spawn (#84), not a flaky/genuine infra failure — hint at it in the log so repeated
             // circuit-breaker trips don't get misdiagnosed as environment noise unrelated to codex.
@@ -1144,9 +1279,16 @@ export class LoopRunner extends TypedEventEmitter {
               provider.id === CODEX_AGENT_ID && hasSandboxDenialSignature(`${stdout}\n${stderr}`)
                 ? " (possible Codex sandbox denial — see providerConfig.sandboxMode/networkAccess)"
                 : "";
+            // Surface the already-captured output so a flaky non-zero exit (e.g. a
+            // test-runner crash unrelated to test results) is diagnosable from the
+            // log alone — a fast infra death otherwise has zero output evidence
+            // attached (#74). stdout first: a test runner's pass/fail summary is
+            // typically there, while stderr more often carries a crash trace.
             appendLog(
               this.paths,
-              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}`,
+              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}\n` +
+                `stdout tail: ${stdoutTail}\n` +
+                `stderr tail: ${stderrTail}`,
             );
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.
@@ -1169,6 +1311,12 @@ export class LoopRunner extends TypedEventEmitter {
             const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
             this.retryCounts.set(item.id, retries);
 
+            // Surface the already-captured output (via the shared stdoutTail/
+            // stderrTail computed above) on both the retry and the eventual
+            // exhausted-retries block, so a genuine_retry death (e.g. a flaky
+            // non-zero gate exit) is diagnosable without re-running the
+            // iteration (#74) — written to rauf.log same as infra_error, so
+            // `rauf log` (text-only) surfaces it too, not just events.ndjson.
             if (retries >= this.options.maxRetries) {
               // Runner gives up — DEFER (a false block), not a genuine agent block.
               const reason = `No signal after ${retries} attempts (deferred by runner)`;
@@ -1178,18 +1326,33 @@ export class LoopRunner extends TypedEventEmitter {
                 deferred: true,
               });
               this.deferredItemIds.push(item.id);
-              this.emitEvent("item_blocked", { itemId: item.id, reason });
-              appendLog(this.paths, `Item ${item.id} deferred after ${retries} attempts`);
+              this.emitEvent("item_blocked", { itemId: item.id, reason, stdoutTail, stderrTail });
+              appendLog(
+                this.paths,
+                `Item ${item.id} deferred after ${retries} attempts\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
               this.writeState("running", null, "error");
             } else {
               // Re-queue: reset to pending for retry
               updateItem(this.paths, item.id, { status: "pending" });
+              // Same-item retry: exempt the NEXT iteration's clean-baseline guard
+              // from this item's own leftover uncommitted work (bug 1, #105 review).
+              this.lastPendingRetryItemId = item.id;
               this.emitEvent("item_retried", {
                 itemId: item.id,
                 attempt: retries,
                 maxRetries: this.options.maxRetries,
+                stdoutTail,
+                stderrTail,
               });
-              appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
+              appendLog(
+                this.paths,
+                `Item ${item.id} retry ${retries}/${this.options.maxRetries}\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
             }
             break;
           }
@@ -1211,7 +1374,13 @@ export class LoopRunner extends TypedEventEmitter {
       const after = readBacklog(this.paths);
       const status = after.ok ? after.value.items.find((i) => i.id === item.id)?.status : undefined;
       if (status === "blocked") {
-        await this.revertAbandonedWork(item.id);
+        const revertResult = await this.revertAbandonedWork(item.id);
+        if (!revertResult.ok) {
+          this.currentItemId = null;
+          return this.haltForGitSafetyFailure(
+            `Failed to revert abandoned work for item ${item.id}: ${revertResult.error.message}`,
+          );
+        }
       }
     }
 
@@ -1281,78 +1450,121 @@ export class LoopRunner extends TypedEventEmitter {
     const provider = providerResult.value;
 
     const reviewConfigNote = provider.describeConfig ? ` [${provider.describeConfig()}]` : "";
-    appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
-    // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
-    // preserves today's text review behavior (tech-spec §3.2, SC-2).
-    const execResult = await provider.execute(promptResult.value, {
-      signal: this.abortController.signal,
-      model: resolvedModel,
-      timeoutMinutes: this.options.sessionTimeoutMinutes,
-      ...(this.childEnv ? { env: this.childEnv } : {}),
-    });
-
-    if (!execResult.ok) {
-      const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
-      appendLog(this.paths, reason);
-      this.emitEvent("review_failed", { reason });
-      return "failed";
-    }
-
-    const { stdout } = execResult.value;
-
-    // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
-    const parsed = parseSignal(neutralizeForDetection(stdout));
-
-    if (parsed.signal === "done") {
-      appendLog(this.paths, "Review pass: clean — no issues found");
-      this.emitEvent("review_completed", {
-        itemsCreated: 0,
-        summary: "No issues found",
-      });
-      return "clean";
-    }
-
-    if (parsed.signal === "review" && parsed.reviewPayload) {
-      const batch = new Date().toISOString();
-      let created = 0;
-
-      for (const reviewItem of parsed.reviewPayload.items) {
-        const result = addItem(this.paths, {
-          type: reviewItem.type,
-          priority: reviewItem.priority,
-          title: reviewItem.title,
-          description: reviewItem.description,
-          acceptanceCriteria: reviewItem.acceptanceCriteria,
-          source: "review",
-          reviewBatch: batch,
-        });
-        if (result.ok) {
-          created++;
-          appendLog(this.paths, `Review created item: ${result.value.id} — ${reviewItem.title}`);
-        }
+    // A review spawn that produces no recognized signal gets the same bounded
+    // retry treatment as a work-iteration "none" signal (reusing
+    // options.maxRetries — there is no separate review-retry knob). A review
+    // pass runs at most once per loop, so a local counter is enough; unlike
+    // per-item work iterations, the review pass does not participate in the
+    // retryCounts Map or the circuit breaker.
+    let reviewRetryCount = 0;
+    for (;;) {
+      // Mirrors the sibling post-review retry loop's cancellation check
+      // (`if (this.isCancelled()) break;` above): bail before spawning another
+      // attempt rather than let a cancelled run keep retrying.
+      if (this.isCancelled()) {
+        appendLog(this.paths, "Review pass cancelled");
+        return "failed";
       }
 
-      this.reviewItemsCreated = created;
-      this.reviewSummary = parsed.reviewPayload.summary;
+      appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
-      appendLog(
-        this.paths,
-        `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
-      );
-      this.emitEvent("review_completed", {
-        itemsCreated: created,
-        summary: parsed.reviewPayload.summary,
+      // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
+      // preserves today's text review behavior (tech-spec §3.2, SC-2).
+      const execResult = await provider.execute(promptResult.value, {
+        signal: this.abortController.signal,
+        model: resolvedModel,
+        timeoutMinutes: this.options.sessionTimeoutMinutes,
+        ...(this.childEnv ? { env: this.childEnv } : {}),
       });
 
-      return created > 0 ? "continue" : "clean";
-    }
+      if (!execResult.ok) {
+        const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
+        appendLog(this.paths, reason);
+        this.emitEvent("review_failed", { reason });
+        return "failed";
+      }
 
-    // Other signal or parse failure — non-fatal
-    const reason = `Review returned unexpected signal: ${parsed.signal}`;
-    appendLog(this.paths, reason);
-    this.emitEvent("review_failed", { reason });
-    return "failed";
+      const { stdout, stderr } = execResult.value;
+
+      // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
+      const parsed = parseSignal(neutralizeForDetection(stdout));
+
+      if (parsed.signal === "done") {
+        appendLog(this.paths, "Review pass: clean — no issues found");
+        this.emitEvent("review_completed", {
+          itemsCreated: 0,
+          summary: "No issues found",
+        });
+        return "clean";
+      }
+
+      if (parsed.signal === "review" && parsed.reviewPayload) {
+        const batch = new Date().toISOString();
+        let created = 0;
+
+        for (const reviewItem of parsed.reviewPayload.items) {
+          const result = addItem(this.paths, {
+            type: reviewItem.type,
+            priority: reviewItem.priority,
+            title: reviewItem.title,
+            description: reviewItem.description,
+            acceptanceCriteria: reviewItem.acceptanceCriteria,
+            source: "review",
+            reviewBatch: batch,
+          });
+          if (result.ok) {
+            created++;
+            appendLog(this.paths, `Review created item: ${result.value.id} — ${reviewItem.title}`);
+          }
+        }
+
+        this.reviewItemsCreated = created;
+        this.reviewSummary = parsed.reviewPayload.summary;
+
+        appendLog(
+          this.paths,
+          `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
+        );
+        this.emitEvent("review_completed", {
+          itemsCreated: created,
+          summary: parsed.reviewPayload.summary,
+        });
+
+        return created > 0 ? "continue" : "clean";
+      }
+
+      // Other signal or parse failure. Classify WHY the spawn produced no
+      // recognized signal the same way a work iteration does — only a
+      // genuine_retry (clean/long no-signal exit) is worth re-spawning. A
+      // classified usage_limited/timeout/infra_error death falls straight
+      // through to review_failed below; the review pass has no usage-sleep or
+      // circuit-breaker handling of its own to route those into.
+      // Downgrade a usage_limited classification to genuine_retry when the
+      // review-pass provider has no usage semantics (no checkUsage) — same
+      // rationale as the work-iteration path above: a "usage_limited" verdict
+      // there can only be a false substring match on plain-text output.
+      const rawExitClass = classifyExit(execResult.value, parsed);
+      const exitClass =
+        !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+      if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
+        reviewRetryCount++;
+        appendLog(
+          this.paths,
+          `Review pass: no recognized signal (${parsed.signal}) — retrying (attempt ${
+            reviewRetryCount + 1
+          }/${this.options.maxRetries})`,
+        );
+        continue;
+      }
+
+      const reason = `Review returned unexpected signal: ${parsed.signal}`;
+      const stdoutTail = redactSignalTokens(tail(stdout));
+      const stderrTail = redactSignalTokens(tail(stderr));
+      appendLog(this.paths, `${reason}\nstdout tail:\n${stdoutTail}\nstderr tail:\n${stderrTail}`);
+      this.emitEvent("review_failed", { reason, stdoutTail, stderrTail });
+      return "failed";
+    }
   }
 
   // ─── Git helpers ──────────────────────────────────────────────────
@@ -1457,18 +1669,25 @@ export class LoopRunner extends TypedEventEmitter {
    * backlog files). Stashes the abandoned changes (a recoverable note) so the
    * next iteration starts from a clean tree and a later `git add -A` commit
    * can't sweep up the dead work. A no-op when only loop bookkeeping is dirty.
-   * Best-effort: a git failure is logged, never thrown. (item 009)
+   *
+   * Returns `ok({ reverted: false })` for the no-op path, `ok({ reverted: true })`
+   * on a successful stash, and `err(...)` when the underlying git status/stash
+   * call fails — the caller halts the loop on failure (#83) rather than silently
+   * continuing with a possibly-dirty tree. (item 009, #83)
    */
-  private async revertAbandonedWork(itemId: string): Promise<void> {
+  private async revertAbandonedWork(itemId: string): Promise<Result<{ reverted: boolean }>> {
     // Positive `.` plus exclude pathspecs so the loop's own state is never
-    // touched. Scope the exclusions to THIS loop's resolved runtime dir and
-    // backlog (+ .bak) — relative to projectPath — instead of a repo-wide
-    // `**/backlog.json` glob, so an unrelated application file that happens to
-    // be named backlog.json elsewhere in the tree is NOT preserved. (item 019)
+    // touched. Layers the shared repo-wide RUNTIME_EXCLUDE_PATHSPECS (also used
+    // by gitCommit) with this run's own state dir + backlog (+ .bak) — relative
+    // to projectPath. The shared list keeps OTHER backlog roots' `.rauf/` dirs
+    // (e.g. specs/<feature>/.rauf/ in a multi-backlog-root project) out of this
+    // stash too, fixing a drift bug where this method's own exclude list only
+    // ever covered THIS run's `.rauf/` dir. (item 019, #83)
     const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
     const backlogRel = path.relative(this.projectPath, this.paths.backlog);
     const pathspecs = [
       ".",
+      ...RUNTIME_EXCLUDE_PATHSPECS,
       `:(exclude)${stateDirRel}`,
       `:(exclude)${backlogRel}`,
       `:(exclude)${backlogRel}.bak`,
@@ -1478,7 +1697,7 @@ export class LoopRunner extends TypedEventEmitter {
       if (status.trim() === "") {
         // Only loop bookkeeping is dirty (normal between iterations) — nothing
         // to revert.
-        return;
+        return ok({ reverted: false });
       }
       await execGit(this.projectPath, [
         "stash",
@@ -1493,11 +1712,11 @@ export class LoopRunner extends TypedEventEmitter {
         this.paths,
         `Reverted dirty working tree after item ${itemId} (stashed abandoned uncommitted work)`,
       );
+      return ok({ reverted: true });
     } catch (e) {
-      appendLog(
-        this.paths,
-        `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      const message = `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`;
+      appendLog(this.paths, message);
+      return err({ code: ErrorCodes.CONFLICT, message });
     }
   }
 
@@ -1634,6 +1853,25 @@ export class LoopRunner extends TypedEventEmitter {
     this.writeState("error", null, "error", message);
     // Include "error" so parseDoneFileState classifies the derived status ERROR.
     writeDoneFile(this.paths, `error: ${message}\n${this.buildSummary()}`);
+    return "exit";
+  }
+
+  /**
+   * Halt the loop when a git safety check fails: either a blocked item's
+   * dirty-tree rollback (revertAbandonedWork) errors, or the pre-iteration
+   * clean-baseline guard finds the tree unexpectedly dirty. Without this, the
+   * loop would silently continue and a later item's `git add -A` commit could
+   * sweep up a prior item's leftover, uncommitted files — breaking per-item
+   * commit isolation and desyncing backlog status from git history (#83).
+   * Modeled on haltForCircuitBreaker: writes an `error` state plus a DONE
+   * summary, emits a loop_error, and signals the caller to exit.
+   */
+  private haltForGitSafetyFailure(reason: string): "exit" {
+    appendLog(this.paths, reason);
+    this.emitEvent("loop_error", { error: reason });
+    this.writeState("error", null, "error", reason);
+    // Include "error" so parseDoneFileState classifies the derived status ERROR.
+    writeDoneFile(this.paths, `error: ${reason}\n${this.buildSummary()}`);
     return "exit";
   }
 

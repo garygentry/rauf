@@ -452,6 +452,19 @@ export const LoopStartOptionsSchema = z.object({
    * Resolution drops to `model > projectModel` — `item.model` is skipped.
    */
   ignoreItemModel: z.boolean().optional(),
+  /**
+   * Opt-in: the caller (currently only `rauf resume` / the web resume route)
+   * is intentionally relaunching onto a tree it just rewrote — recovery
+   * reconciliation edits backlog.json, and a needs-human pause deliberately
+   * leaves an in-progress item's work uncommitted for a human to inspect. When
+   * true, the runner's pre-iteration clean-baseline guard (#83/#105) is
+   * skipped for the run, mirroring how `checkLoopPreconditions({ allowDirty })`
+   * already relaxes the CLI's launch-time dirty-tree guard for the same
+   * relaunch. Branch protection and every OTHER safety check are unaffected —
+   * this only widens what the clean-baseline guard tolerates. Default
+   * (unset/false): unchanged, the guard runs on every iteration as before.
+   */
+  allowDirty: z.boolean().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────
@@ -516,6 +529,14 @@ const ItemBlockedSchema = LoopEventBaseSchema.extend({
   type: z.literal("item_blocked"),
   itemId: z.string(),
   reason: z.string(),
+  /**
+   * Truncated tail of the failed spawn's stdout/stderr (#74), populated only
+   * when this item_blocked was emitted from a genuine_retry exhaustion — a
+   * flake vs. real-failure diagnostic aid, not present on other block causes
+   * (e.g. timeout, needs_human-adjacent blocks).
+   */
+  stdoutTail: z.string().optional(),
+  stderrTail: z.string().optional(),
 });
 
 const ItemRetriedSchema = LoopEventBaseSchema.extend({
@@ -523,6 +544,9 @@ const ItemRetriedSchema = LoopEventBaseSchema.extend({
   itemId: z.string(),
   attempt: z.number().int().positive(),
   maxRetries: z.number().int().positive(),
+  /** Truncated tail of the failed spawn's stdout/stderr (#74), for diagnosing a flake vs. a genuine failure. */
+  stdoutTail: z.string().optional(),
+  stderrTail: z.string().optional(),
 });
 
 const NeedsHumanSchema = LoopEventBaseSchema.extend({
@@ -588,6 +612,10 @@ const ReviewCompletedSchema = LoopEventBaseSchema.extend({
 const ReviewFailedSchema = LoopEventBaseSchema.extend({
   type: z.literal("review_failed"),
   reason: z.string(),
+  /** Truncated (last 500 chars) stdout tail from the final failed review spawn, when available. */
+  stdoutTail: z.string().optional(),
+  /** Truncated (last 500 chars) stderr tail from the final failed review spawn, when available. */
+  stderrTail: z.string().optional(),
 });
 
 const LlmToolActivitySchema = LoopEventBaseSchema.extend({

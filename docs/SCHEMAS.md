@@ -403,6 +403,8 @@ interface LoopStartOptions {
   sleepOnLimit?: boolean; // When false, halt with paused_usage_limit instead of sleeping at a usage limit. Default: true (sleep and continue).
   circuitBreakerThreshold?: number; // Halt after N consecutive infra_error spawn deaths (fast non-zero exits, no usage banner). Default: 3.
   pauseOnNeedsHuman?: boolean; // When true, halt the loop in paused_human (emitting loop_paused) on the first needs-human item instead of setting it aside and continuing. Default: false. See `rauf loop run --pause-on-needs-human`.
+  ignoreItemModel?: boolean; // Ignore each item's `model` field for this run, falling back to options.model / projectModel. See `rauf loop run --no-model`.
+  allowDirty?: boolean; // Skip the pre-iteration clean-baseline guard for this run (recovery/resume relaunches onto a tree it just rewrote, or a needs-human pause it deliberately left dirty). Set by `rauf resume` (mirrors `checkLoopPreconditions({ allowDirty })`) and the web resume route. Default: false.
 }
 ```
 
@@ -432,8 +434,8 @@ interface LoopEventBase {
 | `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`           | LLM process exits                                        |
 | `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?` | Exit signal extracted from stdout                        |
 | `item_completed`      | `itemId`, `title`                                                    | Item marked done                                         |
-| `item_blocked`        | `itemId`, `reason`                                                   | Item marked blocked                                      |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`                                    | Item re-queued for retry                                 |
+| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                     | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`      | Item re-queued for retry                                 |
 | `needs_human`         | `itemId`, `reason`                                                   | Loop paused for human input                              |
 | `loop_paused`         | `reason` ("needs_human"), `itemId`                                   | Loop halted in `paused_human` (`--pause-on-needs-human`) |
 | `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                            | Claude API usage limit detected                          |
@@ -509,7 +511,16 @@ type LoopEvent =
       itemId: string;
       title: string;
     }
-  | { type: "item_blocked"; timestamp: string; projectPath: string; itemId: string; reason: string }
+  | {
+      type: "item_blocked";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      reason: string;
+      /** Truncated tail of the failed spawn's stdout/stderr (#74); only present on a genuine_retry exhaustion. */
+      stdoutTail?: string;
+      stderrTail?: string;
+    }
   | {
       type: "item_retried";
       timestamp: string;
@@ -517,6 +528,9 @@ type LoopEvent =
       itemId: string;
       attempt: number;
       maxRetries: number;
+      /** Truncated tail of the failed spawn's stdout/stderr (#74), for diagnosing a flake vs. a genuine failure. */
+      stdoutTail?: string;
+      stderrTail?: string;
     }
   | { type: "needs_human"; timestamp: string; projectPath: string; itemId: string; reason: string }
   | {

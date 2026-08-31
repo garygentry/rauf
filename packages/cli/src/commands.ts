@@ -372,6 +372,15 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "sweep",
         description: "Archive done items into .rauf/archive/",
+        usage: "rauf backlog sweep <path> [--min-age-days N] [--dry-run] [--yes]",
+        flags: [
+          {
+            name: "--min-age-days <N>",
+            description: "Only archive done items completed at least N days ago (default: 0)",
+          },
+          { name: "--dry-run", description: "Preview what would be archived without writing" },
+          { name: "--yes", description: "Skip the confirmation prompt" },
+        ],
         handler: handleBacklogSweep,
       },
       {
@@ -382,6 +391,25 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "reset",
         description: "Reset project state for a fresh backlog cycle",
+        usage:
+          "rauf backlog reset <path> [--clear] [--keep-progress] [--keep-log] [--yes] [--json]",
+        flags: [
+          {
+            name: "--clear",
+            description:
+              "Full reset: archive done items, empty the items array, and redeploy progress.md (the normal new-cycle case). Omit for a soft reset that archives done items but keeps items/progress/log.",
+          },
+          {
+            name: "--keep-progress",
+            description: "Preserve progress.md during a --clear reset (skip its archive+redeploy)",
+          },
+          {
+            name: "--keep-log",
+            description: "Preserve rauf.log during a --clear reset (skip its archive)",
+          },
+          { name: "--yes", description: "Confirm the reset (required)" },
+          { name: "--json", description: "Emit the reset result as JSON" },
+        ],
         handler: handleBacklogReset,
       },
       {
