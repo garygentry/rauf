@@ -18,6 +18,13 @@ Individual commands:
 - Format: `pnpm format:check`
 
 If any command is not configured (empty), skip it.
+
+Do NOT background, `nohup`, or `&`-detach the verification command (or
+any command inside it). Run it in the foreground and wait for it to
+exit before reading its result or emitting your exit signal — a
+backgrounded verify command exits immediately with no output, which
+looks like a clean run and will be misread (or produce no signal at
+all, wasting a retry).
 <!-- rauf:managed:end -->
 
 ## Workflow
