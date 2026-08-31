@@ -746,6 +746,34 @@ describe("detectProfile — dispatcher script fallback", () => {
     const profile = detectProfile(tmpDir);
     expect(profile.verify).toBe("");
   });
+
+  it("does not fire when allowDispatcherGuess is false, even with a dispatcher script present", () => {
+    writeDispatcherScript(tmpDir);
+
+    const profile = detectProfile(tmpDir, { allowDispatcherGuess: false });
+
+    expect(profile.verify).toBe("");
+    expect(profile.commands.test).toBeNull();
+  });
+
+  it("fires by default (allowDispatcherGuess defaults to true)", () => {
+    writeDispatcherScript(tmpDir);
+
+    const profile = detectProfile(tmpDir, {});
+
+    expect(profile.verify).not.toBe("");
+    expect(profile.commands.test).toBe("bash scripts/verify.sh test");
+  });
+
+  it("does not treat a scripts/verify DIRECTORY as a dispatcher script (fileExists vs isRegularFile)", () => {
+    // A directory named like a dispatcher candidate must not false-positive.
+    fs.mkdirSync(path.join(tmpDir, "scripts", "verify"), { recursive: true });
+
+    const profile = detectProfile(tmpDir);
+
+    expect(profile.verify).toBe("");
+    expect(profile.commands.test).toBeNull();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -791,6 +819,72 @@ describe("detectVerificationWarnings", () => {
     writePackageJson(tmpDir, { scripts: { test: "vitest" } });
     writeDispatcherScript(tmpDir);
     const profile = detectProfile(tmpDir);
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns when a command references a dispatcher-shaped script that no longer exists on disk", () => {
+    // scripts/verify.sh does NOT exist — simulates a deleted/renamed dispatcher
+    // whose guessed commands were persisted to the profile at some earlier
+    // point (either by the dispatcher-guess fallback, or hand-configured).
+    const profile: ProjectProfile = {
+      stack: "unknown",
+      packageManager: null,
+      monorepo: false,
+      commands: {
+        test: "bash scripts/verify.sh test",
+        typecheck: "bash scripts/verify.sh typecheck",
+        lint: null,
+        build: null,
+        format: null,
+      },
+      verify: "bash scripts/verify.sh test && bash scripts/verify.sh typecheck",
+    };
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("scripts/verify.sh");
+    expect(warnings[0]).toContain("no longer exists");
+  });
+
+  it("still warns about a stale dispatcher reference even when DISPATCHER_SCRIPT_CANDIDATES no longer matches (script deleted)", () => {
+    // Regression check: the stale-script warning must NOT depend on a live
+    // detectDispatcherScript() probe succeeding — that probe returns null once
+    // the script is gone, which previously made the warning stop firing
+    // entirely (the exact "stale profile" case the feature exists to catch).
+    writeDispatcherScript(tmpDir);
+    const profile = detectProfile(tmpDir);
+    expect(profile.commands.test).toBe("bash scripts/verify.sh test"); // sanity
+
+    // Now delete the dispatcher script — detectDispatcherScript(tmpDir) is null.
+    fs.rmSync(path.join(tmpDir, "scripts", "verify.sh"));
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("no longer exists");
+  });
+
+  it("does not mislabel a deliberately-configured command that merely shares the dispatcher path as a string prefix", () => {
+    fs.mkdirSync(path.join(tmpDir, "scripts"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "scripts", "verify"), "#!/usr/bin/env bash\n"); // dispatcher candidate
+    fs.writeFileSync(path.join(tmpDir, "scripts", "verify-full.sh"), "#!/usr/bin/env bash\n"); // unrelated script
+
+    const profile: ProjectProfile = {
+      stack: "unknown",
+      packageManager: null,
+      monorepo: false,
+      commands: {
+        test: "bash scripts/verify-full.sh test",
+        typecheck: null,
+        lint: null,
+        build: null,
+        format: null,
+      },
+      verify: "bash scripts/verify-full.sh test",
+    };
 
     const warnings = detectVerificationWarnings(tmpDir, profile);
     expect(warnings).toEqual([]);

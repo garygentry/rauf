@@ -26,6 +26,7 @@ import type { CommandContext } from "./commands.js";
 import { ExitCode } from "./commands.js";
 import { c, info, print, error, success, outputJson, renderTable, symbols } from "./formatter.js";
 import type { TableColumn } from "./formatter.js";
+import { printWarnings } from "./install-commands.js";
 
 // ─── PROFILE SHOW ──────────────────────────────────────────────────
 
@@ -170,6 +171,10 @@ export async function handleProfileSet(ctx: CommandContext): Promise<number> {
   );
   if (updateResult.ok) {
     info("RAUF.md verification commands synced.");
+    // update() already ran detectVerificationWarnings — surface them the same
+    // way `rauf update <path>` does (printUpdateReport → printWarnings), so an
+    // empty/dispatcher-guessed verify command doesn't go unreported here too.
+    printWarnings(updateResult.value.warnings);
   }
   return ExitCode.SUCCESS;
 }

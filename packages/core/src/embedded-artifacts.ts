@@ -27,8 +27,7 @@ Individual commands:
 - Build: \`{{buildCommand}}\`
 - Format: \`{{formatCommand}}\`
 
-If any command is not configured (empty), skip it.
-{{verificationWarning}}
+If any command is not configured (empty), skip it.{{verificationWarning}}
 <!-- rauf:managed:end -->
 
 ## Workflow

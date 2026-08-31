@@ -30,6 +30,7 @@ import {
   MarkerOptionsSchema,
   ToolConfigSchema,
   ErrorCodes,
+  update,
 } from "@rauf/core";
 
 import { errorResponse } from "../app.js";
@@ -157,7 +158,17 @@ export function createProfileRouter(rootDirectoryOverride?: string): Hono {
       return c.json(errorResponse(writeResult.error.code, writeResult.error.message), 500);
     }
 
-    return c.json({ data: parseResult.data });
+    // Resync RAUF.md's managed section with the new verification commands and
+    // surface `detectVerificationWarnings`' result — mirrors the CLI's `rauf
+    // profile set` (profile-config-commands.ts's handleProfileSet), which
+    // already calls `update()` after writing the marker for the same reason.
+    // Non-fatal: the profile write above already succeeded, so a failed
+    // resync here (e.g. RAUF.md missing) is reported as an empty warnings
+    // list rather than failing the whole request.
+    const updateResult = update(projectPath);
+    const warnings = updateResult.ok ? updateResult.value.warnings : [];
+
+    return c.json({ data: parseResult.data, warnings });
   });
 
   // ── PUT /:id/options ────────────────────────────────────────────

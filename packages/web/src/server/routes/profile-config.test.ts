@@ -216,6 +216,41 @@ describe("PUT /api/projects/:id/profile", () => {
     expect(body.data.stack).toBe("go");
   });
 
+  it("surfaces the empty-verification warning and resyncs RAUF.md (Fix 3, GH#85 follow-up)", async () => {
+    writeMarker(projectDir);
+    // update() needs a .rauf/ dir + an existing RAUF.md to resync into.
+    const raufDir = path.join(projectDir, ".rauf");
+    fs.mkdirSync(raufDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(raufDir, "RAUF.md"),
+      "# Test\n<!-- rauf:managed:start -->\n<!-- rauf:managed:end -->\n",
+    );
+    const app = makeApp(tmpDir);
+
+    const emptyVerifyProfile = {
+      stack: "custom",
+      packageManager: null,
+      monorepo: false,
+      commands: { test: null, typecheck: null, lint: null, build: null, format: null },
+      verify: "",
+    };
+
+    const res = await app.request("/api/projects/my-project/profile", {
+      method: "PUT",
+      headers: MUTATION_HEADERS,
+      body: JSON.stringify(emptyVerifyProfile),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: Record<string, unknown>; warnings: string[] };
+    expect(body.data).toMatchObject(emptyVerifyProfile);
+    expect(body.warnings.some((w) => w.includes("No verification commands detected"))).toBe(true);
+
+    // RAUF.md's managed section was resynced (update() ran, not just a marker write).
+    const raufMd = fs.readFileSync(path.join(raufDir, "RAUF.md"), "utf-8");
+    expect(raufMd).toContain("No verification commands are configured");
+  });
+
   it("returns 404 when .rauf.json is missing", async () => {
     const app = makeApp(tmpDir);
     const newProfile = {

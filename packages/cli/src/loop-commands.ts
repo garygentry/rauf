@@ -455,12 +455,19 @@ async function runDetached(ctx: CommandContext): Promise<number> {
     });
 
     if (resp.ok) {
+      const data = (await resp.json()) as { data?: { warnings?: string[] } };
       if (ctx.globalFlags.json) {
-        const data = await resp.json();
         outputJson(data);
       } else {
         success(`Loop started for ${c.cyan(id)} ${c.dim("(detached, server-owned)")}`);
         info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
+        // Surfaces the same empty/dispatcher-guessed-verification warning the
+        // in-process path prints via warnStaleVerificationProfile — the
+        // detached start reaches it through the server's response instead of
+        // a local marker read (this process never sees the marker directly).
+        for (const w of data.data?.warnings ?? []) {
+          warn(w);
+        }
       }
       return ExitCode.SUCCESS;
     }

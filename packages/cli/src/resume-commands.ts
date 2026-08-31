@@ -97,13 +97,24 @@ export function resolveResumeTargetPath(ctx: CommandContext): string {
  * Resolve the project's verify command for `--recover`, preferring the
  * installed `.rauf.json` profile and falling back to a fresh `detectProfile`
  * scan. Returns null when no verify command can be determined.
+ *
+ * `allowDispatcherGuess: false` is load-bearing here, not cosmetic: the
+ * returned command gets EXECUTED by `reverifyAndCommitInterrupted` to decide
+ * whether interrupted work should be auto-committed as "verified". The
+ * dispatcher-guess fallback's subcommand names are never validated against
+ * what the script actually supports — if it exits 0 for an unrecognized
+ * subcommand (a common shell-script default), unverified work could get
+ * silently auto-committed. Excluding the guess here means a stale/empty
+ * profile with a dispatcher script present still resolves to null, so
+ * recovery halts with "No verify command is configured" exactly as it did
+ * before dispatcher guessing existed — the safer behavior.
  */
 function resolveVerifyCommand(projectPath: string): string | null {
   const marker = readMarkerFile(projectPath);
   if (marker.ok && marker.value.profile.verify.trim() !== "") {
     return marker.value.profile.verify;
   }
-  const detected = detectProfile(projectPath);
+  const detected = detectProfile(projectPath, { allowDispatcherGuess: false });
   return detected.verify.trim() !== "" ? detected.verify : null;
 }
 

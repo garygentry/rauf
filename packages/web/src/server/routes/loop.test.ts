@@ -233,6 +233,32 @@ describe("POST /:id/loop/start", () => {
     expect(body.data.started).toBe(true);
   });
 
+  it("surfaces empty-verification-profile warnings in the start response (the --detached and web-UI shared path)", async () => {
+    // writeMarker() always seeds an empty-verify profile — this is the ONE
+    // route both the web UI's "Run Loop" button and the CLI's `--detached`
+    // path funnel through, so surfacing the warning here reaches both,
+    // matching the in-process `warnStaleVerificationProfile` startup check.
+    createProject("test-project", [pendingItem]);
+    setupMockClaude();
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: {
+        "X-Rauf-Request": "true",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ maxIterations: 1 }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await json(res)) as { data: { started: boolean; warnings: string[] } };
+    expect(body.data.started).toBe(true);
+    expect(body.data.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
+      true,
+    );
+  });
+
   it("returns 409 on already-running project", async () => {
     createProject("test-project", [pendingItem]);
     setupLongRunningClaude();

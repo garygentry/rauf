@@ -94,6 +94,27 @@ function captureStdout(fn: () => Promise<void>): Promise<string> {
   });
 }
 
+/** Capture stderr for testing (warn()/error() write here, not stdout) */
+function captureStderr(fn: () => Promise<void>): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    const orig = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (s: string | Uint8Array) => {
+      output += s.toString();
+      return true;
+    };
+    fn()
+      .then(() => {
+        process.stderr.write = orig;
+        resolve(output);
+      })
+      .catch((e: unknown) => {
+        process.stderr.write = orig;
+        reject(e);
+      });
+  });
+}
+
 /** Create a minimal .rauf.json (marker file) in a project dir */
 function createMarkerFile(projectDir: string, overrides: Record<string, unknown> = {}): void {
   const marker = {
@@ -373,6 +394,35 @@ describe("handleProfileSet", () => {
     const ctx = makeCtx([projectDir, "stack", "go"]);
     const code = await handleProfileSet(ctx);
     expect(code).toBe(ExitCode.USAGE);
+  });
+
+  it("prints the verification warning update() computes (previously discarded, GH#85 follow-up)", async () => {
+    const projectDir = path.join(tmpDir, "project-set-warns");
+    fs.mkdirSync(path.join(projectDir, ".rauf"), { recursive: true }); // update() needs a .rauf/ to write RAUF.md into
+    createMarkerFile(projectDir, {
+      profile: {
+        stack: "custom",
+        packageManager: null,
+        monorepo: false,
+        commands: { test: "pnpm test", typecheck: null, lint: null, build: null, format: null },
+        verify: "pnpm test",
+      },
+    });
+
+    const ctx = makeCtx([projectDir, "test", ""], {}, { quiet: false }); // disable the only command → verify becomes ""
+    const stderrOutput = await captureStderr(async () => {
+      configureOutput({ noColor: true, quiet: false, json: false });
+      await handleProfileSet(ctx);
+      configureOutput({ noColor: true, quiet: true, json: false });
+    });
+
+    // The marker write itself succeeded regardless of the warning.
+    const marker = JSON.parse(fs.readFileSync(path.join(projectDir, ".rauf.json"), "utf-8"));
+    expect(marker.profile.verify).toBe("");
+    // update() computed the empty-verification warning and it was printed —
+    // previously handleProfileSet only checked updateResult.ok and discarded
+    // updateResult.value.warnings.
+    expect(stderrOutput).toContain("No verification commands detected");
   });
 });
 

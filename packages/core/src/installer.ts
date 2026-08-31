@@ -707,11 +707,17 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
     formatCommand: profile.commands.format,
     verifyCommand: profile.verify,
     stackDescription: profile.stack,
+    // Placed at the END of the preceding line in the template (not on its own
+    // line) so the common case — a configured verify command, empty warning —
+    // renders no dangling blank line (every existing installed project's
+    // RAUF.md would otherwise churn on every `rauf update`, even with no
+    // change to their verification config). The non-empty case supplies its
+    // own leading blank-line separation instead.
     verificationWarning:
       profile.verify === ""
-        ? "\n> **No verification commands are configured.** Every command above is empty, so " +
+        ? "\n\n> **No verification commands are configured.** Every command above is empty, so " +
           "completing an item currently requires no automated check. Configure commands via " +
-          "`rauf profile set <path> <key> <value>` or reinstall with `--test-cmd`/`--typecheck-cmd`/etc.\n"
+          "`rauf profile set <path> <key> <value>` or reinstall with `--test-cmd`/`--typecheck-cmd`/etc."
         : "",
   };
 }

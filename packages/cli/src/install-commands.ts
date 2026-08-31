@@ -420,8 +420,10 @@ function printActions(actions: InstallationReport["actions"]): void {
   }
 }
 
-/** Print warnings if any */
-function printWarnings(warnings: string[]): void {
+/** Print warnings if any. Exported for reuse by other commands that surface
+ * the same InstallationReport-style `warnings[]` (e.g. `rauf profile set`,
+ * which calls `update()` internally and previously discarded its warnings). */
+export function printWarnings(warnings: string[]): void {
   if (warnings.length > 0) {
     info("");
     for (const w of warnings) {

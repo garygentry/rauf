@@ -10,7 +10,7 @@ import type {
   ArtifactStalenessReport,
   ArtifactFileStatus,
 } from "@rauf/core";
-import { raufFetchJson } from "../../lib/fetch";
+import { raufFetch, raufFetchJson } from "../../lib/fetch";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -87,12 +87,28 @@ export function ProjectSettings() {
 
   // ── Profile mutation ──
 
+  // Empty/dispatcher-guessed-verification warnings the PUT route now computes
+  // (mirrors install/init/update's warnings[]) — surfaced separately from the
+  // mutation's ProjectProfile return value since raufFetchJson only unwraps
+  // `data`.
+  const [profileWarnings, setProfileWarnings] = useState<string[]>([]);
+
   const profileMutation = useMutation({
-    mutationFn: (updated: ProjectProfile) =>
-      raufFetchJson<ProjectProfile>(`/api/projects/${encodeURIComponent(projectId)}/profile`, {
+    mutationFn: async (updated: ProjectProfile): Promise<ProjectProfile> => {
+      const res = await raufFetch(`/api/projects/${encodeURIComponent(projectId)}/profile`, {
         method: "PUT",
         body: JSON.stringify(updated),
-      }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const message =
+          (body as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+        throw new Error(message);
+      }
+      const body = (await res.json()) as { data: ProjectProfile; warnings?: string[] };
+      setProfileWarnings(body.warnings ?? []);
+      return body.data;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
       setCommandsDirty(false);
@@ -370,6 +386,28 @@ export function ProjectSettings() {
                 {buildVerifyString(commands) || "(none)"}
               </p>
             </div>
+
+            {/* Warnings (empty / dispatcher-guessed verification commands) */}
+            {profileWarnings.length > 0 && (
+              <div
+                className="rounded-md border px-3 py-2.5"
+                style={{
+                  borderColor: "rgba(217, 119, 6, 0.3)",
+                  backgroundColor: "rgba(217, 119, 6, 0.07)",
+                }}
+              >
+                <p className="mb-1 text-xs font-semibold" style={{ color: "#d97706" }}>
+                  Warnings
+                </p>
+                <ul className="space-y-0.5">
+                  {profileWarnings.map((w, i) => (
+                    <li key={i} className="text-xs" style={{ color: "#d97706" }}>
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="flex justify-end">
               <button
@@ -833,7 +871,7 @@ function ArtifactStatusSection({
               }}
             >
               <p className="mb-1 text-xs font-semibold" style={{ color: "#d97706" }}>
-                Conflicts detected
+                Warnings
               </p>
               <ul className="space-y-0.5">
                 {updateData.warnings.map((w, i) => (
