@@ -33,6 +33,15 @@ function clip(s: string, max = 80): string {
 }
 
 /**
+ * A short suffix noting a captured stdout/stderr diagnostic tail (#74), when
+ * either is present. Keeps the single-line event terse — the full tail lives
+ * in rauf.log, not inline here.
+ */
+function tailNote(stdoutTail?: string, stderrTail?: string): string {
+  return stdoutTail || stderrTail ? ` ${c.dim("(diagnostic tail captured — see rauf.log)")}` : "";
+}
+
+/**
  * Render a PersistedEvent as a single rich human line. Exhaustive over the
  * LoopEvent discriminated union — no silent fallback (REQ-VOCAB-07): an
  * unrecognized type still surfaces its raw type so nothing goes invisible.
@@ -77,11 +86,14 @@ export function formatEvent(ev: PersistedEvent): string {
     case "item_completed":
       return line(c.green("item completed"), `${item(ev.itemId)} ${clip(ev.title)}`);
     case "item_blocked":
-      return line(c.yellow("item blocked"), `${item(ev.itemId)} ${c.dim(clip(ev.reason))}`);
+      return line(
+        c.yellow("item blocked"),
+        `${item(ev.itemId)} ${c.dim(clip(ev.reason))}${tailNote(ev.stdoutTail, ev.stderrTail)}`,
+      );
     case "item_retried":
       return line(
         c.yellow("item retried"),
-        `${item(ev.itemId)} attempt ${ev.attempt}/${ev.maxRetries}`,
+        `${item(ev.itemId)} attempt ${ev.attempt}/${ev.maxRetries}${tailNote(ev.stdoutTail, ev.stderrTail)}`,
       );
     case "needs_human":
       return line(c.yellow("needs human"), `${item(ev.itemId)} ${c.dim(clip(ev.reason))}`);
@@ -117,7 +129,12 @@ export function formatEvent(ev: PersistedEvent): string {
         `${ev.itemsCreated} item(s) created ${c.dim(`— ${clip(ev.summary)}`)}`,
       );
     case "review_failed":
-      return line(c.red("review failed"), c.dim(clip(ev.reason)));
+      return line(
+        c.red("review failed"),
+        ev.stdoutTail || ev.stderrTail
+          ? `${clip(ev.reason)} ${c.dim("(diagnostic tail captured — see rauf.log)")}`
+          : c.dim(clip(ev.reason)),
+      );
     case "llm_tool_activity": {
       // Tool-end records often carry a placeholder name ("unknown") — the runner
       // can't always pair the close back to a name. Show the name only when it's

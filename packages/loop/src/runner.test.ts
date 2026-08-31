@@ -557,7 +557,26 @@ else echo "RAUF_DONE"; fi`,
       // Mock claude that produces no signal and exits cleanly (code 0) — a
       // genuine_retry, not an infra death. A missing signal must never, by
       // itself, mark an item blocked: after maxRetries it is DEFERRED.
-      writeMockClaude(binDir, 'echo "random output"');
+      //
+      // The runner always requests outputFormat "stream-json" (production
+      // shape), so stdout here is NDJSON: a raw tool_use event line (whose
+      // marker text is never reconstructed) plus a "result" event whose
+      // `result` field is the human-readable text the stream parser
+      // reconstructs — and which itself embeds a literal RAUF_DONE token
+      // inline (sharing a line with other text, so it is neutralized for
+      // signal detection, not a real completion signal). This lets the tests
+      // assert BOTH that the tail is built from reconstructedText, not raw
+      // stdout (#74's regression), AND that the tail is redacted before
+      // emission/logging so the embedded RAUF_DONE substring never appears
+      // literally.
+      writeMockClaude(
+        binDir,
+        [
+          `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo TOOL_USE_MARKER_ONLY_IN_RAW_JSON"}}]}}'`,
+          `echo '{"type":"result","result":"random output from the agent - token RAUF_DONE appears inline here"}'`,
+          `echo "some warning on stderr" >&2`,
+        ].join("\n"),
+      );
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxRetries: 2 });
@@ -570,7 +589,19 @@ else echo "RAUF_DONE"; fi`,
       expect(result.blockedCount).toBe(0);
       const retryEvents = events.filter((e) => e.type === "item_retried");
       expect(retryEvents).toHaveLength(1);
-      expect((retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>).attempt).toBe(1);
+      const retryEvent = retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>;
+      expect(retryEvent.attempt).toBe(1);
+      expect(retryEvent.stdoutTail).toBeTruthy();
+      expect(retryEvent.stdoutTail).toContain("random output from the agent");
+      // Reconstructed text, not raw NDJSON: the tool_use event's raw-JSON-only
+      // marker must never appear.
+      expect(retryEvent.stdoutTail).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(retryEvent.stdoutTail).not.toContain('"type":"assistant"');
+      // Redacted: the inline RAUF_DONE substring must not leak literally.
+      expect(retryEvent.stdoutTail).not.toContain("RAUF_DONE");
+      expect(retryEvent.stdoutTail).toContain("RAUF·DONE");
+      expect(retryEvent.stderrTail).toBeTruthy();
+      expect(retryEvent.stderrTail).toContain("some warning on stderr");
 
       // The item ends status 'blocked' with the deferred flag and a runner reason.
       const backlog: Backlog = JSON.parse(
@@ -581,10 +612,246 @@ else echo "RAUF_DONE"; fi`,
       expect(item?.deferred).toBe(true);
       expect(item?.blockedReason).toContain("deferred by runner");
 
+      // The exhausted-retries item_blocked also carries the tail fields.
+      const blockedEvents = events.filter((e) => e.type === "item_blocked");
+      expect(blockedEvents).toHaveLength(1);
+      const blockedEvent = blockedEvents[0] as Extract<LoopEvent, { type: "item_blocked" }>;
+      expect(blockedEvent.stdoutTail).toBeTruthy();
+      expect(blockedEvent.stdoutTail).toContain("random output from the agent");
+      expect(blockedEvent.stdoutTail).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(blockedEvent.stdoutTail).not.toContain("RAUF_DONE");
+      expect(blockedEvent.stderrTail).toBeTruthy();
+      expect(blockedEvent.stderrTail).toContain("some warning on stderr");
+
       // It is tracked in state.deferredItems, not blockedItems.
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.deferredItems).toContain("001");
       expect(state.blockedItems).not.toContain("001");
+
+      // rauf.log (text-only, no events.ndjson) now surfaces the tail for the
+      // genuine_retry case too, not just infra_error (#74 fix 3a) — both the
+      // mid-retry attempt and the exhausted-retries block write it.
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Item 001 retry 1/2");
+      expect(log).toContain("Item 001 deferred after 2 attempts");
+      const stdoutTailOccurrences = log.split("stdout tail:").length - 1;
+      expect(stdoutTailOccurrences).toBeGreaterThanOrEqual(2);
+      expect(log).toContain("random output from the agent");
+      expect(log).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(log).not.toContain("RAUF_DONE");
+    });
+
+    it("review pass retries a missing signal once and recovers within maxRetries", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn -> work item done. 2nd spawn (review pass attempt 1) -> no
+      // recognized signal. 3rd spawn (review pass attempt 2, still within
+      // maxRetries=2) -> RAUF_DONE, a clean review.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then echo "RAUF_DONE"
+elif [ "$n" = "2" ]; then echo "no recognized signal in this output"
+else echo "RAUF_DONE"; fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 2 });
+      runner.on("review_completed", (e) => events.push(e));
+      runner.on("review_failed", (e) => events.push(e));
+
+      await runner.start();
+
+      // The retry recovered — the review pass ends clean, it never fails.
+      expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "review_completed")).toHaveLength(1);
+
+      // No dedicated retry event exists by design — the retry is logged instead.
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).toContain("Review pass: no recognized signal");
+      expect(logContent).toContain("retrying");
+    });
+
+    it("review pass exhausts retries and surfaces stdout/stderr tails on review_failed", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn -> work item done. 2nd + 3rd spawns (review pass attempts 1
+      // and 2, exhausting maxRetries=2) both produce no recognized signal,
+      // each with a distinguishable stdout/stderr marker.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then
+  echo "RAUF_DONE"
+else
+  echo "review-stdout-marker-attempt-$n"
+  echo "review-stderr-marker-attempt-$n" >&2
+fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 2 });
+      runner.on("review_failed", (e) => events.push(e));
+
+      await runner.start();
+
+      expect(events).toHaveLength(1);
+      const failed = events[0] as Extract<LoopEvent, { type: "review_failed" }>;
+      expect(failed.reason).toContain("unexpected signal");
+      // The tail comes from the FINAL (2nd, n=3) attempt.
+      expect(failed.stdoutTail).toBeTruthy();
+      expect(failed.stdoutTail).toContain("review-stdout-marker-attempt-3");
+      expect(failed.stderrTail).toBeTruthy();
+      expect(failed.stderrTail).toContain("review-stderr-marker-attempt-3");
+
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).toContain("review-stdout-marker-attempt-3");
+      expect(logContent).toContain("review-stderr-marker-attempt-3");
+    });
+
+    it("retries a review spawn from a non-checkUsage provider on a false usage_limited substring match", async () => {
+      // 1st spawn (work item) -> RAUF_DONE. 2nd spawn (review pass attempt 1) ->
+      // no recognized signal, but the text contains "rate limit" — a substring
+      // that classifyExit treats as a usage-limit banner. This provider has no
+      // checkUsage capability, so that classification must be downgraded to
+      // genuine_retry (mirroring the work-iteration path) and retried, rather
+      // than failing immediately as a false usage-limit death. 3rd spawn
+      // (review pass attempt 2, still within maxRetries=2) -> RAUF_DONE, clean.
+      let execCount = 0;
+      registerAgent({
+        id: "no-usage-review",
+        displayName: "no-usage-review",
+        detect: async () => ({ available: true }),
+        factory: (): LLMProvider => ({
+          id: "no-usage-review",
+          displayName: "no-usage-review",
+          async execute() {
+            execCount++;
+            if (execCount === 2) {
+              return ok({
+                stdout: "Note: hit a rate limit in the example docs\n",
+                stderr: "",
+                exitCode: 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            }
+            return ok({
+              stdout: "RAUF_DONE\n",
+              stderr: "",
+              exitCode: 0,
+              timedOut: false,
+              durationMs: 1,
+            });
+          },
+          validateCredentials() {
+            return ok(undefined);
+          },
+          // Deliberately no checkUsage — this provider has no usage semantics.
+        }),
+      });
+
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "no-usage-review",
+        review: true,
+        maxRetries: 2,
+      });
+      runner.on("review_failed", (e) => events.push(e));
+      runner.on("review_completed", (e) => events.push(e));
+
+      await runner.start();
+
+      expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "review_completed")).toHaveLength(1);
+      expect(execCount).toBe(3);
+
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).toContain("retrying");
+    });
+
+    it("does not spawn another review attempt after cancellation is observed mid-retry", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn (work item) -> RAUF_DONE. 2nd spawn (review pass attempt 1) ->
+      // writes CANCEL then exits with no recognized signal (a genuine_retry
+      // exit that would normally be retried, maxRetries=5 well above what's
+      // needed here). The retry loop must observe the CANCEL file at the top
+      // of the next iteration and stop — no 3rd spawn.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then
+  echo "RAUF_DONE"
+else
+  touch "${tmpDir}/.rauf/CANCEL"
+  echo "no recognized signal in this output"
+fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 5 });
+      runner.on("review_failed", (e) => events.push(e));
+      runner.on("review_completed", (e) => events.push(e));
+
+      await runner.start();
+
+      const calls = Number(
+        fs.readFileSync(path.join(tmpDir, ".rauf", ".claude_calls"), "utf-8").trim(),
+      );
+      expect(calls).toBe(2);
+      expect(events.filter((e) => e.type === "review_completed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+    }, 15_000);
+
+    it("redacts a literal signal-shaped token in the review_failed stdout/stderr tails", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn (work item) -> RAUF_DONE. 2nd spawn (review pass, maxRetries=1
+      // so it fails after a single attempt) -> output containing literal
+      // RAUF_* signal-shaped tokens mid-line. The emitted tails must have those
+      // tokens redacted (matching the existing "Signal text" preview
+      // convention), not leaked raw into logs/events.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then
+  echo "RAUF_DONE"
+else
+  echo "unexpected RAUF_BLOCKED marker mid-output"
+  echo "leftover RAUF_DONE trace" >&2
+fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 1 });
+      runner.on("review_failed", (e) => events.push(e));
+
+      await runner.start();
+
+      expect(events).toHaveLength(1);
+      const failed = events[0] as Extract<LoopEvent, { type: "review_failed" }>;
+      expect(failed.stdoutTail).toBeTruthy();
+      expect(failed.stdoutTail).not.toContain("RAUF_BLOCKED");
+      expect(failed.stdoutTail).toContain("RAUF·BLOCKED");
+      expect(failed.stderrTail).toBeTruthy();
+      expect(failed.stderrTail).not.toContain("RAUF_DONE");
+      expect(failed.stderrTail).toContain("RAUF·DONE");
+
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).not.toContain("RAUF_BLOCKED marker");
+      expect(logContent).toContain("RAUF·BLOCKED marker");
     });
   });
 
@@ -924,17 +1191,26 @@ echo "RAUF_DONE"`,
       // treat this file (mock-script instrumentation, not real agent output)
       // as unexpected dirt before the infra_error retry's iteration.
       const counter = path.join(binDir, "attempt-count");
-      // First spawn fast-fails (infra_error, no banner); second succeeds.
+      // First spawn fast-fails (infra_error, no banner); second succeeds. The
+      // runner always requests outputFormat "stream-json" (production shape),
+      // so the first attempt's stdout is NDJSON — a raw tool_use event line
+      // (marker only present in the raw JSON, never reconstructed to text) plus
+      // a "result" event whose `result` field is the human-readable text the
+      // stream parser reconstructs. This proves the tail is built from
+      // reconstructedText, not raw stdout (#74's actual regression — a fix that
+      // merely tailed raw stdout would leak the JSON marker into the log).
       writeMockClaude(
         binDir,
         `n=$(cat "${counter}" 2>/dev/null || echo 0)
 n=$((n + 1))
 echo "$n" > "${counter}"
 if [ "$n" -eq 1 ]; then
-  echo "boom" >&2
+  echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"echo TOOL_USE_MARKER_ONLY_IN_RAW_JSON"}}]}}'
+  echo '{"type":"result","result":"1388 tests passing"}'
+  echo "coverage-collector-tmp-race: EBUSY" >&2
   exit 1
 fi
-echo "RAUF_DONE"`,
+echo '{"type":"result","result":"RAUF_DONE"}'`,
       );
 
       const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
@@ -947,6 +1223,20 @@ echo "RAUF_DONE"`,
       const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       expect(log).toContain("Iteration not counted (infra_error)");
       expect(log).toContain("budget preserved at 0/5");
+
+      // The infra_error log line surfaces the captured stdout/stderr tail, so a
+      // flake (e.g. a coverage-collector crash despite all tests passing) is
+      // diagnosable from the log alone (#74) — using the RECONSTRUCTED text,
+      // not the raw NDJSON stream.
+      expect(log).toContain("stdout tail:");
+      expect(log).toContain("1388 tests passing");
+      expect(log).toContain("stderr tail:");
+      expect(log).toContain("coverage-collector-tmp-race: EBUSY");
+      // The raw JSONL event data must NOT leak into the log — only the
+      // reconstructed human text.
+      expect(log).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
+      expect(log).not.toContain('"type":"assistant"');
+      expect(log).not.toContain('"type":"result"');
     });
 
     it("halts via the circuit breaker after consecutive infra failures", async () => {
@@ -1138,6 +1428,53 @@ echo "RAUF_DONE"`,
       // After normal completion, currentItemId should be null (cleaned up)
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
       expect(state.currentItem).toBeNull();
+    });
+
+    it("clears the stuck-detection timer even when provider.execute() throws (#103 follow-up)", async () => {
+      // #103 switched the CLI entry points from process.exit() to
+      // process.exitCode so stdout flushes before the process drains
+      // naturally. That exposed a real risk: runner.ts starts a stuck-
+      // iteration `setInterval` before spawning the provider and previously
+      // only cleared it AFTER `provider.execute()` resolved, with no
+      // try/finally. If execute() throws/rejects instead (e.g. an error
+      // CliAgentBase.execute()'s try/finally — which has no catch — can't
+      // convert to a Result), the interval leaked and, without a forced
+      // process.exit(), could keep `rauf loop run` hanging forever. Assert
+      // the leaked-interval path is now impossible: setInterval's timer id
+      // must be handed to clearInterval even when execute() throws.
+      const agentId = "throwing-agent";
+      registerAgent({
+        id: agentId,
+        displayName: agentId,
+        detect: async () => ({ available: true }),
+        factory: (): LLMProvider => ({
+          id: agentId,
+          displayName: agentId,
+          execute() {
+            throw new Error("simulated provider crash");
+          },
+          validateCredentials() {
+            return ok(undefined);
+          },
+        }),
+      });
+      setupProject(tmpDir, [pendingItem("001", "Crash on execute")]);
+
+      const setIntervalSpy = vi.spyOn(global, "setInterval");
+      const clearIntervalSpy = vi.spyOn(global, "clearInterval");
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: agentId });
+
+      await expect(runner.start()).rejects.toThrow("simulated provider crash");
+
+      // The stuck-detection interval was started, and it was cleared with
+      // the exact same timer id — not merely "some" clearInterval call.
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+      const timerId = setIntervalSpy.mock.results[0]?.value;
+      expect(clearIntervalSpy).toHaveBeenCalledWith(timerId);
+
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
     });
   });
 

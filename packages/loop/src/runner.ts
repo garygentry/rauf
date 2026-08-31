@@ -117,6 +117,18 @@ const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
 
+/**
+ * Truncates `text` to its trailing `n` characters, prefixed with an ellipsis
+ * when truncated. Mirrors the existing usage-limit-banner preview truncation
+ * (see the `signalText.slice(-500)` preview below) so infra_error /
+ * genuine_retry diagnostics use the same convention: a tail is far more
+ * likely than a head to contain a test-runner's pass/fail summary or a crash
+ * trace (#74).
+ */
+function tail(text: string, n = 500): string {
+  return text.length > n ? `…${text.slice(-n)}` : text;
+}
+
 // ─── LoopRunner ─────────────────────────────────────────────────────
 
 export class LoopRunner extends TypedEventEmitter {
@@ -967,16 +979,26 @@ export class LoopRunner extends TypedEventEmitter {
       }
     };
 
-    const execResult = await provider.execute(promptResult.value, {
-      outputFormat: "stream-json",
-      onStreamEvent,
-      signal: this.abortController.signal,
-      model: resolvedModel,
-      timeoutMinutes: this.options.sessionTimeoutMinutes,
-      ...(this.childEnv ? { env: this.childEnv } : {}),
-    });
-
-    clearInterval(stuckTimer);
+    // #103 follow-up: provider.execute() must never leave `stuckTimer` running.
+    // Before this repo switched the CLI entry points from process.exit() to
+    // process.exitCode (stdout-truncation fix), a leaked interval here was
+    // masked by the forced exit. With graceful draining, an uncaught
+    // throw/rejection from execute() (which CliAgentBase.execute()'s
+    // try/finally — with no catch — can still propagate) would otherwise keep
+    // the event loop alive forever. Guarantee cleanup on every exit path.
+    let execResult: Awaited<ReturnType<typeof provider.execute>>;
+    try {
+      execResult = await provider.execute(promptResult.value, {
+        outputFormat: "stream-json",
+        onStreamEvent,
+        signal: this.abortController.signal,
+        model: resolvedModel,
+        timeoutMinutes: this.options.sessionTimeoutMinutes,
+        ...(this.childEnv ? { env: this.childEnv } : {}),
+      });
+    } finally {
+      clearInterval(stuckTimer);
+    }
     clearIterationStatus(this.paths);
 
     if (!execResult.ok) {
@@ -1044,9 +1066,7 @@ export class LoopRunner extends TypedEventEmitter {
     if (parsed.signal === "none") {
       const textSource =
         reconstructedText && reconstructedText.length > 0 ? "reconstructed" : "stdout";
-      const preview = redactSignalTokens(
-        signalText.length > 500 ? `…${signalText.slice(-500)}` : signalText,
-      );
+      const preview = redactSignalTokens(tail(signalText));
       appendLog(
         this.paths,
         `Signal text (source=${textSource}, len=${signalText.length}):\n${preview}`,
@@ -1195,6 +1215,21 @@ export class LoopRunner extends TypedEventEmitter {
         const rawExitClass = classifyExit(execResult.value, parsed);
         const exitClass =
           !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+
+        // Diagnostic tails for infra_error/genuine_retry (#74): tail the same
+        // `signalText` the signal parser and its "Signal text" preview logging
+        // above already prefer, NOT raw `stdout` — in production both providers
+        // run with `outputFormat: "stream-json"`, so raw stdout is an NDJSON
+        // event stream, not human-readable text (see codex-cli.ts's
+        // reconstructedText comment). Tailing raw stdout would surface an
+        // unreadable JSON fragment instead of a diagnosable pass/fail summary or
+        // crash trace. Raw `stderr` needs no such treatment: neither provider
+        // routes stderr through stream-json reconstruction. Redact literal
+        // RAUF_* signal tokens (matching the sibling "Signal text" preview a
+        // few lines above) so raw agent output can't leak an unredacted
+        // signal-shaped substring into logs/events.
+        const stdoutTail = redactSignalTokens(tail(signalText));
+        const stderrTail = redactSignalTokens(tail(stderr));
         switch (exitClass) {
           case "usage_limited": {
             // Belt-and-suspenders with the pre-signal usage check (item 005):
@@ -1244,9 +1279,16 @@ export class LoopRunner extends TypedEventEmitter {
               provider.id === CODEX_AGENT_ID && hasSandboxDenialSignature(`${stdout}\n${stderr}`)
                 ? " (possible Codex sandbox denial — see providerConfig.sandboxMode/networkAccess)"
                 : "";
+            // Surface the already-captured output so a flaky non-zero exit (e.g. a
+            // test-runner crash unrelated to test results) is diagnosable from the
+            // log alone — a fast infra death otherwise has zero output evidence
+            // attached (#74). stdout first: a test runner's pass/fail summary is
+            // typically there, while stderr more often carries a crash trace.
             appendLog(
               this.paths,
-              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}`,
+              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}\n` +
+                `stdout tail: ${stdoutTail}\n` +
+                `stderr tail: ${stderrTail}`,
             );
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.
@@ -1269,6 +1311,12 @@ export class LoopRunner extends TypedEventEmitter {
             const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
             this.retryCounts.set(item.id, retries);
 
+            // Surface the already-captured output (via the shared stdoutTail/
+            // stderrTail computed above) on both the retry and the eventual
+            // exhausted-retries block, so a genuine_retry death (e.g. a flaky
+            // non-zero gate exit) is diagnosable without re-running the
+            // iteration (#74) — written to rauf.log same as infra_error, so
+            // `rauf log` (text-only) surfaces it too, not just events.ndjson.
             if (retries >= this.options.maxRetries) {
               // Runner gives up — DEFER (a false block), not a genuine agent block.
               const reason = `No signal after ${retries} attempts (deferred by runner)`;
@@ -1278,8 +1326,13 @@ export class LoopRunner extends TypedEventEmitter {
                 deferred: true,
               });
               this.deferredItemIds.push(item.id);
-              this.emitEvent("item_blocked", { itemId: item.id, reason });
-              appendLog(this.paths, `Item ${item.id} deferred after ${retries} attempts`);
+              this.emitEvent("item_blocked", { itemId: item.id, reason, stdoutTail, stderrTail });
+              appendLog(
+                this.paths,
+                `Item ${item.id} deferred after ${retries} attempts\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
               this.writeState("running", null, "error");
             } else {
               // Re-queue: reset to pending for retry
@@ -1291,8 +1344,15 @@ export class LoopRunner extends TypedEventEmitter {
                 itemId: item.id,
                 attempt: retries,
                 maxRetries: this.options.maxRetries,
+                stdoutTail,
+                stderrTail,
               });
-              appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
+              appendLog(
+                this.paths,
+                `Item ${item.id} retry ${retries}/${this.options.maxRetries}\n` +
+                  `stdout tail: ${stdoutTail}\n` +
+                  `stderr tail: ${stderrTail}`,
+              );
             }
             break;
           }
@@ -1390,78 +1450,121 @@ export class LoopRunner extends TypedEventEmitter {
     const provider = providerResult.value;
 
     const reviewConfigNote = provider.describeConfig ? ` [${provider.describeConfig()}]` : "";
-    appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
-    // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
-    // preserves today's text review behavior (tech-spec §3.2, SC-2).
-    const execResult = await provider.execute(promptResult.value, {
-      signal: this.abortController.signal,
-      model: resolvedModel,
-      timeoutMinutes: this.options.sessionTimeoutMinutes,
-      ...(this.childEnv ? { env: this.childEnv } : {}),
-    });
-
-    if (!execResult.ok) {
-      const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
-      appendLog(this.paths, reason);
-      this.emitEvent("review_failed", { reason });
-      return "failed";
-    }
-
-    const { stdout } = execResult.value;
-
-    // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
-    const parsed = parseSignal(neutralizeForDetection(stdout));
-
-    if (parsed.signal === "done") {
-      appendLog(this.paths, "Review pass: clean — no issues found");
-      this.emitEvent("review_completed", {
-        itemsCreated: 0,
-        summary: "No issues found",
-      });
-      return "clean";
-    }
-
-    if (parsed.signal === "review" && parsed.reviewPayload) {
-      const batch = new Date().toISOString();
-      let created = 0;
-
-      for (const reviewItem of parsed.reviewPayload.items) {
-        const result = addItem(this.paths, {
-          type: reviewItem.type,
-          priority: reviewItem.priority,
-          title: reviewItem.title,
-          description: reviewItem.description,
-          acceptanceCriteria: reviewItem.acceptanceCriteria,
-          source: "review",
-          reviewBatch: batch,
-        });
-        if (result.ok) {
-          created++;
-          appendLog(this.paths, `Review created item: ${result.value.id} — ${reviewItem.title}`);
-        }
+    // A review spawn that produces no recognized signal gets the same bounded
+    // retry treatment as a work-iteration "none" signal (reusing
+    // options.maxRetries — there is no separate review-retry knob). A review
+    // pass runs at most once per loop, so a local counter is enough; unlike
+    // per-item work iterations, the review pass does not participate in the
+    // retryCounts Map or the circuit breaker.
+    let reviewRetryCount = 0;
+    for (;;) {
+      // Mirrors the sibling post-review retry loop's cancellation check
+      // (`if (this.isCancelled()) break;` above): bail before spawning another
+      // attempt rather than let a cancelled run keep retrying.
+      if (this.isCancelled()) {
+        appendLog(this.paths, "Review pass cancelled");
+        return "failed";
       }
 
-      this.reviewItemsCreated = created;
-      this.reviewSummary = parsed.reviewPayload.summary;
+      appendLog(this.paths, `Spawning ${provider.id} for review pass${reviewConfigNote}`);
 
-      appendLog(
-        this.paths,
-        `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
-      );
-      this.emitEvent("review_completed", {
-        itemsCreated: created,
-        summary: parsed.reviewPayload.summary,
+      // Spawn the agent with the review prompt. outputFormat is intentionally OMITTED —
+      // preserves today's text review behavior (tech-spec §3.2, SC-2).
+      const execResult = await provider.execute(promptResult.value, {
+        signal: this.abortController.signal,
+        model: resolvedModel,
+        timeoutMinutes: this.options.sessionTimeoutMinutes,
+        ...(this.childEnv ? { env: this.childEnv } : {}),
       });
 
-      return created > 0 ? "continue" : "clean";
-    }
+      if (!execResult.ok) {
+        const reason = `Failed to spawn ${provider.id} for review: ${execResult.error.message}`;
+        appendLog(this.paths, reason);
+        this.emitEvent("review_failed", { reason });
+        return "failed";
+      }
 
-    // Other signal or parse failure — non-fatal
-    const reason = `Review returned unexpected signal: ${parsed.signal}`;
-    appendLog(this.paths, reason);
-    this.emitEvent("review_failed", { reason });
-    return "failed";
+      const { stdout, stderr } = execResult.value;
+
+      // Parse signal from review output (neutralize quoted/inline tokens first, REQ-SEC-02)
+      const parsed = parseSignal(neutralizeForDetection(stdout));
+
+      if (parsed.signal === "done") {
+        appendLog(this.paths, "Review pass: clean — no issues found");
+        this.emitEvent("review_completed", {
+          itemsCreated: 0,
+          summary: "No issues found",
+        });
+        return "clean";
+      }
+
+      if (parsed.signal === "review" && parsed.reviewPayload) {
+        const batch = new Date().toISOString();
+        let created = 0;
+
+        for (const reviewItem of parsed.reviewPayload.items) {
+          const result = addItem(this.paths, {
+            type: reviewItem.type,
+            priority: reviewItem.priority,
+            title: reviewItem.title,
+            description: reviewItem.description,
+            acceptanceCriteria: reviewItem.acceptanceCriteria,
+            source: "review",
+            reviewBatch: batch,
+          });
+          if (result.ok) {
+            created++;
+            appendLog(this.paths, `Review created item: ${result.value.id} — ${reviewItem.title}`);
+          }
+        }
+
+        this.reviewItemsCreated = created;
+        this.reviewSummary = parsed.reviewPayload.summary;
+
+        appendLog(
+          this.paths,
+          `Review pass complete: ${created} items created — ${parsed.reviewPayload.summary}`,
+        );
+        this.emitEvent("review_completed", {
+          itemsCreated: created,
+          summary: parsed.reviewPayload.summary,
+        });
+
+        return created > 0 ? "continue" : "clean";
+      }
+
+      // Other signal or parse failure. Classify WHY the spawn produced no
+      // recognized signal the same way a work iteration does — only a
+      // genuine_retry (clean/long no-signal exit) is worth re-spawning. A
+      // classified usage_limited/timeout/infra_error death falls straight
+      // through to review_failed below; the review pass has no usage-sleep or
+      // circuit-breaker handling of its own to route those into.
+      // Downgrade a usage_limited classification to genuine_retry when the
+      // review-pass provider has no usage semantics (no checkUsage) — same
+      // rationale as the work-iteration path above: a "usage_limited" verdict
+      // there can only be a false substring match on plain-text output.
+      const rawExitClass = classifyExit(execResult.value, parsed);
+      const exitClass =
+        !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+      if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
+        reviewRetryCount++;
+        appendLog(
+          this.paths,
+          `Review pass: no recognized signal (${parsed.signal}) — retrying (attempt ${
+            reviewRetryCount + 1
+          }/${this.options.maxRetries})`,
+        );
+        continue;
+      }
+
+      const reason = `Review returned unexpected signal: ${parsed.signal}`;
+      const stdoutTail = redactSignalTokens(tail(stdout));
+      const stderrTail = redactSignalTokens(tail(stderr));
+      appendLog(this.paths, `${reason}\nstdout tail:\n${stdoutTail}\nstderr tail:\n${stderrTail}`);
+      this.emitEvent("review_failed", { reason, stdoutTail, stderrTail });
+      return "failed";
+    }
   }
 
   // ─── Git helpers ──────────────────────────────────────────────────

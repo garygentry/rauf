@@ -458,6 +458,15 @@ function LogPanel({ projectId, backlogRoot }: { projectId: string; backlogRoot?:
 // makes typecheck fail if a LoopEvent member is ever added without a
 // branch here. An unknown future `type` (forward-stable envelope) still
 // renders generically at runtime rather than crashing.
+/**
+ * A short suffix noting a captured stdout/stderr diagnostic tail (#74), when
+ * either is present. Keeps the event feed row terse — the full tail lives in
+ * rauf.log, not inline here.
+ */
+function diagnosticTailNote(stdoutTail?: string, stderrTail?: string): string {
+  return stdoutTail || stderrTail ? " (diagnostic tail captured — see rauf.log)" : "";
+}
+
 function describeEvent(e: PersistedEvent): { label: string; detail: string } {
   switch (e.type) {
     case "loop_started":
@@ -487,11 +496,14 @@ function describeEvent(e: PersistedEvent): { label: string; detail: string } {
     case "item_completed":
       return { label: "Item completed", detail: `#${e.itemId} — ${e.title}` };
     case "item_blocked":
-      return { label: "Item blocked", detail: `#${e.itemId} — ${e.reason}` };
+      return {
+        label: "Item blocked",
+        detail: `#${e.itemId} — ${e.reason}${diagnosticTailNote(e.stdoutTail, e.stderrTail)}`,
+      };
     case "item_retried":
       return {
         label: "Item retried",
-        detail: `#${e.itemId} · attempt ${e.attempt}/${e.maxRetries}`,
+        detail: `#${e.itemId} · attempt ${e.attempt}/${e.maxRetries}${diagnosticTailNote(e.stdoutTail, e.stderrTail)}`,
       };
     case "needs_human":
       return { label: "Needs human", detail: `#${e.itemId} — ${e.reason}` };

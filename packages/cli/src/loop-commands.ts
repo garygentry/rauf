@@ -1259,6 +1259,15 @@ export async function handleAgents(ctx: CommandContext): Promise<number> {
 
 // ─── Event Formatting ───────────────────────────────────────────────
 
+/**
+ * A short suffix noting a captured stdout/stderr diagnostic tail (#74), when
+ * either is present. Keeps the single-line event terse — the full tail lives
+ * in rauf.log, not inline here.
+ */
+function tailNote(stdoutTail?: string, stderrTail?: string): string {
+  return stdoutTail || stderrTail ? ` ${c.dim("(diagnostic tail captured — see rauf.log)")}` : "";
+}
+
 /** Format and print a LoopEvent for terminal output with colors and icons */
 export function formatAndPrintEvent(event: LoopEvent): void {
   const time = formatTime(event.timestamp);
@@ -1321,12 +1330,14 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       break;
 
     case "item_blocked":
-      print(`${prefix} ${c.red("\u2717")} ${c.red(`Blocked #${event.itemId}`)} ${event.reason}`);
+      print(
+        `${prefix} ${c.red("\u2717")} ${c.red(`Blocked #${event.itemId}`)} ${event.reason}${tailNote(event.stdoutTail, event.stderrTail)}`,
+      );
       break;
 
     case "item_retried":
       print(
-        `${prefix} ${c.yellow("\u21BB")} Retry #${event.itemId} (${event.attempt}/${event.maxRetries})`,
+        `${prefix} ${c.yellow("\u21BB")} Retry #${event.itemId} (${event.attempt}/${event.maxRetries})${tailNote(event.stdoutTail, event.stderrTail)}`,
       );
       break;
 
@@ -1401,7 +1412,13 @@ export function formatAndPrintEvent(event: LoopEvent): void {
       break;
 
     case "review_failed":
-      print(`${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}`);
+      print(
+        `${prefix} ${c.red("\u25C6")} ${c.red("Review failed:")} ${event.reason}${
+          event.stdoutTail || event.stderrTail
+            ? ` ${c.dim("(diagnostic tail captured \u2014 see rauf.log)")}`
+            : ""
+        }`,
+      );
       break;
   }
 }

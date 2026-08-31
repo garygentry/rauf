@@ -645,6 +645,21 @@ Update a single profile field and automatically re-sync the verification command
 - Valid keys: `test`, `typecheck`, `lint`, `build`, `format`, `stack`, `packageManager`, `monorepo`
 - Set a command key to `""` to disable it (stored as `null`)
 
+**Keep the `test`/`verify` commands deterministic.** The loop classifies a fast
+non-zero exit from the verify pipeline as `infra_error` and a slower one as
+`genuine_retry` (see `packages/loop/src/exit-classifier.ts`) — it has no way to
+tell a flaky tooling crash (e.g. a coverage collector's `.tmp` file race, a
+port already in use, a resource-limited sandbox) from a genuine test failure;
+both just look like a non-zero exit. Repeated flakes can trip the "N
+consecutive infra failures — halting" circuit breaker on an otherwise-healthy
+project. Since the loop can't reliably auto-detect a flake, mitigate at the
+source: disable coverage collection for the command wired into `test`/`verify`
+(or point it at a dedicated non-coverage test task) and prefer test runners/
+configs known to be deterministic in CI-like environments. When a flake does
+trip a failure, `rauf log` now includes a truncated stdout/stderr tail on the
+`infra_error` log line and on the `item_retried`/`item_blocked` events, so the
+captured output can be inspected to tell a flake from a real failure.
+
 ---
 
 ## config
