@@ -516,6 +516,14 @@ const ItemBlockedSchema = LoopEventBaseSchema.extend({
   type: z.literal("item_blocked"),
   itemId: z.string(),
   reason: z.string(),
+  /**
+   * Truncated tail of the failed spawn's stdout/stderr (#74), populated only
+   * when this item_blocked was emitted from a genuine_retry exhaustion — a
+   * flake vs. real-failure diagnostic aid, not present on other block causes
+   * (e.g. timeout, needs_human-adjacent blocks).
+   */
+  stdoutTail: z.string().optional(),
+  stderrTail: z.string().optional(),
 });
 
 const ItemRetriedSchema = LoopEventBaseSchema.extend({
@@ -523,6 +531,9 @@ const ItemRetriedSchema = LoopEventBaseSchema.extend({
   itemId: z.string(),
   attempt: z.number().int().positive(),
   maxRetries: z.number().int().positive(),
+  /** Truncated tail of the failed spawn's stdout/stderr (#74), for diagnosing a flake vs. a genuine failure. */
+  stdoutTail: z.string().optional(),
+  stderrTail: z.string().optional(),
 });
 
 const NeedsHumanSchema = LoopEventBaseSchema.extend({

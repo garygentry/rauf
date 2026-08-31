@@ -556,8 +556,13 @@ else echo "RAUF_DONE"; fi`,
       setupProject(tmpDir, [pendingItem("001", "No signal task")]);
       // Mock claude that produces no signal and exits cleanly (code 0) — a
       // genuine_retry, not an infra death. A missing signal must never, by
-      // itself, mark an item blocked: after maxRetries it is DEFERRED.
-      writeMockClaude(binDir, 'echo "random output"');
+      // itself, mark an item blocked: after maxRetries it is DEFERRED. Emits
+      // distinguishable stdout/stderr so the tail-surfacing (#74) can be
+      // asserted on both the item_retried and the exhausted-retries item_blocked.
+      writeMockClaude(
+        binDir,
+        'echo "random output from the agent"\necho "some warning on stderr" >&2',
+      );
 
       const events: LoopEvent[] = [];
       const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxRetries: 2 });
@@ -570,7 +575,12 @@ else echo "RAUF_DONE"; fi`,
       expect(result.blockedCount).toBe(0);
       const retryEvents = events.filter((e) => e.type === "item_retried");
       expect(retryEvents).toHaveLength(1);
-      expect((retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>).attempt).toBe(1);
+      const retryEvent = retryEvents[0] as Extract<LoopEvent, { type: "item_retried" }>;
+      expect(retryEvent.attempt).toBe(1);
+      expect(retryEvent.stdoutTail).toBeTruthy();
+      expect(retryEvent.stdoutTail).toContain("random output from the agent");
+      expect(retryEvent.stderrTail).toBeTruthy();
+      expect(retryEvent.stderrTail).toContain("some warning on stderr");
 
       // The item ends status 'blocked' with the deferred flag and a runner reason.
       const backlog: Backlog = JSON.parse(
@@ -580,6 +590,15 @@ else echo "RAUF_DONE"; fi`,
       expect(item?.status).toBe("blocked");
       expect(item?.deferred).toBe(true);
       expect(item?.blockedReason).toContain("deferred by runner");
+
+      // The exhausted-retries item_blocked also carries the tail fields.
+      const blockedEvents = events.filter((e) => e.type === "item_blocked");
+      expect(blockedEvents).toHaveLength(1);
+      const blockedEvent = blockedEvents[0] as Extract<LoopEvent, { type: "item_blocked" }>;
+      expect(blockedEvent.stdoutTail).toBeTruthy();
+      expect(blockedEvent.stdoutTail).toContain("random output from the agent");
+      expect(blockedEvent.stderrTail).toBeTruthy();
+      expect(blockedEvent.stderrTail).toContain("some warning on stderr");
 
       // It is tracked in state.deferredItems, not blockedItems.
       const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
@@ -920,14 +939,16 @@ echo "RAUF_DONE"`,
     it("does not charge the iteration budget for an infra_error no-op", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
       const counter = path.join(tmpDir, "attempt-count");
-      // First spawn fast-fails (infra_error, no banner); second succeeds.
+      // First spawn fast-fails (infra_error, no banner); second succeeds. Emits
+      // distinguishable stdout/stderr so the tail-surfacing (#74) can be asserted.
       writeMockClaude(
         binDir,
         `n=$(cat "${counter}" 2>/dev/null || echo 0)
 n=$((n + 1))
 echo "$n" > "${counter}"
 if [ "$n" -eq 1 ]; then
-  echo "boom" >&2
+  echo "1388 tests passing"
+  echo "coverage-collector-tmp-race: EBUSY" >&2
   exit 1
 fi
 echo "RAUF_DONE"`,
@@ -943,6 +964,14 @@ echo "RAUF_DONE"`,
       const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       expect(log).toContain("Iteration not counted (infra_error)");
       expect(log).toContain("budget preserved at 0/5");
+
+      // The infra_error log line now surfaces the captured stdout/stderr tail,
+      // so a flake (e.g. a coverage-collector crash despite all tests passing)
+      // is diagnosable from the log alone (#74).
+      expect(log).toContain("stdout tail:");
+      expect(log).toContain("1388 tests passing");
+      expect(log).toContain("stderr tail:");
+      expect(log).toContain("coverage-collector-tmp-race: EBUSY");
     });
 
     it("halts via the circuit breaker after consecutive infra failures", async () => {

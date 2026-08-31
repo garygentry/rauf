@@ -116,6 +116,18 @@ const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
 
+/**
+ * Truncates `text` to its trailing `n` characters, prefixed with an ellipsis
+ * when truncated. Mirrors the existing usage-limit-banner preview truncation
+ * (see the `signalText.slice(-500)` preview below) so infra_error /
+ * genuine_retry diagnostics use the same convention: a tail is far more
+ * likely than a head to contain a test-runner's pass/fail summary or a crash
+ * trace (#74).
+ */
+function tail(text: string, n = 500): string {
+  return text.length > n ? `…${text.slice(-n)}` : text;
+}
+
 // ─── LoopRunner ─────────────────────────────────────────────────────
 
 export class LoopRunner extends TypedEventEmitter {
@@ -1144,9 +1156,16 @@ export class LoopRunner extends TypedEventEmitter {
               provider.id === CODEX_AGENT_ID && hasSandboxDenialSignature(`${stdout}\n${stderr}`)
                 ? " (possible Codex sandbox denial — see providerConfig.sandboxMode/networkAccess)"
                 : "";
+            // Surface the already-captured output so a flaky non-zero exit (e.g. a
+            // test-runner crash unrelated to test results) is diagnosable from the
+            // log alone — a fast infra death otherwise has zero output evidence
+            // attached (#74). stdout first: a test runner's pass/fail summary is
+            // typically there, while stderr more often carries a crash trace.
             appendLog(
               this.paths,
-              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}`,
+              `Item ${item.id} infra failure (consecutive=${this.consecutiveInfraFailures}); left pending${infraHint}\n` +
+                `stdout tail: ${tail(stdout)}\n` +
+                `stderr tail: ${tail(stderr)}`,
             );
             // No work was done — don't drain the iteration budget on a flaky
             // spawn (item 007). The circuit breaker (item 008) bounds repeats.
@@ -1169,6 +1188,12 @@ export class LoopRunner extends TypedEventEmitter {
             const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
             this.retryCounts.set(item.id, retries);
 
+            // Surface the already-captured output on both the retry and the
+            // eventual exhausted-retries block, so a genuine_retry death (e.g. a
+            // flaky non-zero gate exit) is diagnosable without re-running the
+            // iteration (#74).
+            const stdoutTail = tail(stdout);
+            const stderrTail = tail(stderr);
             if (retries >= this.options.maxRetries) {
               // Runner gives up — DEFER (a false block), not a genuine agent block.
               const reason = `No signal after ${retries} attempts (deferred by runner)`;
@@ -1178,7 +1203,7 @@ export class LoopRunner extends TypedEventEmitter {
                 deferred: true,
               });
               this.deferredItemIds.push(item.id);
-              this.emitEvent("item_blocked", { itemId: item.id, reason });
+              this.emitEvent("item_blocked", { itemId: item.id, reason, stdoutTail, stderrTail });
               appendLog(this.paths, `Item ${item.id} deferred after ${retries} attempts`);
               this.writeState("running", null, "error");
             } else {
@@ -1188,6 +1213,8 @@ export class LoopRunner extends TypedEventEmitter {
                 itemId: item.id,
                 attempt: retries,
                 maxRetries: this.options.maxRetries,
+                stdoutTail,
+                stderrTail,
               });
               appendLog(this.paths, `Item ${item.id} retry ${retries}/${this.options.maxRetries}`);
             }
