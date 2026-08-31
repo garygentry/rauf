@@ -68,7 +68,7 @@ import {
   hasSandboxDenialSignature,
 } from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
-import { gitCommit } from "./git-commit.js";
+import { gitCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -745,6 +745,48 @@ export class LoopRunner extends TypedEventEmitter {
     }
     this.writeState("running", item.id);
 
+    // Pre-iteration clean-baseline guard (#83): before spawning the agent for
+    // this item, verify the tree is clean aside from loop bookkeeping. With the
+    // halt added to revertAbandonedWork above, a revert failure now halts the
+    // loop before another iteration can begin — so the only way this guard can
+    // fire is if something slipped through undetected. Halting HERE (before the
+    // agent is spawned) is both cheaper (no wasted spawn) and simpler than
+    // checking at commit time, where "this item's own changes" and "leftover
+    // residue from a different item" can no longer be told apart.
+    {
+      const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
+      const backlogRel = path.relative(this.projectPath, this.paths.backlog);
+      const pathspecs = [
+        ".",
+        ...RUNTIME_EXCLUDE_PATHSPECS,
+        `:(exclude)${stateDirRel}`,
+        `:(exclude)${backlogRel}`,
+        `:(exclude)${backlogRel}.bak`,
+      ];
+      try {
+        const preStatus = await execGit(this.projectPath, [
+          "status",
+          "--porcelain",
+          "--",
+          ...pathspecs,
+        ]);
+        if (preStatus.trim() !== "") {
+          this.currentItemId = null;
+          return this.haltForGitSafetyFailure(
+            `Working tree is not clean before starting item ${item.id} — a prior revert may have failed silently. Halting to avoid contaminating this item's commit.`,
+          );
+        }
+      } catch (e) {
+        // Best-effort, matching isTreeClean's convention: an unrelated git
+        // failure (e.g. not a git repository) must not become a false-positive
+        // halt — log and skip the check.
+        appendLog(
+          this.paths,
+          `Clean-baseline guard skipped (git status failed) for item ${item.id}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     // Resolve model: item.model > options.model > projectModel.
     // When `ignoreItemModel` is set (rauf loop run --no-model / --model none),
     // skip the per-item override so a backlog carrying Claude-only tier aliases
@@ -1211,7 +1253,13 @@ export class LoopRunner extends TypedEventEmitter {
       const after = readBacklog(this.paths);
       const status = after.ok ? after.value.items.find((i) => i.id === item.id)?.status : undefined;
       if (status === "blocked") {
-        await this.revertAbandonedWork(item.id);
+        const revertResult = await this.revertAbandonedWork(item.id);
+        if (!revertResult.ok) {
+          this.currentItemId = null;
+          return this.haltForGitSafetyFailure(
+            `Failed to revert abandoned work for item ${item.id}: ${revertResult.error.message}`,
+          );
+        }
       }
     }
 
@@ -1457,18 +1505,25 @@ export class LoopRunner extends TypedEventEmitter {
    * backlog files). Stashes the abandoned changes (a recoverable note) so the
    * next iteration starts from a clean tree and a later `git add -A` commit
    * can't sweep up the dead work. A no-op when only loop bookkeeping is dirty.
-   * Best-effort: a git failure is logged, never thrown. (item 009)
+   *
+   * Returns `ok({ reverted: false })` for the no-op path, `ok({ reverted: true })`
+   * on a successful stash, and `err(...)` when the underlying git status/stash
+   * call fails — the caller halts the loop on failure (#83) rather than silently
+   * continuing with a possibly-dirty tree. (item 009, #83)
    */
-  private async revertAbandonedWork(itemId: string): Promise<void> {
+  private async revertAbandonedWork(itemId: string): Promise<Result<{ reverted: boolean }>> {
     // Positive `.` plus exclude pathspecs so the loop's own state is never
-    // touched. Scope the exclusions to THIS loop's resolved runtime dir and
-    // backlog (+ .bak) — relative to projectPath — instead of a repo-wide
-    // `**/backlog.json` glob, so an unrelated application file that happens to
-    // be named backlog.json elsewhere in the tree is NOT preserved. (item 019)
+    // touched. Layers the shared repo-wide RUNTIME_EXCLUDE_PATHSPECS (also used
+    // by gitCommit) with this run's own state dir + backlog (+ .bak) — relative
+    // to projectPath. The shared list keeps OTHER backlog roots' `.rauf/` dirs
+    // (e.g. specs/<feature>/.rauf/ in a multi-backlog-root project) out of this
+    // stash too, fixing a drift bug where this method's own exclude list only
+    // ever covered THIS run's `.rauf/` dir. (item 019, #83)
     const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
     const backlogRel = path.relative(this.projectPath, this.paths.backlog);
     const pathspecs = [
       ".",
+      ...RUNTIME_EXCLUDE_PATHSPECS,
       `:(exclude)${stateDirRel}`,
       `:(exclude)${backlogRel}`,
       `:(exclude)${backlogRel}.bak`,
@@ -1478,7 +1533,7 @@ export class LoopRunner extends TypedEventEmitter {
       if (status.trim() === "") {
         // Only loop bookkeeping is dirty (normal between iterations) — nothing
         // to revert.
-        return;
+        return ok({ reverted: false });
       }
       await execGit(this.projectPath, [
         "stash",
@@ -1493,11 +1548,11 @@ export class LoopRunner extends TypedEventEmitter {
         this.paths,
         `Reverted dirty working tree after item ${itemId} (stashed abandoned uncommitted work)`,
       );
+      return ok({ reverted: true });
     } catch (e) {
-      appendLog(
-        this.paths,
-        `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      const message = `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`;
+      appendLog(this.paths, message);
+      return err({ code: ErrorCodes.CONFLICT, message });
     }
   }
 
@@ -1634,6 +1689,25 @@ export class LoopRunner extends TypedEventEmitter {
     this.writeState("error", null, "error", message);
     // Include "error" so parseDoneFileState classifies the derived status ERROR.
     writeDoneFile(this.paths, `error: ${message}\n${this.buildSummary()}`);
+    return "exit";
+  }
+
+  /**
+   * Halt the loop when a git safety check fails: either a blocked item's
+   * dirty-tree rollback (revertAbandonedWork) errors, or the pre-iteration
+   * clean-baseline guard finds the tree unexpectedly dirty. Without this, the
+   * loop would silently continue and a later item's `git add -A` commit could
+   * sweep up a prior item's leftover, uncommitted files — breaking per-item
+   * commit isolation and desyncing backlog status from git history (#83).
+   * Modeled on haltForCircuitBreaker: writes an `error` state plus a DONE
+   * summary, emits a loop_error, and signals the caller to exit.
+   */
+  private haltForGitSafetyFailure(reason: string): "exit" {
+    appendLog(this.paths, reason);
+    this.emitEvent("loop_error", { error: reason });
+    this.writeState("error", null, "error", reason);
+    // Include "error" so parseDoneFileState classifies the derived status ERROR.
+    writeDoneFile(this.paths, `error: ${reason}\n${this.buildSummary()}`);
     return "exit";
   }
 

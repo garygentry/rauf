@@ -919,7 +919,11 @@ echo "RAUF_DONE"`,
 
     it("does not charge the iteration budget for an infra_error no-op", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task")]);
-      const counter = path.join(tmpDir, "attempt-count");
+      // Track the attempt count outside the project tree (in binDir, not
+      // tmpDir) — the pre-iteration clean-baseline guard (#83) would otherwise
+      // treat this file (mock-script instrumentation, not real agent output)
+      // as unexpected dirt before the infra_error retry's iteration.
+      const counter = path.join(binDir, "attempt-count");
       // First spawn fast-fails (infra_error, no banner); second succeeds.
       writeMockClaude(
         binDir,
@@ -1195,6 +1199,14 @@ echo "RAUF_DONE"`,
     it("recovers a committed-but-unsignalled item to done instead of blocking", async () => {
       setupProject(tmpDir, [pendingItem("001", "Recover me")]);
       fs.writeFileSync(path.join(tmpDir, ".gitignore"), RUNTIME_GITIGNORE);
+      // Commit it — the pre-iteration clean-baseline guard (#83) requires the
+      // tree to be clean (aside from loop bookkeeping) before an iteration can
+      // start, and an untracked .gitignore would otherwise itself count as
+      // unexpected dirt on iteration 1.
+      execSync("git add .gitignore && git commit -q -m 'add gitignore' --allow-empty", {
+        cwd: tmpDir,
+        stdio: "ignore",
+      });
 
       // The agent commits a proper `[rauf] 001:` change (staging everything, so
       // the tree is clean) but exits WITHOUT printing RAUF_DONE — the signal is
@@ -1242,6 +1254,14 @@ echo "work finished but no signal printed"`,
     it("does not recover (stays deferred) when no commit landed", async () => {
       setupProject(tmpDir, [pendingItem("001", "No commit")]);
       fs.writeFileSync(path.join(tmpDir, ".gitignore"), RUNTIME_GITIGNORE);
+      // Commit it — the pre-iteration clean-baseline guard (#83) requires the
+      // tree to be clean (aside from loop bookkeeping) before an iteration can
+      // start, and an untracked .gitignore would otherwise itself count as
+      // unexpected dirt on iteration 1.
+      execSync("git add .gitignore && git commit -q -m 'add gitignore' --allow-empty", {
+        cwd: tmpDir,
+        stdio: "ignore",
+      });
 
       // No signal, no commit — the runner must fall through to its normal
       // deferral after exhausting retries (clean exit code = genuine_retry).
@@ -1302,6 +1322,125 @@ echo "RAUF_BLOCKED:stopping here"`,
 
       // The REAL rauf backlog (loop bookkeeping) was preserved untouched.
       expect(fs.existsSync(path.join(tmpDir, ".rauf", "backlog.json"))).toBe(true);
+    });
+
+    it("halts the loop instead of continuing when the revert (git stash) itself fails (#83)", async () => {
+      // Two items: 001 will be blocked with abandoned work, and forced to fail
+      // its dirty-tree revert; 002 must NEVER be reached. Write against the OLD
+      // code (revertAbandonedWork returns void, its failure only logged) this
+      // test fails — the loop silently continues to 002 and completes it. It
+      // passes only once a failed revert halts the loop instead.
+      setupProject(tmpDir, [
+        pendingItem("001", "Leaves abandoned work, revert fails"),
+        pendingItem("002", "Must never run"),
+      ]);
+
+      const invocationCountFile = path.join(tmpDir, ".claude-invocations");
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${invocationCountFile}" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "${invocationCountFile}"
+if [ "$n" = "1" ]; then
+  mkdir -p "${tmpDir}/app"
+  printf 'half-finished\\n' > "${tmpDir}/app/feature.txt"
+  # Force the subsequent \`git stash push\` (run by the loop's revert step,
+  # AFTER this script exits) to fail, while leaving \`git status\` unaffected —
+  # the standard way to make git's own concurrent-write guard reject a write.
+  touch "${tmpDir}/.git/index.lock"
+  echo "RAUF_BLOCKED:stopping here"
+else
+  echo "RAUF_DONE"
+fi`,
+      );
+
+      const loopErrorEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
+      runner.on("loop_error", (e) => loopErrorEvents.push(e));
+      const result = await runner.start();
+
+      // The mock agent ran exactly once — 002 was never selected/spawned.
+      expect(fs.readFileSync(invocationCountFile, "utf-8").trim()).toBe("1");
+      expect(result.completedCount).toBe(0);
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const byId = Object.fromEntries(backlog.items.map((i) => [i.id, i]));
+      expect(byId["001"]?.status).toBe("blocked");
+      expect(byId["002"]?.status).toBe("pending");
+
+      // state.json ends in "error", not "complete" — the loop halted.
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("error");
+
+      // DONE file was written with a reason.
+      const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(done).toContain("error");
+      expect(done.toLowerCase()).toContain("revert");
+
+      // A loop_error event was emitted.
+      expect(loopErrorEvents.length).toBeGreaterThan(0);
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Failed to revert dirty tree after item 001");
+    });
+
+    it("halts before spawning the next iteration's agent when the tree is unexpectedly dirty", async () => {
+      // 001 completes cleanly (RAUF_DONE, committed). Once it's recorded as
+      // completed, inject a stray dirty file directly onto disk — simulating
+      // residue that slipped past a prior (successful) commit, e.g. from a
+      // source outside the loop's own bookkeeping. The pre-iteration
+      // clean-baseline guard must catch this and halt BEFORE 002's agent is
+      // ever spawned, rather than letting 002's own `git add -A` commit sweep
+      // the stray file into its commit.
+      setupProject(tmpDir, [pendingItem("001", "First task"), pendingItem("002", "Second task")]);
+
+      const invocationCountFile = path.join(tmpDir, ".claude-invocations");
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${invocationCountFile}" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "${invocationCountFile}"
+echo "RAUF_DONE"`,
+      );
+
+      const strayFile = path.join(tmpDir, "stray-leftover.txt");
+      const loopErrorEvents: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 5 });
+      runner.on("loop_error", (e) => loopErrorEvents.push(e));
+      runner.on("iteration_start", (e) => {
+        if ((e as Extract<LoopEvent, { type: "iteration_start" }>).iteration === 2) {
+          fs.writeFileSync(strayFile, "leftover from somewhere else\n");
+        }
+      });
+
+      const result = await runner.start();
+
+      // Only 001's agent was ever spawned — 002's agent never ran.
+      expect(fs.readFileSync(invocationCountFile, "utf-8").trim()).toBe("1");
+      expect(result.completedCount).toBe(1);
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      const byId = Object.fromEntries(backlog.items.map((i) => [i.id, i]));
+      expect(byId["001"]?.status).toBe("done");
+      // 002 was marked in_progress by the guard's call site (which runs right
+      // after in_progress is set, before the agent spawns) but never completed.
+      expect(byId["002"]?.status).toBe("in_progress");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("error");
+
+      const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+      expect(done).toContain("error");
+      expect(done.toLowerCase()).toContain("not clean");
+
+      expect(loopErrorEvents.length).toBeGreaterThan(0);
+
+      // The stray file is untouched (not silently swept into a commit).
+      expect(fs.existsSync(strayFile)).toBe(true);
     });
   });
 
@@ -1864,6 +2003,14 @@ fi`,
       marker.options.provider = "fake-primary";
       marker.options.providerConfig = { sandboxMode: "danger-full-access" }; // no "binary" field
       fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+      // Commit the marker edit — the pre-iteration clean-baseline guard (#83)
+      // requires a clean tree (aside from loop bookkeeping) before iteration 1
+      // can start, and .rauf.json is project config (like backlog.json), not
+      // loop-ephemeral bookkeeping, so an uncommitted edit would count as dirt.
+      execSync("git add .rauf.json && git commit -q -m 'update marker' --allow-empty", {
+        cwd: tmpDir,
+        stdio: "ignore",
+      });
 
       const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
       const result = await runner.start();
