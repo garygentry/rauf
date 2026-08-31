@@ -117,7 +117,12 @@ export function formatEvent(ev: PersistedEvent): string {
         `${ev.itemsCreated} item(s) created ${c.dim(`— ${clip(ev.summary)}`)}`,
       );
     case "review_failed":
-      return line(c.red("review failed"), c.dim(clip(ev.reason)));
+      return line(
+        c.red("review failed"),
+        (ev.stdoutTail ?? ev.stderrTail)
+          ? `${clip(ev.reason)} ${c.dim("(diagnostic tail captured — see rauf.log)")}`
+          : c.dim(clip(ev.reason)),
+      );
     case "llm_tool_activity": {
       // Tool-end records often carry a placeholder name ("unknown") — the runner
       // can't always pair the close back to a name. Show the name only when it's
