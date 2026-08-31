@@ -5,6 +5,7 @@ import * as os from "node:os";
 
 import {
   detectProfile,
+  detectVerificationWarnings,
   getPreset,
   mergeProfileOverrides,
   PRESETS,
@@ -692,5 +693,106 @@ describe("detectProfile — edge cases", () => {
     expect(profile.stack).toBe("unknown");
     expect(profile.packageManager).toBeNull();
     expect(profile.monorepo).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// detectProfile — dispatcher script fallback (GH#85)
+// ═══════════════════════════════════════════════════════════════════
+
+/** Write an executable-looking scripts/verify.sh dispatcher */
+function writeDispatcherScript(dir: string): void {
+  fs.mkdirSync(path.join(dir, "scripts"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "scripts", "verify.sh"),
+    '#!/usr/bin/env bash\necho "verify $1"\n',
+  );
+}
+
+describe("detectProfile — dispatcher script fallback", () => {
+  it("falls back to scripts/verify.sh when normal detection finds nothing", () => {
+    writeDispatcherScript(tmpDir);
+
+    const profile = detectProfile(tmpDir);
+
+    expect(profile.verify).not.toBe("");
+    expect(profile.commands.test).toBe("bash scripts/verify.sh test");
+    expect(profile.commands.typecheck).toBe("bash scripts/verify.sh typecheck");
+    expect(profile.commands.lint).toBe("bash scripts/verify.sh lint");
+    expect(profile.commands.build).toBe("bash scripts/verify.sh build");
+    expect(profile.commands.format).toBe("bash scripts/verify.sh format");
+    expect(profile.verify).toContain("bash scripts/verify.sh");
+  });
+
+  it("does not fire when normal detection already produced commands (a named test script wins)", () => {
+    writePackageJson(tmpDir, { scripts: { test: "vitest" } });
+    writeDispatcherScript(tmpDir);
+
+    const profile = detectProfile(tmpDir);
+
+    expect(profile.commands.test).toBe("npm run test");
+    expect(profile.commands.typecheck).toBeNull();
+    expect(profile.verify).not.toContain("scripts/verify.sh");
+  });
+
+  it("stack remains unknown even when the dispatcher fallback fires", () => {
+    writeDispatcherScript(tmpDir);
+
+    const profile = detectProfile(tmpDir);
+    expect(profile.stack).toBe("unknown");
+  });
+
+  it("does not fire when no dispatcher script exists (empty verify stays empty)", () => {
+    const profile = detectProfile(tmpDir);
+    expect(profile.verify).toBe("");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// detectVerificationWarnings (GH#85)
+// ═══════════════════════════════════════════════════════════════════
+
+describe("detectVerificationWarnings", () => {
+  it("warns when the profile has no verification commands at all", () => {
+    const profile = detectProfile(tmpDir); // empty dir → all null, verify === ""
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("No verification commands detected");
+    expect(warnings[0]).toContain("--test-cmd");
+    expect(warnings[0]).toContain("rauf profile set");
+  });
+
+  it("warns (more mildly) when commands were dispatcher-inferred", () => {
+    writeDispatcherScript(tmpDir);
+    const profile = detectProfile(tmpDir);
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("dispatcher script");
+    expect(warnings[0]).toContain("scripts/verify.sh");
+    expect(warnings[0]).not.toContain("No verification commands detected");
+  });
+
+  it("does not warn for a normally-detected, non-empty profile", () => {
+    writePackageJson(tmpDir, { scripts: { test: "vitest", lint: "eslint ." } });
+    const profile = detectProfile(tmpDir);
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("does not warn when a dispatcher script exists but wasn't actually used", () => {
+    // Dispatcher present, but normal detection already found commands — the
+    // profile's commands don't start with "bash scripts/verify.sh".
+    writePackageJson(tmpDir, { scripts: { test: "vitest" } });
+    writeDispatcherScript(tmpDir);
+    const profile = detectProfile(tmpDir);
+
+    const warnings = detectVerificationWarnings(tmpDir, profile);
+    expect(warnings).toEqual([]);
   });
 });

@@ -36,6 +36,9 @@ const RAUF_MD_VARS: Record<string, string> = {
   lintCommand: "pnpm -r lint",
   buildCommand: "pnpm build",
   formatCommand: "pnpm run format:check",
+  // Empty when verify is non-empty (the normal case here) — buildTemplateVars()
+  // only populates this with an admonition when profile.verify === "".
+  verificationWarning: "",
 };
 
 /** Variables that greenfield.ts's scaffoldClaudeMd() provides */

@@ -75,7 +75,13 @@ export async function handleProfileDetect(ctx: CommandContext): Promise<number> 
     return ExitCode.SUCCESS;
   }
 
-  print(c.bold("Detected Profile (read-only — use 'rauf profile set' or 'rauf update' to apply):"));
+  print(
+    c.bold(
+      "Detected Profile (read-only — apply with 'rauf profile set <path> <key> <value>' for " +
+        "one field, or re-run 'rauf install <path>' to re-detect everything and resync RAUF.md's " +
+        "managed section):",
+    ),
+  );
   print("");
   printProfile(detected);
   return ExitCode.SUCCESS;

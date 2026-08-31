@@ -1144,3 +1144,71 @@ describe("install — .gitignore entries", () => {
     expect(gitignore).toContain("**/.rauf/.loop.lock");
   });
 });
+
+// ─── verification-warnings (GH#85) ────────────────────────────────
+
+describe("install / update — no-verification-commands warning", () => {
+  it("install into a genuinely commandless project warns and leaves profile.verify empty", () => {
+    // No package.json, no other indicator files, no dispatcher script.
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.profile.verify).toBe("");
+    expect(result.value.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
+      true,
+    );
+  });
+
+  it("RAUF.md carries the empty-profile admonition when verify is empty", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    install(tmpDir, installOpts());
+
+    const raufMd = fs.readFileSync(path.join(tmpDir, ".rauf", "RAUF.md"), "utf-8");
+    expect(raufMd).toContain("No verification commands are configured");
+  });
+
+  it("does not warn when the project has detected verification commands", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+
+    const result = install(tmpDir, installOpts());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
+      false,
+    );
+  });
+
+  it("update() surfaces the same warning for a marker whose stored profile is empty", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    // Simulate a stale marker whose stored profile has no verification commands
+    // (e.g. hand-edited, or installed before this warning existed).
+    const before = readMarkerFile(tmpDir);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    writeMarkerFile(tmpDir, {
+      ...before.value,
+      profile: {
+        stack: "unknown",
+        packageManager: null,
+        monorepo: false,
+        commands: { test: null, typecheck: null, lint: null, build: null, format: null },
+        verify: "",
+      },
+    });
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
+      true,
+    );
+  });
+});

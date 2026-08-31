@@ -333,6 +333,34 @@ describe("help command", () => {
     );
   });
 
+  it("renders the documented override flags for `help install` (GH#85)", async () => {
+    const cmd = findCommand("help")!;
+    const ctx = makeCtx({ args: ["install"] });
+    const output = await captureOutput(async () => {
+      const code = await cmd.handler!(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+    expect(output.stdout).toContain("Flags:");
+    expect(output.stdout).toContain("--test-cmd");
+    expect(output.stdout).toContain("--typecheck-cmd");
+    expect(output.stdout).toContain("--lint-cmd");
+    expect(output.stdout).toContain("--build-cmd");
+    expect(output.stdout).toContain("--format-cmd");
+  });
+
+  it("renders the documented override flags for `help init` (GH#85)", async () => {
+    const cmd = findCommand("help")!;
+    const ctx = makeCtx({ args: ["init"] });
+    const output = await captureOutput(async () => {
+      const code = await cmd.handler!(ctx);
+      expect(code).toBe(ExitCode.SUCCESS);
+    });
+    expect(output.stdout).toContain("Flags:");
+    expect(output.stdout).toContain("--test-cmd");
+    expect(output.stdout).toContain("--stack");
+    expect(output.stdout).toContain("--seed");
+  });
+
   it("returns USAGE for unknown command in help", async () => {
     const cmd = findCommand("help")!;
     const ctx = makeCtx({ args: ["nonexistent"] });

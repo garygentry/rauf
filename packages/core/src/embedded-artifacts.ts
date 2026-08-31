@@ -28,6 +28,7 @@ Individual commands:
 - Format: \`{{formatCommand}}\`
 
 If any command is not configured (empty), skip it.
+{{verificationWarning}}
 <!-- rauf:managed:end -->
 
 ## Workflow

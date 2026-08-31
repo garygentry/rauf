@@ -66,12 +66,86 @@ export function detectProfile(projectPath: string): ProjectProfile {
   const monorepo = detectMonorepo(resolved, stack);
 
   // Derive commands
-  const commands = deriveCommands(resolved, stack, packageManager);
+  let commands = deriveCommands(resolved, stack, packageManager);
 
   // Build composite verify command
-  const verify = buildVerifyCommand(commands);
+  let verify = buildVerifyCommand(commands);
+
+  // Last-resort fallback: normal detection found nothing. Probe for a
+  // project-owned verification dispatcher script (e.g. this repo's own
+  // scripts/verify.sh pattern) and, if present, guess conventional
+  // subcommand names. Purely additive — never overrides a normal match.
+  if (verify === "") {
+    const dispatcherScript = detectDispatcherScript(resolved);
+    if (dispatcherScript) {
+      commands = deriveDispatcherCommands(dispatcherScript);
+      verify = buildVerifyCommand(commands);
+    }
+  }
 
   return { stack, packageManager, monorepo, commands, verify };
+}
+
+// ─── detectDispatcherScript ──────────────────────────────────────
+//
+// Fixed-allowlist existence check for a project-owned verification
+// dispatcher script. Does NOT parse the script's contents — this is a
+// deliberate, bounded guess, not verification the script supports the
+// guessed subcommands.
+
+const DISPATCHER_SCRIPT_CANDIDATES = ["scripts/verify.sh", "scripts/verify"];
+
+function detectDispatcherScript(projectPath: string): string | null {
+  for (const candidate of DISPATCHER_SCRIPT_CANDIDATES) {
+    if (fileExists(path.join(projectPath, candidate))) return candidate;
+  }
+  return null;
+}
+
+/** Derive commands as `bash <script> <subcommand>` — invoked via `bash`, not the
+ * bare path, so it's portable across checkouts where the executable bit didn't
+ * survive `git clone`. */
+function deriveDispatcherCommands(dispatcherScript: string): ProfileCommands {
+  return {
+    test: `bash ${dispatcherScript} test`,
+    typecheck: `bash ${dispatcherScript} typecheck`,
+    lint: `bash ${dispatcherScript} lint`,
+    build: `bash ${dispatcherScript} build`,
+    format: `bash ${dispatcherScript} format`,
+  };
+}
+
+// ─── detectVerificationWarnings ──────────────────────────────────
+//
+// Operator-visible warnings for a profile whose verification commands are
+// empty, or were only guessed via the dispatcher-script fallback above.
+
+export function detectVerificationWarnings(projectPath: string, profile: ProjectProfile): string[] {
+  if (profile.verify === "") {
+    return [
+      "No verification commands detected — RAUF.md will tell the agent to skip verification " +
+        "entirely. Set commands with --test-cmd/--typecheck-cmd/--lint-cmd/--build-cmd/--format-cmd " +
+        "(rauf install/init) or 'rauf profile set <path> <key> <value>'.",
+    ];
+  }
+
+  const resolved = path.resolve(projectPath);
+  const dispatcherScript = detectDispatcherScript(resolved);
+  if (!dispatcherScript) return [];
+
+  const prefix = `bash ${dispatcherScript}`;
+  const { test, typecheck, lint, build, format } = profile.commands;
+  const dispatcherInferred = [test, typecheck, lint, build, format].some(
+    (cmd) => cmd !== null && cmd.startsWith(prefix),
+  );
+
+  if (!dispatcherInferred) return [];
+
+  return [
+    `Verification commands were inferred from the dispatcher script "${dispatcherScript}" ` +
+      "(subcommand names guessed, not read from the script) — review with " +
+      "'rauf profile show <path>' and adjust with 'rauf profile set <path> <key> <value>' if needed.",
+  ];
 }
 
 // ─── detectPackageManager ────────────────────────────────────────

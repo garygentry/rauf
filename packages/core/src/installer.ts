@@ -13,7 +13,12 @@ import {
   type MarkerOptions,
 } from "./schemas.js";
 import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
-import { detectProfile, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
+import {
+  detectProfile,
+  detectVerificationWarnings,
+  mergeProfileOverrides,
+  type ProfileOverrides,
+} from "./profile.js";
 import { renderTemplate, updateSentinelBlock } from "./template.js";
 import {
   mergeClaudeMd,
@@ -289,6 +294,11 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     ? mergeProfileOverrides(detectProfile(resolved), options.profileOverrides)
     : detectProfile(resolved);
 
+  // Operator-visible warning when verification is fully empty (or only
+  // dispatcher-inferred) — the operator would otherwise have no signal that
+  // RAUF.md will tell the agent to skip verification entirely.
+  warnings.push(...detectVerificationWarnings(resolved, profile));
+
   // 3. Create .rauf/ directory
   const raufDir = path.join(resolved, DOT_RAUF);
   const dirResult = ensureDir(raufDir);
@@ -479,6 +489,12 @@ export function update(
 
   // Re-render RAUF.md managed sections
   const profile = marker.profile;
+
+  // Surface a stale/empty verification profile on `update` too — an
+  // already-installed project's marker may predate this warning, or its
+  // commands may have gone empty since install (e.g. hand-edited).
+  warnings.push(...detectVerificationWarnings(resolved, profile));
+
   const templateVars = buildTemplateVars(profile);
   const raufMdResult = deployRaufMd(path.join(resolved, DOT_RAUF), templateVars, artifactsDir);
   if (!raufMdResult.ok) return raufMdResult;
@@ -691,6 +707,12 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
     formatCommand: profile.commands.format,
     verifyCommand: profile.verify,
     stackDescription: profile.stack,
+    verificationWarning:
+      profile.verify === ""
+        ? "\n> **No verification commands are configured.** Every command above is empty, so " +
+          "completing an item currently requires no automated check. Configure commands via " +
+          "`rauf profile set <path> <key> <value>` or reinstall with `--test-cmd`/`--typecheck-cmd`/etc.\n"
+        : "",
   };
 }
 
