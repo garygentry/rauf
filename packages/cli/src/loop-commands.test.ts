@@ -1296,6 +1296,73 @@ describe("loop run --detached", () => {
     }
   });
 
+  it("--retry-blocked unblocks a blocked item under a custom --backlog <subdir> (#107)", async () => {
+    // Regression: unblockIfRequested used to re-extract --backlog from the
+    // shared flags Map internally, but extractStringFlag deletes the flag on
+    // read — and the caller (here) already extracted it first, so the
+    // internal re-extraction always saw null and silently resolved the
+    // default `.rauf/` root instead of the custom subdir, no-oping entirely.
+    const { port, close, startCalls } = await startMockServer();
+    try {
+      writeServerState({ pid: process.pid, port, startedAt: new Date().toISOString() });
+      const proj = path.join(tmpDir, "proj-retry-blocked");
+      const customBacklog = "specs/my-backlog";
+      const backlogDir = path.join(proj, customBacklog);
+      fs.mkdirSync(backlogDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(backlogDir, "backlog.json"),
+        JSON.stringify(
+          {
+            schemaVersion: "1",
+            project: "p",
+            description: "d",
+            items: [
+              {
+                id: "001",
+                type: "feature",
+                priority: 1,
+                title: "Blocked task",
+                description: "desc",
+                acceptanceCriteria: ["Tests pass"],
+                status: "blocked",
+                blockedReason: "needs a decision",
+                completedAt: null,
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+      );
+
+      const ctx = makeCtx({
+        args: [proj],
+        flags: new Map<string, string | true>([
+          ["detached", true],
+          ["backlog", customBacklog],
+          ["retry-blocked", true],
+        ]),
+      });
+
+      let code = -1;
+      const out = await captureOutput(async () => {
+        code = await handleLoopRun(ctx);
+      });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(startCalls.length).toBe(1);
+      expect(out.stdout).toContain("Unblocked 1 items: 001");
+
+      const finalBacklog = JSON.parse(
+        fs.readFileSync(path.join(backlogDir, "backlog.json"), "utf-8"),
+      ) as { items: Array<{ id: string; status: string }> };
+      expect(finalBacklog.items[0]?.status).toBe("pending");
+    } finally {
+      removeServerState();
+      await close();
+    }
+  });
+
   it("forwards --agent <id> as body.provider in the POST body (REQ-SEL-01)", async () => {
     const { port, close, startCalls } = await startMockServer();
     try {

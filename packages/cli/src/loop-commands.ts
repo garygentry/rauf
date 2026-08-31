@@ -379,17 +379,29 @@ async function applyCreateLoopBranch(
 
 /**
  * Apply the `--retry-blocked` flag: unblock previously-blocked items before the
- * run. Resolves the backlog paths from `--backlog` internally so both the
- * in-process and detached paths share one implementation. Best-effort — a path
- * resolution failure is silently skipped (the run proceeds without unblocking).
+ * run. Takes the already-extracted `--backlog` value rather than re-reading it
+ * from `ctx.flags` — `extractStringFlag`/`extractBoolFlag` destructively delete
+ * the flag from the shared flags Map on read, and both call sites already
+ * extract `--backlog` for their own use before calling this, so a second,
+ * internal extraction would always see it already gone (#107). A path
+ * resolution failure is now warned, not silently skipped.
  */
-function unblockIfRequested(ctx: CommandContext, projectPath: string): void {
+function unblockIfRequested(
+  ctx: CommandContext,
+  projectPath: string,
+  backlogFlag: string | null,
+): void {
   if (!extractBoolFlag(ctx.flags, "retry-blocked")) return;
-  const backlogFlag = extractStringFlag(ctx.flags, "backlog");
   const brResult = resolveBacklogRoot(projectPath, backlogFlag ?? undefined);
-  if (!brResult.ok) return;
+  if (!brResult.ok) {
+    warn(`--retry-blocked: could not resolve backlog root: ${brResult.error.message}`);
+    return;
+  }
   const prResult = resolveBacklogPaths(projectPath, brResult.value);
-  if (!prResult.ok) return;
+  if (!prResult.ok) {
+    warn(`--retry-blocked: could not resolve backlog paths: ${prResult.error.message}`);
+    return;
+  }
   const ubResult = unblockItems(prResult.value);
   if (ubResult.ok && ubResult.value.unblockedCount > 0) {
     info(
@@ -407,7 +419,7 @@ async function runDetached(ctx: CommandContext): Promise<number> {
   // before the server request, and both shared with in-process `loop run`.
   const branchExit = await applyCreateLoopBranch(ctx, projectPath);
   if (branchExit !== null) return branchExit;
-  unblockIfRequested(ctx, projectPath);
+  unblockIfRequested(ctx, projectPath, backlogFlag);
 
   // Auto-start server if not running
   const running = await ensureServerRunning(ctx);
@@ -882,7 +894,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // supervising session can detect the pause and inject an answer (item 008).
   const pauseOnNeedsHuman = extractBoolFlag(ctx.flags, "pause-on-needs-human");
 
-  unblockIfRequested(ctx, projectPath);
+  unblockIfRequested(ctx, projectPath, backlogFlag);
 
   const options = LoopStartOptionsSchema.parse({
     maxIterations: iterations,
