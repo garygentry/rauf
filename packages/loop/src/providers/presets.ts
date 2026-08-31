@@ -33,6 +33,12 @@ import { registerAgent } from "./registry.js";
  *    sandboxed temp file and a short positional indirection instruction pointing at it is passed
  *    instead — mirroring the handoff-file pattern used by the `cursor-agent` adapter in the
  *    `pi-subagents` package, which deliberately avoids stdin for this CLI for the same reason.
+ *    ARGV ORDER — the engine always places `buildArgs(ctx)`'s output BEFORE `nonInteractive`, so
+ *    this preset's positional indirection string now comes before `--print --force [--model]`,
+ *    reversing the flags-then-prompt order the original "arg"-delivery shape used. Real-CLI
+ *    argv-verified (2026-08-31, cursor-agent 2026.06.26): both orderings reach the identical
+ *    "Authentication required" error — cursor-agent's parser does not require flags before the
+ *    positional prompt.
  *  - `pi` (Pi 0.81.1) — VERIFIED end-to-end. Both the sentinel shape (`pi -p --approve
  *    --no-session --no-tools "Reply with exactly RAUF_DONE"` exits 0, prints exactly `RAUF_DONE`)
  *    AND the production shape with tools enabled (`pi -p --approve --no-session "Create a file …
@@ -82,8 +88,11 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     // prompt is written to a sandboxed temp file by the engine; this positional argument is just
     // a short pointer at it.
     promptDelivery: "file",
+    // ctx.promptFile is only unset if this config's promptDelivery were something other than
+    // "file" — it's always populated here by the engine before buildArgs runs. Asserted (not
+    // silently interpolated as "undefined") so a future config error fails loudly.
     buildArgs: (ctx) => [
-      `Read the complete task instructions from the file at ${ctx.promptFile} and follow them completely.`,
+      `Read the complete task instructions from the file at ${ctx.promptFile!} and follow them completely.`,
     ],
     // `--print` is the headless/non-interactive trigger (prints responses to stdout for scripts);
     // `--force` auto-approves tool calls. Verified against cursor-agent 2026.06.26 (2026-06-27).
