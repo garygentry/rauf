@@ -14,7 +14,7 @@ apply whichever coding agent (Claude, Codex, Gemini, …) drives the iteration.
 ### Working
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
-6. Run the verification command before considering work complete
+6. Run the verification command before considering work complete (run it in the foreground and wait for it to finish — never background it)
 
 ### Completing
 7. If all acceptance criteria pass: output `RAUF_DONE` as your final line

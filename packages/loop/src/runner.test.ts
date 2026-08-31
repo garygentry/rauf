@@ -586,6 +586,219 @@ else echo "RAUF_DONE"; fi`,
       expect(state.deferredItems).toContain("001");
       expect(state.blockedItems).not.toContain("001");
     });
+
+    it("review pass retries a missing signal once and recovers within maxRetries", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn -> work item done. 2nd spawn (review pass attempt 1) -> no
+      // recognized signal. 3rd spawn (review pass attempt 2, still within
+      // maxRetries=2) -> RAUF_DONE, a clean review.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then echo "RAUF_DONE"
+elif [ "$n" = "2" ]; then echo "no recognized signal in this output"
+else echo "RAUF_DONE"; fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 2 });
+      runner.on("review_completed", (e) => events.push(e));
+      runner.on("review_failed", (e) => events.push(e));
+
+      await runner.start();
+
+      // The retry recovered — the review pass ends clean, it never fails.
+      expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "review_completed")).toHaveLength(1);
+
+      // No dedicated retry event exists by design — the retry is logged instead.
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).toContain("Review pass: no recognized signal");
+      expect(logContent).toContain("retrying");
+    });
+
+    it("review pass exhausts retries and surfaces stdout/stderr tails on review_failed", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn -> work item done. 2nd + 3rd spawns (review pass attempts 1
+      // and 2, exhausting maxRetries=2) both produce no recognized signal,
+      // each with a distinguishable stdout/stderr marker.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then
+  echo "RAUF_DONE"
+else
+  echo "review-stdout-marker-attempt-$n"
+  echo "review-stderr-marker-attempt-$n" >&2
+fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 2 });
+      runner.on("review_failed", (e) => events.push(e));
+
+      await runner.start();
+
+      expect(events).toHaveLength(1);
+      const failed = events[0] as Extract<LoopEvent, { type: "review_failed" }>;
+      expect(failed.reason).toContain("unexpected signal");
+      // The tail comes from the FINAL (2nd, n=3) attempt.
+      expect(failed.stdoutTail).toBeTruthy();
+      expect(failed.stdoutTail).toContain("review-stdout-marker-attempt-3");
+      expect(failed.stderrTail).toBeTruthy();
+      expect(failed.stderrTail).toContain("review-stderr-marker-attempt-3");
+
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).toContain("review-stdout-marker-attempt-3");
+      expect(logContent).toContain("review-stderr-marker-attempt-3");
+    });
+
+    it("retries a review spawn from a non-checkUsage provider on a false usage_limited substring match", async () => {
+      // 1st spawn (work item) -> RAUF_DONE. 2nd spawn (review pass attempt 1) ->
+      // no recognized signal, but the text contains "rate limit" — a substring
+      // that classifyExit treats as a usage-limit banner. This provider has no
+      // checkUsage capability, so that classification must be downgraded to
+      // genuine_retry (mirroring the work-iteration path) and retried, rather
+      // than failing immediately as a false usage-limit death. 3rd spawn
+      // (review pass attempt 2, still within maxRetries=2) -> RAUF_DONE, clean.
+      let execCount = 0;
+      registerAgent({
+        id: "no-usage-review",
+        displayName: "no-usage-review",
+        detect: async () => ({ available: true }),
+        factory: (): LLMProvider => ({
+          id: "no-usage-review",
+          displayName: "no-usage-review",
+          async execute() {
+            execCount++;
+            if (execCount === 2) {
+              return ok({
+                stdout: "Note: hit a rate limit in the example docs\n",
+                stderr: "",
+                exitCode: 0,
+                timedOut: false,
+                durationMs: 1,
+              });
+            }
+            return ok({
+              stdout: "RAUF_DONE\n",
+              stderr: "",
+              exitCode: 0,
+              timedOut: false,
+              durationMs: 1,
+            });
+          },
+          validateCredentials() {
+            return ok(undefined);
+          },
+          // Deliberately no checkUsage — this provider has no usage semantics.
+        }),
+      });
+
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "no-usage-review",
+        review: true,
+        maxRetries: 2,
+      });
+      runner.on("review_failed", (e) => events.push(e));
+      runner.on("review_completed", (e) => events.push(e));
+
+      await runner.start();
+
+      expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "review_completed")).toHaveLength(1);
+      expect(execCount).toBe(3);
+
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).toContain("retrying");
+    });
+
+    it("does not spawn another review attempt after cancellation is observed mid-retry", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn (work item) -> RAUF_DONE. 2nd spawn (review pass attempt 1) ->
+      // writes CANCEL then exits with no recognized signal (a genuine_retry
+      // exit that would normally be retried, maxRetries=5 well above what's
+      // needed here). The retry loop must observe the CANCEL file at the top
+      // of the next iteration and stop — no 3rd spawn.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then
+  echo "RAUF_DONE"
+else
+  touch "${tmpDir}/.rauf/CANCEL"
+  echo "no recognized signal in this output"
+fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 5 });
+      runner.on("review_failed", (e) => events.push(e));
+      runner.on("review_completed", (e) => events.push(e));
+
+      await runner.start();
+
+      const calls = Number(
+        fs.readFileSync(path.join(tmpDir, ".rauf", ".claude_calls"), "utf-8").trim(),
+      );
+      expect(calls).toBe(2);
+      expect(events.filter((e) => e.type === "review_completed")).toHaveLength(0);
+      expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+    }, 15_000);
+
+    it("redacts a literal signal-shaped token in the review_failed stdout/stderr tails", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      // 1st spawn (work item) -> RAUF_DONE. 2nd spawn (review pass, maxRetries=1
+      // so it fails after a single attempt) -> output containing literal
+      // RAUF_* signal-shaped tokens mid-line. The emitted tails must have those
+      // tokens redacted (matching the existing "Signal text" preview
+      // convention), not leaked raw into logs/events.
+      writeMockClaude(
+        binDir,
+        `COUNT_FILE="${tmpDir}/.rauf/.claude_calls"
+n=$(cat "$COUNT_FILE" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "$COUNT_FILE"
+if [ "$n" = "1" ]; then
+  echo "RAUF_DONE"
+else
+  echo "unexpected RAUF_BLOCKED marker mid-output"
+  echo "leftover RAUF_DONE trace" >&2
+fi`,
+      );
+
+      const events: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 1 });
+      runner.on("review_failed", (e) => events.push(e));
+
+      await runner.start();
+
+      expect(events).toHaveLength(1);
+      const failed = events[0] as Extract<LoopEvent, { type: "review_failed" }>;
+      expect(failed.stdoutTail).toBeTruthy();
+      expect(failed.stdoutTail).not.toContain("RAUF_BLOCKED");
+      expect(failed.stdoutTail).toContain("RAUF·BLOCKED");
+      expect(failed.stderrTail).toBeTruthy();
+      expect(failed.stderrTail).not.toContain("RAUF_DONE");
+      expect(failed.stderrTail).toContain("RAUF·DONE");
+
+      const logContent = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(logContent).not.toContain("RAUF_BLOCKED marker");
+      expect(logContent).toContain("RAUF·BLOCKED marker");
+    });
   });
 
   describe("model resolution", () => {
