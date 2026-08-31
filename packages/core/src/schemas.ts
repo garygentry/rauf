@@ -458,11 +458,13 @@ export const LoopStartOptionsSchema = z.object({
    * reconciliation edits backlog.json, and a needs-human pause deliberately
    * leaves an in-progress item's work uncommitted for a human to inspect. When
    * true, the runner's pre-iteration clean-baseline guard (#83/#105) is
-   * skipped for the run, mirroring how `checkLoopPreconditions({ allowDirty })`
-   * already relaxes the CLI's launch-time dirty-tree guard for the same
-   * relaunch. Branch protection and every OTHER safety check are unaffected —
-   * this only widens what the clean-baseline guard tolerates. Default
-   * (unset/false): unchanged, the guard runs on every iteration as before.
+   * skipped for the FIRST iteration that reaches it after this relaunch only
+   * (#109) — not for the run's whole duration — mirroring how
+   * `checkLoopPreconditions({ allowDirty })` already relaxes the CLI's
+   * launch-time dirty-tree guard for the same relaunch. Branch protection and
+   * every OTHER safety check are unaffected — this only widens what the
+   * clean-baseline guard tolerates, and only once. Default (unset/false):
+   * unchanged, the guard runs on every iteration as before.
    */
   allowDirty: z.boolean().optional(),
 });

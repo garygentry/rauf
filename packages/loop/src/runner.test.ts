@@ -1896,6 +1896,85 @@ fi`,
       expect(state.status).not.toBe("error");
     });
 
+    it("scopes allowDirty to the first post-resume iteration only, not the whole run (#109)", async () => {
+      // allowDirty must excuse the resumed item's own intentionally-dirty tree
+      // (bug 2 above) WITHOUT silently disabling the guard for the rest of the
+      // run: a later, unrelated item hitting an unexpected dirty tree (e.g. a
+      // failed revert that slipped through undetected) must still halt.
+      setupProject(tmpDir, [
+        pendingItem("001", "Needs a decision"),
+        pendingItem("002", "Second task"),
+      ]);
+
+      const counter = path.join(tmpDir, ".claude-invocations");
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then
+  echo "investigation notes" > "${tmpDir}/notes.txt"
+  echo "RAUF_NEEDS_HUMAN:Which approach?"
+else
+  echo "RAUF_DONE"
+fi`,
+      );
+
+      // First run: pauses on needs_human for item 001, leaving notes.txt uncommitted.
+      const firstRunner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        pauseOnNeedsHuman: true,
+      });
+      const firstResult = await firstRunner.start();
+      expect(firstResult.pausedReason).toBe("needs_human");
+
+      const backlogPath = path.join(tmpDir, ".rauf", "backlog.json");
+      const pausedBacklog: Backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+      pausedBacklog.items[0]!.status = "pending";
+      pausedBacklog.items[0]!.needsHuman = false;
+      delete pausedBacklog.items[0]!.blockedReason;
+      fs.writeFileSync(backlogPath, JSON.stringify(pausedBacklog, null, 2));
+
+      // Relaunch with allowDirty, mirroring `rauf resume`. Once item 002 is
+      // selected (item 001, the item the resume is actually for, has already
+      // completed and committed cleanly), drop an untracked file into the
+      // tree BEFORE the guard's git-status check runs — simulating a
+      // slipped-through-undetected contamination that has nothing to do with
+      // the resume. If allowDirty is scoped correctly, the guard must still
+      // catch this before item 002's agent spawns.
+      const loopErrorEvents: LoopEvent[] = [];
+      const resumeRunner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        allowDirty: true,
+      });
+      resumeRunner.on("loop_error", (e) => loopErrorEvents.push(e));
+      resumeRunner.on("item_selected", (e) => {
+        if (e.itemId === "002") {
+          fs.writeFileSync(path.join(tmpDir, "stray-contamination.txt"), "oops");
+        }
+      });
+      const resumeResult = await resumeRunner.start();
+
+      // Item 001 completed normally (allowDirty suppressed the guard exactly
+      // once, for its own resumed dirt) — but item 002 never ran: the guard
+      // caught the stray file and halted the loop instead of silently
+      // continuing.
+      expect(resumeResult.completedCount).toBe(1);
+      expect(loopErrorEvents).toHaveLength(1);
+      expect(loopErrorEvents[0]?.error).toContain("Working tree is not clean");
+
+      const finalBacklog: Backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+      expect(finalBacklog.items[0]?.status).toBe("done");
+      // Marked in_progress before the guard check runs (guard fires after
+      // item-selection but before the agent spawns) — never reaches "done".
+      expect(finalBacklog.items[1]?.status).toBe("in_progress");
+
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("error");
+    });
+
     it("does not false-halt on an uncommitted .rauf.json profile edit (rauf profile set) (bug 3)", async () => {
       // `.rauf.json` is durable, versioned project config (tracked in this
       // very repo, not gitignored) — but the loop never auto-commits it.
