@@ -45,10 +45,10 @@ describe("preset configs", () => {
     expect(c.modelFlag?.("sonnet-4.6")).toEqual(["--model", "sonnet-4.6"]);
   });
 
-  it("pi: -p print mode + --approve --no-session, prompt as arg, --model <model>", () => {
+  it("pi: -p print mode + --approve --no-session, prompt via stdin, --model <model>", () => {
     const c = getPresetConfig("pi")!;
     expect(c.binary).toBe("pi");
-    expect(c.promptDelivery).toBe("arg");
+    expect(c.promptDelivery).toBe("stdin");
     expect(c.buildArgs({})).toEqual(["-p"]);
     expect(c.nonInteractive).toEqual(["--approve", "--no-session"]);
     expect(c.nonInteractive).not.toContain("--no-tools");

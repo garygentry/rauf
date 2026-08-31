@@ -113,6 +113,23 @@ describe("CliAgent", () => {
       expect(args).not.toContain("piped prompt");
     });
 
+    it("'stdin' delivers a large prompt (exceeding typical OS argv limits) via stdin, never argv", async () => {
+      // Regression for GH #90: a Pi-style preset passed the entire prompt as one argv element,
+      // which fails with E2BIG on large aggregated prompts (e.g. the post-loop review prompt).
+      // Sized well past typical per-argument limits (ARG_MAX is commonly ~128KB-2MB, but a single
+      // argv element can trip much smaller effective limits first).
+      const largePrompt = "x".repeat(500_000);
+      const agent = new CliAgent(
+        baseConfig({ promptDelivery: "stdin", buildArgs: () => [], modelFlag: undefined }),
+      );
+      await agent.execute(largePrompt, { timeoutMinutes: 1 });
+
+      const [, args, opts] = mockSpawn.mock.calls[0]!;
+      expect(opts.stdin).toBe(largePrompt);
+      expect(args).not.toContain(largePrompt);
+      expect(args.join(" ")).not.toContain(largePrompt);
+    });
+
     it("'arg' passes no stdin and appends the prompt", async () => {
       const agent = new CliAgent(baseConfig());
       await agent.execute("arg prompt", { timeoutMinutes: 1 });

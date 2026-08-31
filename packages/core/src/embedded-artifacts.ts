@@ -28,6 +28,13 @@ Individual commands:
 - Format: \`{{formatCommand}}\`
 
 If any command is not configured (empty), skip it.
+
+Do NOT background, \`nohup\`, or \`&\`-detach the verification command (or
+any command inside it). Run it in the foreground and wait for it to
+exit before reading its result or emitting your exit signal — a
+backgrounded verify command exits immediately with no output, which
+looks like a clean run and will be misread (or produce no signal at
+all, wasting a retry).
 <!-- rauf:managed:end -->
 
 ## Workflow
@@ -38,7 +45,7 @@ If any command is not configured (empty), skip it.
 3. Read the item's \`acceptanceCriteria\` — each must pass
 4. Read \`progress.md\` for context from previous iterations
 5. Implement the task
-6. Run verification: \`{{verifyCommand}}\`
+6. Run verification: \`{{verifyCommand}}\` (run it in the foreground and wait — do not background it)
 7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as \`[rauf] <id>: <title>\` after you signal \`RAUF_DONE\`).
 8. Output your exit signal on a line by itself, as your final line:
    - \`RAUF_DONE\` — all criteria met, verification passes
@@ -399,7 +406,7 @@ apply whichever coding agent (Claude, Codex, Gemini, …) drives the iteration.
 ### Working
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
-6. Run the verification command before considering work complete
+6. Run the verification command before considering work complete (run it in the foreground and wait for it to finish — never background it)
 
 ### Completing
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
@@ -449,7 +456,7 @@ When running as a rauf loop iteration, follow these operational rules:
 ### Working
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
-6. Run the verification command before considering work complete
+6. Run the verification command before considering work complete (run it in the foreground and wait for it to finish — never background it)
 
 ### Completing
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
@@ -532,7 +539,7 @@ When running as a rauf loop iteration, follow these operational rules:
 ### Working
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
-6. Run the verification command before considering work complete
+6. Run the verification command before considering work complete (run it in the foreground and wait for it to finish — never background it)
 
 ### Completing
 7. If all acceptance criteria pass: output \`RAUF_DONE\` as your final line
