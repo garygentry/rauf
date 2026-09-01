@@ -4,6 +4,9 @@
 
 ### Added
 
+- **Pi skill resources published in the npm package** — `@garygentry/rauf`'s npm-dist launcher
+  now ships `adapters/pi/` alongside the compiled binaries, so a `npx @garygentry/rauf` install
+  carries the Pi skill package too, not just the CLI. (#101)
 - **Configurable Codex provider sandbox/network/approval** — the built-in `codex` provider now
   reads a typed `providerConfig` block (`sandboxMode`, `networkAccess`, `approvalPolicy`,
   `extraArgs`), previously ignored entirely. See `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` §5.3.
@@ -35,6 +38,54 @@
   `-c sandbox_workspace_write.network_access=true` by default, matching `claude-cli`'s
   unconditional trust posture. Set `providerConfig.networkAccess: false` to restore the old
   fully-restricted behavior. (Closes #93.)
+
+### Fixed
+
+- **Pi provider prompts delivered via stdin to avoid `E2BIG`** — the `pi` preset passed the
+  entire prompt as a single argv element, which fails on large aggregated prompts (e.g. the
+  post-loop review prompt). Switched to `promptDelivery: "stdin"`, matching the `gemini`/
+  `copilot` presets. (#97)
+- **Cursor provider prompts delivered via a temp file, not argv** — same `E2BIG` exposure as
+  `pi`, fixed for the `cursor-agent` preset: the prompt is now written to a sandboxed temp
+  file and a short positional instruction pointing at it is passed as argv instead. (#113)
+- **Foreground-and-wait guidance for verify commands** — an iteration agent that backgrounds a
+  long verify command and exits before it finishes produced `Signal: none` and wasted a retry
+  even though its own work was correct. `RAUF.md`'s managed verification section and the
+  ADDON/GREENFIELD templates now warn against backgrounding verify commands explicitly. (#99)
+- **Review pass now retries on a missing/unclassified signal** — `--review` treated any
+  unclassified signal (including "none") as an immediate hard failure with no retry, unlike
+  normal work iterations. It now applies the same bounded-retry policy, and the eventual
+  `review_failed` event/log carries a truncated stdout/stderr diagnostic tail. (#102)
+- **`process.exitCode` instead of `process.exit()` to prevent stdout truncation** — calling
+  `process.exit()` immediately after the CLI resolved could drop pipe-buffered output beyond
+  the 64 KiB Linux pipe buffer, since pipe writes are async while file/TTY writes are sync.
+  The loop's stuck-iteration timer is now also cleared in a `try`/`finally` so a leaked
+  interval can't hang `rauf loop run` under the new graceful-drain exit path. (#103)
+- **Loop halts on a failed rollback instead of silently continuing** — a failed
+  `revertAbandonedWork` was previously only logged; the loop would continue to the next item
+  regardless, and that item's `git add -A` commit could sweep up the blocked item's leftover
+  files, breaking per-item commit isolation. A failed revert now halts the loop, and a new
+  pre-iteration clean-baseline guard halts before spawning an agent if the tree is
+  unexpectedly dirty — scoped to skip the ordinary healthy cases (a same-item retry, a
+  needs-human resume, an operator profile edit) so it only fires on genuine contamination.
+  (#105, scoping fix #109/#112)
+- **`allowDirty` scoped to the first post-resume iteration only** — the pre-iteration
+  clean-baseline guard above previously stayed suppressed for a resumed run's entire
+  duration instead of just the iteration it was meant to excuse, silently defeating the
+  guard for the rest of the run. (#112)
+- **Verification dispatcher scripts are now detected, empty profiles warn instead of
+  installing silently** — `rauf install`/`init` could generate an all-empty verification
+  profile (no test/typecheck/lint/build/format commands) with no operator-visible warning,
+  even when an obvious dispatcher script (e.g. `scripts/verify.sh`) existed. Detection now
+  falls back to a dispatcher-script check, and a clear warning surfaces through
+  `install`/`init`/`update`'s existing `warnings[]` array and a new non-blocking `loop run`
+  startup check. (#106)
+- **`--retry-blocked` now resolves `--backlog` correctly** — `unblockIfRequested` re-extracted
+  `--backlog` from the shared flags map internally, but the extractor destructively deletes
+  the flag on read, so by the time it ran the flag was already gone and it silently fell back
+  to the default `.rauf/` root — a total no-op for any `--backlog <subdir>` setup (e.g.
+  feature-forge's). Fixed by passing the already-extracted value through as a parameter, with
+  a warning instead of a silent no-op on failure. (#114)
 
 ## 0.14.0
 
