@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.15.0
+
 ### Added
 
 - **Pi skill resources published in the npm package** — `@garygentry/rauf`'s npm-dist launcher
