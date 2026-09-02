@@ -2253,6 +2253,24 @@ fi`,
       expect(state.execEnvs[0]).toMatchObject({ ENABLE_CODE_SECURITY_REVIEW: "0" });
     });
 
+    it("stamps FORGE_INTERACTION on the provider env with nothing opted in", async () => {
+      // The stamp is unconditional, unlike the suppression set above: it states a
+      // fact about every loop child, not an opt-in. Asserted THROUGH the provider
+      // rather than at resolveChildEnv, because the one-line `options.env`
+      // forwarding in each adapter is the whole path by which the stamp reaches a
+      // spawned agent — and for Codex it is the ONLY interactivity signal that
+      // gets there at all, so a silent regression here returns Codex to the
+      // rung-2 stall with no test failing.
+      const state = registerFakeAgent("stamp-agent");
+      setupProject(tmpDir, [pendingItem("001", "Stamp")]);
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, provider: "stamp-agent" });
+      await runner.start();
+
+      expect(state.execEnvs.length).toBeGreaterThan(0);
+      expect(state.execEnvs[0]).toMatchObject({ FORGE_INTERACTION: "non-interactive" });
+    });
+
     it("uses outputFormat 'stream-json' for the work iteration", async () => {
       const state = registerFakeAgent("fmt-agent");
       setupProject(tmpDir, [pendingItem("001", "Fmt")]);

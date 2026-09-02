@@ -14,13 +14,16 @@
 // opt-out can be suppressed without code changes.
 //
 // It also owns the one fact about a child session only the runner knows: that
-// there is nobody on the other end of it (`INTERACTION_ENV`). Every provider is
-// driven with an explicit `nonInteractive` argv, so every loop iteration is a
-// non-interactive session by construction — but the agent inside it cannot
-// observe that, and measurably guesses "interactive", emits a question nobody
-// can answer and burns the iteration. Stating it here is the only place that
-// covers every provider: `codex` and `claude` have dedicated adapters rather
-// than preset configs, so `providers/presets.ts` would miss both.
+// there is nobody on the other end of it (`INTERACTION_ENV`). Every child is
+// spawned through `spawnProcessGroup`, which pipes all three stdio streams, so
+// no loop child ever holds a TTY — a non-interactive session by construction.
+// (The shipped presets also pass an explicit `nonInteractive` argv, but that is
+// not load-bearing here: a user-defined provider may leave it empty and is
+// still just as unattended.) The agent inside cannot observe any of this, and
+// measurably guesses "interactive", emits a question nobody can answer and
+// burns the iteration. Stating it here is the only place that covers every
+// provider: `codex` and `claude` have dedicated adapters rather than preset
+// configs, so `providers/presets.ts` would miss both.
 
 /**
  * Environment variables propagated to loop child sessions when iteration-level
@@ -64,12 +67,13 @@ export interface ChildEnvOptions {
  * Compute the effective environment-variable overrides for loop child sessions.
  *
  * Precedence (later wins): {@link INTERACTION_ENV} < suppression set (if opted
- * in) < caller `childEnv`. The interaction stamp always applies, so this now
- * always returns an object; children still inherit the parent environment,
- * because `spawnProcessGroup` merges these over `process.env` rather than
- * replacing it.
+ * in) < caller `childEnv`. The interaction stamp always applies, so this always
+ * returns an object — the return type is deliberately NOT `| undefined` any
+ * more, so the compiler can find call sites still guarding against a value that
+ * can no longer occur. Children still inherit the parent environment, because
+ * `spawnProcessGroup` merges these over `process.env` rather than replacing it.
  */
-export function resolveChildEnv(options: ChildEnvOptions): Record<string, string> | undefined {
+export function resolveChildEnv(options: ChildEnvOptions): Record<string, string> {
   const env: Record<string, string> = { ...INTERACTION_ENV };
   if (options.suppressIterationReview) {
     Object.assign(env, REVIEW_HOOK_SUPPRESSION_ENV);
@@ -77,5 +81,5 @@ export function resolveChildEnv(options: ChildEnvOptions): Record<string, string
   if (options.childEnv) {
     Object.assign(env, options.childEnv);
   }
-  return Object.keys(env).length > 0 ? env : undefined;
+  return env;
 }
