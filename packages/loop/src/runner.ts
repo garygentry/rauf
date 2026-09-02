@@ -286,8 +286,10 @@ export class LoopRunner extends TypedEventEmitter {
       const relativeRoot = path.relative(this.projectPath, this.paths.root);
       appendLog(this.paths, `Loop started (backlog root: ${relativeRoot || ".rauf"})`);
 
-      // Note when child sessions run with review hooks suppressed (single-gate
-      // review model). Review then belongs at the gate over the cumulative diff.
+      // Note the env every child session runs with: always the interaction
+      // stamp (this loop is non-interactive by construction), plus the review-
+      // hook opt-outs under the single-gate review model, where review belongs
+      // at the gate over the cumulative diff.
       if (this.childEnv) {
         appendLog(
           this.paths,

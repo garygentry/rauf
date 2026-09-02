@@ -1,4 +1,4 @@
-// ─── Review-hook suppression for loop child sessions ─────────────────
+// ─── Environment for loop child sessions ─────────────────────────────
 //
 // When a commit/Stop-triggered review hook (e.g. a globally-installed
 // security-review plugin) is present, it fires inside EVERY loop child agent
@@ -12,6 +12,18 @@
 // of opt-out env vars that known review hooks honor, and `resolveChildEnv`
 // merges arbitrary caller-supplied overrides on top so any hook with an env
 // opt-out can be suppressed without code changes.
+//
+// It also owns the one fact about a child session only the runner knows: that
+// there is nobody on the other end of it (`INTERACTION_ENV`). Every child is
+// spawned through `spawnProcessGroup`, which pipes all three stdio streams, so
+// no loop child ever holds a TTY — a non-interactive session by construction.
+// (The shipped presets also pass an explicit `nonInteractive` argv, but that is
+// not load-bearing here: a user-defined provider may leave it empty and is
+// still just as unattended.) The agent inside cannot observe any of this, and
+// measurably guesses "interactive", emits a question nobody can answer and
+// burns the iteration. Stating it here is the only place that covers every
+// provider: `codex` and `claude` have dedicated adapters rather than preset
+// configs, so `providers/presets.ts` would miss both.
 
 /**
  * Environment variables propagated to loop child sessions when iteration-level
@@ -25,6 +37,24 @@ export const REVIEW_HOOK_SUPPRESSION_ENV: Readonly<Record<string, string>> = {
   ENABLE_CODE_SECURITY_REVIEW: "0",
 };
 
+/**
+ * The interaction contract a spawned agent's tooling reads to learn that this
+ * session has no reply channel — feature-forge's `doctor` surfaces it as the
+ * `interaction-mode` check, whose ladder then takes declared conservative
+ * defaults instead of stalling on an unanswerable question.
+ *
+ * The runner only ever *states* what it knows: it spawns every child with a
+ * `nonInteractive` argv, so `non-interactive` is a fact here, not a guess. A
+ * caller that somehow spawns an attended child overrides it via `childEnv`.
+ *
+ * The name deliberately contains no `KEY`/`SECRET`/`TOKEN` substring: agent
+ * sandboxes filter environment variables by such name patterns before handing
+ * them to a tool call, and a filtered stamp would silently read as unknown.
+ */
+export const INTERACTION_ENV: Readonly<Record<string, string>> = {
+  FORGE_INTERACTION: "non-interactive",
+};
+
 /** Inputs that influence the child session environment. */
 export interface ChildEnvOptions {
   /** When true, merge {@link REVIEW_HOOK_SUPPRESSION_ENV} into the child env. */
@@ -36,17 +66,20 @@ export interface ChildEnvOptions {
 /**
  * Compute the effective environment-variable overrides for loop child sessions.
  *
- * Precedence (later wins): suppression set (if opted in) < caller `childEnv`.
- * Returns `undefined` when no overrides apply, so the default behavior — child
- * inherits the parent environment unchanged — is preserved.
+ * Precedence (later wins): {@link INTERACTION_ENV} < suppression set (if opted
+ * in) < caller `childEnv`. The interaction stamp always applies, so this always
+ * returns an object — the return type is deliberately NOT `| undefined` any
+ * more, so the compiler can find call sites still guarding against a value that
+ * can no longer occur. Children still inherit the parent environment, because
+ * `spawnProcessGroup` merges these over `process.env` rather than replacing it.
  */
-export function resolveChildEnv(options: ChildEnvOptions): Record<string, string> | undefined {
-  const env: Record<string, string> = {};
+export function resolveChildEnv(options: ChildEnvOptions): Record<string, string> {
+  const env: Record<string, string> = { ...INTERACTION_ENV };
   if (options.suppressIterationReview) {
     Object.assign(env, REVIEW_HOOK_SUPPRESSION_ENV);
   }
   if (options.childEnv) {
     Object.assign(env, options.childEnv);
   }
-  return Object.keys(env).length > 0 ? env : undefined;
+  return env;
 }
