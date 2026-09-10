@@ -904,6 +904,15 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
             // clean-baseline guard must not treat that as unexpected dirt (#105
             // review, bug 2).
             allowDirty: true,
+            // Identity-aware companion (#115): the injected answer names the
+            // needs-human item being resumed — the item whose intentionally-left
+            // uncommitted work dirties the tree. Threading its id lets the runner
+            // prefer it in selection (so it commits its OWN work rather than a
+            // higher-priority sibling sweeping that work into the wrong commit)
+            // and scope the guard's exemption to it by identity. One item owns the
+            // dirty tree; when several answers are injected we use the first. With
+            // no answer, fall back to the order-based exemption (#109).
+            allowDirtyForItemId: body.answers?.[0]?.itemId,
           });
         }
       }

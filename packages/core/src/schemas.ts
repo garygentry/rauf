@@ -474,6 +474,21 @@ export const LoopStartOptionsSchema = z.object({
    * unchanged, the guard runs on every iteration as before.
    */
   allowDirty: z.boolean().optional(),
+  /**
+   * Identity-aware companion to `allowDirty` (#115): the specific item id the
+   * resume relaunch is actually FOR — i.e. the item whose intentionally-left
+   * uncommitted work is what makes the tree dirty (the needs-human item a `rauf
+   * resume --answer <id>` re-queues). When set, the runner (a) prefers this item
+   * in `selectNextItem` on the resume's first iteration so it commits its OWN
+   * work — never letting a higher-priority sibling jump the queue and sweep this
+   * item's leftover work into the wrong item's `git add -A` commit — and (b)
+   * scopes the clean-baseline guard's dirty-tree exemption to THIS item by
+   * identity, so an unrelated item that is somehow selected first on a genuinely
+   * contaminated tree is still caught. Meaningful only alongside `allowDirty`;
+   * when unset, `allowDirty` falls back to its order-based "first iteration after
+   * resume" exemption (#109) for backward compatibility.
+   */
+  allowDirtyForItemId: z.string().optional(),
 });
 
 // ─── LoopEvent (discriminated union) ──────────────────────────────

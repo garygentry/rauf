@@ -1997,6 +1997,77 @@ fi`,
       expect(state.status).toBe("error");
     });
 
+    it("commits the resumed item's own dirty work under IT, not a higher-priority queue-jumper (#115)", async () => {
+      // The #115 gap: `allowDirty` alone excuses whichever item is selected
+      // FIRST after a resume, by iteration order — not the item the resume is
+      // actually for. If a higher-priority sibling (e.g. added to the backlog
+      // while the loop was paused) out-ranks the resumed item, `selectNextItem`
+      // picks IT first and its `git add -A` sweeps the resumed item's leftover
+      // work into the WRONG commit. `allowDirtyForItemId` fixes this by preferring
+      // the resumed item in selection and scoping the guard exemption to it.
+      //
+      // Run 1: only item 001 exists; it writes notes.txt then needs-human, pausing
+      // with notes.txt uncommitted. A higher-priority item 002 is then added while
+      // paused. On resume with allowDirtyForItemId=001, 001 must be selected first
+      // and commit its OWN notes.txt — 002 must NOT sweep it in.
+      setupProject(tmpDir, [pendingItem("001", "Needs a decision", { priority: 2 })]);
+
+      const counter = path.join(tmpDir, ".claude-invocations");
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then
+  echo "investigation notes" > "${tmpDir}/notes.txt"
+  echo "RAUF_NEEDS_HUMAN:Which approach?"
+else
+  echo "RAUF_DONE"
+fi`,
+      );
+
+      const firstRunner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        pauseOnNeedsHuman: true,
+      });
+      const firstResult = await firstRunner.start();
+      expect(firstResult.pausedReason).toBe("needs_human");
+      expect(fs.existsSync(path.join(tmpDir, "notes.txt"))).toBe(true);
+
+      const backlogPath = path.join(tmpDir, ".rauf", "backlog.json");
+      const pausedBacklog: Backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+      // Re-queue the answered item 001 (as `rauf resume --answer` does) …
+      pausedBacklog.items[0]!.status = "pending";
+      pausedBacklog.items[0]!.needsHuman = false;
+      delete pausedBacklog.items[0]!.blockedReason;
+      // … and add a HIGHER-priority item 002 that would otherwise be selected first.
+      pausedBacklog.items.push(pendingItem("002", "Jumped the queue", { priority: 1 }));
+      fs.writeFileSync(backlogPath, JSON.stringify(pausedBacklog, null, 2));
+
+      const resumeRunner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        allowDirty: true,
+        allowDirtyForItemId: "001",
+      });
+      const resumeResult = await resumeRunner.start();
+
+      expect(resumeResult.completedCount).toBe(2);
+      const finalBacklog: Backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+      expect(finalBacklog.items.find((i) => i.id === "001")?.status).toBe("done");
+      expect(finalBacklog.items.find((i) => i.id === "002")?.status).toBe("done");
+
+      // The commit that ADDED notes.txt must be item 001's — never 002's.
+      const addingCommitSubject = execSync("git log --diff-filter=A --format=%s -- notes.txt", {
+        cwd: tmpDir,
+      })
+        .toString()
+        .trim();
+      expect(addingCommitSubject).toContain("[rauf] 001:");
+      expect(addingCommitSubject).not.toContain("[rauf] 002:");
+    });
+
     it("does not false-halt on an uncommitted .rauf.json profile edit (rauf profile set) (bug 3)", async () => {
       // `.rauf.json` is durable, versioned project config (tracked in this
       // very repo, not gitignored) — but the loop never auto-commits it.

@@ -450,5 +450,19 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   if (backlogFlag !== null) runCtx.flags.set("backlog", backlogFlag);
   runCtx.flags.set("allow-dirty", true);
 
+  // Scope the dirty-tree exemption to the item the resume is actually FOR (#115).
+  // A `--answer <id>` names the needs-human item being re-queued — the item whose
+  // intentionally-left uncommitted work is what makes the tree dirty. Threading
+  // its id lets the runner prefer it in selection (so it commits its OWN work
+  // instead of a higher-priority sibling sweeping that work into the wrong
+  // commit) and scope the clean-baseline guard's exemption to it by identity.
+  // The loop processes one item at a time, so at most one item owns the dirty
+  // tree; when several answers are injected at once we use the first. With no
+  // --answer we leave it unset and fall back to the order-based exemption (#109).
+  const resumedAnswers = parseAnswerFlags(ctx.rawArgv);
+  if (resumedAnswers[0] !== undefined) {
+    runCtx.flags.set("allow-dirty-for-item", resumedAnswers[0].itemId);
+  }
+
   return runLoop(runCtx);
 }

@@ -352,8 +352,16 @@ export function restoreFromBackup(paths: BacklogPaths): Result<void> {
 // Returns the highest-priority pending item whose dependencies are
 // all done. Returns null if no eligible items exist.
 // Ties in priority broken by lower item ID (lexicographic).
+//
+// `preferItemId` (#115): when given and that item is currently eligible
+// (pending + deps satisfied), it is returned AHEAD of normal priority/id
+// ordering. A resume relaunch uses this so the item whose uncommitted work
+// dirties the tree commits its OWN work first, instead of a higher-priority
+// sibling jumping the queue and sweeping that work into the wrong commit. If
+// the preferred item is not eligible (done, blocked, absent, or deps
+// unsatisfied), selection falls back to normal ordering.
 
-export function selectNextItem(backlog: Backlog): BacklogItem | null {
+export function selectNextItem(backlog: Backlog, preferItemId?: string): BacklogItem | null {
   // Build a set of done item IDs for O(1) lookup
   const doneIds = new Set(backlog.items.filter((i) => i.status === "done").map((i) => i.id));
 
@@ -365,6 +373,13 @@ export function selectNextItem(backlog: Backlog): BacklogItem | null {
   });
 
   if (eligible.length === 0) return null;
+
+  // Honor an explicit preference when that item is itself eligible, bypassing
+  // priority/id ordering for this selection only.
+  if (preferItemId !== undefined) {
+    const preferred = eligible.find((item) => item.id === preferItemId);
+    if (preferred) return preferred;
+  }
 
   // Sort by priority (ascending), then by ID (lexicographic ascending)
   eligible.sort((a, b) => {

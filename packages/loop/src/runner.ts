@@ -178,6 +178,17 @@ export class LoopRunner extends TypedEventEmitter {
    * silently disable the guard for the rest of a long-running resumed run.
    */
   private allowDirtyRemaining: boolean;
+  /**
+   * Identity-aware allowDirty target (#115): the item id the resume relaunch is
+   * FOR — the item whose intentionally-left uncommitted work dirties the tree.
+   * When set it supersedes the order-based `allowDirtyRemaining`: the clean-
+   * baseline guard is excused ONLY for this item (by identity), and the first
+   * selection prefers it (see `selectNextItem(..., allowDirtyForItemId)`) so it
+   * commits its own work rather than a higher-priority sibling sweeping that work
+   * into the wrong commit. Cleared (one-shot) the first time the guard matches
+   * it, after which selection and the guard return to normal ordering.
+   */
+  private allowDirtyForItemId: string | null;
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
@@ -220,7 +231,11 @@ export class LoopRunner extends TypedEventEmitter {
     this.projectPath = projectPath;
     this.paths = paths;
     this.options = options;
-    this.allowDirtyRemaining = options.allowDirty === true;
+    this.allowDirtyForItemId = options.allowDirtyForItemId ?? null;
+    // Identity-aware exemption (#115) supersedes the order-based one (#109): when
+    // the resume caller named the item the dirty tree is for, scope the guard to
+    // that item by identity and skip the "first iteration after resume" fallback.
+    this.allowDirtyRemaining = options.allowDirty === true && this.allowDirtyForItemId === null;
     this.childEnv = resolveChildEnv({
       suppressIterationReview: options.suppressIterationReview,
       childEnv: options.childEnv,
@@ -757,7 +772,11 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     const backlog: Backlog = backlogResult.value;
-    const item = selectNextItem(backlog);
+    // Prefer the resume's own item (#115) so it commits its leftover work itself,
+    // instead of a higher-priority sibling being selected first and sweeping that
+    // work into the wrong commit. Consumed once the guard matches it below, after
+    // which this is null and selection returns to normal priority/id ordering.
+    const item = selectNextItem(backlog, this.allowDirtyForItemId ?? undefined);
 
     if (!item) {
       appendLog(this.paths, "No eligible items found, loop complete");
@@ -805,10 +824,14 @@ export class LoopRunner extends TypedEventEmitter {
     //      recovery reconciliation rewrites backlog.json, and a needs-human
     //      pause deliberately leaves its item's work uncommitted for a human
     //      to inspect/resume — both make the tree dirty by construction on the
-    //      very first iteration of a resumed run. Consumed via
-    //      `allowDirtyRemaining` (#109) so it excuses only that first
-    //      iteration — a later, unrelated item hitting a genuine failed-revert
-    //      scenario mid-run must still be caught.
+    //      very first iteration of a resumed run. When the caller also named the
+    //      owning item (`allowDirtyForItemId`, #115), the exemption is scoped to
+    //      THAT item by identity (and selection prefers it, above) so the dirt is
+    //      committed under the item it belongs to; a different item selected
+    //      first on a contaminated tree is still caught. When the item id is
+    //      absent, it falls back to consuming `allowDirtyRemaining` (#109) so it
+    //      excuses only the first post-resume iteration — a later, unrelated item
+    //      hitting a genuine failed-revert scenario mid-run must still be caught.
     //   3. `.rauf.json` (the marker/profile file, e.g. from `rauf profile
     //      set`) is durable project config, not loop runtime state — it is
     //      legitimately committed as part of normal project history (unlike
@@ -816,7 +839,16 @@ export class LoopRunner extends TypedEventEmitter {
     //      isn't auto-committed by the loop itself, so an operator's un-added
     //      edit must not read as contamination.
     const isSameItemRetry = this.lastPendingRetryItemId === item.id;
-    if (this.allowDirtyRemaining) {
+    if (this.allowDirtyForItemId !== null && item.id === this.allowDirtyForItemId) {
+      // Identity-scoped exemption (#115): excuse the dirty tree only for the
+      // item the resume is for, and only once. A different item reaching the
+      // guard while the tree is dirty falls through to the real check below.
+      this.allowDirtyForItemId = null;
+      appendLog(
+        this.paths,
+        `Clean-baseline guard skipped for item ${item.id} (allowDirty — resuming onto this item's run-managed dirty tree).`,
+      );
+    } else if (this.allowDirtyRemaining) {
       this.allowDirtyRemaining = false;
       appendLog(
         this.paths,
