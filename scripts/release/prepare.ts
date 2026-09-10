@@ -79,27 +79,41 @@ export function releaseBranchName(version: string): string {
 
 // ── Dry-run preview ─────────────────────────────────────────────────────────
 
-/** Print the planned edits + rolled section + branch (03-prepare-helper.md §5). */
-function printDryRun(plan: PreparePlan): void {
+/**
+ * Build the planned edits + rolled section + branch as lines (03-prepare-helper.md §5).
+ * Pure so prepare.test.ts can assert the plan without capturing stdout.
+ */
+export function dryRunLines(plan: PreparePlan): string[] {
   const canonical = plan.locations.find((l) => l.canonical)!.version;
-  console.log(`Plan for ${plan.tag} (${plan.isPrerelease ? "prerelease" : "stable"}):`);
+  const lines: string[] = [];
+  lines.push(`Plan for ${plan.tag} (${plan.isPrerelease ? "prerelease" : "stable"}):`);
   const width = Math.max(...plan.locations.map((l) => l.file.length)) + 1;
   for (const loc of plan.locations) {
     const drift = loc.version !== canonical ? "   (corrects drift)" : "";
-    console.log(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
+    lines.push(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
   }
-  console.log(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
-  console.log(
-    `  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`,
+  lines.push(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
+  // The generated Pi bundle's version tracks package.json, so it must be
+  // regenerated after the bump or `pnpm pi:check` fails (issue #119).
+  lines.push(
+    `  adapters/pi/: regenerate bundle so its version tracks ${plan.version}` +
+      ` (bun run scripts/build-pi-bundle.ts)`,
   );
-  console.log(
+  lines.push(`  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`);
+  lines.push(
     `  tag: none — the owner tags ${plan.tag} on the merged commit (see docs/RELEASING.md)`,
   );
-  console.log("");
-  console.log(`## ${plan.version} section body:`);
-  console.log(plan.sectionBody);
-  console.log("");
-  console.log("(dry run — no changes written, no branch created, no push)");
+  lines.push("");
+  lines.push(`## ${plan.version} section body:`);
+  lines.push(plan.sectionBody);
+  lines.push("");
+  lines.push("(dry run — no changes written, no branch created, no push)");
+  return lines;
+}
+
+/** Print the planned edits + rolled section + branch (03-prepare-helper.md §5). */
+function printDryRun(plan: PreparePlan): void {
+  console.log(dryRunLines(plan).join("\n"));
 }
 
 // ── Executable flow ─────────────────────────────────────────────────────────
@@ -220,6 +234,17 @@ function main(): void {
     const p = path.join(repoRoot, rel);
     fs.writeFileSync(p, setPackageJsonVersion(fs.readFileSync(p, "utf8"), version));
   }
+
+  // §3.2b — regenerate the Pi adapter bundle (issue #119). Its manifest version
+  // is derived from the just-bumped root package.json, so without this step the
+  // generated `adapters/pi/package.json` keeps the old version and `pnpm pi:check`
+  // (in `pnpm gate`) fails on the release-prep PR's first push. The generator is
+  // the single source of truth for the bundle, so we invoke it rather than
+  // hand-editing the emitted file — it also catches any other bundle drift.
+  execFileSync("bun", ["run", "scripts/build-pi-bundle.ts"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
 
   // §3.3 — roll the changelog (REQ-NOTES-01).
   fs.writeFileSync(changelogPath, rolledChangelog);

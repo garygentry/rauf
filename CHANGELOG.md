@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`release:prepare` now regenerates the Pi adapter bundle** — the bump step
+  rebuilds `adapters/pi/` after bumping the version locations, so the generated
+  `adapters/pi/package.json` no longer keeps the old version and `pnpm pi:check`
+  (in `pnpm gate`) no longer fails on a release-prep PR's first push. (#119)
+
 ## 0.15.0
 
 ### Added

@@ -7,10 +7,12 @@
 
 import { describe, expect, it } from "vitest";
 import { makeChangelog } from "./__fixtures__";
+import type { PreparePlan } from "./lib";
 import {
   checkChangelogNonEmpty,
   checkValidVersion,
   checkVersionForward,
+  dryRunLines,
   releaseBranchName,
 } from "./prepare";
 
@@ -73,6 +75,30 @@ describe("releaseBranchName (PR-mode branch derivation)", () => {
   it("derives release/<version> for stable and prerelease versions", () => {
     expect(releaseBranchName("0.9.0")).toBe("release/0.9.0");
     expect(releaseBranchName("1.0.0-rc.1")).toBe("release/1.0.0-rc.1");
+  });
+});
+
+describe("dryRunLines (Pi bundle regeneration, issue #119)", () => {
+  const makePlan = (version: string): PreparePlan => ({
+    version,
+    tag: `v${version}`,
+    isPrerelease: false,
+    changelog: makeChangelog({ unreleased: "### Added\n\n- thing" }),
+    sectionBody: "### Added\n\n- thing",
+    locations: [{ file: "packages/core/src/version.ts", version: "0.15.0", canonical: true }],
+  });
+
+  it("advertises regenerating the Pi bundle to the target version before the branch step", () => {
+    const lines = dryRunLines(makePlan("0.15.1"));
+    const piIdx = lines.findIndex((l) => /adapters\/pi\/.*regenerate/.test(l));
+    const branchIdx = lines.findIndex((l) => l.startsWith("  branch:"));
+
+    expect(piIdx, "dry-run should mention regenerating adapters/pi").toBeGreaterThanOrEqual(0);
+    // The regeneration runs before the branch/commit step in the real flow.
+    expect(piIdx).toBeLessThan(branchIdx);
+    // The bundle version tracks the bump target, and the step names the generator to run.
+    expect(lines[piIdx]).toContain("0.15.1");
+    expect(lines[piIdx]).toContain("scripts/build-pi-bundle.ts");
   });
 });
 
