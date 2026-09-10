@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- **Codex plugin is now installable via the plugin marketplace** — the repo ships
+  a generated `.agents/plugins/marketplace.json` root (the marker
+  `codex plugin marketplace add` requires), so
+  `codex plugin marketplace add garygentry/rauf && codex plugin add rauf@rauf`
+  installs the four skills. Previously only `.codex-plugin/plugin.json` shipped,
+  which is a plugin manifest, not a marketplace, so the documented install path
+  could not succeed. The manifest is emitted by `scripts/build-codex-bundle.ts`
+  and guarded by `pnpm codex:check`, and the README documents both the
+  marketplace install and the skills-dir symlink alternative. (#122)
+
 ### Changed
 
 - **Loop-launch empty-verification warning softened + acknowledgeable** — the

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { buildBundle, frontmatterKeys } from "./build-codex-bundle";
+import { buildBundle, buildMarketplace, frontmatterKeys } from "./build-codex-bundle";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -68,5 +68,29 @@ describe("buildBundle", () => {
 
   it("includes a generated bundle report", () => {
     expect(bundle.get("CODEX-BUNDLE-REPORT.md")).toMatch(/GENERATED — DO NOT EDIT/);
+  });
+});
+
+describe("buildMarketplace", () => {
+  const marketplace = JSON.parse(buildMarketplace());
+
+  it("declares a marketplace named `rauf` with a single `rauf` plugin", () => {
+    expect(marketplace.name).toBe("rauf");
+    expect(marketplace.plugins).toHaveLength(1);
+    expect(marketplace.plugins[0].name).toBe("rauf");
+  });
+
+  it("points the plugin entry at the repo root (which carries .codex-plugin/)", () => {
+    // rauf's .codex-plugin/ lives at the repo root, so the marketplace plugin
+    // root is `.` — the Codex sibling of the Claude marketplace's source: ".".
+    expect(marketplace.plugins[0].source).toEqual({ source: "local", path: "." });
+  });
+
+  it("matches the committed .agents/plugins/marketplace.json (drift guard)", () => {
+    const committed = fs.readFileSync(
+      path.join(REPO_ROOT, ".agents", "plugins", "marketplace.json"),
+      "utf-8",
+    );
+    expect(committed).toBe(buildMarketplace());
   });
 });

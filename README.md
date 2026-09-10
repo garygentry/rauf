@@ -169,7 +169,23 @@ To enable the plugin declaratively (e.g. provisioning a machine), add to `~/.cla
 
 ### Codex skills (optional)
 
-The same four skills ship as a **Codex plugin** at [`.codex-plugin/`](./.codex-plugin/), generated from the identical canonical sources (no divergent copy — `scripts/build-codex-bundle.ts`, guarded by `pnpm codex:check`). Install it with Codex's plugin tooling pointed at this repo / the bundle directory; see the [Codex plugins docs](https://developers.openai.com/codex/plugins). Like the Claude plugin, these skills are an authoring/review convenience — the `rauf` CLI does not require them, and rauf already drives the loop under `--agent codex`.
+The same four skills ship as a **Codex plugin** at [`.codex-plugin/`](./.codex-plugin/), generated from the identical canonical sources (no divergent copy — `scripts/build-codex-bundle.ts`, guarded by `pnpm codex:check`). Install it through Codex's marketplace (the repo ships the [`.agents/plugins/marketplace.json`](./.agents/plugins/marketplace.json) root that `codex plugin marketplace add` requires):
+
+```bash
+codex plugin marketplace add garygentry/rauf   # or a local path / git URL
+codex plugin add rauf@rauf
+codex plugin list                              # shows the four rauf skills
+```
+
+Alternatively, on a host that consumes skills from a directory rather than the plugin marketplace, symlink or copy each skill into a Codex skills dir (Codex scans `.agents/skills` from the cwd up to the repo root, then `~/.agents/skills`, and follows symlinks) — the skills are self-contained:
+
+```bash
+for s in author-backlog review-backlog drive-rauf-loop review-rauf-guidance; do
+  ln -sfn "$PWD/skills/$s" ~/.agents/skills/"$s"
+done
+```
+
+See the [Codex plugins docs](https://developers.openai.com/codex/plugins). Like the Claude plugin, these skills are an authoring/review convenience — the `rauf` CLI does not require them, and rauf already drives the loop under `--agent codex`.
 
 rauf also ships two **Codex subagents** — `rauf-backlog-reviewer` and `rauf-loop-driver` — at [`.codex/agents/`](./.codex/agents/), generated from canonical `agents/<name>.md` definitions. They let a Codex session delegate a backlog QA audit or loop supervision to a focused subagent. They are repo-level (available when you run Codex on this repo, or copy them into your project's `.codex/agents/`); `rauf install` does not deploy them.
 
@@ -191,7 +207,7 @@ pi install ./adapters/pi
 
 Like the Claude and Codex packages, these skills are an authoring/review convenience — the `rauf` CLI does not require them, and rauf already drives loop iterations under `--agent pi`.
 
-> Maintainers: never hand-edit `.codex-plugin/`, `.codex/agents/`, or `adapters/pi/` — edit the canonical `skills/<name>/SKILL.md` / `agents/<name>.md` and run `pnpm codex:generate` or `pnpm pi:generate`.
+> Maintainers: never hand-edit `.codex-plugin/`, `.agents/plugins/marketplace.json`, `.codex/agents/`, or `adapters/pi/` — edit the canonical `skills/<name>/SKILL.md` / `agents/<name>.md` and run `pnpm codex:generate` or `pnpm pi:generate`.
 
 ---
 
