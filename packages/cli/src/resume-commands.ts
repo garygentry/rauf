@@ -245,6 +245,21 @@ function detectResumeState(paths: BacklogPaths, deadLockCleared: boolean): Resum
   return { resumable, label, nonDone };
 }
 
+/**
+ * The single needs-human item that owns the resume's dirty tree (#115), or null
+ * when there are zero or several (an ambiguous owner). A loop set-aside
+ * needs-human item is `blocked` with `needsHuman: true` and deliberately leaves
+ * its work uncommitted; the loop processes one item at a time, so at most one
+ * such item owns the dirty tree. Read-only; read BEFORE `--answer` injection
+ * flips the item to pending.
+ */
+function findNeedsHumanOwner(paths: BacklogPaths): string | null {
+  const backlog = readBacklog(paths);
+  if (!backlog.ok) return null;
+  const owners = backlog.value.items.filter((i) => i.status === "blocked" && i.needsHuman === true);
+  return owners.length === 1 ? owners[0]!.id : null;
+}
+
 // ─── handleResume ────────────────────────────────────────────────
 
 export interface ResumeDeps {
@@ -272,6 +287,18 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     return ExitCode.ERROR;
   }
   const paths = pathsResult.value;
+
+  // Identify the item whose intentionally-left uncommitted work dirties the tree
+  // (#115), BEFORE answer injection below flips it to pending: the single
+  // needs-human item set aside by the loop. Threaded to the relaunch as
+  // allow-dirty-for-item so the loop prefers it in selection (committing its OWN
+  // work rather than a higher-priority sibling sweeping it into the wrong commit)
+  // and scopes the clean-baseline guard's exemption to it by identity. Zero or
+  // several needs-human items → ambiguous owner, leave unset and fall back to the
+  // order-based exemption (#109). This is the dirt's true owner, which is NOT
+  // necessarily the item named in `--answer` (the user may answer a different
+  // set-aside item, or several).
+  const dirtyOwnerItemId = findNeedsHumanOwner(paths);
 
   // 1. Acquire the loop lock for the recovery window — refuse with LOCK_CONFLICT
   // if a live loop holds it (closes the check-then-mutate TOCTOU race), clear a
@@ -450,18 +477,10 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   if (backlogFlag !== null) runCtx.flags.set("backlog", backlogFlag);
   runCtx.flags.set("allow-dirty", true);
 
-  // Scope the dirty-tree exemption to the item the resume is actually FOR (#115).
-  // A `--answer <id>` names the needs-human item being re-queued — the item whose
-  // intentionally-left uncommitted work is what makes the tree dirty. Threading
-  // its id lets the runner prefer it in selection (so it commits its OWN work
-  // instead of a higher-priority sibling sweeping that work into the wrong
-  // commit) and scope the clean-baseline guard's exemption to it by identity.
-  // The loop processes one item at a time, so at most one item owns the dirty
-  // tree; when several answers are injected at once we use the first. With no
-  // --answer we leave it unset and fall back to the order-based exemption (#109).
-  const resumedAnswers = parseAnswerFlags(ctx.rawArgv);
-  if (resumedAnswers[0] !== undefined) {
-    runCtx.flags.set("allow-dirty-for-item", resumedAnswers[0].itemId);
+  // Scope the dirty-tree exemption to the item that actually owns the dirty tree
+  // (#115) — the needs-human item detected above, not whichever item was answered.
+  if (dirtyOwnerItemId !== null) {
+    runCtx.flags.set("allow-dirty-for-item", dirtyOwnerItemId);
   }
 
   return runLoop(runCtx);

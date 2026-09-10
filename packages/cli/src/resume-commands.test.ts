@@ -544,3 +544,43 @@ describe("handleResume — --answer injection", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("handleResume — allow-dirty-for-item owner detection (#115)", () => {
+  it("threads the needs-human owner (not the answered item) so the relaunch prefers it", async () => {
+    // 003 is the set-aside needs-human item that owns the dirty tree; 001 is an
+    // ordinary, higher-priority pending item that would otherwise be selected
+    // first. The owner is detected from backlog state — threaded here with no
+    // --answer at all, proving it does not come from the answer operand.
+    const projectDir = createProject([
+      item("001", "pending", { priority: 1 }),
+      item("003", "blocked", { needsHuman: true, blockedReason: "which approach?" }),
+    ]);
+    writeState(projectDir, "paused_human");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.flags.get("allow-dirty")).toBe(true);
+    expect(calls[0]!.flags.get("allow-dirty-for-item")).toBe("003");
+  });
+
+  it("leaves allow-dirty-for-item unset when the owner is ambiguous (several needs-human items)", async () => {
+    const projectDir = createProject([
+      item("001", "pending"),
+      item("002", "blocked", { needsHuman: true }),
+      item("003", "blocked", { needsHuman: true }),
+    ]);
+    writeState(projectDir, "paused_human");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    // Ambiguous owner → fall back to the order-based exemption (#109), unchanged.
+    expect(calls[0]!.flags.get("allow-dirty")).toBe(true);
+    expect(calls[0]!.flags.has("allow-dirty-for-item")).toBe(false);
+  });
+});

@@ -182,13 +182,20 @@ export class LoopRunner extends TypedEventEmitter {
    * Identity-aware allowDirty target (#115): the item id the resume relaunch is
    * FOR — the item whose intentionally-left uncommitted work dirties the tree.
    * When set it supersedes the order-based `allowDirtyRemaining`: the clean-
-   * baseline guard is excused ONLY for this item (by identity), and the first
-   * selection prefers it (see `selectNextItem(..., allowDirtyForItemId)`) so it
-   * commits its own work rather than a higher-priority sibling sweeping that work
-   * into the wrong commit. Cleared (one-shot) the first time the guard matches
-   * it, after which selection and the guard return to normal ordering.
+   * baseline guard is excused ONLY for this item (by identity), and selection
+   * prefers it (see `selectNextItem(..., allowDirtyForItemId)`) so it commits its
+   * own work rather than a higher-priority sibling sweeping that work into the
+   * wrong commit. Held for the life of the run rather than consumed one-shot: the
+   * preference self-retires once the item is done/blocked (it's no longer
+   * eligible, so `selectNextItem` stops preferring it), and the guard skip only
+   * ever fires while that item is actually selected — i.e. its own resume
+   * iteration and any retries of it — which is exactly the window its tree is
+   * legitimately dirty. A later, unrelated item reaching the guard on a dirty
+   * tree never matches this id and is still caught. Consuming it after the first
+   * iteration would drop the preference mid-retry, letting a higher-priority
+   * sibling jump in and false-halt on this item's still-uncommitted work.
    */
-  private allowDirtyForItemId: string | null;
+  private readonly allowDirtyForItemId: string | null;
   private baseCommitHash: string | null = null;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
@@ -231,7 +238,11 @@ export class LoopRunner extends TypedEventEmitter {
     this.projectPath = projectPath;
     this.paths = paths;
     this.options = options;
-    this.allowDirtyForItemId = options.allowDirtyForItemId ?? null;
+    // `allowDirtyForItemId` is meaningful ONLY alongside `allowDirty` (it scopes
+    // the same dirty-tree exemption by identity); ignore a stray id without the
+    // base opt-in so the clean-baseline guard can never be bypassed on its own.
+    this.allowDirtyForItemId =
+      options.allowDirty === true ? (options.allowDirtyForItemId ?? null) : null;
     // Identity-aware exemption (#115) supersedes the order-based one (#109): when
     // the resume caller named the item the dirty tree is for, scope the guard to
     // that item by identity and skip the "first iteration after resume" fallback.
@@ -840,10 +851,13 @@ export class LoopRunner extends TypedEventEmitter {
     //      edit must not read as contamination.
     const isSameItemRetry = this.lastPendingRetryItemId === item.id;
     if (this.allowDirtyForItemId !== null && item.id === this.allowDirtyForItemId) {
-      // Identity-scoped exemption (#115): excuse the dirty tree only for the
-      // item the resume is for, and only once. A different item reaching the
-      // guard while the tree is dirty falls through to the real check below.
-      this.allowDirtyForItemId = null;
+      // Identity-scoped exemption (#115): excuse the dirty tree only for the item
+      // the resume is for, whenever it is the one selected — its own resume
+      // iteration and any retries of it, the window its tree is legitimately
+      // dirty. Not consumed (see the field doc), so a retry of this item while a
+      // higher-priority sibling waits doesn't lose the exemption. A DIFFERENT
+      // item reaching the guard on a dirty tree never matches and falls through
+      // to the real check below.
       appendLog(
         this.paths,
         `Clean-baseline guard skipped for item ${item.id} (allowDirty — resuming onto this item's run-managed dirty tree).`,
