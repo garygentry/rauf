@@ -183,7 +183,9 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     // — a missing/unreadable marker is silently skipped.
     const markerResult = readMarkerFile(projectPath);
     const warnings = markerResult.ok
-      ? detectVerificationWarnings(projectPath, markerResult.value.profile)
+      ? detectVerificationWarnings(projectPath, markerResult.value.profile, {
+          acknowledgeEmptyVerify: markerResult.value.options.acknowledgeEmptyVerify,
+        })
       : [];
 
     return c.json({ data: { started: true, projectPath, warnings } });

@@ -163,12 +163,23 @@ function hasDispatcherPrefix(cmd: string, dispatcherScript: string): boolean {
   return cmd === prefix || cmd.startsWith(prefix + " ");
 }
 
-export function detectVerificationWarnings(projectPath: string, profile: ProjectProfile): string[] {
+export function detectVerificationWarnings(
+  projectPath: string,
+  profile: ProjectProfile,
+  opts?: { acknowledgeEmptyVerify?: boolean },
+): string[] {
   if (profile.verify === "") {
+    // An empty GLOBAL profile is not the same as "no verification": many repos
+    // verify per item via each backlog item's acceptanceCriteria. Say only what
+    // we know (no global commands), point at the acknowledge switch for the
+    // intentional case, and skip the warning entirely when it's acknowledged.
+    if (opts?.acknowledgeEmptyVerify) return [];
     return [
-      "No verification commands detected — RAUF.md will tell the agent to skip verification " +
-        "entirely. Set commands with --test-cmd/--typecheck-cmd/--lint-cmd/--build-cmd/--format-cmd " +
-        "(rauf install/init) or 'rauf profile set <path> <key> <value>'.",
+      "No global verification commands configured; per-item acceptance criteria (if any) still " +
+        "apply. If this is intentional, set `options.acknowledgeEmptyVerify: true` in .rauf.json to " +
+        "silence this. Otherwise set commands with " +
+        "--test-cmd/--typecheck-cmd/--lint-cmd/--build-cmd/--format-cmd (rauf install/init) or " +
+        "'rauf profile set <path> <key> <value>'.",
     ];
   }
 

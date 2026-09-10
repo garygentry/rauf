@@ -422,7 +422,7 @@ describe("handleProfileSet", () => {
     // update() computed the empty-verification warning and it was printed —
     // previously handleProfileSet only checked updateResult.ok and discarded
     // updateResult.value.warnings.
-    expect(stderrOutput).toContain("No verification commands detected");
+    expect(stderrOutput).toContain("No global verification commands configured");
   });
 });
 

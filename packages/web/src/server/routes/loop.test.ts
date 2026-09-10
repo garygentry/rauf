@@ -254,9 +254,9 @@ describe("POST /:id/loop/start", () => {
     expect(res.status).toBe(200);
     const body = (await json(res)) as { data: { started: boolean; warnings: string[] } };
     expect(body.data.started).toBe(true);
-    expect(body.data.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
-      true,
-    );
+    expect(
+      body.data.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(true);
   });
 
   it("returns 409 on already-running project", async () => {

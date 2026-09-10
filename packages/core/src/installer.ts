@@ -296,8 +296,14 @@ export function install(projectPath: string, options: InstallOptions): Result<In
 
   // Operator-visible warning when verification is fully empty (or only
   // dispatcher-inferred) — the operator would otherwise have no signal that
-  // RAUF.md will tell the agent to skip verification entirely.
-  warnings.push(...detectVerificationWarnings(resolved, profile));
+  // no GLOBAL verification commands are configured. Honors an acknowledge
+  // flag carried by an explicit install option or a pre-existing marker (#121).
+  warnings.push(
+    ...detectVerificationWarnings(resolved, profile, {
+      acknowledgeEmptyVerify:
+        options.options?.acknowledgeEmptyVerify ?? existingOptions?.acknowledgeEmptyVerify,
+    }),
+  );
 
   // 3. Create .rauf/ directory
   const raufDir = path.join(resolved, DOT_RAUF);
@@ -492,8 +498,13 @@ export function update(
 
   // Surface a stale/empty verification profile on `update` too — an
   // already-installed project's marker may predate this warning, or its
-  // commands may have gone empty since install (e.g. hand-edited).
-  warnings.push(...detectVerificationWarnings(resolved, profile));
+  // commands may have gone empty since install (e.g. hand-edited). Honors the
+  // marker's acknowledge flag so an intentional empty profile stays quiet (#121).
+  warnings.push(
+    ...detectVerificationWarnings(resolved, profile, {
+      acknowledgeEmptyVerify: marker.options.acknowledgeEmptyVerify,
+    }),
+  );
 
   const templateVars = buildTemplateVars(profile);
   const raufMdResult = deployRaufMd(path.join(resolved, DOT_RAUF), templateVars, artifactsDir);

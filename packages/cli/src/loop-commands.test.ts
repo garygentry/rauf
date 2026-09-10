@@ -992,7 +992,7 @@ describe("createLoopBranch & loop preconditions", () => {
     });
 
     const all = out.stdout + out.stderr;
-    expect(all).toContain("No verification commands detected");
+    expect(all).toContain("No global verification commands configured");
   });
 });
 

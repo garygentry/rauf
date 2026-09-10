@@ -141,7 +141,10 @@ function resolveLoopMaxIterations(
 function warnStaleVerificationProfile(projectPath: string): void {
   const markerResult = readMarkerFile(projectPath);
   if (!markerResult.ok) return;
-  for (const w of detectVerificationWarnings(projectPath, markerResult.value.profile)) {
+  const { profile, options } = markerResult.value;
+  for (const w of detectVerificationWarnings(projectPath, profile, {
+    acknowledgeEmptyVerify: options.acknowledgeEmptyVerify,
+  })) {
     warn(w);
   }
 }

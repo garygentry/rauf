@@ -244,7 +244,9 @@ describe("PUT /api/projects/:id/profile", () => {
     expect(res.status).toBe(200);
     const body = (await json(res)) as { data: Record<string, unknown>; warnings: string[] };
     expect(body.data).toMatchObject(emptyVerifyProfile);
-    expect(body.warnings.some((w) => w.includes("No verification commands detected"))).toBe(true);
+    expect(
+      body.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(true);
 
     // RAUF.md's managed section was resynced (update() ran, not just a marker write).
     const raufMd = fs.readFileSync(path.join(raufDir, "RAUF.md"), "utf-8");

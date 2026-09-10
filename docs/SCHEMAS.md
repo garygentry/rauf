@@ -135,6 +135,7 @@ interface MarkerOptions {
   runtime?: "shell" | "global"; // Loop runtime mode. "shell" = legacy scripts (deprecated), "global" = TypeScript loop runner. Defaults to "shell" when omitted for backward compat.
   provider?: string; // Default LLM provider for this project
   providerConfig?: Record<string, unknown>; // Per-provider configuration
+  acknowledgeEmptyVerify?: boolean; // Silence the "no global verification commands configured" launch warning when the project verifies per item via each backlog item's acceptanceCriteria. Only suppresses that warning; a stale/misconfigured dispatcher command still warns. Default: false.
 }
 ```
 

@@ -147,6 +147,13 @@ export const MarkerOptionsSchema = z.object({
   runtime: RuntimeSchema.optional(),
   provider: z.string().optional(),
   providerConfig: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Silence the empty-global-verification launch warning when a project
+   * verifies per item (via each backlog item's `acceptanceCriteria`) rather than
+   * through the global profile commands. Only suppresses the "no global commands"
+   * warning — a stale/misconfigured dispatcher command still warns. (#121)
+   */
+  acknowledgeEmptyVerify: z.boolean().optional(),
 });
 
 // ─── MarkerFile (.rauf.json) ──────────────────────────────────────
