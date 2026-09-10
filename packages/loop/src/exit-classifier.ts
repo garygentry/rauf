@@ -18,6 +18,44 @@ export function hasUsageLimitInText(text: string): boolean {
   return matchesAnyPattern(text, USAGE_LIMIT_PATTERNS);
 }
 
+/**
+ * Phrases that betray the "backgrounded verification, then yielded the turn to
+ * await an async completion notification" failure mode (#125): the agent
+ * finishes an item's work but defers its RAUF_* signal behind a notification
+ * that never arrives in non-interactive (`-p`) mode, so the session exits
+ * cleanly with no signal and the whole item is retried.
+ *
+ * This is a best-effort heuristic, NOT a classifier: it only annotates an
+ * already-no-signal genuine_retry log line and never changes retry behavior, so
+ * a miss or an occasional over-match is cheap. The phrases are deliberately
+ * specific to the "defer the signal behind async test completion" action (not
+ * generic tokens like "in the background", which would false-positive on
+ * unrelated output — and note substring matching cannot exclude a negation).
+ */
+const DEFERRED_SIGNAL_PATTERNS = [
+  "completion notification",
+  "wait for the completion",
+  "waiting for the completion",
+  "await the completion",
+  "wait for that completion",
+  "notification of the test",
+  "tests in the background",
+  "test suite in the background",
+  "before giving the final signal",
+  "before emitting the final signal",
+  "wait for the test suite",
+  "waiting on the e2e",
+];
+
+/**
+ * Returns true when the given text looks like the agent deferred its exit signal
+ * behind a backgrounded command or an async completion notification (#125).
+ * Case-insensitive substring matching.
+ */
+export function hasDeferredSignalSignature(text: string): boolean {
+  return matchesAnyPattern(text, DEFERRED_SIGNAL_PATTERNS);
+}
+
 /** Classification of a finished claude spawn. */
 export type ExitClass =
   | "done"

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   classifyExit,
   hasUsageLimitInText,
+  hasDeferredSignalSignature,
   INFRA_FAST_MS,
   type ExitResult,
 } from "./exit-classifier.js";
@@ -9,6 +10,11 @@ import type { ParsedSignal } from "./signal-parser.js";
 
 /** The session-limit banner from the source incident. */
 const INCIDENT_BANNER = "You've hit your session limit · resets 5:30pm";
+
+/** The no-signal trailing text from the #125 incident (item 006). */
+const DEFERRED_SIGNAL_TEXT =
+  "Waiting on the e2e leg of `pnpm -r test`. I'll wait for the completion " +
+  "notification of the test suite before giving the final signal.";
 
 const NONE: ParsedSignal = { signal: "none" };
 
@@ -35,6 +41,28 @@ describe("hasUsageLimitInText", () => {
   it("returns false for unrelated text", () => {
     expect(hasUsageLimitInText("")).toBe(false);
     expect(hasUsageLimitInText("everything is fine")).toBe(false);
+  });
+});
+
+describe("hasDeferredSignalSignature", () => {
+  it("matches the incident's backgrounded-verify / await-notification text", () => {
+    expect(hasDeferredSignalSignature(DEFERRED_SIGNAL_TEXT)).toBe(true);
+    expect(hasDeferredSignalSignature("I ran the tests in the background")).toBe(true);
+    expect(
+      hasDeferredSignalSignature("Will emit RAUF_DONE after the completion notification arrives"),
+    ).toBe(true);
+  });
+
+  it("returns false for a normal completed iteration", () => {
+    expect(hasDeferredSignalSignature("")).toBe(false);
+    expect(
+      hasDeferredSignalSignature("All acceptance criteria met; verification passed.\nRAUF_DONE"),
+    ).toBe(false);
+  });
+
+  it("does not fire on generic 'in the background' phrasing unrelated to verification", () => {
+    // The bare "in the background" token was dropped to avoid this false positive.
+    expect(hasDeferredSignalSignature("the dev server ran in the background")).toBe(false);
   });
 });
 

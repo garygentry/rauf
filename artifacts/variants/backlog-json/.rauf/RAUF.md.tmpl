@@ -20,11 +20,15 @@ Individual commands:
 If any command is not configured (empty), skip it.{{verificationWarning}}
 
 Do NOT background, `nohup`, or `&`-detach the verification command (or
-any command inside it). Run it in the foreground and wait for it to
-exit before reading its result or emitting your exit signal — a
-backgrounded verify command exits immediately with no output, which
-looks like a clean run and will be misread (or produce no signal at
-all, wasting a retry).
+any command inside it), and do NOT yield your turn to wait for an
+asynchronous "completion notification" from a long-running test. Run
+every command in the foreground, wait for it to exit **within this
+turn**, then emit your exit signal in the SAME turn as your final
+output. You run non-interactively: the session ends the moment you
+yield your turn, so a deferred notification never arrives — no signal is
+printed and the entire item is retried from scratch. (A backgrounded
+verify command also exits immediately with no output, which looks like a
+clean run and will be misread.)
 <!-- rauf:managed:end -->
 
 ## Workflow
@@ -35,9 +39,9 @@ all, wasting a retry).
 3. Read the item's `acceptanceCriteria` — each must pass
 4. Read `progress.md` for context from previous iterations
 5. Implement the task
-6. Run verification: `{{verifyCommand}}` (run it in the foreground and wait — do not background it)
+6. Run verification: `{{verifyCommand}}` (foreground, and wait for it to finish **within this turn** — never background it or defer your signal behind an async completion notification)
 7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as `[rauf] <id>: <title>` after you signal `RAUF_DONE`).
-8. Output your exit signal on a line by itself, as your final line:
+8. Output your exit signal on a line by itself, as your final line **in this same turn** (do not yield the turn first, then plan to signal later):
    - `RAUF_DONE` — all criteria met, verification passes
    - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
    - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input

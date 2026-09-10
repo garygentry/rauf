@@ -63,7 +63,11 @@ import { resolveAgentId } from "./agent-selection.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
-import { hasUsageLimitInText, classifyExit } from "./exit-classifier.js";
+import {
+  hasUsageLimitInText,
+  hasDeferredSignalSignature,
+  classifyExit,
+} from "./exit-classifier.js";
 import {
   annotateCodexSandboxHint,
   hasSandboxDenialSignature,
@@ -1326,6 +1330,17 @@ export class LoopRunner extends TypedEventEmitter {
             const retries = (this.retryCounts.get(item.id) ?? 0) + 1;
             this.retryCounts.set(item.id, retries);
 
+            // If the captured output shows the agent backgrounded verification
+            // and yielded to await an async completion notification (#125), name
+            // that likely cause — in non-interactive mode the session ends on
+            // yield, so the notification never arrives, no signal is printed, and
+            // the whole item is re-run. Diagnostic only; retry behavior unchanged.
+            const noSignalHint = hasDeferredSignalSignature(signalText)
+              ? " (likely cause: verification was backgrounded and the turn yielded to await an async" +
+                " completion notification, which never arrives in non-interactive mode — see" +
+                " .rauf/RAUF.md: run verification in the foreground and emit the signal within the turn)"
+              : "";
+
             // Surface the already-captured output (via the shared stdoutTail/
             // stderrTail computed above) on both the retry and the eventual
             // exhausted-retries block, so a genuine_retry death (e.g. a flaky
@@ -1344,7 +1359,7 @@ export class LoopRunner extends TypedEventEmitter {
               this.emitEvent("item_blocked", { itemId: item.id, reason, stdoutTail, stderrTail });
               appendLog(
                 this.paths,
-                `Item ${item.id} deferred after ${retries} attempts\n` +
+                `Item ${item.id} deferred after ${retries} attempts${noSignalHint}\n` +
                   `stdout tail: ${stdoutTail}\n` +
                   `stderr tail: ${stderrTail}`,
               );
@@ -1364,7 +1379,7 @@ export class LoopRunner extends TypedEventEmitter {
               });
               appendLog(
                 this.paths,
-                `Item ${item.id} retry ${retries}/${this.options.maxRetries}\n` +
+                `Item ${item.id} retry ${retries}/${this.options.maxRetries}${noSignalHint}\n` +
                   `stdout tail: ${stdoutTail}\n` +
                   `stderr tail: ${stderrTail}`,
               );
@@ -1564,11 +1579,19 @@ export class LoopRunner extends TypedEventEmitter {
         !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
       if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
         reviewRetryCount++;
+        // Same #125 diagnostic as the work-iteration path: a review agent can
+        // also background a check and yield to await an async notification.
+        const reviewSignalText = execResult.value.reconstructedText || stdout;
+        const noSignalHint = hasDeferredSignalSignature(reviewSignalText)
+          ? " (likely cause: a check was backgrounded and the turn yielded to await an async" +
+            " completion notification, which never arrives in non-interactive mode — see" +
+            " .rauf/REVIEW.md: run checks in the foreground and emit the signal within the turn)"
+          : "";
         appendLog(
           this.paths,
           `Review pass: no recognized signal (${parsed.signal}) — retrying (attempt ${
             reviewRetryCount + 1
-          }/${this.options.maxRetries})`,
+          }/${this.options.maxRetries})${noSignalHint}`,
         );
         continue;
       }

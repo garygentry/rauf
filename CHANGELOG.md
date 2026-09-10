@@ -54,6 +54,18 @@
 
 ### Fixed
 
+- **Loop no longer silently wastes a retry when an agent backgrounds
+  verification** — an agent that finished an item's work but backgrounded a slow
+  verify command and yielded its turn to "wait for the completion notification"
+  exited cleanly with no signal (the notification never arrives in
+  non-interactive mode), so the runner re-ran the whole item. The managed
+  verification block in `RAUF.md`, the ADDON/GREENFIELD templates, and the
+  post-loop `REVIEW.md` now forbid deferring the exit signal behind an async
+  completion notification and require emitting it within the same turn; and a
+  no-signal genuine-retry whose output shows that pattern is now annotated in
+  `rauf.log` with the likely cause (both the work-iteration and review-pass
+  paths) instead of a bare retry line. (#125)
+
 - **`release:prepare` now regenerates the Pi adapter bundle** — the bump step
   rebuilds `adapters/pi/` after bumping the version locations, so the generated
   `adapters/pi/package.json` no longer keeps the old version and `pnpm pi:check`
