@@ -17,6 +17,15 @@
  *   skills/<name>/SKILL.md      skill (frontmatter requires name + description)
  *   skills/<name>/references/*  optional skill references (copied verbatim)
  *
+ * A plugin manifest alone is NOT installable: `codex plugin marketplace add`
+ * (verified codex-cli 0.147.0) discovers plugins through a *marketplace* root,
+ * identified by `.agents/plugins/marketplace.json`, whose plugin entries point
+ * at a directory that CONTAINS a `.codex-plugin/`. rauf's `.codex-plugin/` sits
+ * at the repo root, so the entry's `source.path` is `.` (the Codex sibling of
+ * the Claude marketplace's `source: "."`). This generator emits that
+ * marketplace manifest too, so `codex plugin marketplace add garygentry/rauf`
+ * works and cannot drift. (rauf #122)
+ *
  * rauf's canonical SKILL.md frontmatter already carries ONLY `name` + `description`
  * (Codex's required set), so skills copy through verbatim. If a skill ever adds a
  * non-Codex frontmatter key, this generator fails loud rather than silently leaking
@@ -34,6 +43,10 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const CLAUDE_PLUGIN_JSON = path.join(REPO_ROOT, ".claude-plugin", "plugin.json");
 const CODEX_PLUGIN_DIR = path.join(REPO_ROOT, ".codex-plugin");
+/** Codex marketplace root dir (`.agents/plugins/`); the generator owns everything under it. */
+const CODEX_MARKETPLACE_DIR = path.join(REPO_ROOT, ".agents", "plugins");
+/** Codex marketplace root marker — makes the plugin installable via `codex plugin marketplace add`. */
+const CODEX_MARKETPLACE_JSON = path.join(CODEX_MARKETPLACE_DIR, "marketplace.json");
 
 /** Codex SKILL.md frontmatter keys we know how to carry. Anything else fails loud. */
 const SUPPORTED_FRONTMATTER_KEYS = new Set(["name", "description"]);
@@ -139,6 +152,35 @@ export function buildBundle(): Map<string, string> {
   return files;
 }
 
+/**
+ * Build the `.agents/plugins/marketplace.json` content. This is the marketplace
+ * root that `codex plugin marketplace add garygentry/rauf` reads; its single
+ * plugin entry points at the repo root (`.`), which carries `.codex-plugin/`.
+ * Static content — kept in the generator (not hand-committed) so it stays under
+ * the `codex:check` drift guard.
+ */
+export function buildMarketplace(): string {
+  const marketplace = {
+    name: "rauf",
+    interface: {
+      displayName: "rauf",
+    },
+    plugins: [
+      {
+        name: "rauf",
+        source: {
+          source: "local",
+          path: ".",
+        },
+        policy: {
+          installation: "AVAILABLE",
+        },
+      },
+    ],
+  };
+  return JSON.stringify(marketplace, null, 2) + "\n";
+}
+
 function buildReport(skills: SkillSource[]): string {
   const rows = skills.map((s) => `| \`${s.id}\` | ${s.references.size} | none |`).join("\n");
   return [
@@ -175,29 +217,44 @@ function listCommitted(dir: string, base = dir): string[] {
 function main(): void {
   const check = process.argv.includes("--check");
   const bundle = buildBundle();
+  const marketplace = buildMarketplace();
 
   if (check) {
     const drift: string[] = [];
     for (const [rel, content] of bundle) {
       const abs = path.join(CODEX_PLUGIN_DIR, rel);
       const current = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : "";
-      if (current !== content) drift.push(rel);
+      if (current !== content) drift.push(`.codex-plugin/${rel}`);
     }
     // Stale committed files no longer produced by the generator.
     for (const rel of listCommitted(CODEX_PLUGIN_DIR)) {
-      if (!bundle.has(rel)) drift.push(`${rel} (stale — not produced by generator)`);
+      if (!bundle.has(rel)) drift.push(`.codex-plugin/${rel} (stale — not produced by generator)`);
+    }
+    // Marketplace root marker (outside .codex-plugin/). Own everything under
+    // .agents/plugins/: flag the marker itself if it differs, and any stray file
+    // there the generator no longer produces (mirrors the .codex-plugin/ scan).
+    const currentMarketplace = fs.existsSync(CODEX_MARKETPLACE_JSON)
+      ? fs.readFileSync(CODEX_MARKETPLACE_JSON, "utf-8")
+      : "";
+    if (currentMarketplace !== marketplace) drift.push(".agents/plugins/marketplace.json");
+    for (const rel of listCommitted(CODEX_MARKETPLACE_DIR)) {
+      if (rel !== "marketplace.json") {
+        drift.push(`.agents/plugins/${rel} (stale — not produced by generator)`);
+      }
     }
     if (drift.length > 0) {
       // eslint-disable-next-line no-console
       console.error(
-        `Codex bundle drift detected — these differ from the canonical skills:\n` +
-          drift.map((d) => `  - .codex-plugin/${d}`).join("\n") +
+        `Codex bundle drift detected — these differ from the canonical sources:\n` +
+          drift.map((d) => `  - ${d}`).join("\n") +
           `\n\nRun: bun run scripts/build-codex-bundle.ts  (then commit the result)`,
       );
       process.exit(1);
     }
     // eslint-disable-next-line no-console
-    console.log(`Codex bundle is in sync with the canonical skills (${bundle.size} files).`);
+    console.log(
+      `Codex bundle is in sync with the canonical skills (${bundle.size} files + marketplace root).`,
+    );
     process.exit(0);
   }
 
@@ -208,8 +265,15 @@ function main(): void {
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content);
   }
+  // Rebuild the marketplace dir from scratch too, so a relocated/renamed marker
+  // does not leave a stale root behind.
+  fs.rmSync(CODEX_MARKETPLACE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(CODEX_MARKETPLACE_DIR, { recursive: true });
+  fs.writeFileSync(CODEX_MARKETPLACE_JSON, marketplace);
   // eslint-disable-next-line no-console
-  console.log(`Generated .codex-plugin/ with ${bundle.size} files.`);
+  console.log(
+    `Generated .codex-plugin/ with ${bundle.size} files and .agents/plugins/marketplace.json.`,
+  );
 }
 
 // Only run when invoked directly (not when imported by tests).

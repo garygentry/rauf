@@ -1,0 +1,18 @@
+{
+  "name": "rauf",
+  "interface": {
+    "displayName": "rauf"
+  },
+  "plugins": [
+    {
+      "name": "rauf",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      }
+    }
+  ]
+}
