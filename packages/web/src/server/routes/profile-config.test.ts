@@ -250,7 +250,7 @@ describe("PUT /api/projects/:id/profile", () => {
 
     // RAUF.md's managed section was resynced (update() ran, not just a marker write).
     const raufMd = fs.readFileSync(path.join(raufDir, "RAUF.md"), "utf-8");
-    expect(raufMd).toContain("No verification commands are configured");
+    expect(raufMd).toContain("No global verification commands are configured");
   });
 
   it("returns 404 when .rauf.json is missing", async () => {

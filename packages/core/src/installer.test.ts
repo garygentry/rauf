@@ -1168,7 +1168,11 @@ describe("install / update — no-verification-commands warning", () => {
     install(tmpDir, installOpts());
 
     const raufMd = fs.readFileSync(path.join(tmpDir, ".rauf", "RAUF.md"), "utf-8");
-    expect(raufMd).toContain("No verification commands are configured");
+    expect(raufMd).toContain("No global verification commands are configured");
+    // Consistent with the launch warning (#121): the admonition points at
+    // per-item acceptanceCriteria rather than claiming "no automated check".
+    expect(raufMd).toContain("acceptanceCriteria");
+    expect(raufMd).not.toContain("requires no automated check");
   });
 
   it("does not warn when the project has detected verification commands", () => {

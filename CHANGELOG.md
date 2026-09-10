@@ -9,11 +9,14 @@
   commands claimed "RAUF.md will tell the agent to skip verification entirely,"
   which is misleading on repos that verify per item via each backlog item's
   `acceptanceCriteria`. It now reads "No global verification commands
-  configured; per-item acceptance criteria (if any) still apply," and a new
-  `.rauf.json` `options.acknowledgeEmptyVerify: true` silences it for an
-  intentionally-empty global profile (honored at `loop run`, install/init,
-  update, and the web loop-start route). A stale/misconfigured dispatcher
-  command still warns regardless. (#121)
+  configured; per-item acceptance criteria (if any) still apply," and the
+  matching `.rauf/RAUF.md` admonition likewise points at per-item
+  `acceptanceCriteria` instead of claiming "no automated check." Set
+  `.rauf.json` `options.acknowledgeEmptyVerify: true` to silence the warning
+  for an intentionally-empty global profile — honored everywhere the warning is
+  raised (`loop run`, `update`, the web loop-start route) and preserved across
+  re-install. A stale/misconfigured dispatcher command still warns regardless.
+  (#121)
 
 ### Fixed
 

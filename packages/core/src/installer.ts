@@ -724,10 +724,14 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
     // RAUF.md would otherwise churn on every `rauf update`, even with no
     // change to their verification config). The non-empty case supplies its
     // own leading blank-line separation instead.
+    // Consistent with the softened loop-launch warning (#121): an empty GLOBAL
+    // profile is not "no verification" — each item's acceptanceCriteria (Workflow
+    // step 3) still define done. Say only that, and don't claim "no check".
     verificationWarning:
       profile.verify === ""
-        ? "\n\n> **No verification commands are configured.** Every command above is empty, so " +
-          "completing an item currently requires no automated check. Configure commands via " +
+        ? "\n\n> **No global verification commands are configured.** Every command above is empty, " +
+          "so there is no project-wide automated pipeline — each backlog item's `acceptanceCriteria` " +
+          "(Workflow step 3) still define done and must pass. Configure global commands via " +
           "`rauf profile set <path> <key> <value>` or reinstall with `--test-cmd`/`--typecheck-cmd`/etc."
         : "",
   };
