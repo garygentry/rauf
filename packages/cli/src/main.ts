@@ -5,6 +5,7 @@
 
 import { VERSION } from "@rauf/core";
 import { parseArgs } from "./parser.js";
+import { detectRuntimeChannel } from "./runtime-channel.js";
 import {
   configureOutput,
   detectColorSupport,
@@ -33,10 +34,17 @@ export async function runCli(): Promise<number> {
     const wantJson = argv.includes("--json");
     const autoColor = detectColorSupport();
     configureOutput({ noColor: !autoColor, quiet: false, json: wantJson });
+    const rt = detectRuntimeChannel();
     if (wantJson) {
-      outputJson({ version: VERSION });
+      outputJson({
+        version: VERSION,
+        channel: rt.channel,
+        path: rt.path,
+        ...(rt.distStale !== undefined ? { distStale: rt.distStale } : {}),
+      });
     } else {
-      print(`rauf v${VERSION}`);
+      const staleHint = rt.distStale ? "; dist may be stale — run `pnpm build`" : "";
+      print(`rauf v${VERSION} (${rt.channel}${staleHint})`);
     }
     return ExitCode.SUCCESS;
   }

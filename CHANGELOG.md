@@ -4,6 +4,15 @@
 
 ### Added
 
+- **`rauf version --json` now reports the binary's provenance** — output carries
+  a `channel` (`npm-launcher` / `release-binary` / `compiled-local` / `source`)
+  and the resolved `path`, so a fleet can tell how a host was provisioned and
+  feature-forge's doctor can consume it later. `release-binary` vs
+  `compiled-local` is stamped at build time via `bun build --define`
+  (release.yml → `release-binary`; local `pnpm compile` → `compiled-local`);
+  `npm-launcher` and `source` are detected at runtime, and a `source` run adds a
+  `distStale` hint when `packages/core/dist` lags `src/version.ts`. (#123)
+
 - **Codex plugin is now installable via the plugin marketplace** — the repo ships
   a generated `.agents/plugins/marketplace.json` root (the marker
   `codex plugin marketplace add` requires), so
@@ -15,6 +24,19 @@
   marketplace install and the skills-dir symlink alternative. (#122)
 
 ### Changed
+
+- **`install-binary.sh` refuses to overwrite a target it did not install** —
+  the curl installer defaults to `~/.local/bin/rauf`, which collides with the
+  npm launcher when that path is npm's global prefix bin (and with a dev
+  symlink). It now records an ownership marker (target path + checksum) and
+  refuses to clobber an unrecognized or replaced file unless `--force` is given;
+  help text and the README name the npm-prefix collision. The three binaries
+  (`rauf` published / `rauf-dev` source / `rauf-stable` compiled snapshot) and
+  the rule that **the name `rauf` is reserved for the published channel** are now
+  documented in `docs/DOGFOODING.md`, and the stale feature-forge "Local
+  development" pointers in `DOGFOODING.md` / `RELEASE-AUTOMATION-RUNBOOK.md` now
+  point at feature-forge's `docs/DOGFOODING.md` (noting the skills-dir symlink
+  method is rauf-specific). (#123)
 
 - **Loop-launch empty-verification warning softened + acknowledgeable** — the
   launch warning that fired whenever the global profile had no verification

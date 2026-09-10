@@ -104,18 +104,25 @@ npm install -g @garygentry/rauf   # the installed command is still `rauf`
 npx @garygentry/rauf status .      # or one-off, no install
 ```
 
+This installs the **npm launcher** (`channel: npm-launcher`), which fetches and caches the
+matching self-contained release binary for your platform on first run.
+
 **Verify it's on your PATH** before wiring it into a project:
 
 ```bash
 rauf version                       # prints a semver; feature-forge's floor is >= 0.6.0
+rauf version --json                # also reports the channel + resolved path
 ```
+
+`rauf version --json` carries `channel` (`npm-launcher` / `release-binary` / `compiled-local` /
+`source`) and `path`, so you can tell which of the install methods below produced the `rauf` on
+your `PATH`.
 
 If `rauf: command not found` after a global install, the npm global bin (or `~/.local/bin` for
 the binary/source paths) isn't on your `PATH` — add it, or fall back to `npx @garygentry/rauf`.
 
 The package is scoped (`@garygentry/rauf`) because the bare `rauf` name is blocked by npm's
-name-similarity filter; the installed command remains `rauf`. The npm launcher fetches the
-matching self-contained binary for your platform on first run.
+name-similarity filter; the installed command remains `rauf`.
 
 ### From source
 
@@ -125,18 +132,26 @@ Building from source gives you the current version (it may run ahead of the late
 git clone https://github.com/garygentry/rauf.git
 cd rauf
 pnpm install && pnpm build
-bash scripts/install-global.sh   # symlinks `rauf` into ~/.local/bin
+bash scripts/install-global.sh   # symlinks the live-source wrapper into ~/.local/bin
 rauf version                     # verify (~/.local/bin must be on your PATH)
 ```
 
+This runs the live TS source (`channel: source`). On a machine that also has the published
+`rauf`, keep the two apart by naming the source wrapper `rauf-dev` — the name `rauf` is reserved
+for the published channel. See [`docs/DOGFOODING.md`](docs/DOGFOODING.md) → "The three binaries".
+
 ### Prebuilt binary (optional)
 
-Each tagged release also publishes self-contained binaries (no Bun/Node on the target machine), verified against the release's `SHA256SUMS`. This installs the **latest published release**, which may lag the source tree:
+Each tagged release also publishes self-contained binaries (no Bun/Node on the target machine), verified against the release's `SHA256SUMS`. This installs a **release binary** (`channel: release-binary`) to `~/.local/bin/rauf`, from the **latest published release** (which may lag the source tree):
 
 ```bash
 # Linux / macOS
 curl -fsSL https://raw.githubusercontent.com/garygentry/rauf/main/scripts/install-binary.sh | bash
 ```
+
+If `~/.local/bin` is also npm's global prefix bin, this path collides with the npm launcher; the
+installer refuses to overwrite a `rauf` it did not install unless you pass `--force`. Install a
+side-by-side compiled snapshot (e.g. the loop runner) with `--name rauf-stable`.
 
 ```powershell
 # Windows (PowerShell)

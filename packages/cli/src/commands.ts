@@ -5,6 +5,7 @@
 // Other commands are registered as stubs — future items add handlers.
 
 import { VERSION } from "@rauf/core";
+import { detectRuntimeChannel } from "./runtime-channel.js";
 import { getAgentDescriptors } from "@rauf/loop";
 import type { GlobalFlags } from "./parser.js";
 import { c, print, outputJson, renderTable } from "./formatter.js";
@@ -546,10 +547,17 @@ export function findSubcommand(cmd: CommandDef, name: string): SubcommandDef | u
 // ─── Built-in Command Handlers ───────────────────────────────────
 
 async function handleVersion(ctx: CommandContext): Promise<number> {
+  const rt = detectRuntimeChannel();
   if (ctx.globalFlags.json) {
-    outputJson({ version: VERSION });
+    outputJson({
+      version: VERSION,
+      channel: rt.channel,
+      path: rt.path,
+      ...(rt.distStale !== undefined ? { distStale: rt.distStale } : {}),
+    });
   } else {
-    print(`rauf v${VERSION}`);
+    const staleHint = rt.distStale ? "; dist may be stale — run `pnpm build`" : "";
+    print(`rauf v${VERSION} (${rt.channel}${staleHint})`);
   }
   return ExitCode.SUCCESS;
 }
