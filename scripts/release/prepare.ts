@@ -23,6 +23,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { writeBundle } from "../build-pi-bundle";
 import {
   PACKAGE_JSON_PATHS,
   VERSION_TS_PATH,
@@ -79,27 +80,42 @@ export function releaseBranchName(version: string): string {
 
 // ── Dry-run preview ─────────────────────────────────────────────────────────
 
-/** Print the planned edits + rolled section + branch (03-prepare-helper.md §5). */
-function printDryRun(plan: PreparePlan): void {
+/**
+ * Build the planned edits + rolled section + branch as lines (03-prepare-helper.md §5).
+ * Pure so prepare.test.ts can assert the plan without capturing stdout.
+ */
+export function dryRunLines(plan: PreparePlan): string[] {
   const canonical = plan.locations.find((l) => l.canonical)!.version;
-  console.log(`Plan for ${plan.tag} (${plan.isPrerelease ? "prerelease" : "stable"}):`);
+  const lines: string[] = [];
+  lines.push(`Plan for ${plan.tag} (${plan.isPrerelease ? "prerelease" : "stable"}):`);
   const width = Math.max(...plan.locations.map((l) => l.file.length)) + 1;
   for (const loc of plan.locations) {
     const drift = loc.version !== canonical ? "   (corrects drift)" : "";
-    console.log(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
+    lines.push(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
   }
-  console.log(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
-  console.log(
-    `  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`,
+  // Mirror the real flow's order: the Pi bundle is regenerated right after the
+  // version bump (its manifest version tracks package.json) and before the
+  // changelog roll, or `pnpm pi:check` fails on the release PR (issue #119).
+  lines.push(
+    `  adapters/pi/: regenerate bundle so its version tracks ${plan.version}` +
+      ` (scripts/build-pi-bundle.ts)`,
   );
-  console.log(
+  lines.push(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
+  lines.push(`  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`);
+  lines.push(
     `  tag: none — the owner tags ${plan.tag} on the merged commit (see docs/RELEASING.md)`,
   );
-  console.log("");
-  console.log(`## ${plan.version} section body:`);
-  console.log(plan.sectionBody);
-  console.log("");
-  console.log("(dry run — no changes written, no branch created, no push)");
+  lines.push("");
+  lines.push(`## ${plan.version} section body:`);
+  lines.push(plan.sectionBody);
+  lines.push("");
+  lines.push("(dry run — no changes written, no branch created, no push)");
+  return lines;
+}
+
+/** Print the planned edits + rolled section + branch (03-prepare-helper.md §5). */
+function printDryRun(plan: PreparePlan): void {
+  console.log(dryRunLines(plan).join("\n"));
 }
 
 // ── Executable flow ─────────────────────────────────────────────────────────
@@ -219,6 +235,26 @@ function main(): void {
   for (const rel of PACKAGE_JSON_PATHS) {
     const p = path.join(repoRoot, rel);
     fs.writeFileSync(p, setPackageJsonVersion(fs.readFileSync(p, "utf8"), version));
+  }
+
+  // §3.2b — regenerate the Pi adapter bundle (issue #119). Its manifest version
+  // is derived from the just-bumped root package.json, so without this step the
+  // generated `adapters/pi/package.json` keeps the old version and `pnpm pi:check`
+  // (in `pnpm gate`) fails on the release-prep PR's first push. Run in-process
+  // via the generator (the single source of truth for the bundle) rather than
+  // hand-editing the emitted file or shelling out. On a clean gated main the
+  // only resulting change is the version bump. If it throws (e.g. a skill with
+  // invalid frontmatter), the version bumps are already on the branch but not
+  // committed — print the same abort guidance the push step gives.
+  try {
+    writeBundle();
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    fail(
+      `Pi bundle regeneration failed: ${detail}\n` +
+        `version bumps were written on ${releaseBranch} but NOT committed.\n` +
+        `  abort:  git checkout main && git branch -D ${releaseBranch}`,
+    );
   }
 
   // §3.3 — roll the changelog (REQ-NOTES-01).

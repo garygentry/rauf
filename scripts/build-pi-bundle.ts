@@ -289,11 +289,28 @@ function listGenerated(dir: string, base = dir): string[] {
   return out;
 }
 
+/**
+ * Regenerate `adapters/pi/` on disk from the canonical skills, returning the
+ * number of files written. Exported so in-process callers (e.g.
+ * scripts/release/prepare.ts, issue #119) can regenerate the bundle without
+ * shelling out to a `bun` subprocess. Pass a prebuilt bundle to avoid a second
+ * buildBundle() pass; omit it to build fresh.
+ */
+export function writeBundle(bundle: Map<string, string> = buildBundle()): number {
+  fs.rmSync(PI_ADAPTER_DIR, { recursive: true, force: true });
+  for (const [rel, content] of bundle) {
+    const abs = path.join(PI_ADAPTER_DIR, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, content);
+  }
+  return bundle.size;
+}
+
 function main(): void {
   const check = process.argv.includes("--check");
-  const bundle = buildBundle();
 
   if (check) {
+    const bundle = buildBundle();
     const drift: string[] = [];
     for (const [rel, content] of bundle) {
       const abs = path.join(PI_ADAPTER_DIR, rel);
@@ -317,14 +334,9 @@ function main(): void {
     process.exit(0);
   }
 
-  fs.rmSync(PI_ADAPTER_DIR, { recursive: true, force: true });
-  for (const [rel, content] of bundle) {
-    const abs = path.join(PI_ADAPTER_DIR, rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content);
-  }
+  const count = writeBundle();
   // eslint-disable-next-line no-console
-  console.log(`Generated adapters/pi/ with ${bundle.size} files.`);
+  console.log(`Generated adapters/pi/ with ${count} files.`);
 }
 
 if (import.meta.main) main();

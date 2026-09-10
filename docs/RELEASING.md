@@ -78,9 +78,10 @@ pnpm release:prepare 0.3.0 --open-pr  # also run `gh pr create` for the branch
 synced with origin; existing tag; existing `release/X.Y.Z` branch;
 non-incrementing version; empty changelog — each failure prints a distinct
 `refusing: …` line and leaves the repo untouched). It then creates a
-`release/X.Y.Z` branch, bumps all eight version locations, renames
-`## Unreleased` to `## X.Y.Z` in the changelog, commits `chore(release): vX.Y.Z`,
-and pushes the **branch**. It does **not** tag and does **not** push `main` —
+`release/X.Y.Z` branch, bumps all eight version locations, regenerates the Pi
+adapter bundle (`adapters/pi/`, whose version tracks `package.json`, so
+`pnpm pi:check` stays green), renames `## Unreleased` to `## X.Y.Z` in the
+changelog, commits `chore(release): vX.Y.Z`, and pushes the **branch**. It does **not** tag and does **not** push `main` —
 tagging a pre-merge branch commit would orphan the tag on the squash-merge.
 
 Open the PR (the command is printed, or use `--open-pr`), let CI's `check` go
@@ -224,8 +225,9 @@ against `0.3.0-rc.1` → `0.3.0`, and record the results. Reference: spec 07 §4
 
 Prerequisite: the `release-tags` ruleset (§1.1) must be active.
 
-- [ ] **1. Prerelease dry-run**: `prepare` prints the seven edits (incl. docs
-      drift correction) and makes **no** repo change.
+- [ ] **1. Prerelease dry-run**: `prepare` prints the eight version edits (incl.
+      docs drift correction) plus the Pi bundle regeneration step, and makes
+      **no** repo change.
 - [ ] **2. Prerelease publish**: the release attaches all five assets +
       `SHA256SUMS`, is marked **prerelease** (not "latest"), and its notes match
       the changelog section.
