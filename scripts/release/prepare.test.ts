@@ -88,14 +88,17 @@ describe("dryRunLines (Pi bundle regeneration, issue #119)", () => {
     locations: [{ file: "packages/core/src/version.ts", version: "0.15.0", canonical: true }],
   });
 
-  it("advertises regenerating the Pi bundle to the target version before the branch step", () => {
+  it("advertises regenerating the Pi bundle in the same order the real flow runs it", () => {
     const lines = dryRunLines(makePlan("0.15.1"));
     const piIdx = lines.findIndex((l) => /adapters\/pi\/.*regenerate/.test(l));
+    const changelogIdx = lines.findIndex((l) => l.startsWith("  CHANGELOG.md:"));
     const branchIdx = lines.findIndex((l) => l.startsWith("  branch:"));
 
     expect(piIdx, "dry-run should mention regenerating adapters/pi").toBeGreaterThanOrEqual(0);
-    // The regeneration runs before the branch/commit step in the real flow.
-    expect(piIdx).toBeLessThan(branchIdx);
+    // main() regenerates the bundle (§3.2b) BEFORE rolling the changelog (§3.3)
+    // and creating the branch/commit — the preview must match that order.
+    expect(piIdx).toBeLessThan(changelogIdx);
+    expect(changelogIdx).toBeLessThan(branchIdx);
     // The bundle version tracks the bump target, and the step names the generator to run.
     expect(lines[piIdx]).toContain("0.15.1");
     expect(lines[piIdx]).toContain("scripts/build-pi-bundle.ts");

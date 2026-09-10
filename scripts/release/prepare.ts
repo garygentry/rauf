@@ -23,6 +23,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { writeBundle } from "../build-pi-bundle";
 import {
   PACKAGE_JSON_PATHS,
   VERSION_TS_PATH,
@@ -92,13 +93,14 @@ export function dryRunLines(plan: PreparePlan): string[] {
     const drift = loc.version !== canonical ? "   (corrects drift)" : "";
     lines.push(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
   }
-  lines.push(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
-  // The generated Pi bundle's version tracks package.json, so it must be
-  // regenerated after the bump or `pnpm pi:check` fails (issue #119).
+  // Mirror the real flow's order: the Pi bundle is regenerated right after the
+  // version bump (its manifest version tracks package.json) and before the
+  // changelog roll, or `pnpm pi:check` fails on the release PR (issue #119).
   lines.push(
     `  adapters/pi/: regenerate bundle so its version tracks ${plan.version}` +
-      ` (bun run scripts/build-pi-bundle.ts)`,
+      ` (scripts/build-pi-bundle.ts)`,
   );
+  lines.push(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
   lines.push(`  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`);
   lines.push(
     `  tag: none — the owner tags ${plan.tag} on the merged commit (see docs/RELEASING.md)`,
@@ -238,13 +240,22 @@ function main(): void {
   // §3.2b — regenerate the Pi adapter bundle (issue #119). Its manifest version
   // is derived from the just-bumped root package.json, so without this step the
   // generated `adapters/pi/package.json` keeps the old version and `pnpm pi:check`
-  // (in `pnpm gate`) fails on the release-prep PR's first push. The generator is
-  // the single source of truth for the bundle, so we invoke it rather than
-  // hand-editing the emitted file — it also catches any other bundle drift.
-  execFileSync("bun", ["run", "scripts/build-pi-bundle.ts"], {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
+  // (in `pnpm gate`) fails on the release-prep PR's first push. Run in-process
+  // via the generator (the single source of truth for the bundle) rather than
+  // hand-editing the emitted file or shelling out. On a clean gated main the
+  // only resulting change is the version bump. If it throws (e.g. a skill with
+  // invalid frontmatter), the version bumps are already on the branch but not
+  // committed — print the same abort guidance the push step gives.
+  try {
+    writeBundle();
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    fail(
+      `Pi bundle regeneration failed: ${detail}\n` +
+        `version bumps were written on ${releaseBranch} but NOT committed.\n` +
+        `  abort:  git checkout main && git branch -D ${releaseBranch}`,
+    );
+  }
 
   // §3.3 — roll the changelog (REQ-NOTES-01).
   fs.writeFileSync(changelogPath, rolledChangelog);
