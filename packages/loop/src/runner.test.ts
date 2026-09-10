@@ -639,6 +639,28 @@ else echo "RAUF_DONE"; fi`,
       expect(log).toContain("random output from the agent");
       expect(log).not.toContain("TOOL_USE_MARKER_ONLY_IN_RAW_JSON");
       expect(log).not.toContain("RAUF_DONE");
+      // Ordinary no-signal output must NOT trigger the backgrounded-verify hint.
+      expect(log).not.toContain("likely cause");
+    });
+
+    it("annotates the no-signal retry when output shows backgrounded verification (#125)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Backgrounded verify task")]);
+      // A clean (code 0) no-signal exit whose reconstructed text shows the agent
+      // deferred its signal behind an async completion notification — the #125
+      // failure mode. The runner still retries; it just names the likely cause.
+      writeMockClaude(
+        binDir,
+        `echo '{"type":"result","result":"Work done and unit tests green. Waiting on the e2e leg; I will wait for the completion notification of the test suite before giving the final signal."}'`,
+      );
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxRetries: 1 });
+      await runner.start();
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      // maxRetries:1 → the first no-signal exit exhausts retries and defers.
+      expect(log).toContain("Item 001 deferred after 1 attempts");
+      expect(log).toContain("likely cause: verification was backgrounded");
+      expect(log).toContain(".rauf/RAUF.md");
     });
 
     it("review pass retries a missing signal once and recovers within maxRetries", async () => {

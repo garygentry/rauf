@@ -38,7 +38,7 @@ When running as a rauf loop iteration, follow these operational rules:
 ### Working
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
-6. Run the verification command before considering work complete (run it in the foreground and wait for it to finish — never background it)
+6. Run the verification command before considering work complete (foreground, and wait for it to finish within this turn — never background it or defer your signal behind an async completion notification; a non-interactive session ends when you yield, so a deferred signal never arrives and the item is retried)
 
 ### Completing
 7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
