@@ -61,23 +61,34 @@ done
 
 TARGET="$INSTALL_DIR/$NAME"
 
-# Ownership marker: records `<sha256>  <target>` for the binary this script last
-# installed as NAME, so an upgrade/re-install is silent but any target we did not
-# create — or one we created that has since been REPLACED (npm launcher, a dev
-# symlink, another binary) — is refused without --force. Comparing the recorded
-# checksum against the file on disk (not just the path) is what catches a target
-# that was swapped out from under us.
+# Ownership marker: records `<sha256|->  <target>` for the binary this script
+# installed at TARGET, so an upgrade/re-install is silent but any target we did
+# not create — or one we created that has since been REPLACED (npm launcher, a
+# dev symlink, another binary) — is refused without --force. Comparing the
+# recorded checksum against the file on disk (not just the path) is what catches
+# a target that was swapped out from under us.
+#
+# The marker is keyed by the FULL target path (name + install dir), so installing
+# the same name to two different INSTALL_DIRs does not clobber each other's record.
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/rauf"
-MARKER="$STATE_DIR/installed-$NAME"
+# Encode the absolute target path into a filesystem-safe marker name; the record
+# also stores the exact path, so any encoding collision fails the path check and
+# errs toward refusing (safe) rather than a false claim of ownership.
+MARKER="$STATE_DIR/installed$(printf '%s' "$TARGET" | tr -c 'A-Za-z0-9' '_')"
 
-# Print the sha256 of "$1", or nothing if no tool is available / the file is
-# unreadable (a broken symlink hashes to nothing). Never executes the file.
+# Print the sha256 of "$1", or nothing if no tool is available / the tool errors
+# / the file is unreadable (a broken symlink hashes to nothing). Best-effort and
+# never fails: the `|| true` keeps a non-zero tool exit from aborting the script
+# under `set -euo pipefail` (the caller treats empty output as "no checksum").
+# Never executes the file.
 sha256_of() {
+  local out=""
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" 2>/dev/null | awk '{print $1}'
+    out="$(sha256sum "$1" 2>/dev/null | awk '{print $1}')" || true
   elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+    out="$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}')" || true
   fi
+  printf '%s' "$out"
 }
 
 # True when the marker confirms the CURRENT file at TARGET is one this script
@@ -85,11 +96,15 @@ sha256_of() {
 rauf_owns_target() {
   [[ -f "$MARKER" ]] || return 1
   local rec_sha rec_path cur_sha
+  # `-` is the no-sha-tool placeholder, so rec_sha is never empty and the path
+  # never shifts fields on read.
   read -r rec_sha rec_path <"$MARKER" 2>/dev/null || return 1
   [[ "$rec_path" == "$TARGET" ]] || return 1
+  # No sha recorded (installed without a sha tool) → fall back to path-only
+  # ownership (best effort). Otherwise the file must still match what we wrote.
+  [[ "$rec_sha" == "-" ]] && return 0
   cur_sha="$(sha256_of "$TARGET")"
-  # No sha tool anywhere → fall back to path-only ownership (best effort).
-  [[ -z "$rec_sha" || -z "$cur_sha" ]] && return 0
+  [[ -z "$cur_sha" ]] && return 0
   [[ "$cur_sha" == "$rec_sha" ]]
 }
 
@@ -107,10 +122,14 @@ if { [[ -e "$TARGET" ]] || [[ -L "$TARGET" ]]; } && ! rauf_owns_target && [[ "$F
   exit 1
 fi
 
-# Record `<sha256>  <target>` so a later run recognizes an unchanged install.
+# Record `<sha256|->  <target>` so a later run recognizes an unchanged install.
+# `-` stands in when no sha tool is available, keeping the field non-empty so the
+# path never shifts on read (path-only fallback then applies).
 mark_owned() {
+  local sha
+  sha="$(sha256_of "$TARGET")"
   mkdir -p "$STATE_DIR"
-  printf '%s  %s\n' "$(sha256_of "$TARGET")" "$TARGET" >"$MARKER"
+  printf '%s  %s\n' "${sha:--}" "$TARGET" >"$MARKER"
 }
 
 # Detect OS/arch and map to Bun --compile target naming used for release assets.

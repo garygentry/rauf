@@ -112,6 +112,10 @@ function detectDistStale(): boolean | undefined {
 /** Determine how the running rauf binary reached this host. */
 export function detectRuntimeChannel(): RuntimeChannel {
   const buildChannel = typeof RAUF_BUILD_CHANNEL !== "undefined" ? RAUF_BUILD_CHANNEL : "";
+  // For a `bun build --compile` standalone, process.execPath is the on-disk path
+  // of the executable (it is import.meta.url that carries the /$bunfs/ virtual
+  // path, not execPath) — verified end-to-end: a compiled binary run from a
+  // simulated npm cache reports channel=npm-launcher with its real cache path.
   const channel = classifyChannel(buildChannel, process.execPath, npmCacheRoot());
 
   if (channel === "source") {

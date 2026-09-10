@@ -34,8 +34,9 @@ export async function runCli(): Promise<number> {
     const wantJson = argv.includes("--json");
     const autoColor = detectColorSupport();
     configureOutput({ noColor: !autoColor, quiet: false, json: wantJson });
-    const rt = detectRuntimeChannel();
     if (wantJson) {
+      // Additive fields; the plain-text line stays `rauf v<semver>` (see handleVersion).
+      const rt = detectRuntimeChannel();
       outputJson({
         version: VERSION,
         channel: rt.channel,
@@ -43,8 +44,7 @@ export async function runCli(): Promise<number> {
         ...(rt.distStale !== undefined ? { distStale: rt.distStale } : {}),
       });
     } else {
-      const staleHint = rt.distStale ? "; dist may be stale — run `pnpm build`" : "";
-      print(`rauf v${VERSION} (${rt.channel}${staleHint})`);
+      print(`rauf v${VERSION}`);
     }
     return ExitCode.SUCCESS;
   }

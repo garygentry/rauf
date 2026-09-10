@@ -547,8 +547,11 @@ export function findSubcommand(cmd: CommandDef, name: string): SubcommandDef | u
 // ─── Built-in Command Handlers ───────────────────────────────────
 
 async function handleVersion(ctx: CommandContext): Promise<number> {
-  const rt = detectRuntimeChannel();
   if (ctx.globalFlags.json) {
+    // Channel/path/distStale are additive — the `version` key is unchanged, so
+    // strict consumers of `--json` keep working. The plain-text line below is a
+    // stable contract (`rauf v<semver>`); channel provenance lives in --json only.
+    const rt = detectRuntimeChannel();
     outputJson({
       version: VERSION,
       channel: rt.channel,
@@ -556,8 +559,7 @@ async function handleVersion(ctx: CommandContext): Promise<number> {
       ...(rt.distStale !== undefined ? { distStale: rt.distStale } : {}),
     });
   } else {
-    const staleHint = rt.distStale ? "; dist may be stale — run `pnpm build`" : "";
-    print(`rauf v${VERSION} (${rt.channel}${staleHint})`);
+    print(`rauf v${VERSION}`);
   }
   return ExitCode.SUCCESS;
 }
