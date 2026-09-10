@@ -226,7 +226,10 @@ describe("version command", () => {
       expect(code).toBe(ExitCode.SUCCESS);
     });
     const parsed = JSON.parse(output.stdout);
-    expect(parsed).toEqual({ version: VERSION });
+    expect(parsed.version).toBe(VERSION);
+    // Under the test runner (no `bun build --define` stamp) this is a source run.
+    expect(parsed.channel).toBe("source");
+    expect(typeof parsed.path).toBe("string");
   });
 });
 

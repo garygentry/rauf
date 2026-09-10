@@ -5,6 +5,7 @@
 // Other commands are registered as stubs — future items add handlers.
 
 import { VERSION } from "@rauf/core";
+import { detectRuntimeChannel } from "./runtime-channel.js";
 import { getAgentDescriptors } from "@rauf/loop";
 import type { GlobalFlags } from "./parser.js";
 import { c, print, outputJson, renderTable } from "./formatter.js";
@@ -547,7 +548,16 @@ export function findSubcommand(cmd: CommandDef, name: string): SubcommandDef | u
 
 async function handleVersion(ctx: CommandContext): Promise<number> {
   if (ctx.globalFlags.json) {
-    outputJson({ version: VERSION });
+    // Channel/path/distStale are additive — the `version` key is unchanged, so
+    // strict consumers of `--json` keep working. The plain-text line below is a
+    // stable contract (`rauf v<semver>`); channel provenance lives in --json only.
+    const rt = detectRuntimeChannel();
+    outputJson({
+      version: VERSION,
+      channel: rt.channel,
+      path: rt.path,
+      ...(rt.distStale !== undefined ? { distStale: rt.distStale } : {}),
+    });
   } else {
     print(`rauf v${VERSION}`);
   }

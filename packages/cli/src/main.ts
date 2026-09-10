@@ -5,6 +5,7 @@
 
 import { VERSION } from "@rauf/core";
 import { parseArgs } from "./parser.js";
+import { detectRuntimeChannel } from "./runtime-channel.js";
 import {
   configureOutput,
   detectColorSupport,
@@ -34,7 +35,14 @@ export async function runCli(): Promise<number> {
     const autoColor = detectColorSupport();
     configureOutput({ noColor: !autoColor, quiet: false, json: wantJson });
     if (wantJson) {
-      outputJson({ version: VERSION });
+      // Additive fields; the plain-text line stays `rauf v<semver>` (see handleVersion).
+      const rt = detectRuntimeChannel();
+      outputJson({
+        version: VERSION,
+        channel: rt.channel,
+        path: rt.path,
+        ...(rt.distStale !== undefined ? { distStale: rt.distStale } : {}),
+      });
     } else {
       print(`rauf v${VERSION}`);
     }

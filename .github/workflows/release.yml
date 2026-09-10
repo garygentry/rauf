@@ -68,13 +68,16 @@ jobs:
         # --outfile asset names are independent of --target, so they're unchanged.
         # arm64 has no AVX2 concept. Keep these triples in sync with RELEASE_TARGETS
         # in scripts/release/lib.ts (lib.test.ts guards the baseline invariant).
+        # --define RAUF_BUILD_CHANNEL stamps these as release binaries so
+        # `rauf version --json` reports channel=release-binary (the local `pnpm
+        # compile` uses "compiled-local"); see packages/cli/src/runtime-channel.ts.
         run: |
           mkdir -p dist
-          bun build --compile --target=bun-linux-x64-baseline   scripts/binary-entry.ts --outfile dist/rauf-linux-x64
-          bun build --compile --target=bun-linux-arm64          scripts/binary-entry.ts --outfile dist/rauf-linux-arm64
-          bun build --compile --target=bun-darwin-x64-baseline  scripts/binary-entry.ts --outfile dist/rauf-darwin-x64
-          bun build --compile --target=bun-darwin-arm64         scripts/binary-entry.ts --outfile dist/rauf-darwin-arm64
-          bun build --compile --target=bun-windows-x64-baseline scripts/binary-entry.ts --outfile dist/rauf-windows-x64.exe
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' --target=bun-linux-x64-baseline   scripts/binary-entry.ts --outfile dist/rauf-linux-x64
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' --target=bun-linux-arm64          scripts/binary-entry.ts --outfile dist/rauf-linux-arm64
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' --target=bun-darwin-x64-baseline  scripts/binary-entry.ts --outfile dist/rauf-darwin-x64
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' --target=bun-darwin-arm64          scripts/binary-entry.ts --outfile dist/rauf-darwin-arm64
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' --target=bun-windows-x64-baseline scripts/binary-entry.ts --outfile dist/rauf-windows-x64.exe
 
       # 7b. Smoke-test the linux-x64 binary on the runner BEFORE publishing, so a
       #     broken or wrong-version binary blocks the release. The ubuntu runner has

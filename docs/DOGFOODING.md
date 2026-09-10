@@ -5,27 +5,48 @@ them through feature-forge's pipeline and driving implementation with rauf's own
 autonomous loop. This document is the **loop workflow** for contributors.
 
 > The Claude Code plugin/environment setup (loading feature-forge and rauf live
-> from working-tree source via skills-dir symlinks) lives once in
-> feature-forge's
-> [README → Local development](https://github.com/garygentry/feature-forge/blob/main/README.md#local-development).
+> from working-tree source) lives once in feature-forge's
+> [`docs/DOGFOODING.md`](https://github.com/garygentry/feature-forge/blob/main/docs/DOGFOODING.md).
 > Set that up first; this doc does not repeat it.
+>
+> Note the **skills-dir symlink** method (`~/.claude/skills/<plugin>` → the repo)
+> is **rauf-specific**: rauf's skills are self-contained, so a repo-root symlink
+> loads them correctly. feature-forge's canon `skills/` is a build _source_ (its
+> shared references resolve only in the built `adapters/<host>/` bundles), so the
+> same symlink loads a broken plugin — use feature-forge's source-dogfood
+> workflow instead (see its DOGFOODING).
 
-## Two binaries, two roles
+## The three binaries
 
-| Binary        | What it is                                                                              | Use for                                                    |
-| ------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `rauf`        | `~/.local/bin/rauf` → `scripts/bin/rauf`, runs the **live TS source** via Bun           | Interactive / ad-hoc commands while developing             |
-| `rauf-stable` | A **compiled snapshot** (`bun build --compile`) installed to `~/.local/bin/rauf-stable` | The **loop runner**, decoupled from in-flight source edits |
+The rauf CLI reaches a machine through one of three binaries. **The name `rauf`
+is reserved for the published channel** — do not point it at working-tree source.
 
-Running the loop with a compiled snapshot means an edit you make mid-iteration
-(or a half-finished refactor) can't change the runner out from under a running
-loop. The live `rauf` wrapper stays for everything else.
+| Binary        | What it is                                                                                                        | Where / who installs it                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `rauf`        | The published `@garygentry/rauf` npm launcher (`npm i -g`), which fetches and caches the release binary           | Every host, at the estate BOM pin                           |
+| `rauf-dev`    | `scripts/bin/rauf` → `bun run` the **live TS source**; opt-in, requires the repo + Bun                            | Dev boxes only (a symlink you create, or an overlay module) |
+| `rauf-stable` | A **compiled snapshot** (`bun build --compile`) installed to `~/.local/bin/rauf-stable` via `pnpm dogfood:runner` | Dev boxes only, as the loop runner                          |
+
+`rauf version --json` reports which one is running, via a `channel` field
+(`npm-launcher` / `release-binary` / `compiled-local` / `source`) and the
+resolved `path` — use it to confirm what a host actually has.
+
+Running the loop with the compiled `rauf-stable` snapshot means an edit you make
+mid-iteration (or a half-finished refactor) can't change the runner out from
+under a running loop. Use `rauf-dev` for interactive/ad-hoc commands against live
+source; leave `rauf` for the published binary.
+
+> The curl installer (`scripts/install-binary.sh`) writes a **release binary**
+> and defaults to `~/.local/bin/rauf`. If that equals npm's global prefix bin,
+> it collides with the npm launcher, so the script refuses to overwrite a target
+> it did not install unless you pass `--force`; install the loop snapshot with
+> `--name rauf-stable`.
 
 ## Build / refresh the runner
 
 ```bash
 pnpm dogfood:runner        # = pnpm compile && install-binary.sh --local --name rauf-stable
-rauf-stable version --json # sanity-check the installed snapshot
+rauf-stable version --json # sanity-check the installed snapshot (channel: compiled-local)
 ```
 
 Rebuild **whenever you change the runner itself** (anything under
@@ -115,10 +136,10 @@ once over `main..HEAD`: `git diff main..HEAD`, the PR review hook / CI, or
 npx vitest run packages/loop/src/git-status.test.ts
 
 # Guard in practice: from main, a run is refused
-rauf loop run . --backlog specs/<x>     # → CONFLICT, with the message
+rauf-dev loop run . --backlog specs/<x>     # → CONFLICT, with the message
 
-# Runner snapshot is the expected version
-pnpm dogfood:runner && rauf-stable version --json   # → { "version": "0.6.0" }
+# Runner snapshot reports the current version + its channel
+pnpm dogfood:runner && rauf-stable version --json   # → { "version": "…", "channel": "compiled-local", "path": "…" }
 
 # plans/ is untracked + ignored
 git ls-files plans/                     # → empty

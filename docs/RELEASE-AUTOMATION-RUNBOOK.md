@@ -4,11 +4,12 @@ End-to-end steps for building a rauf feature by driving feature-forge's pipeline
 with rauf's own loop. The worked example is **release-automation** (the deferred
 release/CI workflow), but the flow is the same for any feature.
 
-> Prerequisite reading: [`DOGFOODING.md`](./DOGFOODING.md) (the `rauf` vs
-> `rauf-stable` split, the loop safety guard, building the runner) and
-> feature-forge's
-> [README → Local development](https://github.com/garygentry/feature-forge/blob/main/README.md#local-development)
-> (loading the plugins live via skills-dir symlinks).
+> Prerequisite reading: [`DOGFOODING.md`](./DOGFOODING.md) (the three binaries —
+> `rauf` / `rauf-dev` / `rauf-stable` — the loop safety guard, building the
+> runner) and feature-forge's
+> [`docs/DOGFOODING.md`](https://github.com/garygentry/feature-forge/blob/main/docs/DOGFOODING.md)
+> (loading the plugins live from source; the skills-dir symlink method is
+> rauf-specific).
 
 All `/feature-forge:*` and `/feature-forge` commands run **inside Claude Code**;
 lines shown with a `$` prefix are shell commands.

@@ -29,7 +29,7 @@
     "dev": "pnpm --filter @rauf/web dev",
     "dev:docs": "pnpm --filter @rauf/docs dev",
     "build:docs": "pnpm --filter @rauf/docs build",
-    "compile": "pnpm build && bun build --compile scripts/binary-entry.ts --outfile rauf-bin",
+    "compile": "pnpm build && bun build --compile --define RAUF_BUILD_CHANNEL='\"compiled-local\"' scripts/binary-entry.ts --outfile rauf-bin",
     "dogfood:runner": "pnpm compile && bash scripts/install-binary.sh --local --name rauf-stable",
     "clean": "pnpm -r clean",
     "generate:schemas": "bun run scripts/generate-json-schemas.ts",
