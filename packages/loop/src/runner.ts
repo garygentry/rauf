@@ -1579,11 +1579,19 @@ export class LoopRunner extends TypedEventEmitter {
         !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
       if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
         reviewRetryCount++;
+        // Same #125 diagnostic as the work-iteration path: a review agent can
+        // also background a check and yield to await an async notification.
+        const reviewSignalText = execResult.value.reconstructedText || stdout;
+        const noSignalHint = hasDeferredSignalSignature(reviewSignalText)
+          ? " (likely cause: a check was backgrounded and the turn yielded to await an async" +
+            " completion notification, which never arrives in non-interactive mode — see" +
+            " .rauf/REVIEW.md: run checks in the foreground and emit the signal within the turn)"
+          : "";
         appendLog(
           this.paths,
           `Review pass: no recognized signal (${parsed.signal}) — retrying (attempt ${
             reviewRetryCount + 1
-          }/${this.options.maxRetries})`,
+          }/${this.options.maxRetries})${noSignalHint}`,
         );
         continue;
       }

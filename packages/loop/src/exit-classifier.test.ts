@@ -47,7 +47,7 @@ describe("hasUsageLimitInText", () => {
 describe("hasDeferredSignalSignature", () => {
   it("matches the incident's backgrounded-verify / await-notification text", () => {
     expect(hasDeferredSignalSignature(DEFERRED_SIGNAL_TEXT)).toBe(true);
-    expect(hasDeferredSignalSignature("I ran the suite IN THE BACKGROUND")).toBe(true);
+    expect(hasDeferredSignalSignature("I ran the tests in the background")).toBe(true);
     expect(
       hasDeferredSignalSignature("Will emit RAUF_DONE after the completion notification arrives"),
     ).toBe(true);
@@ -58,6 +58,11 @@ describe("hasDeferredSignalSignature", () => {
     expect(
       hasDeferredSignalSignature("All acceptance criteria met; verification passed.\nRAUF_DONE"),
     ).toBe(false);
+  });
+
+  it("does not fire on generic 'in the background' phrasing unrelated to verification", () => {
+    // The bare "in the background" token was dropped to avoid this false positive.
+    expect(hasDeferredSignalSignature("the dev server ran in the background")).toBe(false);
   });
 });
 

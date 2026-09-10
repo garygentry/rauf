@@ -130,6 +130,13 @@ Run the full verification pipeline first:
 {{verifyCommand}}
 \`\`\`
 
+Run every command in the foreground and wait for it to exit **within this turn** —
+do NOT background it or yield your turn to wait for an asynchronous "completion
+notification." You run non-interactively: the session ends the moment you yield,
+so a deferred notification never arrives, no signal is printed, and the whole
+review pass is retried. Emit your \`RAUF_DONE\` / \`RAUF_REVIEW:\` signal in the same
+turn as your final output.
+
 ## Completed Items to Review
 
 {{completedItemsDetail}}

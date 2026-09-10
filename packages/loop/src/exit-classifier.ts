@@ -23,9 +23,14 @@ export function hasUsageLimitInText(text: string): boolean {
  * await an async completion notification" failure mode (#125): the agent
  * finishes an item's work but defers its RAUF_* signal behind a notification
  * that never arrives in non-interactive (`-p`) mode, so the session exits
- * cleanly with no signal and the whole item is retried. Used only to annotate an
- * already-no-signal genuine_retry log line — never to change retry behavior — so
- * a loose match is cheap.
+ * cleanly with no signal and the whole item is retried.
+ *
+ * This is a best-effort heuristic, NOT a classifier: it only annotates an
+ * already-no-signal genuine_retry log line and never changes retry behavior, so
+ * a miss or an occasional over-match is cheap. The phrases are deliberately
+ * specific to the "defer the signal behind async test completion" action (not
+ * generic tokens like "in the background", which would false-positive on
+ * unrelated output — and note substring matching cannot exclude a negation).
  */
 const DEFERRED_SIGNAL_PATTERNS = [
   "completion notification",
@@ -34,8 +39,8 @@ const DEFERRED_SIGNAL_PATTERNS = [
   "await the completion",
   "wait for that completion",
   "notification of the test",
-  "backgrounded the test",
-  "in the background",
+  "tests in the background",
+  "test suite in the background",
   "before giving the final signal",
   "before emitting the final signal",
   "wait for the test suite",
