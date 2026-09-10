@@ -296,8 +296,14 @@ export function install(projectPath: string, options: InstallOptions): Result<In
 
   // Operator-visible warning when verification is fully empty (or only
   // dispatcher-inferred) — the operator would otherwise have no signal that
-  // RAUF.md will tell the agent to skip verification entirely.
-  warnings.push(...detectVerificationWarnings(resolved, profile));
+  // no GLOBAL verification commands are configured. Honors an acknowledge
+  // flag carried by an explicit install option or a pre-existing marker (#121).
+  warnings.push(
+    ...detectVerificationWarnings(resolved, profile, {
+      acknowledgeEmptyVerify:
+        options.options?.acknowledgeEmptyVerify ?? existingOptions?.acknowledgeEmptyVerify,
+    }),
+  );
 
   // 3. Create .rauf/ directory
   const raufDir = path.join(resolved, DOT_RAUF);
@@ -492,8 +498,13 @@ export function update(
 
   // Surface a stale/empty verification profile on `update` too — an
   // already-installed project's marker may predate this warning, or its
-  // commands may have gone empty since install (e.g. hand-edited).
-  warnings.push(...detectVerificationWarnings(resolved, profile));
+  // commands may have gone empty since install (e.g. hand-edited). Honors the
+  // marker's acknowledge flag so an intentional empty profile stays quiet (#121).
+  warnings.push(
+    ...detectVerificationWarnings(resolved, profile, {
+      acknowledgeEmptyVerify: marker.options.acknowledgeEmptyVerify,
+    }),
+  );
 
   const templateVars = buildTemplateVars(profile);
   const raufMdResult = deployRaufMd(path.join(resolved, DOT_RAUF), templateVars, artifactsDir);
@@ -713,10 +724,14 @@ function buildTemplateVars(profile: ProjectProfile): Record<string, string | nul
     // RAUF.md would otherwise churn on every `rauf update`, even with no
     // change to their verification config). The non-empty case supplies its
     // own leading blank-line separation instead.
+    // Consistent with the softened loop-launch warning (#121): an empty GLOBAL
+    // profile is not "no verification" — each item's acceptanceCriteria (Workflow
+    // step 3) still define done. Say only that, and don't claim "no check".
     verificationWarning:
       profile.verify === ""
-        ? "\n\n> **No verification commands are configured.** Every command above is empty, so " +
-          "completing an item currently requires no automated check. Configure commands via " +
+        ? "\n\n> **No global verification commands are configured.** Every command above is empty, " +
+          "so there is no project-wide automated pipeline — each backlog item's `acceptanceCriteria` " +
+          "(Workflow step 3) still define done and must pass. Configure global commands via " +
           "`rauf profile set <path> <key> <value>` or reinstall with `--test-cmd`/`--typecheck-cmd`/etc."
         : "",
   };

@@ -787,9 +787,36 @@ describe("detectVerificationWarnings", () => {
     const warnings = detectVerificationWarnings(tmpDir, profile);
 
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("No verification commands detected");
+    expect(warnings[0]).toContain("No global verification commands configured");
+    expect(warnings[0]).toContain("per-item acceptance criteria");
+    expect(warnings[0]).toContain("acknowledgeEmptyVerify");
     expect(warnings[0]).toContain("--test-cmd");
     expect(warnings[0]).toContain("rauf profile set");
+  });
+
+  it("suppresses the empty-profile warning when acknowledgeEmptyVerify is set (#121)", () => {
+    const profile = detectProfile(tmpDir); // empty dir → all null, verify === ""
+
+    expect(detectVerificationWarnings(tmpDir, profile, { acknowledgeEmptyVerify: true })).toEqual(
+      [],
+    );
+    // false/undefined still warn.
+    expect(
+      detectVerificationWarnings(tmpDir, profile, { acknowledgeEmptyVerify: false }),
+    ).toHaveLength(1);
+  });
+
+  it("still warns about a stale dispatcher command even when acknowledged (#121)", () => {
+    // acknowledgeEmptyVerify only silences the empty-GLOBAL case, never a
+    // genuinely broken command (a dispatcher reference whose script is gone).
+    writeDispatcherScript(tmpDir);
+    const profile = detectProfile(tmpDir);
+    fs.rmSync(path.join(tmpDir, "scripts/verify.sh"));
+
+    const warnings = detectVerificationWarnings(tmpDir, profile, { acknowledgeEmptyVerify: true });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("no longer exists on disk");
   });
 
   it("warns (more mildly) when commands were dispatcher-inferred", () => {
@@ -801,7 +828,7 @@ describe("detectVerificationWarnings", () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("dispatcher script");
     expect(warnings[0]).toContain("scripts/verify.sh");
-    expect(warnings[0]).not.toContain("No verification commands detected");
+    expect(warnings[0]).not.toContain("No global verification commands configured");
   });
 
   it("does not warn for a normally-detected, non-empty profile", () => {

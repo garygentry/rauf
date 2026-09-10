@@ -1157,9 +1157,9 @@ describe("install / update — no-verification-commands warning", () => {
     if (!result.ok) return;
 
     expect(result.value.profile.verify).toBe("");
-    expect(result.value.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
-      true,
-    );
+    expect(
+      result.value.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(true);
   });
 
   it("RAUF.md carries the empty-profile admonition when verify is empty", () => {
@@ -1168,7 +1168,11 @@ describe("install / update — no-verification-commands warning", () => {
     install(tmpDir, installOpts());
 
     const raufMd = fs.readFileSync(path.join(tmpDir, ".rauf", "RAUF.md"), "utf-8");
-    expect(raufMd).toContain("No verification commands are configured");
+    expect(raufMd).toContain("No global verification commands are configured");
+    // Consistent with the launch warning (#121): the admonition points at
+    // per-item acceptanceCriteria rather than claiming "no automated check".
+    expect(raufMd).toContain("acceptanceCriteria");
+    expect(raufMd).not.toContain("requires no automated check");
   });
 
   it("does not warn when the project has detected verification commands", () => {
@@ -1178,9 +1182,9 @@ describe("install / update — no-verification-commands warning", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
-      false,
-    );
+    expect(
+      result.value.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(false);
   });
 
   it("update() surfaces the same warning for a marker whose stored profile is empty", () => {
@@ -1207,8 +1211,49 @@ describe("install / update — no-verification-commands warning", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.value.warnings.some((w) => w.includes("No verification commands detected"))).toBe(
-      true,
-    );
+    expect(
+      result.value.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(true);
+  });
+
+  it("install with options.acknowledgeEmptyVerify suppresses the empty-verify warning (#121)", () => {
+    createFakeProject(tmpDir, { git: true });
+
+    const result = install(tmpDir, installOpts({ options: { acknowledgeEmptyVerify: true } }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.profile.verify).toBe("");
+    expect(
+      result.value.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(false);
+  });
+
+  it("update() honors a marker's acknowledgeEmptyVerify and stays quiet (#121)", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+
+    const before = readMarkerFile(tmpDir);
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    writeMarkerFile(tmpDir, {
+      ...before.value,
+      profile: {
+        stack: "unknown",
+        packageManager: null,
+        monorepo: false,
+        commands: { test: null, typecheck: null, lint: null, build: null, format: null },
+        verify: "",
+      },
+      options: { ...before.value.options, acknowledgeEmptyVerify: true },
+    });
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(
+      result.value.warnings.some((w) => w.includes("No global verification commands configured")),
+    ).toBe(false);
   });
 });
