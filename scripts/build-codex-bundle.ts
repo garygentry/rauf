@@ -43,8 +43,10 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const CLAUDE_PLUGIN_JSON = path.join(REPO_ROOT, ".claude-plugin", "plugin.json");
 const CODEX_PLUGIN_DIR = path.join(REPO_ROOT, ".codex-plugin");
+/** Codex marketplace root dir (`.agents/plugins/`); the generator owns everything under it. */
+const CODEX_MARKETPLACE_DIR = path.join(REPO_ROOT, ".agents", "plugins");
 /** Codex marketplace root marker — makes the plugin installable via `codex plugin marketplace add`. */
-const CODEX_MARKETPLACE_JSON = path.join(REPO_ROOT, ".agents", "plugins", "marketplace.json");
+const CODEX_MARKETPLACE_JSON = path.join(CODEX_MARKETPLACE_DIR, "marketplace.json");
 
 /** Codex SKILL.md frontmatter keys we know how to carry. Anything else fails loud. */
 const SUPPORTED_FRONTMATTER_KEYS = new Set(["name", "description"]);
@@ -228,11 +230,18 @@ function main(): void {
     for (const rel of listCommitted(CODEX_PLUGIN_DIR)) {
       if (!bundle.has(rel)) drift.push(`.codex-plugin/${rel} (stale — not produced by generator)`);
     }
-    // Marketplace root marker (outside .codex-plugin/).
+    // Marketplace root marker (outside .codex-plugin/). Own everything under
+    // .agents/plugins/: flag the marker itself if it differs, and any stray file
+    // there the generator no longer produces (mirrors the .codex-plugin/ scan).
     const currentMarketplace = fs.existsSync(CODEX_MARKETPLACE_JSON)
       ? fs.readFileSync(CODEX_MARKETPLACE_JSON, "utf-8")
       : "";
     if (currentMarketplace !== marketplace) drift.push(".agents/plugins/marketplace.json");
+    for (const rel of listCommitted(CODEX_MARKETPLACE_DIR)) {
+      if (rel !== "marketplace.json") {
+        drift.push(`.agents/plugins/${rel} (stale — not produced by generator)`);
+      }
+    }
     if (drift.length > 0) {
       // eslint-disable-next-line no-console
       console.error(
@@ -256,7 +265,10 @@ function main(): void {
     fs.mkdirSync(path.dirname(abs), { recursive: true });
     fs.writeFileSync(abs, content);
   }
-  fs.mkdirSync(path.dirname(CODEX_MARKETPLACE_JSON), { recursive: true });
+  // Rebuild the marketplace dir from scratch too, so a relocated/renamed marker
+  // does not leave a stale root behind.
+  fs.rmSync(CODEX_MARKETPLACE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(CODEX_MARKETPLACE_DIR, { recursive: true });
   fs.writeFileSync(CODEX_MARKETPLACE_JSON, marketplace);
   // eslint-disable-next-line no-console
   console.log(

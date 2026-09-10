@@ -180,6 +180,7 @@ codex plugin list                              # shows the four rauf skills
 Alternatively, on a host that consumes skills from a directory rather than the plugin marketplace, symlink or copy each skill into a Codex skills dir (Codex scans `.agents/skills` from the cwd up to the repo root, then `~/.agents/skills`, and follows symlinks) — the skills are self-contained:
 
 ```bash
+mkdir -p ~/.agents/skills
 for s in author-backlog review-backlog drive-rauf-loop review-rauf-guidance; do
   ln -sfn "$PWD/skills/$s" ~/.agents/skills/"$s"
 done
