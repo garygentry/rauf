@@ -1249,6 +1249,27 @@ describe("LoopStartOptionsSchema", () => {
     });
     expect(result.provider).toBeUndefined();
   });
+
+  it("accepts optional allowDirtyForItemId (#115)", () => {
+    const result = LoopStartOptionsSchema.parse({
+      maxIterations: 20,
+      maxRetries: 3,
+      sessionTimeoutMinutes: 60,
+      allowDirty: true,
+      allowDirtyForItemId: "001",
+    });
+    expect(result.allowDirty).toBe(true);
+    expect(result.allowDirtyForItemId).toBe("001");
+  });
+
+  it("leaves allowDirtyForItemId undefined when omitted (backward compat)", () => {
+    const result = LoopStartOptionsSchema.parse({
+      maxIterations: 20,
+      maxRetries: 3,
+      sessionTimeoutMinutes: 60,
+    });
+    expect(result.allowDirtyForItemId).toBeUndefined();
+  });
 });
 
 // ─── LoopEvent ────────────────────────────────────────────────────

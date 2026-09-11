@@ -816,6 +816,20 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     }
     const paths = resolved.paths;
 
+    // Identify the item whose intentionally-left uncommitted work dirties the
+    // tree (#115), BEFORE answer injection below flips it to pending: the single
+    // needs-human item set aside by the loop (blocked + needsHuman). Threaded as
+    // allowDirtyForItemId so the relaunched loop prefers it in selection and
+    // scopes the clean-baseline guard's exemption to it by identity. The loop
+    // runs one item at a time, so at most one owns the dirt; zero or several →
+    // ambiguous, leave unset and fall back to the order-based exemption (#109).
+    // This is the dirt's true owner, NOT necessarily a `body.answers` item.
+    const dirtyOwnerBacklog = readBacklog(paths);
+    const dirtyOwners = dirtyOwnerBacklog.ok
+      ? dirtyOwnerBacklog.value.items.filter((i) => i.status === "blocked" && i.needsHuman === true)
+      : [];
+    const dirtyOwnerItemId = dirtyOwners.length === 1 ? dirtyOwners[0]!.id : undefined;
+
     // Resolve the absolute backlog root for the relaunch options (mirrors the
     // start route). resolveBacklogPathsFromParam already validated it.
     let resolvedBacklogRoot: string | undefined;
@@ -904,6 +918,12 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
             // clean-baseline guard must not treat that as unexpected dirt (#105
             // review, bug 2).
             allowDirty: true,
+            // Identity-aware companion (#115): the needs-human item detected
+            // above (the dirt's true owner) is preferred in selection so it
+            // commits its OWN work rather than a higher-priority sibling sweeping
+            // it into the wrong commit, and the guard's exemption is scoped to it
+            // by identity. undefined (ambiguous owner) → order-based fallback.
+            allowDirtyForItemId: dirtyOwnerItemId,
           });
         }
       }

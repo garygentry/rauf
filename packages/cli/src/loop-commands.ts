@@ -791,6 +791,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // `rauf resume` sets this: recovery rewrites bookkeeping so the tree is dirty
   // by construction, but branch protection must stay on (unlike --force).
   const allowDirty = extractBoolFlag(ctx.flags, "allow-dirty");
+  // `rauf resume` sets this alongside --allow-dirty: the id of the item whose
+  // intentionally-left uncommitted work dirties the tree (the needs-human item
+  // being resumed), so the runner's guard and selection are identity-aware (#115)
+  // rather than excusing whichever item is simply selected first.
+  const allowDirtyForItemId = extractStringFlag(ctx.flags, "allow-dirty-for-item") ?? undefined;
 
   // --ndjson: emit one JSON object per LoopEvent to stdout (plus a trailing
   // JSON result line) and suppress the human renderer + StatusLine so stdout is
@@ -917,6 +922,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     // mirrors how checkLoopPreconditions({ allowDirty }) already relaxes the
     // launch-time dirty-tree guard above for the same flag (#105 review).
     allowDirty,
+    // Identity-aware companion (#115): scope the dirty-tree exemption to the
+    // resumed item and prefer it in selection. undefined when not resuming.
+    allowDirtyForItemId,
   });
 
   info(`Running loop directly for ${c.cyan(path.basename(projectPath))}`);

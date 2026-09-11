@@ -1499,6 +1499,41 @@ describe("selectNextItem", () => {
     expect(result!.id).toBe("001");
   });
 
+  it("returns a preferred eligible item ahead of a higher-priority sibling (#115)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 4, status: "pending" }),
+      makeItem({ id: "002", priority: 1, status: "pending" }),
+    ]);
+
+    // 002 is higher priority, but 001 is the resume's own item — prefer it.
+    const result = selectNextItem(backlog, "001");
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("001");
+  });
+
+  it("falls back to normal ordering when the preferred item is not eligible (#115)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "blocked", needsHuman: true }),
+      makeItem({ id: "002", priority: 2, status: "pending" }),
+    ]);
+
+    // Preferred 001 is blocked (not eligible) → normal selection picks 002.
+    const result = selectNextItem(backlog, "001");
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("002");
+  });
+
+  it("ignores a preferred id that does not exist in the backlog (#115)", () => {
+    const backlog = makeBacklog([
+      makeItem({ id: "001", priority: 1, status: "pending" }),
+      makeItem({ id: "002", priority: 2, status: "pending" }),
+    ]);
+
+    const result = selectNextItem(backlog, "999");
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("001");
+  });
+
   it("items without dependsOn are always eligible if pending", () => {
     const backlog = makeBacklog([
       makeItem({ id: "001", priority: 2, status: "pending" }),
