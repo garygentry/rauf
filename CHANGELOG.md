@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.16.0
+
 ### Added
 
 - **`rauf version --json` now reports the binary's provenance** — output carries
@@ -22,6 +24,14 @@
   could not succeed. The manifest is emitted by `scripts/build-codex-bundle.ts`
   and guarded by `pnpm codex:check`, and the README documents both the
   marketplace install and the skills-dir symlink alternative. (#122)
+
+- **Every loop child is stamped `FORGE_INTERACTION=non-interactive`** — a headless
+  loop child has no reply channel by construction, but the agent inside cannot
+  observe that and can guess "interactive", emit a question nobody can answer, and
+  burn the iteration (feature-forge #261). The runner — the only party that knows —
+  now states it via `resolveChildEnv`, and downstream tooling (feature-forge's
+  `doctor` `interaction-mode` check) reads it and takes conservative defaults
+  instead of stalling. An attended child overrides it via `childEnv`. (#120)
 
 ### Changed
 
@@ -70,6 +80,16 @@
   rebuilds `adapters/pi/` after bumping the version locations, so the generated
   `adapters/pi/package.json` no longer keeps the old version and `pnpm pi:check`
   (in `pnpm gate`) no longer fails on a release-prep PR's first push. (#119)
+
+- **The resume dirty-tree exemption is now scoped to the resumed item by identity**
+  — the pre-iteration clean-baseline guard's `allowDirty` exemption was granted by
+  iteration ORDER, not item identity, so a higher-priority pending item selected
+  first on relaunch could sweep the actually-resumed item's leftover uncommitted
+  work into the WRONG item's commit (an audit-trail bug). Resume callers now thread
+  `allowDirtyForItemId`, which prefers that item on the resume's first iteration and
+  scopes the exemption to it by identity; a different item reaching the guard on a
+  dirty tree is still caught. Absent id → the existing order-based fallback (#109),
+  no regression. (#115)
 
 ## 0.15.0
 
