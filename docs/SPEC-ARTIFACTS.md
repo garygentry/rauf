@@ -12,6 +12,7 @@ These are the canonical template files installed into target projects. They live
 ```
 artifacts/variants/backlog-json/
 ├── CLAUDE_ADDON.md              # Block to merge into existing CLAUDE.md
+├── AGENTS_ADDON.md              # AGENTS.md counterpart; near-identical, see section below
 ├── CLAUDE_GREENFIELD.md.tmpl    # Full CLAUDE.md template for new projects
 └── .rauf/
     ├── RAUF.md.tmpl            # Per-iteration agent prompt (template)
@@ -229,15 +230,15 @@ When running as a rauf loop iteration, follow these operational rules:
 
 ### Reading Your Task
 
-1. Read `.rauf/RAUF.md` for detailed per-iteration instructions
-2. Read `.rauf/backlog.json` — find the current `in_progress` item
+1. Read `RAUF.md` for detailed per-iteration instructions
+2. Read the backlog — find the current `in_progress` item
 3. The item's `acceptanceCriteria` define "done" for this iteration
 
 ### Working
 
 4. Implement the changes described in the item's description
 5. Follow acceptance criteria precisely — each one must pass
-6. Run the verification command before considering work complete (run it in the foreground and wait for it to finish — never background it)
+6. Run the verification command before considering work complete (foreground, and wait for it to finish within this turn — never background it or defer your signal behind an async completion notification; a non-interactive session ends when you yield, so a deferred signal never arrives and the item is retried)
 
 ### Completing
 
@@ -259,18 +260,48 @@ When running as a rauf loop iteration, follow these operational rules:
 ### Rules
 
 - ONE item per iteration — do not work on multiple items
-- Do not modify `.rauf/backlog.json` — the loop runner manages status
-- Do not modify `.rauf/state.json` — the loop runner manages state
-- Read `.rauf/progress.md` for accumulated project learnings
-- Append new learnings to `.rauf/progress.md` if you discover important patterns
+- Do not modify `backlog.json` — the loop runner manages status
+- Do not modify `state.json` — the loop runner manages state
+- Read `progress.md` for accumulated project learnings
+- Append new learnings to `progress.md` if you discover important patterns
 
 ### Model Selection
 
 The runner picks the model by precedence (highest wins):
 `item.model` > `--model` / options > project default > provider default.
+(`rauf loop run --no-model` ignores `item.model` for one run — useful for running
+a Claude-aliased backlog under a non-Claude `--agent`.)
+
+### Delegation (Claude Code)
+
+In Claude Code, when a backlog item carries `agentDelegation`, use the **Task** tool to spawn
+sub-agents for the independent subtasks, then wait for all of them before final verification. You
+(the main agent) still own the `RAUF_*` exit signal — sub-agents do not emit it. The shared
+`RAUF.md` guidance is host-agnostic; this Task-tool note is the Claude-specific specialization.
 
 <!-- rauf:end -->
 ```
+
+## AGENTS_ADDON.md: Merge Block
+
+`AGENTS_ADDON.md` is the AGENTS.md-flavored, **host-agnostic** counterpart of the
+`CLAUDE_ADDON.md` block above. It is embedded into the compiled binary the same way and merged
+into an existing `AGENTS.md` between `<!-- rauf:agents:start -->` / `<!-- rauf:agents:end -->`
+sentinels. Its body is near-identical to the `CLAUDE_ADDON.md` block; rather than duplicate the
+whole thing, the intentional differences are noted here.
+
+| Aspect                            | `CLAUDE_ADDON.md`                                                                           | `AGENTS_ADDON.md`                                                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sentinels                         | `<!-- rauf:start -->` / `<!-- rauf:end -->`                                                 | `<!-- rauf:agents:start -->` / `<!-- rauf:agents:end -->`                                                                                            |
+| Intro                             | One line (`When running as a rauf loop iteration…`)                                         | A 3-line host-agnostic preamble that names rauf and states the rules apply to whichever coding agent (Claude, Codex, Gemini, …) drives the iteration |
+| Task paths (Reading Your Task)    | Bare `RAUF.md` and "the backlog"                                                            | Explicit `.rauf/RAUF.md` and `.rauf/backlog.json`                                                                                                    |
+| Delegation                        | `### Delegation (Claude Code)` — Task-tool specialization, placed **after** Model Selection | `### Delegation` — host-neutral (use the host's subagent mechanism if it has one, else complete subtasks inline), placed **before** Model Selection  |
+| Model Selection `--no-model` note | "…a Claude-aliased backlog under a non-Claude `--agent`"                                    | "…a backlog whose items carry Claude-only tier aliases under a non-Claude `--agent`"                                                                 |
+
+> **Known gap (tracked):** `AGENTS_ADDON.md` does not yet carry the `RAUF_REVIEW:<json>` /
+> no-signal blockquote paragraph that `CLAUDE_ADDON.md` includes. That paragraph is host-neutral
+> (it describes runner behavior, not a Claude mechanism) and should be mirrored into
+> `AGENTS_ADDON.md`; it is stranded in the Claude-only variant today. Tracked in issue #132.
 
 ## CLAUDE_GREENFIELD.md.tmpl: Full Template
 
