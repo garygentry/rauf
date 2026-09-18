@@ -44,3 +44,6 @@ packages/docs/public/images/
 
 # npm pack output (local verification artifacts)
 npm-dist/*.tgz
+
+# Machine-local forge config overlay (feature-forge #324) — never committed
+forge.config.local.json

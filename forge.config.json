@@ -7,6 +7,5 @@
   "stack": "typescript",
   "typeCheckCommand": "pnpm typecheck",
   "testCommand": "pnpm gate",
-  "gateCommand": "pnpm gate",
-  "loopRunner": { "bin": "rauf-stable" }
+  "gateCommand": "pnpm gate"
 }
