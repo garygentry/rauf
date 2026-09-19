@@ -881,7 +881,9 @@ export class LoopRunner extends TypedEventEmitter {
         ...RUNTIME_EXCLUDE_PATHSPECS,
         `:(exclude)${stateDirRel}`,
         `:(exclude)${backlogRel}`,
-        `:(exclude)${backlogRel}.bak`,
+        // backlog.json.bak is covered by the shared glob exclude; a literal
+        // `.bak` exclude here is redundant and, on a `git stash`, would trip the
+        // ignored-file exit that halted the loop in #137. Keep it glob-only.
         `:(exclude)${MARKER_FILENAME}`,
       ];
       try {
@@ -1774,7 +1776,13 @@ export class LoopRunner extends TypedEventEmitter {
       ...RUNTIME_EXCLUDE_PATHSPECS,
       `:(exclude)${stateDirRel}`,
       `:(exclude)${backlogRel}`,
-      `:(exclude)${backlogRel}.bak`,
+      // NB: backlog.json.bak is excluded via the shared glob
+      // `:(exclude,glob)**/backlog.json.bak` in RUNTIME_EXCLUDE_PATHSPECS. Do NOT
+      // add a literal `:(exclude)${backlogRel}.bak` here: `git stash push
+      // --include-untracked` exits non-zero when a LITERAL exclude names an
+      // existing gitignored file (the installer ignores **/backlog.json.bak, and
+      // atomicWrite always leaves one beside the backlog), which since #105 halts
+      // the whole loop even though the stash was saved (#137).
     ];
     try {
       const status = await execGit(this.projectPath, ["status", "--porcelain", "--", ...pathspecs]);
