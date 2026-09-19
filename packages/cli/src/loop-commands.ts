@@ -213,7 +213,9 @@ export async function seedBacklog(
   const excludePathspecs = [
     ".",
     `:(exclude)${backlogRel}`,
-    `:(exclude)${backlogRel}.bak`,
+    // backlog.json.bak is covered by the shared glob exclude in
+    // RUNTIME_EXCLUDE_PATHSPECS; a literal `.bak` exclude is redundant here (and
+    // would trip a `git stash` on an ignored file, per #137). Keep it glob-only.
     ...RUNTIME_EXCLUDE_PATHSPECS,
   ];
 

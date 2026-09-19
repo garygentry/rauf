@@ -1683,6 +1683,59 @@ echo "RAUF_BLOCKED:stopping here"`,
       expect(fs.existsSync(path.join(tmpDir, ".rauf", "backlog.json"))).toBe(true);
     });
 
+    it("does not halt the loop when an ignored backlog.json.bak exists at revert time (#137)", async () => {
+      // A real install gitignores `**/backlog.json.bak` (item 014), and
+      // atomicWrite always leaves one beside the backlog. When an item blocks
+      // with abandoned code, the dirty-tree revert's `git stash push
+      // --include-untracked` must not be tripped by that ignored `.bak`: git
+      // exits non-zero when a LITERAL exclude pathspec names an existing,
+      // gitignored file — even though the stash IS saved — and since #105 that
+      // non-zero exit halted the whole loop. The shared glob exclude
+      // (`:(exclude,glob)**/backlog.json.bak`) covers the file without the error;
+      // a redundant literal `.bak` exclude was the sole trigger. Against the
+      // pre-fix code this test halts on item 001 ("Failed to revert dirty tree")
+      // and never reaches 002.
+      setupProject(tmpDir, [
+        pendingItem("001", "Leaves abandoned work with an ignored .bak present"),
+        pendingItem("002", "Must still be reachable after the block"),
+      ]);
+      // Ignore the .bak exactly as the installer does. Commit the .gitignore so
+      // the pre-iteration clean-baseline guard (#83) sees a clean tree (an
+      // untracked .gitignore would itself count as unexpected dirt on iteration
+      // 1). The ignored .bak stays untracked and does not dirty the tree.
+      fs.writeFileSync(path.join(tmpDir, ".gitignore"), "**/backlog.json.bak\n");
+      execSync("git add .gitignore && git commit -q -m 'add gitignore' --allow-empty", {
+        cwd: tmpDir,
+        stdio: "ignore",
+      });
+      // Make sure an ignored .bak exists at revert time (atomicWrite also creates
+      // one beside the backlog on every write).
+      fs.writeFileSync(path.join(tmpDir, ".rauf", "backlog.json.bak"), "{}\n");
+
+      writeMockClaude(
+        binDir,
+        `printf 'half-finished\\n' > "${tmpDir}/feature.txt"
+echo "RAUF_BLOCKED:stopping here"`,
+      );
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      await runner.start();
+
+      const backlog: Backlog = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
+      );
+      // The item blocked cleanly — the loop did not error-halt on a bogus revert
+      // failure caused by the ignored .bak.
+      expect(backlog.items[0]?.status).toBe("blocked");
+
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Reverted dirty working tree");
+      expect(log).not.toContain("Failed to revert dirty tree");
+
+      // The abandoned application work was stashed away, not swept forward.
+      expect(fs.existsSync(path.join(tmpDir, "feature.txt"))).toBe(false);
+    });
+
     it("halts the loop instead of continuing when the revert (git stash) itself fails (#83)", async () => {
       // Two items: 001 will be blocked with abandoned work, and forced to fail
       // its dirty-tree revert; 002 must NEVER be reached. Write against the OLD
