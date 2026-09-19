@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **The loop no longer halts when an item blocks with an ignored `backlog.json.bak` present (#137).** `revertAbandonedWork`'s `git stash push --include-untracked` layered a redundant literal `:(exclude)<backlog>.bak` pathspec on top of the shared glob exclude. Git exits non-zero when a literal exclude names an existing, gitignored file — and `backlog.json.bak` always exists (`atomicWrite`) and is always ignored (the installer adds `**/backlog.json.bak`) — so every genuine block or failed iteration that left dirty code halted the whole loop with `status: error`, even though the stash was saved (a regression surfaced by #105 turning the previously-swallowed non-zero exit into a halt). The literal `.bak` exclude is dropped from all three pathspec lists that carried it; the shared glob `:(exclude,glob)**/backlog.json.bak` already covers the file without tripping the error. Reproduced and regression-tested on git 2.34.1.
+
 ## 0.16.0
 
 ### Added
