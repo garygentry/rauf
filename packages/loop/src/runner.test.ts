@@ -1683,26 +1683,30 @@ echo "RAUF_BLOCKED:stopping here"`,
       expect(fs.existsSync(path.join(tmpDir, ".rauf", "backlog.json"))).toBe(true);
     });
 
-    it("does not halt the loop when an ignored backlog.json.bak exists at revert time (#137)", async () => {
+    it("continues to the next item instead of halting when an ignored backlog.json.bak exists at revert time (#137)", async () => {
       // A real install gitignores `**/backlog.json.bak` (item 014), and
-      // atomicWrite always leaves one beside the backlog. When an item blocks
+      // atomicWrite always leaves one beside the backlog. When item 001 blocks
       // with abandoned code, the dirty-tree revert's `git stash push
       // --include-untracked` must not be tripped by that ignored `.bak`: git
       // exits non-zero when a LITERAL exclude pathspec names an existing,
       // gitignored file — even though the stash IS saved — and since #105 that
-      // non-zero exit halted the whole loop. The shared glob exclude
+      // spurious non-zero exit halted the whole loop. The shared glob exclude
       // (`:(exclude,glob)**/backlog.json.bak`) covers the file without the error;
-      // a redundant literal `.bak` exclude was the sole trigger. Against the
-      // pre-fix code this test halts on item 001 ("Failed to revert dirty tree")
-      // and never reaches 002.
+      // a redundant literal `.bak` exclude was the sole trigger.
+      //
+      // This is the inverse of the #83 test below: there a GENUINE revert failure
+      // must halt; here a SPURIOUS one must not. The two-item + maxIterations:2
+      // setup makes the difference observable — against the pre-fix code 001's
+      // revert "fails", the loop halts, and 002 is NEVER reached (stays pending);
+      // with the fix the loop continues and completes 002.
       setupProject(tmpDir, [
-        pendingItem("001", "Leaves abandoned work with an ignored .bak present"),
-        pendingItem("002", "Must still be reachable after the block"),
+        pendingItem("001", "Blocks with abandoned work; ignored .bak present"),
+        pendingItem("002", "Must be reached after 001's revert succeeds"),
       ]);
       // Ignore the .bak exactly as the installer does. Commit the .gitignore so
       // the pre-iteration clean-baseline guard (#83) sees a clean tree (an
-      // untracked .gitignore would itself count as unexpected dirt on iteration
-      // 1). The ignored .bak stays untracked and does not dirty the tree.
+      // untracked .gitignore would itself count as unexpected dirt). The ignored
+      // .bak stays untracked and does not dirty the tree.
       fs.writeFileSync(path.join(tmpDir, ".gitignore"), "**/backlog.json.bak\n");
       execSync("git add .gitignore && git commit -q -m 'add gitignore' --allow-empty", {
         cwd: tmpDir,
@@ -1712,21 +1716,39 @@ echo "RAUF_BLOCKED:stopping here"`,
       // one beside the backlog on every write).
       fs.writeFileSync(path.join(tmpDir, ".rauf", "backlog.json.bak"), "{}\n");
 
+      // 001 leaves abandoned work and blocks; 002 completes cleanly.
+      // Counter lives in binDir (OUTSIDE the repo tree): revertAbandonedWork
+      // stashes untracked abandoned work, so a counter inside tmpDir would be
+      // swept away after 001 blocks and iteration 2 would re-block instead of
+      // completing.
+      const invocationCountFile = path.join(binDir, ".invocations-137");
       writeMockClaude(
         binDir,
-        `printf 'half-finished\\n' > "${tmpDir}/feature.txt"
-echo "RAUF_BLOCKED:stopping here"`,
+        `n=$(cat "${invocationCountFile}" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "${invocationCountFile}"
+if [ "$n" = "1" ]; then
+  printf 'half-finished\\n' > "${tmpDir}/feature.txt"
+  echo "RAUF_BLOCKED:stopping here"
+else
+  echo "RAUF_DONE"
+fi`,
       );
 
-      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 2 });
       await runner.start();
 
       const backlog: Backlog = JSON.parse(
         fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       );
-      // The item blocked cleanly — the loop did not error-halt on a bogus revert
-      // failure caused by the ignored .bak.
-      expect(backlog.items[0]?.status).toBe("blocked");
+      const byId = Object.fromEntries(backlog.items.map((i) => [i.id, i]));
+      // 001 blocked cleanly — no error-halt on the spurious revert "failure"...
+      expect(byId["001"]?.status).toBe("blocked");
+      // ...and the loop CONTINUED to 002 and completed it (the real-world impact
+      // of #137 is that a single block halts the *whole* loop). The agent ran
+      // twice — proving 002 was actually selected and spawned.
+      expect(byId["002"]?.status).toBe("done");
+      expect(fs.readFileSync(invocationCountFile, "utf-8").trim()).toBe("2");
 
       const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
       expect(log).toContain("Reverted dirty working tree");
@@ -1747,7 +1769,11 @@ echo "RAUF_BLOCKED:stopping here"`,
         pendingItem("002", "Must never run"),
       ]);
 
-      const invocationCountFile = path.join(tmpDir, ".claude-invocations");
+      // Counter lives in binDir (OUTSIDE the repo tree): revertAbandonedWork
+      // stashes untracked abandoned work, so a counter inside tmpDir would be
+      // swept away after 001 blocks and iteration 2 would re-block instead of
+      // completing.
+      const invocationCountFile = path.join(binDir, ".invocations-137");
       writeMockClaude(
         binDir,
         `n=$(cat "${invocationCountFile}" 2>/dev/null || echo 0)
@@ -1808,7 +1834,11 @@ fi`,
       // the stray file into its commit.
       setupProject(tmpDir, [pendingItem("001", "First task"), pendingItem("002", "Second task")]);
 
-      const invocationCountFile = path.join(tmpDir, ".claude-invocations");
+      // Counter lives in binDir (OUTSIDE the repo tree): revertAbandonedWork
+      // stashes untracked abandoned work, so a counter inside tmpDir would be
+      // swept away after 001 blocks and iteration 2 would re-block instead of
+      // completing.
+      const invocationCountFile = path.join(binDir, ".invocations-137");
       writeMockClaude(
         binDir,
         `n=$(cat "${invocationCountFile}" 2>/dev/null || echo 0)

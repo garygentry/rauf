@@ -214,8 +214,11 @@ export async function seedBacklog(
     ".",
     `:(exclude)${backlogRel}`,
     // backlog.json.bak is covered by the shared glob exclude in
-    // RUNTIME_EXCLUDE_PATHSPECS; a literal `.bak` exclude is redundant here (and
-    // would trip a `git stash` on an ignored file, per #137). Keep it glob-only.
+    // RUNTIME_EXCLUDE_PATHSPECS, which this list must mirror exactly (see above).
+    // A literal `.bak` exclude here is redundant; this call only runs `git
+    // status` (which does not error on it), but keeping it glob-only avoids the
+    // pattern being copied into a `git stash` call, where a literal exclude
+    // naming an existing ignored file exits non-zero and halts the loop (#137).
     ...RUNTIME_EXCLUDE_PATHSPECS,
   ];
 
