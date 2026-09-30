@@ -153,19 +153,30 @@ const RESUMABLE_STATES: ReadonlySet<string> = new Set([
   "IDLE",
 ]);
 
-/** States in which a loop or review is active, so a resume would 409. */
-const ACTIVE_STATES: ReadonlySet<string> = new Set(["RUNNING", "REVIEWING", "STARTING"]);
+/** States with a live loop the Stop button can stop (it holds `.loop.lock`). */
+export const STOPPABLE_STATES: ReadonlySet<string> = new Set(["RUNNING", "SLEEPING_LIMIT"]);
+
+/**
+ * States in which a live loop or review owns the backlog root (its lock), so a
+ * resume would 409: the stoppable states plus an active review or startup.
+ * WEEKLY_LIMIT is not here — the runner exits (releasing the lock) on it.
+ */
+const LIVE_STATES: ReadonlySet<string> = new Set([...STOPPABLE_STATES, "REVIEWING", "STARTING"]);
 
 /**
  * Whether the status page's Resume button is enabled. Normally it needs a
  * resumable state and non-done work. A pending review (#146) is resumable from
  * any settled state — including COMPLETE with every item done — because
- * `POST /:id/resume` re-runs it, as the CLI `rauf resume` does.
+ * `POST /:id/resume` re-runs it, as the CLI `rauf resume` does; but never while
+ * a live loop owns the root (a live state, or a lock held by a live process), e.g.
+ * a review sleeping out a usage limit, which resumes on its own.
  */
 export function canResume(
-  status: Pick<DerivedStatus, "loopState" | "backlogSummary" | "reviewPending">,
+  status: Pick<DerivedStatus, "loopState" | "backlogSummary" | "reviewPending" | "lock">,
 ): boolean {
-  if (status.reviewPending === true) return !ACTIVE_STATES.has(status.loopState);
+  if (status.reviewPending === true) {
+    return !LIVE_STATES.has(status.loopState) && status.lock?.alive !== true;
+  }
   return (
     RESUMABLE_STATES.has(status.loopState) &&
     status.backlogSummary.total - status.backlogSummary.done > 0

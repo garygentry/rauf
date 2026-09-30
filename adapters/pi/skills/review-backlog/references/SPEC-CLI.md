@@ -199,6 +199,7 @@ Run a standalone review pass over all completed backlog items, without running a
 - Outputs a review summary or "no issues found"
 - `--items <id,id>`: review only these done items (default: every done item). `rauf resume` passes a pending review's `reviewItemIds` here
 - A usage limit that stops the review (#146) leaves a resumable `paused_usage_limit` state with `reviewPending: true` + `reviewItemIds`, prints a `rauf resume` hint and exits 4 (LIMIT). A failed review (spawn/prompt error, unexpected signal) prints an error, stays pending and exits 1 (ERROR). After a review, state is `idle`. `--json` output carries `limitReached`, `reviewPending` and `reviewFailed`
+- Holds the backlog root's `.loop.lock` for the whole review, like `loop run` (#149): a concurrent `loop run`, `resume` or review on the same root is refused while it runs. If a live loop already holds the lock, the review does not start, a pending review is left untouched, and it exits 2 (USAGE; `--json` carries `lockConflict: true`)
 
 ---
 

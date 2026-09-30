@@ -38,7 +38,8 @@ const ACTIVE_DIR = path.join(TMP_HOME, ".rauf", "active");
 
 /** Local mirror of the resume route's success DTO (00 §6). */
 interface ResumeResult {
-  reconciled: { treeClean: boolean; interrupted: unknown[] };
+  reconciled: { treeClean: boolean; interrupted: unknown[] } | null;
+  interrupted?: string[];
   relaunched: boolean;
   reviewRerun?: boolean;
   reason?: string;
@@ -461,6 +462,8 @@ describe("POST /:id/resume", () => {
     const body = (await res.json()) as { data: ResumeResult };
     expect(body.data.relaunched).toBe(false);
     expect(body.data.reviewRerun).toBe(true);
+    // No work left → recovery is skipped (as the CLI does), so the marker survives.
+    expect(body.data.reconciled).toBeNull();
     expect(loopSpy).not.toHaveBeenCalled();
     expect(reviewSpy).toHaveBeenCalledTimes(1);
     const [projectPath, options, itemIds] = reviewSpy.mock.calls[0]!;
@@ -489,6 +492,94 @@ describe("POST /:id/resume", () => {
     expect(body.data.reviewRerun).toBe(true);
     expect(loopSpy).not.toHaveBeenCalled();
     expect(reviewSpy.mock.calls[0]?.[2]).toEqual(["000"]);
+  });
+
+  /** Parse the project's state.json. */
+  function readState(name: string): Record<string, unknown> {
+    return JSON.parse(
+      fs.readFileSync(path.join(tmpDir, name, ".rauf", "state.json"), "utf8"),
+    ) as Record<string, unknown>;
+  }
+
+  it("surfaces interrupted work BEFORE recovery and keeps the pending review (#149)", async () => {
+    const done = { ...pendingItem, id: "001", status: "done", completedAt: "2026-09-30" };
+    createProject("p", [done, { ...pendingItem, id: "002", status: "in_progress" }]);
+    seedPendingReview("p", "running", ["001"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    fs.writeFileSync(path.join(tmpDir, "p", "wip.txt"), "uncommitted work\n"); // dirty tree
+    const manager = getLoopManager();
+    const reviewSpy = vi.spyOn(manager, "startReviewLoop");
+    const loopSpy = vi.spyOn(manager, "startLoop");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.interrupted).toEqual(["002"]);
+    expect(body.data.reconciled).toBeNull();
+    expect(body.data.relaunched).toBe(false);
+    expect(body.data.reviewRerun).toBeUndefined();
+    expect(body.data.reason).toContain("rauf resume --recover");
+    expect(reviewSpy).not.toHaveBeenCalled();
+    expect(loopSpy).not.toHaveBeenCalled();
+    // No recovery ran: state.json and its pending-review marker are untouched.
+    const state = readState("p");
+    expect(state.reviewPending).toBe(true);
+    expect(state.reviewItemIds).toEqual(["001"]);
+    const backlog = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, "p", ".rauf", "backlog.json"), "utf8"),
+    ) as { items: { id: string; status: string }[] };
+    expect(backlog.items.find((i) => i.id === "002")?.status).toBe("in_progress");
+  });
+
+  it("returns 409 and keeps the marker when the review launch is refused (no work left)", async () => {
+    createProject("p", [{ ...pendingItem, status: "done", completedAt: "2026-09-30" }]);
+    seedPendingReview("p", "complete", ["001"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    vi.spyOn(getLoopManager(), "startReviewLoop").mockReturnValue({
+      ok: false,
+      error: "Loop already running for .rauf",
+      conflict: true,
+    });
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("LOCK_CONFLICT");
+    expect(body.error.message).toContain("pending review could not be started");
+    const state = readState("p");
+    expect(state.reviewPending).toBe(true);
+    expect(state.reviewItemIds).toEqual(["001"]);
+  });
+
+  it("restores the marker after recovery when the review launch fails (work left)", async () => {
+    createProject("p", [pendingItem]);
+    seedPendingReview("p", "paused_usage_limit", ["000"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    vi.spyOn(getLoopManager(), "startReviewLoop").mockReturnValue({
+      ok: false,
+      error: "boom",
+      conflict: false,
+    });
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(500);
+    // Recovery deleted state.json; the route put the marker back before launching.
+    const state = readState("p");
+    expect(state.status).toBe("idle");
+    expect(state.reviewPending).toBe(true);
+    expect(state.reviewItemIds).toEqual(["000"]);
   });
 
   it("reviews every done item when a legacy pending review has no reviewItemIds", async () => {

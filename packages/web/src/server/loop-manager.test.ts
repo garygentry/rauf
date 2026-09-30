@@ -177,6 +177,34 @@ describe("LoopManager", () => {
         expect(result.error).toContain("already running");
       }
     });
+
+    it("refuses synchronously when another process holds .loop.lock (#149)", () => {
+      const manager = new LoopManager();
+      writeMarker(projectPath);
+      writeBacklog(projectPath);
+      writeRaufMd(projectPath);
+      setupMockClaude();
+      const lockPath = path.join(projectPath, ".rauf", ".loop.lock");
+      const lock = {
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        processStartTime: null,
+      };
+      fs.writeFileSync(lockPath, JSON.stringify(lock));
+
+      const result = manager.startReviewLoop(projectPath, {
+        maxIterations: 1,
+        maxRetries: 1,
+        review: true,
+        reviewOnly: true,
+        sessionTimeoutMinutes: 1,
+      });
+
+      expect(result).toMatchObject({ ok: false, conflict: true });
+      expect(manager.isRunning(projectPath)).toBe(false);
+      // The other holder's lock is left alone.
+      expect(JSON.parse(fs.readFileSync(lockPath, "utf8"))).toMatchObject({ pid: process.pid });
+    });
   });
 
   describe("stopLoop", () => {

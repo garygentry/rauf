@@ -162,6 +162,12 @@ export interface LoopResult {
    * just the carrier the CLI exit mapping keys on — analogous to `limitReached`.
    */
   setupFailed?: boolean;
+  /**
+   * A standalone review ({@link LoopRunner.startReviewOnly}) could not take the
+   * backlog root's `.loop.lock` because a live loop holds it: nothing ran and a
+   * pending review (#146) is left untouched. The error is on `loop_error`.
+   */
+  lockConflict?: boolean;
 }
 
 /** Result of a review pass */
@@ -272,6 +278,8 @@ export class LoopRunner extends TypedEventEmitter {
    */
   private readonly allowDirtyForItemId: string | null;
   private baseCommitHash: string | null = null;
+  /** This runner holds `.loop.lock` for a standalone review (see acquireRunLock). */
+  private runLockHeld = false;
   private reviewItemsCreated = 0;
   private reviewSummary: string | null = null;
   /** Set when --pause-on-needs-human halts the loop (item 008); surfaced on LoopResult. */
@@ -368,6 +376,8 @@ export class LoopRunner extends TypedEventEmitter {
     // Capture git baseline commit hash for review diff
     this.baseCommitHash = await this.getHeadCommit();
 
+    // Set once this run holds `.loop.lock`; gates the release in `finally`.
+    let lockAcquired = false;
     try {
       // (1) Ensure state directory exists
       const ensureResult = ensureStateDir(this.paths);
@@ -375,18 +385,21 @@ export class LoopRunner extends TypedEventEmitter {
         throw new Error(`Failed to create state directory: ${ensureResult.error.message}`);
       }
 
-      // (1b) Rotate the prior run's event log to archive and reset the per-run
+      // (1b) Acquire the lock FIRST (#149): a refused start must not touch
+      // the live holder's lock, event log or state. Its error is emitted
+      // in-memory only (the root's events.ndjson belongs to the holder).
+      const lockResult = acquireLock(this.paths);
+      if (!lockResult.ok) {
+        this.emitRefusal(lockResult.error.message);
+        return { completedCount: 0, blockedCount: 0, cancelled: false };
+      }
+      lockAcquired = true;
+
+      // (2) Rotate the prior run's event log to archive and reset the per-run
       // seq counter BEFORE the first event is emitted, so each run's
       // events.ndjson starts clean at seq 0 (best-effort; Result discarded).
       rotateEventsLog(this.paths);
       this.eventSeq = 0;
-
-      // (2) Acquire lock
-      const lockResult = acquireLock(this.paths);
-      if (!lockResult.ok) {
-        this.emitEvent("loop_error", { error: lockResult.error.message });
-        return { completedCount: 0, blockedCount: 0, cancelled: false };
-      }
 
       // (2b) Register this loop in the machine-wide active-loop registry, AFTER
       // acquireLock succeeds so the .loop.lock ground truth already exists when
@@ -667,13 +680,15 @@ export class LoopRunner extends TypedEventEmitter {
         }
         this.currentItemId = null;
       }
-      // Release lock
-      releaseLock(this.paths);
-      // Deregister from the active-loop registry on every exit path (success,
-      // error, cancel). Idempotent (unlink-if-exists) and best-effort — pairs
+      // Release the lock and deregister — only if this run took the lock: a
+      // start refused by a live holder must not delete its lock (#149).
+      // Deregister is idempotent (unlink-if-exists) and best-effort — pairs
       // with releaseLock. A hard SIGKILL that skips this finally leaves a stale
       // entry that the next listActiveLoops() self-heals (dead pid).
-      deregisterLoop(this.paths.stateDir);
+      if (lockAcquired) {
+        releaseLock(this.paths);
+        deregisterLoop(this.paths.stateDir);
+      }
 
       // Dispose every cached provider (REQ-PERF-01 lifecycle). dispose? is optional
       // (LLMProvider): claude-cli MAY implement it; CliAgent does NOT. Best-effort
@@ -876,6 +891,21 @@ export class LoopRunner extends TypedEventEmitter {
   }
 
   /**
+   * Take the backlog root's cross-process `.loop.lock` for a standalone review,
+   * synchronously, so a caller that must answer before the review runs (the web
+   * `POST /:id/resume`) can refuse a conflict up front. `startReviewOnly` takes
+   * the lock itself when this was not called, and releases it either way.
+   */
+  acquireRunLock(): Result<void> {
+    if (this.runLockHeld) return ok(undefined);
+    const ensured = ensureStateDir(this.paths);
+    if (!ensured.ok) return ensured;
+    const lock = acquireLock(this.paths);
+    if (lock.ok) this.runLockHeld = true;
+    return lock;
+  }
+
+  /**
    * Run a standalone review of already-completed items.
    * Does not run any fix iterations — just creates review items.
    *
@@ -884,49 +914,61 @@ export class LoopRunner extends TypedEventEmitter {
    * every done item is reviewed.
    */
   async startReviewOnly(itemIds?: string[]): Promise<LoopResult> {
-    this.startedAt = new Date().toISOString();
-    this.baseCommitHash = await this.getHeadCommit();
-    this.instructionPaths = resolveInstructionPaths(this.paths);
-
-    // Read backlog and find the done items to review
-    const backlogResult = readBacklog(this.paths);
-    if (!backlogResult.ok) {
-      appendLog(this.paths, `Failed to read backlog: ${backlogResult.error.message}`);
-      return { completedCount: 0, blockedCount: 0, cancelled: false, reviewFailed: true };
+    // Hold `.loop.lock` for the whole review, as start() does, so a concurrent
+    // `loop run`, resume or review on the same root is refused while it runs.
+    const lock = this.acquireRunLock();
+    if (!lock.ok) {
+      this.emitRefusal(lock.error.message);
+      return { completedCount: 0, blockedCount: 0, cancelled: false, lockConflict: true };
     }
+    try {
+      this.startedAt = new Date().toISOString();
+      this.baseCommitHash = await this.getHeadCommit();
+      this.instructionPaths = resolveInstructionPaths(this.paths);
 
-    const doneItems = backlogResult.value.items.filter(
-      (i) => i.status === "done" && (itemIds === undefined || itemIds.includes(i.id)),
-    );
-    if (doneItems.length === 0) {
-      appendLog(this.paths, "No completed items to review");
-      if (itemIds !== undefined) {
-        // The pending review's items are no longer done: nothing left to
-        // review, so the pending review is settled (not a failure).
+      // Read backlog and find the done items to review
+      const backlogResult = readBacklog(this.paths);
+      if (!backlogResult.ok) {
+        appendLog(this.paths, `Failed to read backlog: ${backlogResult.error.message}`);
+        return { completedCount: 0, blockedCount: 0, cancelled: false, reviewFailed: true };
+      }
+
+      const doneItems = backlogResult.value.items.filter(
+        (i) => i.status === "done" && (itemIds === undefined || itemIds.includes(i.id)),
+      );
+      if (doneItems.length === 0) {
+        appendLog(this.paths, "No completed items to review");
+        if (itemIds !== undefined) {
+          // The pending review's items are no longer done: nothing left to
+          // review, so the pending review is settled (not a failure).
+          this.writeState("idle", null);
+        }
+        return { completedCount: 0, blockedCount: 0, cancelled: false };
+      }
+
+      this.completedItemIds = doneItems.map((i) => i.id);
+
+      const reviewResult = await this.runReviewPass();
+
+      // Leave a settled state behind (the review wrote `reviewing`). A usage stop
+      // already wrote its resumable state; a failure keeps `reviewPending`.
+      if (reviewResult !== "limited") {
         this.writeState("idle", null);
       }
-      return { completedCount: 0, blockedCount: 0, cancelled: false };
+
+      return {
+        completedCount: 0,
+        blockedCount: 0,
+        cancelled: false,
+        ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
+        ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
+        ...(reviewResult === "limited" ? { limitReached: true, reviewPending: true } : {}),
+        ...(reviewResult === "failed" ? { reviewFailed: true, reviewPending: true } : {}),
+      };
+    } finally {
+      releaseLock(this.paths);
+      this.runLockHeld = false;
     }
-
-    this.completedItemIds = doneItems.map((i) => i.id);
-
-    const reviewResult = await this.runReviewPass();
-
-    // Leave a settled state behind (the review wrote `reviewing`). A usage stop
-    // already wrote its resumable state; a failure keeps `reviewPending`.
-    if (reviewResult !== "limited") {
-      this.writeState("idle", null);
-    }
-
-    return {
-      completedCount: 0,
-      blockedCount: 0,
-      cancelled: false,
-      ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
-      ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
-      ...(reviewResult === "limited" ? { limitReached: true, reviewPending: true } : {}),
-      ...(reviewResult === "failed" ? { reviewFailed: true, reviewPending: true } : {}),
-    };
   }
 
   // ─── Iteration logic (extracted from main loop body) ──────────────
@@ -2117,6 +2159,20 @@ export class LoopRunner extends TypedEventEmitter {
   }
 
   /** Emit a typed LoopEvent with base fields */
+  /**
+   * Report a run refused because another live loop holds `.loop.lock` (#149):
+   * a `loop_error` emitted to this runner's listeners only, NOT persisted — the
+   * root's events.ndjson (and its dense seq) belongs to the live holder.
+   */
+  private emitRefusal(message: string): void {
+    this.emit("loop_error", {
+      type: "loop_error",
+      timestamp: new Date().toISOString(),
+      projectPath: this.projectPath,
+      error: message,
+    });
+  }
+
   private emitEvent<T extends LoopEvent["type"]>(
     type: T,
     payload: Omit<Extract<LoopEvent, { type: T }>, "type" | "timestamp" | "projectPath">,

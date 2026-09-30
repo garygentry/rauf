@@ -104,11 +104,38 @@ describe("canResume — Resume button enablement", () => {
     }
   });
 
-  it("stays disabled for a pending review while a loop or review is active", () => {
-    for (const loopState of ["RUNNING", "REVIEWING"] as const) {
-      expect(canResume({ loopState, backlogSummary: summary(2, 2), reviewPending: true })).toBe(
-        false,
-      );
+  it("stays disabled for a pending review while a live loop owns the root", () => {
+    // Every live/owned state, incl. a review sleeping out a usage limit (#149).
+    for (const loopState of ["RUNNING", "REVIEWING", "SLEEPING_LIMIT", "STARTING"]) {
+      expect(
+        canResume({
+          loopState: loopState as never,
+          backlogSummary: summary(2, 2),
+          reviewPending: true,
+        }),
+      ).toBe(false);
     }
+  });
+
+  it("stays disabled for a pending review while a live process holds the lock", () => {
+    const lock = { present: true, pid: 42, startedAt: null, alive: true, stale: false };
+    expect(
+      canResume({ loopState: "IDLE", backlogSummary: summary(2, 2), reviewPending: true, lock }),
+    ).toBe(false);
+    // A stale lock is cleared by resume, so it does not block.
+    expect(
+      canResume({
+        loopState: "PAUSED",
+        backlogSummary: summary(2, 2),
+        reviewPending: true,
+        lock: { ...lock, alive: false, stale: true },
+      }),
+    ).toBe(true);
+  });
+
+  it("is enabled for a pending review at WEEKLY_LIMIT (the runner exited, lock released)", () => {
+    expect(
+      canResume({ loopState: "WEEKLY_LIMIT", backlogSummary: summary(2, 2), reviewPending: true }),
+    ).toBe(true);
   });
 });

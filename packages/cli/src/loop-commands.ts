@@ -1276,7 +1276,11 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       outputJson(result);
     } else {
       print("");
-      if (result.reviewFailed) {
+      if (result.lockConflict) {
+        error(
+          `Review not started — a loop is already running for this backlog root (see ${c.cyan(".rauf/rauf.log")}).`,
+        );
+      } else if (result.reviewFailed) {
         error(
           `Review failed — see ${c.cyan(".rauf/rauf.log")}. It stays pending; run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} to retry it.`,
         );
@@ -1294,8 +1298,9 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       }
     }
 
-    // A failed review is an ERROR; one stopped by a usage limit is a LIMIT
-    // terminal (#146).
+    // A live loop holding the lock is USAGE (loop-already-running); a failed
+    // review is an ERROR; one stopped by a usage limit is a LIMIT terminal (#146).
+    if (result.lockConflict) return ExitCode.USAGE;
     if (result.reviewFailed) return ExitCode.ERROR;
     return result.limitReached ? ExitCode.LIMIT : ExitCode.SUCCESS;
   } catch (e) {

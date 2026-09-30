@@ -62,6 +62,9 @@ const MAX_BUFFER_SIZE = 100;
 
 // ─── LoopManager ─────────────────────────────────────────────────
 
+/** Outcome of a launch; `conflict` marks a refusal because the root is in use. */
+export type LaunchResult = { ok: true } | { ok: false; error: string; conflict: boolean };
+
 export class LoopManager {
   /** Active loops keyed by resolved backlog root path */
   private activeLoops = new Map<string, ActiveLoop>();
@@ -85,23 +88,32 @@ export class LoopManager {
    * pass (startReviewLoop). Resolves the backlog-root key, refuses a duplicate,
    * creates the runner, subscribes the event fan-out, and tracks the promise with
    * map cleanup. The `run` thunk selects the runner entrypoint (start vs review).
+   * `prepare` runs synchronously before `run` and can refuse the launch (a
+   * review takes `.loop.lock` here so a conflict is reported, not swallowed).
+   * `conflict` marks a refusal because the root is already in use.
    */
   private launch(
     projectPath: string,
     options: LoopStartOptions,
     run: (runner: LoopRunner) => Promise<LoopResult>,
-  ): { ok: true } | { ok: false; error: string } {
+    prepare?: (runner: LoopRunner) => { ok: true } | { ok: false; error: string },
+  ): LaunchResult {
     const key = this.resolveKey(projectPath, options.backlogRoot);
 
     if (this.activeLoops.has(key)) {
-      return { ok: false, error: "Loop already running for this backlog root" };
+      return { ok: false, error: "Loop already running for this backlog root", conflict: true };
     }
 
     const runnerResult = LoopRunner.create(projectPath, options);
     if (!runnerResult.ok) {
-      return { ok: false, error: runnerResult.error.message };
+      return { ok: false, error: runnerResult.error.message, conflict: false };
     }
     const runner = runnerResult.value;
+
+    if (prepare) {
+      const prepared = prepare(runner);
+      if (!prepared.ok) return { ok: false, error: prepared.error, conflict: true };
+    }
 
     // Subscribe to all event types and fan out to listeners
     for (const eventType of LOOP_EVENT_TYPES) {
@@ -131,26 +143,32 @@ export class LoopManager {
   /**
    * Start a loop for a project. Returns an error string if already running.
    */
-  startLoop(
-    projectPath: string,
-    options: LoopStartOptions,
-  ): { ok: true } | { ok: false; error: string } {
+  startLoop(projectPath: string, options: LoopStartOptions): LaunchResult {
     return this.launch(projectPath, options, (runner) => runner.start());
   }
 
   /**
    * Start a STANDALONE REVIEW pass for a project (D3.2). Mirrors startLoop but
    * runs LoopRunner.startReviewOnly() instead of start(). Returns an error
-   * string if a loop is already running for the same backlog root. `itemIds`
-   * scopes the review to those done items (a resumed pending review, #146);
-   * omitted, it reviews every done item.
+   * string if a loop is already running for the same backlog root, in this
+   * process or (via `.loop.lock`, taken synchronously here and released when
+   * the review ends) any other. `itemIds` scopes the review to those done items
+   * (a resumed pending review, #146); omitted, it reviews every done item.
    */
   startReviewLoop(
     projectPath: string,
     options: LoopStartOptions,
     itemIds?: string[],
-  ): { ok: true } | { ok: false; error: string } {
-    return this.launch(projectPath, options, (runner) => runner.startReviewOnly(itemIds));
+  ): LaunchResult {
+    return this.launch(
+      projectPath,
+      options,
+      (runner) => runner.startReviewOnly(itemIds),
+      (runner) => {
+        const lock = runner.acquireRunLock();
+        return lock.ok ? { ok: true } : { ok: false, error: lock.error.message };
+      },
+    );
   }
 
   /**

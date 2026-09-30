@@ -13,12 +13,16 @@ import type {
 } from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
 import { StateBadge } from "../../components/StateBadge";
-import { canResume, describeEvent, reviewPendingNotice } from "../../lib/status-helpers";
+import {
+  STOPPABLE_STATES,
+  canResume,
+  describeEvent,
+  reviewPendingNotice,
+} from "../../lib/status-helpers";
 
 // ─── Loop control state sets ──────────────────────────────────────
 
 const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ITERATIONS_COMPLETE", "ERROR"]);
-const STOPPABLE_STATES = new Set(["RUNNING", "SLEEPING_LIMIT"]);
 
 // States in which a standalone Review pass would 409 (a loop is active).
 const REVIEW_BLOCKING_STATES = new Set(["RUNNING", "REVIEWING", "STARTING"]);

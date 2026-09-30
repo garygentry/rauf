@@ -131,20 +131,32 @@ POST   /api/projects/:id/reset
 POST   /api/projects/:id/resume
        Body: { backlogRoot?: string, retryBlocked?: boolean, answers?: { itemId: string, text: string }[] }
        Guard: acquires recovery lock (409 LOCK_CONFLICT if a live loop holds the lock)
-       Injects each answer as humanAnswer on the item, optionally unblocks blocked items,
-       runs recoverInterruptedLoop, then relaunches the loop if there are eligible items.
-       Pending review (#146): if state.json has reviewPending, it re-runs that standalone
-       review over exactly reviewItemIds (every done item when absent) instead of relaunching,
-       even when every item is done — as the CLI `rauf resume` does. Interrupted uncommitted
-       work still stops first (CLI --recover path).
-       200: { data: { reconciled: ReconcileSummary, relaunched: boolean, reviewRerun?: true, reason?: string } }
-       A failed relaunch or review start is reported as relaunched:false + reason in a 200 (not an HTTP error).
-       The status page's Resume button is enabled for a pending review from any settled state.
+       Mirrors the CLI `rauf resume` ordering (#149), all under the recovery lock:
+         1. Injects each answer as humanAnswer on the item.
+         2. No work left (every item done) and a pending review (state.json reviewPending,
+            #146) → re-run the review as-is: recovery is SKIPPED (it would delete the marker).
+         3. Otherwise detects interrupted in_progress work with uncommitted changes BEFORE any
+            recovery mutation. Found → stop (the CLI-only --recover path): nothing is recovered,
+            state.json (incl. a pending review) is untouched, `interrupted` lists the ids.
+         4. Optionally unblocks blocked items, runs recoverInterruptedLoop. A pending review then
+            has its marker restored (recovery deleted state.json) and is re-run instead of
+            relaunching; else the loop relaunches if an item is eligible.
+       The review re-run is scoped to exactly reviewItemIds (every done item when absent) and takes
+       the root's .loop.lock synchronously, so the marker is never lost before it launches.
+       200: { data: { reconciled: ReconcileSummary | null, interrupted?: string[], relaunched: boolean,
+                      reviewRerun?: true, reason?: string } }
+            reconciled is null when recovery was skipped (steps 2 and 3).
+       409 LOCK_CONFLICT / 500: the pending review could not be started (a live loop holds the root,
+            or the launch failed). The marker stays pending for a later resume.
+       A failed loop relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).
+       The status page's Resume button is enabled for a pending review from any state no live loop
+       owns (not RUNNING/SLEEPING_LIMIT/REVIEWING/STARTING, no live lock), even when every item is done.
        404 if project not installed
 
 POST   /api/projects/:id/loop/review
        Body: { model?: string, sessionTimeoutMinutes?: number, backlogRoot?: string }
-       Guard: loop-start dedupe (409 CONFLICT if a loop/review is already running for this backlog root)
+       Guard: loop-start dedupe (409 CONFLICT if a loop/review is already running for this backlog root,
+              in this server or — via .loop.lock, held for the whole review — any other process)
        Starts a review-only pass (maxIterations:1, reviewOnly:true).
        200: { data: { started: true } }
        Note: registered in loop.ts alongside loop/start and loop/stop

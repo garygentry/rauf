@@ -30,6 +30,7 @@ import {
   err,
   ErrorCodes,
   LoopStateSchema,
+  writeLoopState,
   type Backlog,
   type BacklogPaths,
   type Result,
@@ -379,4 +380,31 @@ export function readPendingReview(paths: BacklogPaths): { itemIds: string[] | nu
   } catch {
     return null;
   }
+}
+
+/**
+ * Put a pending review's marker back after `recoverInterruptedLoop` deleted
+ * state.json (#146, #149): a settled `idle` state carrying `reviewPending` and
+ * its exact `reviewItemIds` (omitted for a legacy unscoped review). Call it
+ * under the recovery lock, right after recovery, whenever a pending review is
+ * about to be re-run, so a review that then fails to start (a concurrent loop
+ * took the lock, the launch errored) is still offered by the next resume.
+ */
+export function restorePendingReview(
+  paths: BacklogPaths,
+  pending: { itemIds: string[] | null },
+): Result<void> {
+  return writeLoopState(paths, {
+    status: "idle",
+    iteration: 0,
+    maxIterations: 1,
+    currentItem: null,
+    lastSignal: null,
+    startedAt: null,
+    completedItems: [],
+    blockedItems: [],
+    error: null,
+    reviewPending: true,
+    ...(pending.itemIds ? { reviewItemIds: pending.itemIds } : {}),
+  });
 }

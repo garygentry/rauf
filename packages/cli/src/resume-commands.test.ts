@@ -411,6 +411,33 @@ describe("handleResume — review pass stopped by a usage limit (#146)", () => {
     }
   });
 
+  it("restores the pending marker after recovery, before the review runs (#149)", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    const statePath = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ ...state, reviewPending: true, reviewItemIds: ["001"] }),
+    );
+
+    // A review that fails to start (e.g. a live loop took the lock) must leave it pending.
+    let seen: Record<string, unknown> | null = null;
+    const code = await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: captureRunLoop().runLoop,
+      runReview: async () => {
+        seen = JSON.parse(fs.readFileSync(statePath, "utf-8")) as Record<string, unknown>;
+        return ExitCode.USAGE;
+      },
+    });
+
+    expect(code).toBe(ExitCode.USAGE);
+    expect(seen).toMatchObject({ status: "idle", reviewPending: true, reviewItemIds: ["001"] });
+    const after = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+    expect(after.reviewPending).toBe(true);
+    expect(after.reviewItemIds).toEqual(["001"]);
+  });
+
   it("relaunches the loop as usual when no review is pending", async () => {
     const projectDir = createProject([item("001", "done"), item("002", "pending")]);
     writeState(projectDir, "paused_usage_limit");

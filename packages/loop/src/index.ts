@@ -33,6 +33,7 @@ export {
   releaseRecoveryLock,
   recoverInterruptedLoop,
   readPendingReview,
+  restorePendingReview,
 } from "./recovery.js";
 export type {
   KeptBlock,

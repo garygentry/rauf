@@ -44,6 +44,7 @@ import {
   recoverInterruptedLoop,
   detectInterruptedItems,
   readPendingReview,
+  restorePendingReview,
   type InterruptedItem,
 } from "@rauf/loop";
 import { reverifyAndCommitInterrupted, type VerifyRunner } from "./recovery.js";
@@ -443,7 +444,12 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
             // blocks / needs-human left) — the loop would spawn and immediately
             // complete otherwise.
             const postBacklog = readBacklog(paths);
-            if (reviewPending) {
+            if (pendingReview !== null) {
+              // Recovery deleted state.json: put the marker back before the review
+              // runs, so a review that fails to start is still pending (#149).
+              const restored = restorePendingReview(paths, pendingReview);
+              if (!restored.ok)
+                warn(`Could not restore the pending review: ${restored.error.message}`);
               rerunReview = true;
             } else if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
               if (ctx.globalFlags.json) {
