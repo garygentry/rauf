@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+## 0.17.1
+
+_Released 2026-09-30._
+
 ### Upgrade notes / behavior changes
 
 - **`rauf status` now exits 1 for a run whose review pass is still pending.** An `IDLE`/`COMPLETE` status with `reviewPending: true` used to exit 0, so a script branching on `$?` read an unfinished review as a clean finish. It now exits 1 (ERROR), the code `loop run --review` returns for the same failed review, and this takes precedence over BLOCKED (5), in the same order as `loop run`. A review interrupted by a stop or a usage limit keeps its state's own code (`PAUSED` 0/5, `PAUSED_USAGE_LIMIT` 4). The human `rauf status` view gains a `Review: pending (N items)` line. (#149)
+- **`rauf loop run` and `rauf loop review` now exit 2 when another live loop holds the root's `.loop.lock`** (`lockConflict`). A refused run no longer deletes the holder's lock or rotates its event log, and a standalone review (`loop review`, `resume`'s review re-run, web review routes) now takes the lock for its whole duration, so it is refused the same way. Scripts that start a run or review on a root that may be busy should handle exit 2. (#149)
+- **Web `POST /api/projects/:id/loop/start` returns 409 when another process holds the root**, instead of `started: true` for a run that never starts. Web Resume re-runs a pending review (`reviewRerun: true`) and returns 409/500 when that review cannot start. (#149)
 
 ### Fixed
 
