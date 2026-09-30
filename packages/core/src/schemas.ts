@@ -154,6 +154,17 @@ export const MarkerOptionsSchema = z.object({
    * warning — a stale/misconfigured dispatcher command still warns. (#121)
    */
   acknowledgeEmptyVerify: z.boolean().optional(),
+  /**
+   * Ms of stream silence, with no tool call in flight, before the loop emits
+   * `llm_stuck_warning`. Default 300000 (5 minutes). (#141)
+   */
+  stuckThresholdMs: z.number().int().positive().optional(),
+  /**
+   * Ms of stream silence while a tool call is in flight (e.g. a long, quiet
+   * foreground verification command) before the loop emits `llm_stuck_warning`.
+   * Default 1800000 (30 minutes). Values below `stuckThresholdMs` are raised to it. (#141)
+   */
+  toolStuckThresholdMs: z.number().int().positive().optional(),
 });
 
 // ─── MarkerFile (.rauf.json) ──────────────────────────────────────
@@ -660,6 +671,14 @@ const LlmStuckWarningSchema = LoopEventBaseSchema.extend({
   type: z.literal("llm_stuck_warning"),
   itemId: z.string(),
   silentMs: z.number().nonnegative(),
+  /**
+   * Tool call in flight when the warning fired, or null when the LLM itself went
+   * silent. Optional only so events persisted before #141 still parse; the runner
+   * always sets it.
+   */
+  currentTool: z.string().nullable().optional(),
+  /** Ms since `currentTool` started, or null with no tool in flight (#141). */
+  toolRunningMs: z.number().nonnegative().nullable().optional(),
 });
 
 export const LoopEventSchema = z.discriminatedUnion("type", [
@@ -785,7 +804,13 @@ export const IterationStatusSchema = z.object({
   itemId: z.string(),
   startedAt: z.string(),
   updatedAt: z.string(),
+  /** Tool call currently in flight (set from its start until its own end), or null. */
   currentTool: z.string().nullable(),
+  /**
+   * ISO time `currentTool` started, or null with no tool in flight (#141). Optional
+   * so status files written by older runners still parse.
+   */
+  currentToolStartedAt: z.string().nullable().optional(),
   recentTools: z.array(z.string()).max(10),
   tokens: z.object({
     input: z.number().nonnegative(),

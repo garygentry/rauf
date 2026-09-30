@@ -218,7 +218,17 @@ ignore any `type` they do not recognize, per the promise below):
 | `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                       |
 | `loop_error`        | `error`                                                                                    |
 | `loop_cancelled`    | _(base fields only)_                                                                       |
-| `llm_stuck_warning` | `itemId`, `silentMs`                                                                       |
+| `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`) |
+
+`llm_stuck_warning` fires after `options.stuckThresholdMs` (default 5 min) of stream
+silence with **no tool call in flight**. While a tool call is in flight (a `tool_start`
+with no `tool_end` yet, e.g. a long, quiet foreground verification command) it waits for
+`options.toolStuckThresholdMs` (default 30 min) instead. When it does fire, `currentTool`
+names the in-flight tool (`null` means the LLM itself went silent) and `toolRunningMs`
+says how long that tool has been running. Both fields are optional in the schema only so
+events persisted by pre-#141 runners still parse. Agents with no stream events (the
+plain-text presets and `generic-cli`) never report a tool in flight and keep the plain
+silence threshold. See [SCHEMAS.md](./SCHEMAS.md) for per-agent tool boundaries.
 
 **Two gotchas a supervisor MUST account for:**
 
@@ -286,6 +296,8 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
   has to read that file to decide:
   - **`stuckWarning`** (`boolean`): the runner's stall hint — an iteration
     appears to have stopped making progress. A **decision aid, not a verdict**.
+    A tool call in flight does not raise it until the longer tool ceiling
+    (`options.toolStuckThresholdMs`, default 30 min) passes.
   - **`iterationFresh`** (`boolean`): whether the iteration-status file was
     updated within the freshness window (60 s).
   - **`lastActivityAt`** (ISO string): the last activity timestamp.

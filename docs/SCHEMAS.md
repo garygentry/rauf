@@ -136,6 +136,8 @@ interface MarkerOptions {
   provider?: string; // Default LLM provider for this project
   providerConfig?: Record<string, unknown>; // Per-provider configuration
   acknowledgeEmptyVerify?: boolean; // Silence the "no global verification commands configured" launch warning when the project verifies per item via each backlog item's acceptanceCriteria. Only suppresses that warning; a stale/misconfigured dispatcher command still warns. Default: false.
+  stuckThresholdMs?: number; // Ms of stream silence, with no tool call in flight, before `llm_stuck_warning`. Positive integer. Default: 300000 (5 min).
+  toolStuckThresholdMs?: number; // Ms of stream silence while a tool call is in flight (e.g. a long, quiet foreground verification command) before `llm_stuck_warning`. Positive integer; values below stuckThresholdMs are raised to it. Default: 1800000 (30 min).
 }
 ```
 
@@ -451,7 +453,7 @@ interface LoopEventBase {
 | `review_failed`       | `reason`                                                             | Review pass failed (non-fatal)                           |
 | `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")                     | Tool call starts or finishes in child session            |
 | `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                              | Token count update from child session                    |
-| `llm_stuck_warning`   | `itemId`, `silentMs`                                                 | Child session silent for too long                        |
+| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                 | Child session silent for too long (see below)            |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -602,8 +604,28 @@ type LoopEvent =
       projectPath: string;
       itemId: string;
       silentMs: number;
+      currentTool?: string | null; // tool call in flight, or null when the LLM itself went silent
+      toolRunningMs?: number | null; // ms since currentTool started, or null with no tool in flight
     };
 ```
+
+**`llm_stuck_warning` thresholds (#141).** The runner tracks which tool calls are in flight
+(a `tool_start` with no matching `tool_end`). With no tool in flight it warns after
+`options.stuckThresholdMs` of stream silence (default 5 min). While a tool is in flight it
+waits for the much longer `options.toolStuckThresholdMs` (default 30 min), because a
+foreground tool (e.g. a quiet verification command) emits no stream events until it
+returns. A hung tool still gets surfaced, just not at the LLM-silence threshold. The warning
+fires once per silence episode and re-arms on the next stream event. `currentTool` /
+`toolRunningMs` are always set by current runners; they are optional in the schema only so
+events persisted by older runners still parse. `llm_tool_activity` `end` events now carry
+the ended tool's name rather than `"unknown"`.
+
+Tool boundaries per agent: **claude** starts a tool at its assistant `tool_use` block and ends
+it when the matching `tool_result` arrives, which is the real execution window. **codex** uses
+`item.started`/`item.completed` (open items close at `turn.completed`). The plain-text
+agents (**gemini, copilot, cursor, pi, generic-cli**) produce no stream events at all, so they
+keep the pre-#141 behavior: no tool is ever in flight, and the warning fires once the
+iteration has run `stuckThresholdMs` with no events.
 
 ## PersistedEvent (events.ndjson)
 

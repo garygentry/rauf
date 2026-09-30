@@ -26,6 +26,8 @@ function setupProject(
     sweepMinAgeDays?: number;
     model?: string;
     createProgressMd?: boolean;
+    /** Extra `.rauf.json` `options` fields (e.g. stuck thresholds). */
+    markerOptions?: Record<string, unknown>;
   },
 ) {
   const raufDir = path.join(tmpDir, ".rauf");
@@ -73,6 +75,7 @@ function setupProject(
         ? { sweepMinAgeDays: options.sweepMinAgeDays }
         : {}),
       ...(options?.model !== undefined ? { model: options.model } : {}),
+      ...options?.markerOptions,
     },
   };
   fs.writeFileSync(path.join(tmpDir, ".rauf.json"), JSON.stringify(marker, null, 2));
@@ -1497,6 +1500,139 @@ echo '{"type":"result","result":"RAUF_DONE"}'`,
 
       setIntervalSpy.mockRestore();
       clearIntervalSpy.mockRestore();
+    });
+  });
+
+  describe("stuck warning vs tools in flight (#141)", () => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    /**
+     * Register a fake agent whose execute() drives `script` with the runner's
+     * onStreamEvent callback, then reports RAUF_DONE.
+     */
+    function registerScriptedAgent(
+      id: string,
+      script: (emit: NonNullable<ExecuteOptions["onStreamEvent"]>) => Promise<void>,
+    ): void {
+      registerAgent({
+        id,
+        displayName: id,
+        detect: async () => ({ available: true }),
+        factory: (): LLMProvider => ({
+          id,
+          displayName: id,
+          async execute(_prompt: string, options: ExecuteOptions) {
+            await script(options.onStreamEvent ?? (() => {}));
+            return ok({
+              stdout: "RAUF_DONE\n",
+              stderr: "",
+              exitCode: 0,
+              timedOut: false,
+              durationMs: 1,
+            });
+          },
+          validateCredentials() {
+            return ok(undefined);
+          },
+        }),
+      });
+    }
+
+    function readIterationStatus(): Record<string, unknown> {
+      return JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".rauf", "iteration-status.json"), "utf-8"),
+      ) as Record<string, unknown>;
+    }
+
+    async function runCollectingWarnings(agentId: string) {
+      const warnings: Array<Extract<LoopEvent, { type: "llm_stuck_warning" }>> = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: agentId,
+        maxIterations: 1,
+      });
+      runner.on("llm_stuck_warning", (e) => warnings.push(e));
+      await runner.start();
+      return warnings;
+    }
+
+    it("does not warn at the normal threshold while a tool is in flight, and keeps currentTool set", async () => {
+      let midTool: Record<string, unknown> | undefined;
+      registerScriptedAgent("tool-in-flight-agent", async (emit) => {
+        emit({ type: "tool_start", toolName: "Bash", blockIndex: 0, toolUseId: "toolu_1" });
+        await sleep(500); // 5x the stuckThresholdMs below, all silent
+        midTool = readIterationStatus();
+        emit({ type: "tool_end", blockIndex: 0, toolUseId: "toolu_1" });
+      });
+      setupProject(tmpDir, [pendingItem("001", "Long quiet verify")], {
+        markerOptions: { stuckThresholdMs: 100, toolStuckThresholdMs: 60_000 },
+      });
+
+      const warnings = await runCollectingWarnings("tool-in-flight-agent");
+
+      expect(warnings).toHaveLength(0);
+      expect(midTool?.currentTool).toBe("Bash");
+      expect(typeof midTool?.currentToolStartedAt).toBe("string");
+      expect(midTool?.stuckWarning).toBe(false);
+    });
+
+    it("still warns once the tool ceiling passes, with currentTool and toolRunningMs", async () => {
+      let midTool: Record<string, unknown> | undefined;
+      registerScriptedAgent("hung-tool-agent", async (emit) => {
+        emit({ type: "tool_start", toolName: "Bash", blockIndex: 0, toolUseId: "toolu_1" });
+        await sleep(600);
+        midTool = readIterationStatus();
+        emit({ type: "tool_end", blockIndex: 0, toolUseId: "toolu_1" });
+      });
+      setupProject(tmpDir, [pendingItem("001", "Hung tool")], {
+        markerOptions: { stuckThresholdMs: 100, toolStuckThresholdMs: 250 },
+      });
+
+      const warnings = await runCollectingWarnings("hung-tool-agent");
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]?.currentTool).toBe("Bash");
+      expect(warnings[0]?.silentMs).toBeGreaterThanOrEqual(250);
+      expect(warnings[0]?.toolRunningMs).toBeGreaterThanOrEqual(250);
+      expect(midTool?.stuckWarning).toBe(true);
+      expect(midTool?.currentTool).toBe("Bash");
+    });
+
+    it("warns at the normal threshold when the LLM is silent with no tool in flight", async () => {
+      registerScriptedAgent("silent-llm-agent", async (emit) => {
+        emit({ type: "tool_start", toolName: "Read", blockIndex: 0, toolUseId: "toolu_r" });
+        emit({ type: "tool_end", blockIndex: 0, toolUseId: "toolu_r" });
+        await sleep(500);
+      });
+      setupProject(tmpDir, [pendingItem("001", "Silent LLM")], {
+        markerOptions: { stuckThresholdMs: 100, toolStuckThresholdMs: 60_000 },
+      });
+
+      const warnings = await runCollectingWarnings("silent-llm-agent");
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toMatchObject({ itemId: "001", currentTool: null, toolRunningMs: null });
+      expect(warnings[0]?.silentMs).toBeGreaterThanOrEqual(100);
+    });
+
+    it("names the ended tool on llm_tool_activity end events", async () => {
+      registerScriptedAgent("named-end-agent", async (emit) => {
+        emit({ type: "tool_start", toolName: "Grep", blockIndex: 0, toolUseId: "g" });
+        emit({ type: "tool_end", blockIndex: 0, toolUseId: "g" });
+      });
+      setupProject(tmpDir, [pendingItem("001", "Named end")]);
+      const activity: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "named-end-agent",
+        maxIterations: 1,
+      });
+      runner.on("llm_tool_activity", (e) => activity.push(e));
+      await runner.start();
+      expect(activity).toMatchObject([
+        { toolName: "Grep", phase: "start" },
+        { toolName: "Grep", phase: "end" },
+      ]);
     });
   });
 

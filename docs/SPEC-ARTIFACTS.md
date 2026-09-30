@@ -149,6 +149,31 @@ MarkerOptions field:
 
 - `sessionTimeout?: number`: default `60` (minutes). Must be a positive integer.
 
+### Stuck Warning
+
+A session that is alive but silent is flagged with a non-fatal `llm_stuck_warning` event
+(and `stuckWarning: true` in `iteration-status.json`) well before the session timeout kills it.
+The runner tracks tool calls in flight from the stream (`tool_start` with no `tool_end` yet):
+
+```
+Stuck warning behavior (#141):
+  - No tool in flight: warn after options.stuckThresholdMs of silence (default 300000 = 5 min)
+  - Tool in flight:    warn after options.toolStuckThresholdMs of silence (default 1800000 = 30 min)
+  - Payload: itemId, silentMs, currentTool (string | null), toolRunningMs (number | null)
+  - Fires once per silence episode; any stream event re-arms it. Never kills or retries anything.
+```
+
+The tool ceiling exists because a foreground tool call (e.g. the verification gate, run in the
+foreground as RAUF.md requires) emits no stream events until it returns. 30 minutes is well
+above Claude Code's default 10-minute Bash cap, and it still leaves half of the default
+60-minute session timeout to act on a genuinely hung tool.
+
+MarkerOptions fields:
+
+- `stuckThresholdMs?: number`: default `300000`. Must be a positive integer.
+- `toolStuckThresholdMs?: number`: default `1800000`. Must be a positive integer. Values below
+  `stuckThresholdMs` are raised to it.
+
 ### Graceful Cancel
 
 The loop runner supports graceful cancellation via both AbortController (programmatic) and `.rauf/CANCEL` signal file:

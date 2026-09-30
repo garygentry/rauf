@@ -4,6 +4,14 @@
 // by line, emitting typed events for tool use, token counts, and
 // message lifecycle. Also reconstructs the plain text output so
 // signal parsing (RAUF_DONE etc.) continues to work.
+//
+// Tool boundaries (#141):
+//   - CLI format: `tool_start` on the assistant `tool_use` block, `tool_end` on the
+//     `user` event carrying the matching `tool_result` — i.e. the real execution
+//     window, so a long foreground Bash call reads as "in flight" until it returns.
+//   - Raw Anthropic streaming format (used by the test-sandbox mocks): `tool_start` on
+//     `content_block_start`, `tool_end` on `content_block_stop`. That stream carries no
+//     tool results, so the end marks the end of the tool_use block, not of execution.
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -18,11 +26,19 @@ export interface ToolStartEvent {
   type: "tool_start";
   toolName: string;
   blockIndex: number;
+  /**
+   * Provider-assigned id of the tool call (Claude `tool_use.id`, Codex `item.id`), when
+   * known. The runner pairs `tool_start`/`tool_end` by this id (falling back to
+   * `blockIndex`) to track which tool calls are still in flight (#141).
+   */
+  toolUseId?: string;
 }
 
 export interface ToolEndEvent {
   type: "tool_end";
   blockIndex: number;
+  /** Same id as the matching {@link ToolStartEvent.toolUseId}, when known. */
+  toolUseId?: string;
 }
 
 export interface TokenUpdateEvent {
@@ -52,6 +68,11 @@ export class StreamParser {
   private readonly onEvent: (event: ClaudeStreamEvent) => void;
   /** Maps content block index → true if the block is a tool_use block */
   private toolBlocks = new Map<number, boolean>();
+  /**
+   * Claude CLI tool calls that have started (assistant `tool_use` block) but whose
+   * `tool_result` has not arrived yet: tool_use id → blockIndex of the tool_start.
+   */
+  private openToolUses = new Map<string, number>();
   /** Accumulated text fragments from text_delta events */
   private textBuffer: string[] = [];
   /** Latest known token counts */
@@ -100,6 +121,9 @@ export class StreamParser {
       // ── Claude CLI stream-json format ──
       case "assistant":
         this.handleCliAssistant(obj);
+        break;
+      case "user":
+        this.handleCliUser(obj);
         break;
       case "result":
         this.handleCliResult(obj);
@@ -214,10 +238,47 @@ export class StreamParser {
         this.textBuffer.push(block.text);
       } else if (block.type === "tool_use") {
         const toolName = typeof block.name === "string" ? block.name : "unknown";
-        this.onEvent({ type: "tool_start", toolName, blockIndex: i });
-        this.onEvent({ type: "tool_end", blockIndex: i });
+        const toolUseId = typeof block.id === "string" ? block.id : undefined;
+        if (toolUseId === undefined) {
+          // No id to pair a later tool_result with — report it as instantaneous
+          // rather than leaving it open for the rest of the session.
+          this.onEvent({ type: "tool_start", toolName, blockIndex: i });
+          this.onEvent({ type: "tool_end", blockIndex: i });
+          continue;
+        }
+        // #141: the tool only STARTS here — the CLI executes it after this event, and
+        // it stays in flight until the matching `tool_result` arrives on a `user` event.
+        this.openToolUses.set(toolUseId, i);
+        this.onEvent({ type: "tool_start", toolName, blockIndex: i, toolUseId });
       }
     }
+  }
+
+  /**
+   * Handle CLI "user" event: a `tool_result` block ends the tool call whose
+   * `tool_use.id` it names (#141).
+   */
+  private handleCliUser(obj: Record<string, unknown>): void {
+    const message = obj.message as Record<string, unknown> | undefined;
+    const content = message?.content;
+    if (!Array.isArray(content)) return;
+
+    for (const raw of content) {
+      const block = raw as Record<string, unknown> | undefined;
+      if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
+      const blockIndex = this.openToolUses.get(block.tool_use_id);
+      if (blockIndex === undefined) continue;
+      this.openToolUses.delete(block.tool_use_id);
+      this.onEvent({ type: "tool_end", blockIndex, toolUseId: block.tool_use_id });
+    }
+  }
+
+  /** End every still-open CLI tool call (the session finished without their results). */
+  private closeOpenToolUses(): void {
+    for (const [toolUseId, blockIndex] of this.openToolUses) {
+      this.onEvent({ type: "tool_end", blockIndex, toolUseId });
+    }
+    this.openToolUses.clear();
   }
 
   /**
@@ -244,6 +305,7 @@ export class StreamParser {
       });
     }
 
+    this.closeOpenToolUses();
     this.onEvent({ type: "message_stop" });
   }
 }

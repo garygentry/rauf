@@ -547,6 +547,27 @@ describe("MarkerOptionsSchema", () => {
     ).toThrow();
   });
 
+  it("accepts optional stuckThresholdMs / toolStuckThresholdMs positive integers (#141)", () => {
+    const result = MarkerOptionsSchema.parse({
+      ...validMarkerOptions,
+      stuckThresholdMs: 600_000,
+      toolStuckThresholdMs: 3_600_000,
+    });
+    expect(result.stuckThresholdMs).toBe(600_000);
+    expect(result.toolStuckThresholdMs).toBe(3_600_000);
+    const bare = MarkerOptionsSchema.parse(validMarkerOptions);
+    expect(bare.stuckThresholdMs).toBeUndefined();
+    expect(bare.toolStuckThresholdMs).toBeUndefined();
+  });
+
+  it("rejects non-positive or non-integer stuck thresholds (#141)", () => {
+    for (const key of ["stuckThresholdMs", "toolStuckThresholdMs"]) {
+      for (const bad of [0, -1, 1.5, "300000"]) {
+        expect(() => MarkerOptionsSchema.parse({ ...validMarkerOptions, [key]: bad })).toThrow();
+      }
+    }
+  });
+
   it("accepts optional provider string", () => {
     const result = MarkerOptionsSchema.parse({
       ...validMarkerOptions,
@@ -1279,6 +1300,49 @@ describe("LoopEventSchema", () => {
     timestamp: "2026-02-27T10:00:00Z",
     projectPath: "/home/user/projects/my-project",
   };
+
+  describe("llm_stuck_warning (#141)", () => {
+    it("accepts the enriched payload with a tool in flight", () => {
+      const result = LoopEventSchema.parse({
+        ...base,
+        type: "llm_stuck_warning",
+        itemId: "001",
+        silentMs: 1_800_000,
+        currentTool: "Bash",
+        toolRunningMs: 1_800_000,
+      });
+      expect(result).toMatchObject({ currentTool: "Bash", toolRunningMs: 1_800_000 });
+    });
+
+    it("accepts null tool fields (LLM silent) and the pre-#141 payload without them", () => {
+      expect(() =>
+        LoopEventSchema.parse({
+          ...base,
+          type: "llm_stuck_warning",
+          itemId: "001",
+          silentMs: 300_000,
+          currentTool: null,
+          toolRunningMs: null,
+        }),
+      ).not.toThrow();
+      expect(() =>
+        LoopEventSchema.parse({ ...base, type: "llm_stuck_warning", itemId: "001", silentMs: 1 }),
+      ).not.toThrow();
+    });
+
+    it("rejects a negative toolRunningMs", () => {
+      expect(() =>
+        LoopEventSchema.parse({
+          ...base,
+          type: "llm_stuck_warning",
+          itemId: "001",
+          silentMs: 1,
+          currentTool: "Bash",
+          toolRunningMs: -1,
+        }),
+      ).toThrow();
+    });
+  });
 
   describe("loop_started", () => {
     it("accepts valid event", () => {

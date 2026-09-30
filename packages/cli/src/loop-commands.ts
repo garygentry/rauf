@@ -1049,7 +1049,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         }
         case "llm_stuck_warning": {
           const mins = Math.round(event.silentMs / 60000);
-          statusLine.setDetail(`\x1b[33m\u26A0 No activity for ${mins}m\x1b[0m`);
+          const detail =
+            event.currentTool != null
+              ? `${event.currentTool} running ${Math.round((event.toolRunningMs ?? event.silentMs) / 60000)}m with no output`
+              : `No activity for ${mins}m`;
+          statusLine.setDetail(`\x1b[33m\u26A0 ${detail}\x1b[0m`);
           return;
         }
       }

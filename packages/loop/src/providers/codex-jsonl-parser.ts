@@ -95,22 +95,29 @@ export class CodexStreamParser {
       if (phase === "started") {
         const blockIndex = this.nextBlockIndex++;
         this.toolBlocks.set(id, blockIndex);
-        this.onEvent({ type: "tool_start", toolName: itemType, blockIndex });
+        this.onEvent({ type: "tool_start", toolName: itemType, blockIndex, toolUseId: id });
       } else {
         // completed: pair with the started index (fall back to a fresh index if we
         // never saw the start — e.g. an atomic tool item emitted only on completion).
         let blockIndex = this.toolBlocks.get(id);
         if (blockIndex === undefined) {
           blockIndex = this.nextBlockIndex++;
-          this.onEvent({ type: "tool_start", toolName: itemType, blockIndex });
+          this.onEvent({ type: "tool_start", toolName: itemType, blockIndex, toolUseId: id });
         }
         this.toolBlocks.delete(id);
-        this.onEvent({ type: "tool_end", blockIndex });
+        this.onEvent({ type: "tool_end", blockIndex, toolUseId: id });
       }
     }
   }
 
   private handleTurnCompleted(obj: Record<string, unknown>): void {
+    // A finished turn has no running tools: close any item whose completion never
+    // arrived so the runner does not treat it as in flight (#141).
+    for (const [id, blockIndex] of this.toolBlocks) {
+      this.onEvent({ type: "tool_end", blockIndex, toolUseId: id });
+    }
+    this.toolBlocks.clear();
+
     const usage = obj.usage as Record<string, unknown> | undefined;
     if (!usage) return;
     const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;

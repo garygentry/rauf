@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- **Configurable stuck-warning thresholds (#141).** `.rauf.json` `options.stuckThresholdMs` (default `300000`, 5 min) sets how long the stream may be silent, with no tool call in flight, before `llm_stuck_warning`. `options.toolStuckThresholdMs` (default `1800000`, 30 min) sets the ceiling while a tool call is in flight. Both are positive integers, and a tool ceiling below `stuckThresholdMs` is raised to it.
+
 ### Fixed
+
+- **`llm_stuck_warning` no longer fires on a long, quiet foreground tool call (#141).** A verification gate that ran for more than 5 minutes without output was flagged as a hang on almost every iteration, even though the agent was just waiting on its Bash call. The runner now tracks which tool calls are in flight (a `tool_start` with no `tool_end` yet). While one is running it waits for the 30-minute tool ceiling instead of the 5-minute LLM-silence threshold, so a genuinely hung tool still gets surfaced. The warning payload gains `currentTool` (`null` when the model itself went silent) and `toolRunningMs`. The CLI, `rauf follow` and the web status page show both. The Claude stream parser used to emit `tool_end` right after `tool_start` on the assistant `tool_use` block, before the CLI even ran the tool, which is why `iteration-status.json` read `currentTool: null` during a Bash call. It now ends the tool on the matching `tool_result`. The runner also force-writes `iteration-status.json` on every tool boundary, where the 1 s write throttle could previously drop the `tool_start` write until the next event. `currentTool` now stays set, with a new `currentToolStartedAt`, until the tool finishes. `llm_tool_activity` `end` events name the tool instead of `"unknown"`. Codex already reported real tool boundaries; its open items are now also closed at `turn.completed`. The plain-text agents (gemini, copilot, cursor, pi, generic-cli) emit no stream events and keep the previous behavior.
 
 - **`AGENTS_ADDON.md` now carries the host-neutral `RAUF_REVIEW:<json>` / no-signal paragraph (#132).** The signal-detection blockquote in the cross-agent `AGENTS.md` block ended after the "last signal line" note, so every non-Claude host missed that `RAUF_REVIEW` is review-pass-only and that a missing signal is reconciled by exit context rather than auto-blocked. The paragraph is mirrored from `CLAUDE_ADDON.md` (embedded copy regenerated), the stale "Known gap" note is dropped from `docs/SPEC-ARTIFACTS.md`, and a new installer test asserts the two addons' signal blockquotes stay identical and that the embedded copies match their sources. `scripts/check-agent-commit-rule.sh` now also guards `AGENTS_ADDON.md`'s commit-rule clause (#134).
 
