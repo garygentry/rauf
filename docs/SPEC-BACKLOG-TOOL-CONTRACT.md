@@ -270,7 +270,7 @@ invoked to derive it). Its fields:
   necessarily every item done. `LIMIT_REACHED` remains in the enum for
   compatibility but is no longer emitted: a pre-0.11 `limit_reached`
   state file derives `ITERATIONS_COMPLETE` if an item is still eligible,
-  else `COMPLETE`.
+  else `COMPLETE` (an unreadable backlog stays `ITERATIONS_COMPLETE`).
 - **`stateSource`**: `state.json` | `log-parsing` | `none`.
 - **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
   **`startedAt`**, **`elapsed`**: progress fields (nullable).
@@ -303,27 +303,35 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
 its decisions from **one** `rauf status … --json` poll — it **never** reads
 `.rauf/iteration-status.json` or `events.ndjson` to decide (those remain
 available for narration/diagnosis only). Evaluate the branches **top-to-bottom,
-first match wins**. The table is exhaustive: row 10 catches every poll the earlier
+first match wins**. The table is exhaustive: row 11 catches every poll the earlier
 rows don't:
 
-| #   | Condition (from ONE `status --json` poll)                                                             | Decision                 | Action                                                                                                                                                                                         |
-| --- | ----------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**          | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                          |
-| 2   | `loopState = ITERATIONS_COMPLETE`                                                                     | **Budget spent**         | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead.  |
-| 3   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                           | **Stopped short**        | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                     |
-| 4   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.done === backlogSummary.total`                 | **Done**                 | Every item is `done`. Report the outcome and **stop**.                                                                                                                                         |
-| 5   | `loopState ∈ {SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT}`                                      | **Usage-limit pause**    | Not a stall. `SLEEPING_LIMIT` auto-resumes: keep polling (narrate `sleepUntil`). `WEEKLY_LIMIT` / `PAUSED_USAGE_LIMIT` are halted: `rauf resume <root> --backlog <dir>` once the limit resets. |
-| 6   | `loopState ∈ {PAUSED, ERROR}`                                                                         | **Stopped, recoverable** | `PAUSED` (graceful stop or crashed run): `rauf resume`. `ERROR` (crash / circuit breaker): `rauf reset` then re-run, or `resume` (the skill's Recover section).                                |
-| 7   | `loopState = NOT_INSTALLED`                                                                           | **Addressing error**     | Not a rauf root. Fix `<root>` / `--backlog`; do not keep polling.                                                                                                                              |
-| 8   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**    | Apply the persist-then-escalate recovery ladder.                                                                                                                                               |
-| 9   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress**  | **Keep polling** at the interval.                                                                                                                                                              |
-| 10  | Anything else, e.g. `IDLE` with work left right after launch (before the loop has written its state)  | **Not started yet**      | **Keep polling.** If it persists past startup, the launch failed: check the launch output.                                                                                                     |
+| #   | Condition (from ONE `status --json` poll)                                                                                | Decision                 | Action                                                                                                                                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `loopState = NOT_INSTALLED`                                                                                              | **Addressing error**     | Not a rauf root. Fix `<root>` / `--backlog`; do not keep polling.                                                                                                                                                                                                         |
+| 2   | `loopState ∈ {ERROR, PAUSED}`                                                                                            | **Stopped, recoverable** | The loop itself stopped. `ERROR` (crash / circuit breaker): `rauf reset` then re-run, or `resume` (the skill's Recover section). `PAUSED` (graceful stop or crashed run): `rauf resume`. Also report any set-aside needs-human items (`backlogSummary.needsHuman`).       |
+| 3   | `loopState ∈ {SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT}`                                                         | **Usage-limit pause**    | Not a stall. `SLEEPING_LIMIT` auto-resumes: keep polling (narrate `sleepUntil`). `WEEKLY_LIMIT` / `PAUSED_USAGE_LIMIT` are halted: `rauf resume <root> --backlog <dir>` once the limit resets. Also report any set-aside needs-human items (`backlogSummary.needsHuman`). |
+| 4   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0`                    | **Needs human**          | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                                                                                                     |
+| 5   | `loopState = ITERATIONS_COMPLETE`                                                                                        | **Budget spent**         | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead.                                                                             |
+| 6   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.total === 0`                                                      | **Nothing to run**       | The backlog is empty **or unreadable** (a read failure reports an all-zero summary). Run `rauf backlog validate <root> --backlog <dir>`, report, and **stop**. Never treat this as done.                                                                                  |
+| 7   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                                              | **Stopped short**        | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                                                                                                |
+| 8   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.total > 0` **and** `backlogSummary.done === backlogSummary.total` | **Done**                 | Every item is `done`. Report the outcome and **stop**.                                                                                                                                                                                                                    |
+| 9   | `health?.stuckWarning === true`                                                                                          | **Recoverable stall**    | Apply the persist-then-escalate recovery ladder.                                                                                                                                                                                                                          |
+| 10  | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                                        | **Healthy in-progress**  | **Keep polling** at the interval.                                                                                                                                                                                                                                         |
+| 11  | Anything else, e.g. `IDLE` with work left right after launch (before the loop has written its state)                     | **Not started yet**      | **Keep polling.** If it persists past startup, the launch failed: check the launch output.                                                                                                                                                                                |
 
-`needs-human` (row 1) outranks everything. `COMPLETE` means no **eligible**
-work is left (no `pending` item with all dependencies `done`), not that every
-item is done, so rows 3 and 4 compare `backlogSummary.done` with `total`.
+Rows 1–3 act on the loop itself and outrank needs-human: in the default
+"set aside and continue" mode `needsHuman > 0` can outlive a later crash,
+stop or usage limit, and a backlog-wide flag must not keep a crashed loop down
+(recover it and report the needs-human items alongside). Needs-human (row 4)
+outranks the completion, stall and healthy rows. `COMPLETE` means no
+**eligible** work is left (no `pending` item with all dependencies `done`), not
+that every item is done, so rows 7 and 8 compare `backlogSummary.done` with
+`total`. A backlog read failure reports an all-zero summary, so row 6
+(`total === 0`) catches it and row 8 (which requires `total > 0`) never
+declares an unreadable backlog done.
 `health` may be `null` (no live iteration), so
-`health?.stuckWarning` short-circuits to falsy and row 8 does not fire. The
+`health?.stuckWarning` short-circuits to falsy and row 9 does not fire. The
 **`drive-rauf-loop`** skill is the **authoritative recipe** for this loop (poll interval, N=3 escalation threshold, the persist-then-escalate
 ladder, and `reset`-only-on-dead-lock); this contract defines the surface it
 reads.

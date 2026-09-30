@@ -326,6 +326,39 @@ describe("deriveStatus — Tier 1: state.json", () => {
     expect(result.value.loopState).toBe("COMPLETE");
   });
 
+  // An unreadable backlog must never read as a finished run: the legacy stop
+  // stays resumable, and the all-zero summary (total 0) keeps the supervisor's
+  // "done" row (which requires total > 0) from matching.
+  it.each<[string, string | null]>([
+    ["missing", null],
+    ["malformed", "{ not json"],
+  ])(
+    "derives ITERATIONS_COMPLETE from a legacy 'limit_reached' state.json when the backlog is %s",
+    (_name, raw) => {
+      writeStateJson(makeLoopState({ status: "limit_reached" }));
+      if (raw !== null) {
+        fs.writeFileSync(path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json"), raw);
+      }
+
+      const result = deriveStatus(makePaths());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.loopState).toBe("ITERATIONS_COMPLETE");
+      expect(result.value.backlogSummary.total).toBe(0);
+    },
+  );
+
+  it("reports total 0 (never done === total with work) for an unreadable backlog on a COMPLETE run", () => {
+    writeStateJson(makeLoopState({ status: "complete" }));
+    fs.writeFileSync(path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json"), "{ not json");
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("COMPLETE");
+    expect(result.value.backlogSummary).toMatchObject({ done: 0, total: 0 });
+  });
+
   it("derives ERROR from state.json with status 'error'", () => {
     const state = makeLoopState({
       status: "error",

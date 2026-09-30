@@ -172,21 +172,21 @@ interface LoopState {
 }
 ```
 
-| Status value          | Meaning                                                                                                                                                          |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `idle`                | No loop active (initial state)                                                                                                                                   |
-| `starting`            | Loop initializing                                                                                                                                                |
-| `running`             | Actively processing an item                                                                                                                                      |
-| `paused`              | Gracefully stopped (CANCEL signal)                                                                                                                               |
-| `complete`            | No eligible work left (no `pending` item with all deps `done`). Blocked items, and pending items behind them, may remain                                         |
-| `paused_human`        | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                                                                                     |
-| `iterations_complete` | Iteration budget (`--iterations`) exhausted with eligible work left; clean stop, resumable                                                                       |
-| `limit_reached`       | Deprecated: pre-0.11 spelling of `iterations_complete`. Still parses; derives `ITERATIONS_COMPLETE` if eligible work remains, else `COMPLETE`. No longer written |
-| `error`               | Unexpected termination                                                                                                                                           |
-| `sleeping_limit`      | Sleeping until 5-hour Claude usage window resets                                                                                                                 |
-| `weekly_limit`        | 7-day weekly Claude usage cap exhausted                                                                                                                          |
-| `reviewing`           | Running post-loop review pass                                                                                                                                    |
-| `paused_usage_limit`  | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume`                                                                      |
+| Status value          | Meaning                                                                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idle`                | No loop active (initial state)                                                                                                                                                                |
+| `starting`            | Loop initializing                                                                                                                                                                             |
+| `running`             | Actively processing an item                                                                                                                                                                   |
+| `paused`              | Gracefully stopped (CANCEL signal)                                                                                                                                                            |
+| `complete`            | No eligible work left (no `pending` item with all deps `done`). Blocked items, and pending items behind them, may remain                                                                      |
+| `paused_human`        | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                                                                                                                  |
+| `iterations_complete` | Iteration budget (`--iterations`) exhausted with eligible work left; clean stop, resumable                                                                                                    |
+| `limit_reached`       | Deprecated: pre-0.11 spelling of `iterations_complete`. Still parses; derives `ITERATIONS_COMPLETE` if eligible work remains or the backlog is unreadable, else `COMPLETE`. No longer written |
+| `error`               | Unexpected termination                                                                                                                                                                        |
+| `sleeping_limit`      | Sleeping until 5-hour Claude usage window resets                                                                                                                                              |
+| `weekly_limit`        | 7-day weekly Claude usage cap exhausted                                                                                                                                                       |
+| `reviewing`           | Running post-loop review pass                                                                                                                                                                 |
+| `paused_usage_limit`  | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume`                                                                                                   |
 
 File: `.rauf/state.json` (written by the loop runner, read by status derivation)
 

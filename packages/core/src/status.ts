@@ -331,12 +331,15 @@ function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
  * DONE wording). Those runners wrote it whenever the budget ran out, even when
  * the last iteration drained the backlog, so apply the check the current runner
  * makes before writing `iterations_complete` (`hasEligibleItems`): eligible work
- * left → ITERATIONS_COMPLETE, otherwise COMPLETE. An unreadable backlog counts
- * as "no eligible work", as it does in the runner.
+ * left → ITERATIONS_COMPLETE, otherwise COMPLETE.
+ *
+ * A missing, unreadable or malformed backlog must never read as a finished run,
+ * so it stays ITERATIONS_COMPLETE (resumable). A `resume` then re-reads the
+ * backlog and fails loudly, which surfaces the problem.
  */
 function legacyBudgetStopState(paths: BacklogPaths): LoopStateEnum {
   const backlogResult = readBacklog(paths);
-  if (!backlogResult.ok) return "COMPLETE";
+  if (!backlogResult.ok) return "ITERATIONS_COMPLETE";
   return selectNextItem(backlogResult.value) !== null ? "ITERATIONS_COMPLETE" : "COMPLETE";
 }
 
