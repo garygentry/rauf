@@ -177,6 +177,32 @@ describe("formatEvent", () => {
     expect(out).toContain("diagnostic tail captured");
   });
 
+  it("names the tool in flight on llm_stuck_warning (#141)", () => {
+    const out = formatEvent(
+      ev({
+        seq: 9,
+        type: "llm_stuck_warning",
+        itemId: "002",
+        silentMs: 1_830_000,
+        currentTool: "Bash",
+        toolRunningMs: 1_845_000,
+      }),
+    );
+    expect(out).toContain("stuck warning");
+    expect(out).toContain("silent 30m 30s");
+    expect(out).toContain("Bash running 30m 45s");
+  });
+
+  it("renders llm_stuck_warning without a tool (null or pre-#141 payload)", () => {
+    for (const extra of [{ currentTool: null, toolRunningMs: null }, {}]) {
+      const out = formatEvent(
+        ev({ seq: 9, type: "llm_stuck_warning", itemId: "002", silentMs: 300_000, ...extra }),
+      );
+      expect(out).toContain("silent 5m 0s");
+      expect(out).not.toContain("running");
+    }
+  });
+
   it("omits the diagnostic tail note on item_retried when absent", () => {
     const out = formatEvent(
       ev({ seq: 9, type: "item_retried", itemId: "001", attempt: 1, maxRetries: 2 }),

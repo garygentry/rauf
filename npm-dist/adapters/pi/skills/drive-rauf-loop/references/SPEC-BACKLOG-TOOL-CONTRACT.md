@@ -218,7 +218,20 @@ ignore any `type` they do not recognize, per the promise below):
 | `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                       |
 | `loop_error`        | `error`                                                                                    |
 | `loop_cancelled`    | _(base fields only)_                                                                       |
-| `llm_stuck_warning` | `itemId`, `silentMs`                                                                       |
+| `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`) |
+
+`llm_stuck_warning` fires once the stream has been silent for `options.stuckThresholdMs`
+(default 5 min), **unless** a quiet tool call (in flight, with no nested activity: e.g. a
+long, silent foreground verification command) has been running for less than
+`options.toolStuckThresholdMs` (default 30 min). That ceiling is measured from the call's
+start, not added to the silence, so later stream activity never extends it. When the warning
+fires, `currentTool` names that quiet call (`null` means the model itself went silent) and
+`toolRunningMs` says how long it has been running. Both fields are optional in the schema only
+so events persisted by pre-#141 runners still parse. `llm_tool_activity` also gains optional
+`toolUseId` (pairs parallel calls) and, on a synthesized end, `reason`
+(`reconciled` | `aborted`), so every `start` gets an `end`. Agents with no stream events (the
+plain-text presets and `generic-cli`) never report a tool in flight and keep the plain
+silence threshold. See [SCHEMAS.md](./SCHEMAS.md) for per-agent tool boundaries.
 
 **Two gotchas a supervisor MUST account for:**
 
@@ -292,6 +305,8 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
   has to read that file to decide:
   - **`stuckWarning`** (`boolean`): the runner's stall hint — an iteration
     appears to have stopped making progress. A **decision aid, not a verdict**.
+    A quiet tool call in flight holds it off until that call has run for
+    `options.toolStuckThresholdMs` (default 30 min, counted from the call's start).
   - **`iterationFresh`** (`boolean`): whether the iteration-status file was
     updated within the freshness window (60 s).
   - **`lastActivityAt`** (ISO string): the last activity timestamp.

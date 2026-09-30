@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { spawnClaude } from "./claude-process.js";
+import type { ClaudeStreamEvent } from "./stream-parser.js";
 
 // We test spawnClaude by replacing the "claude" binary with a small
 // shell script that echoes args, stdin, and controls exit behavior.
@@ -303,6 +304,84 @@ describe("spawnClaude", () => {
       expect(result.value.stdout).toContain("Line 1");
       expect(result.value.stdout).toContain("Line 2");
       expect(result.value.stdout).toContain("RAUF_DONE");
+    });
+  });
+
+  describe("open tool calls at process exit (#141)", () => {
+    const toolUseLine = JSON.stringify({
+      type: "assistant",
+      message: {
+        id: "m1",
+        content: [{ type: "tool_use", id: "toolu_open", name: "Bash", input: {} }],
+      },
+    });
+    const collect = () => {
+      const events: ClaudeStreamEvent[] = [];
+      return { events, onStreamEvent: (e: ClaudeStreamEvent) => events.push(e) };
+    };
+    const aborted = { type: "tool_end", blockIndex: 0, toolUseId: "toolu_open", reason: "aborted" };
+
+    it("closes an open tool when the process exits non-zero without a result", async () => {
+      writeMockClaude(`echo '${toolUseLine}'\nexit 1`);
+      const { events, onStreamEvent } = collect();
+      const result = await spawnClaude("p", {
+        sessionTimeoutMinutes: 1,
+        outputFormat: "stream-json",
+        onStreamEvent,
+      });
+      expect(result.ok).toBe(true);
+      expect(events.map((e) => e.type)).toEqual(["tool_start", "tool_end"]);
+      expect(events[1]).toEqual(aborted);
+    });
+
+    it("closes an open tool when the process is killed (abort signal)", async () => {
+      writeMockClaude(`echo '${toolUseLine}'\nexec sleep 999`);
+      const { events, onStreamEvent } = collect();
+      const ac = new AbortController();
+      const promise = spawnClaude("p", {
+        sessionTimeoutMinutes: 5,
+        outputFormat: "stream-json",
+        onStreamEvent,
+        signal: ac.signal,
+      });
+      setTimeout(() => ac.abort(), 300);
+      await promise;
+      expect(events.at(-1)).toEqual(aborted);
+      expect(events.filter((e) => e.type === "tool_end")).toHaveLength(1);
+    }, 15_000);
+
+    it("closes an open tool when stdout is truncated mid-line", async () => {
+      writeMockClaude(
+        `echo '${toolUseLine}'\nprintf '{"type":"user","message":{"content":[{"type":"tool_re'`,
+      );
+      const { events, onStreamEvent } = collect();
+      await spawnClaude("p", {
+        sessionTimeoutMinutes: 1,
+        outputFormat: "stream-json",
+        onStreamEvent,
+      });
+      expect(events.at(-1)).toEqual(aborted);
+    });
+
+    it("emits nothing extra when the session completed normally", async () => {
+      const resultLine = JSON.stringify({
+        type: "result",
+        subtype: "success",
+        result: "RAUF_DONE",
+      });
+      const userLine = JSON.stringify({
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "toolu_open", content: "ok" }] },
+      });
+      writeMockClaude(`echo '${toolUseLine}'\necho '${userLine}'\necho '${resultLine}'`);
+      const { events, onStreamEvent } = collect();
+      await spawnClaude("p", {
+        sessionTimeoutMinutes: 1,
+        outputFormat: "stream-json",
+        onStreamEvent,
+      });
+      const ends = events.filter((e) => e.type === "tool_end");
+      expect(ends).toEqual([{ type: "tool_end", blockIndex: 0, toolUseId: "toolu_open" }]);
     });
   });
 });

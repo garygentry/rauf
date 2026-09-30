@@ -150,11 +150,17 @@ export function formatEvent(ev: PersistedEvent): string {
         c.dim("tokens"),
         `${item(ev.itemId)} ${c.dim(`in ${fmtTokens(ev.inputTokens)} · out ${fmtTokens(ev.outputTokens)}`)}`,
       );
-    case "llm_stuck_warning":
+    case "llm_stuck_warning": {
+      // #141: name the tool in flight, so a long, quiet tool call is not read as a stalled LLM.
+      const tool =
+        ev.currentTool != null
+          ? ` · ${c.cyan(ev.currentTool)} running ${fmtDuration(ev.toolRunningMs ?? ev.silentMs)}`
+          : "";
       return line(
         c.yellow("stuck warning"),
-        `${item(ev.itemId)} ${c.dim(`silent ${fmtDuration(ev.silentMs)}`)}`,
+        `${item(ev.itemId)} ${c.dim(`silent ${fmtDuration(ev.silentMs)}`)}${tool}`,
       );
+    }
     default: {
       // Exhaustiveness guard — if a new event type is added without a case here,
       // this still surfaces the raw type rather than rendering nothing.

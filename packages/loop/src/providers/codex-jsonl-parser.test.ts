@@ -64,4 +64,26 @@ describe("CodexStreamParser", () => {
     );
     expect(events.map((e) => e.type)).toEqual(["tool_start", "tool_end"]);
   });
+
+  it("tags tool events with the codex item id (#141)", () => {
+    const { events } = run("codex-exec-command.jsonl");
+    const start = events.find((e) => e.type === "tool_start");
+    const end = events.find((e) => e.type === "tool_end");
+    expect(start?.type === "tool_start" && start.toolUseId).toBeTruthy();
+    expect(end?.type === "tool_end" && end.toolUseId).toBe(
+      start?.type === "tool_start" ? start.toolUseId : undefined,
+    );
+  });
+
+  it("closes a tool item left open when the turn completes (#141)", () => {
+    const events: ClaudeStreamEvent[] = [];
+    const parser = new CodexStreamParser((e) => events.push(e));
+    parser.feed(
+      '{"type":"item.started","item":{"id":"c1","type":"command_execution","status":"in_progress"}}',
+    );
+    expect(events.map((e) => e.type)).toEqual(["tool_start"]);
+    parser.feed('{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}');
+    expect(events.map((e) => e.type)).toEqual(["tool_start", "tool_end", "token_update"]);
+    expect(events[1]).toMatchObject({ type: "tool_end", toolUseId: "c1" });
+  });
 });
