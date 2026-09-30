@@ -252,6 +252,9 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
     elapsed,
     backlogSummary: computeBacklogSummary(paths),
     sleepUntil: state.sleepUntil ?? null,
+    ...(state.reviewPending === true
+      ? { reviewPending: true, reviewItemIds: state.reviewItemIds ?? [] }
+      : {}),
     health: buildHealth(iterationStatus, now),
   });
 }
@@ -354,9 +357,10 @@ function legacyBudgetStopState(paths: BacklogPaths): LoopStateEnum {
  * mentions a limit). Everything else is the completion summary
  * (`completed=… blocked=… iterations=…`) or older free-text wording.
  *
- * The `iterations_complete:` prefix comes from #147. Until that lands, the runner
- * writes a bare completion summary for a budget stop, the same text it writes
- * for `complete`, so that stop is only recoverable from state.json.
+ * The runner writes the `iterations_complete:` prefix for a budget stop (#146,
+ * PR #147). A DONE file from an older runner carries a bare completion summary
+ * for that stop, the same text as `complete`, so it is only recoverable from
+ * state.json.
  */
 function parseDoneFileState(content: string, paths: BacklogPaths): LoopStateEnum {
   if (!content) return "COMPLETE";

@@ -184,6 +184,27 @@ describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)",
       expected: ExitCode.LIMIT,
     },
     {
+      name: "reviewFailed (automatic review pass failed, #146) → ERROR(1)",
+      result: { ...base, completedCount: 1, reviewFailed: true, reviewPending: true },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "reviewFailed precedes blocked (order)",
+      result: { ...base, blockedCount: 1, reviewFailed: true },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "a cancel during the review (reviewPending, no reviewFailed) keeps cancel semantics",
+      result: {
+        ...base,
+        completedCount: 1,
+        cancelled: true,
+        gracefulStop: true,
+        reviewPending: true,
+      },
+      expected: ExitCode.SUCCESS,
+    },
+    {
       name: "setupFailed → ERROR(1) (fail-fast agent unavailable, REQ-DET-02/SC-3)",
       result: { ...base, setupFailed: true },
       expected: ExitCode.ERROR,
@@ -508,6 +529,20 @@ describe("formatAndPrintEvent", () => {
     expect(output.stdout).toContain("Usage limit hit");
     expect(output.stdout).toContain("5h");
     expect(output.stdout).toContain("100%");
+    expect(output.stdout).not.toContain("unconfirmed");
+  });
+
+  it("formats a usage_limit_hit assumed after usage-API disagreement (#146)", () => {
+    const event = baseEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: 100,
+      reason: "usage_api_disagreement",
+      consecutiveDisagreements: 3,
+    });
+    const output = captureOutput(() => formatAndPrintEvent(event));
+    expect(output.stdout).toContain("Usage limit hit");
+    expect(output.stdout).toContain("banner unconfirmed by usage API");
+    expect(output.stdout).toContain("\u00D73");
   });
 
   it("formats usage_limit_cleared event", () => {

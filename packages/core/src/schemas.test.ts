@@ -1753,6 +1753,33 @@ describe("LoopEventSchema", () => {
       }
     });
 
+    it("accepts the usage_api_disagreement reason + consecutiveDisagreements (#146)", () => {
+      const result = LoopEventSchema.parse({
+        ...base,
+        type: "usage_limit_hit",
+        limitType: "5h",
+        utilization: 100,
+        reason: "usage_api_disagreement",
+        consecutiveDisagreements: 3,
+      });
+      if (result.type === "usage_limit_hit") {
+        expect(result.reason).toBe("usage_api_disagreement");
+        expect(result.consecutiveDisagreements).toBe(3);
+      }
+    });
+
+    it("rejects an unknown usage_limit_hit reason", () => {
+      expect(() =>
+        LoopEventSchema.parse({
+          ...base,
+          type: "usage_limit_hit",
+          limitType: "5h",
+          utilization: 100,
+          reason: "vibes",
+        }),
+      ).toThrow();
+    });
+
     it("rejects invalid limitType", () => {
       expect(() =>
         LoopEventSchema.parse({

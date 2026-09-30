@@ -16,6 +16,13 @@ export interface UsageLimitResult {
   utilization?: number;
   retryAfter?: number;
   resetsAt?: string;
+  /**
+   * True when the usage API could not answer (non-2xx such as 429, network
+   * error, timeout, unparseable body). `limited` is then `false` — "unknown",
+   * NOT a confirmed "not limited". The runner treats this like a disagreement
+   * when it has independent evidence of a limit (a usage banner) (#146).
+   */
+  unavailable?: boolean;
 }
 
 /**
@@ -25,7 +32,8 @@ export interface UsageLimitResult {
  * bearer token. Returns { limited: false } when no limits are hit.
  * Returns structured limit info when 5-hour or 7-day utilization >= 100.
  *
- * On any error (network, auth, parse), assumes not limited and logs a warning.
+ * On any error (network, auth, parse), returns `{ limited: false, unavailable: true }`
+ * and logs a warning — callers without other evidence proceed as not limited.
  */
 export async function checkUsageLimit(token: string): Promise<UsageLimitResult> {
   try {
@@ -40,7 +48,7 @@ export async function checkUsageLimit(token: string): Promise<UsageLimitResult> 
 
     if (!response.ok) {
       console.warn(`[rauf] Usage API returned ${response.status}: ${response.statusText}`);
-      return { limited: false };
+      return { limited: false, unavailable: true };
     }
 
     const data = (await response.json()) as UsageApiResponse;
@@ -72,7 +80,7 @@ export async function checkUsageLimit(token: string): Promise<UsageLimitResult> 
     return { limited: false };
   } catch (e) {
     console.warn(`[rauf] Usage API check failed: ${e instanceof Error ? e.message : String(e)}`);
-    return { limited: false };
+    return { limited: false, unavailable: true };
   }
 }
 

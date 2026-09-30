@@ -251,7 +251,14 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "review",
         description: "Review completed items and create fix items",
-        usage: "rauf loop review [path] [--model MODEL] [--timeout N]",
+        usage: "rauf loop review [path] [--model MODEL] [--timeout N] [--items ID,ID]",
+        flags: [
+          {
+            name: "--items",
+            description:
+              "Review only these done items (comma-separated ids); `rauf resume` passes a pending review's scope",
+          },
+        ],
         handler: handleLoopReview,
       },
     ],

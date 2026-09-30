@@ -170,7 +170,9 @@ interface LoopState {
   deferredItems: string[]; // Item IDs the runner gave up on ("false blocks" — distinct from genuine agent blocks)
   baseCommitHash: string | null; // HEAD commit captured at loop start — used as `sinceRef` to bound commit reconciliation to commits after the baseline (prevents false-recovery from a prior backlog cycle; see SPEC-CORE.md § Commit Reconciliation)
   error: string | null;
-  sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit
+  sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit, or during a usage-disagreement backoff (status running) (#146)
+  reviewPending?: boolean; // a review pass started and has not succeeded (usage stop, failure, crash); `rauf resume` re-runs it (#146)
+  reviewItemIds?: string[]; // the pending review's exact scope (done item ids), present with reviewPending (#146)
 }
 ```
 
@@ -234,7 +236,9 @@ interface DerivedStatus {
   elapsed: number | null; // Seconds
   backlogSummary: BacklogSummary;
   lock?: LockSummary; // Lock-file liveness (present/alive/stale + PID)
-  sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT
+  sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT (or RUNNING during a usage-banner backoff)
+  reviewPending?: boolean; // a review pass started and did not succeed; `rauf resume` re-runs it (#146)
+  reviewItemIds?: string[]; // that review's exact scope; present with reviewPending
 }
 
 interface BacklogSummary {
@@ -432,32 +436,32 @@ interface LoopEventBase {
 
 ### All 24 Event Types
 
-| Type                  | Additional Fields                                                         | Emitted When                                             |
-| --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `loop_started`        | `maxIterations`, `model?`                                                 | Loop begins                                              |
-| `iteration_start`     | `iteration`, `maxIterations`                                              | Each iteration starts                                    |
-| `item_selected`       | `itemId`, `title`, `priority`                                             | Next item picked from backlog                            |
-| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                          | LLM process launched                                     |
-| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                | LLM process exits                                        |
-| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`      | Exit signal extracted from stdout                        |
-| `item_completed`      | `itemId`, `title`                                                         | Item marked done                                         |
-| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                          | Item marked blocked                                      |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`           | Item re-queued for retry                                 |
-| `needs_human`         | `itemId`, `reason`                                                        | Loop paused for human input                              |
-| `loop_paused`         | `reason` ("needs_human"), `itemId`                                        | Loop halted in `paused_human` (`--pause-on-needs-human`) |
-| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                                 | Claude API usage limit detected                          |
-| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                | Usage limit window reset                                 |
-| `sleep_start`         | `sleepUntil`, `reason`                                                    | Loop enters sleep (usage limit)                          |
-| `sleep_end`           | _(base only)_                                                             | Loop wakes from sleep                                    |
-| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                      | Loop finishes normally                                   |
-| `loop_error`          | `error`                                                                   | Unexpected error terminates loop                         |
-| `loop_cancelled`      | _(base only)_                                                             | Loop cancelled via AbortController or CANCEL file        |
-| `review_started`      | `completedItemIds`                                                        | Post-loop review pass begins                             |
-| `review_completed`    | `itemsCreated`, `summary`                                                 | Review pass finished                                     |
-| `review_failed`       | `reason`                                                                  | Review pass failed (non-fatal)                           |
-| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?` | Tool call starts or finishes in child session            |
-| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                   | Token count update from child session                    |
-| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                      | Child session silent for too long (see below)            |
+| Type                  | Additional Fields                                                                 | Emitted When                                             |
+| --------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                                         | Loop begins                                              |
+| `iteration_start`     | `iteration`, `maxIterations`                                                      | Each iteration starts                                    |
+| `item_selected`       | `itemId`, `title`, `priority`                                                     | Next item picked from backlog                            |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                                  | LLM process launched                                     |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                        | LLM process exits                                        |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`              | Exit signal extracted from stdout                        |
+| `item_completed`      | `itemId`, `title`                                                                 | Item marked done                                         |
+| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                                  | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`                   | Item re-queued for retry                                 |
+| `needs_human`         | `itemId`, `reason`                                                                | Loop paused for human input                              |
+| `loop_paused`         | `reason` ("needs_human"), `itemId`                                                | Loop halted in `paused_human` (`--pause-on-needs-human`) |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`, `reason?`, `consecutiveDisagreements?` | Claude API usage limit detected (see below)              |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                        | Usage limit window reset                                 |
+| `sleep_start`         | `sleepUntil`, `reason`                                                            | Loop enters sleep (usage limit)                          |
+| `sleep_end`           | _(base only)_                                                                     | Loop wakes from sleep                                    |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                              | Loop finishes normally                                   |
+| `loop_error`          | `error`                                                                           | Unexpected error terminates loop                         |
+| `loop_cancelled`      | _(base only)_                                                                     | Loop cancelled via AbortController or CANCEL file        |
+| `review_started`      | `completedItemIds`                                                                | Post-loop review pass begins                             |
+| `review_completed`    | `itemsCreated`, `summary`                                                         | Review pass finished                                     |
+| `review_failed`       | `reason`                                                                          | Review pass failed (non-fatal)                           |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?`         | Tool call starts or finishes in child session            |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                           | Token count update from child session                    |
+| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                              | Child session silent for too long (see below)            |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -553,6 +557,8 @@ type LoopEvent =
       projectPath: string;
       limitType: "5h" | "7d";
       utilization: number;
+      reason?: "usage_api_disagreement"; // limit ASSUMED, not API-confirmed (#146)
+      consecutiveDisagreements?: number; // disagreements that triggered it
     }
   | { type: "usage_limit_cleared"; timestamp: string; projectPath: string; limitType: "5h" | "7d" }
   | {
@@ -614,6 +620,18 @@ type LoopEvent =
       toolRunningMs?: number | null; // ms since currentTool started, or null when currentTool is null
     };
 ```
+
+**`usage_limit_hit` provenance (#146).** Without `reason`, the limit was confirmed by the
+usage API, or taken on the banner alone because no OAuth token was available.
+`reason: "usage_api_disagreement"` means the agent died on a usage-limit banner but the usage
+API answered "not limited" or was unavailable (429 / error) on `consecutiveDisagreements`
+consecutive attempts (threshold 3), so the runner **assumed** a 5h limit and took the normal
+sleep (`sleeping_limit`) or halt (`paused_usage_limit`) path. The backoff sleeps before the
+threshold (30 s, then 60 s) are reported as `sleep_start` / `sleep_end` pairs whose `reason`
+starts with `Usage-limit banner unconfirmed by usage API`. During them state.json stays
+`running`, with `currentItem: null` and `sleepUntil` set to the backoff deadline. A backoff
+or sleep is skipped when the counted attempt used up the iteration budget; the loop then stops
+as `iterations_complete`, and its DONE file reads `iterations_complete: <summary>`.
 
 **`llm_stuck_warning` semantics (#141).** The runner tracks which tool calls are in flight
 (a `tool_start` with no matching `tool_end`). The warning fires once the stream has been

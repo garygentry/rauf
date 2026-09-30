@@ -489,7 +489,7 @@ A missing signal (`none`) **never**, by itself, marks an item `blocked`. The `Ex
 
 The `deferred` flag on `BacklogItem` distinguishes a runner "false block" from a genuine agent block. `rauf reset`/`resume` requeue deferred items to `pending` while leaving genuine blocks untouched.
 
-No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget: `iterationCount` is decremented and a note is appended to the log.
+No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget: `iterationCount` is decremented and a note is appended to the log. The exception is a usage death the usage API does not confirm (see [Usage Banner vs Usage-API Disagreement](#usage-banner-vs-usage-api-disagreement-146)). That iteration **is** counted.
 
 ### Circuit Breaker
 
@@ -524,6 +524,38 @@ When a usage limit is hit and `sleepOnLimit` is `false` (default: `true`):
 - `rauf resume` detects this state, applies reconciliation + false-block requeue, and relaunches the loop
 
 When `sleepOnLimit` is `true` (default), the runner parses the reset time from the banner (`/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i`) and sleeps until that local time + 60 s buffer, falling back to 60 s if no match.
+
+### Usage Banner vs Usage-API Disagreement (#146)
+
+On a usage death (a banner in the output, or a `usage_limited` exit class), `handleStderrUsageLimit` asks the usage API to confirm. `checkUsageLimit` returns `{ limited: false, unavailable: true }` when the API cannot answer (non-2xx such as 429, network error, timeout, bad body). Outcomes:
+
+| Token / API answer               | Iteration   | Action                                                                                            |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| No OAuth token                   | uncounted   | Trust the banner: sleep to its reset time + 60 s (60 s fallback), or halt if `sleepOnLimit=false` |
+| API confirms 7d / 5h             | uncounted   | Normal `weekly_limit` / `sleeping_limit` / `paused_usage_limit` path; streak reset                |
+| API "not limited" or unavailable | **counted** | Disagreement: streak += 1, then back off or assume limited (below)                                |
+
+A disagreement never returns an uncounted, un-backed-off `continue`, so the iteration budget always bounds a persistent disagreement. Constants are exported from `runner.ts`. The schedule for consecutive disagreements is:
+
+- **Strike 1: back off 30 s. Strike 2: back off 60 s.** (`USAGE_DISAGREEMENT_BACKOFF_BASE_MS`, doubling, capped at `USAGE_DISAGREEMENT_BACKOFF_CAP_MS` = 5 min. With a threshold of 3 the cap is never reached.) A backoff emits a `sleep_start`/`sleep_end` pair and writes state `running` with `currentItem: null` and `sleepUntil` = the backoff deadline. The same item then retries.
+- **Strike 3 and later: assume a 5h limit.** The loop sleeps until the banner's reset time + 60 s, or `USAGE_DISAGREEMENT_DEFAULT_WINDOW_MS` (30 min) when the banner has none, in `sleeping_limit` with `sleepUntil`. With `sleepOnLimit=false` it halts with `paused_usage_limit`. The `usage_limit_hit` event carries `reason: "usage_api_disagreement"` and `consecutiveDisagreements: n`.
+- **Budget-final:** if the counted attempt used up the iteration budget, there is no backoff or sleep (nothing more could run). The loop stops at once as `iterations_complete`.
+- **Streak resets** on any work iteration that does not end in a usage death (done, blocked, needs-human, timeout, infra or no-signal death), and on any API-confirmed limit (reactive, preflight or between iterations).
+- **No reset after an assumed-limit sleep.** Waking from it proves nothing: the API still disagrees with the banner. If the next attempt dies on a banner again, the loop goes straight back to the limit path, rather than re-spending two counted attempts on 30 s / 60 s backoffs against an account that is most likely still limited. The streak is in memory, so a halt (`sleepOnLimit=false`) followed by `rauf resume` starts from 0.
+
+**Confirmed-limit floor and breaker.** One policy (`handleConfirmedLimit`) serves every API-confirmed limit: preflight, reactive and between iterations. A 5h confirmation whose `resets_at` is missing, invalid or already past would otherwise sleep 0 ms, and because the death is uncounted it would hot-loop. Every confirmed sleep lasts at least `USAGE_LIMIT_MIN_SLEEP_MS` (60 s). After `USAGE_DEGENERATE_LIMIT_THRESHOLD` (3) consecutive such degenerate confirmations, the loop halts as `paused_usage_limit`. A confirmation with a usable reset time, or an iteration that does not end in a usage death, resets that counter.
+
+**Review-pass usage deaths and the pending review.** A review pass is _pending_ from the moment it starts until it **succeeds** (clean, or fix items created). While pending, state.json carries `reviewPending: true` and `reviewItemIds`, the exact done items under review (this run's completed items, or the ids given to `startReviewOnly`). A usage stop, any failure (backlog/prompt/provider/spawn error, unexpected signal after retries, cancel) or a crash therefore leaves it for `rauf resume`.
+
+- A `usage_limited` review spawn goes through the same usage handler, with no iteration budget. After a sleep or backoff it retries the review. Death number `REVIEW_MAX_USAGE_DEATHS` (4) stops at once, without a final sleep (no retry could follow).
+- A halt (`paused_usage_limit` / `weekly_limit`), or reaching the cap, ends the run with `LoopResult.limitReached` and `reviewPending` and a `review_failed` event. It never falls through to `complete`.
+- Any review attempt that is not a usage death resets both usage streaks, just as a work iteration does.
+- The post-review fix-item loop propagates an iteration's `exit` (usage terminal, needs-human pause, git-safety halt) exactly like the main loop, so the terminal state is never overwritten with `complete`.
+- `startReviewOnly(itemIds?)` reviews exactly `itemIds` when given (else every done item). It leaves state `idle` afterwards, keeping `reviewPending` + `reviewItemIds` unless the review succeeded. A usage stop keeps its limit state instead. It returns `limitReached` + `reviewPending` for a usage stop, and `reviewFailed` + `reviewPending` for a failure.
+- In an automatic `loop run --review`, a failed review (not a usage stop) still ends the run `complete`, because the work is done. It keeps `reviewPending` in state.json, and the result carries `reviewFailed` (CLI error message, exit 1). A cancel during the review (between attempts or mid-sleep) is the normal on-request stop: `paused`, DONE `cancel`, `cancelled: true`, still `reviewPending`. `status --json` exposes `reviewPending` + `reviewItemIds`, and the supervisor decision table's row 8 ("Review pending") sends a `COMPLETE`/`IDLE` poll with it to `rauf resume`.
+- `rauf loop review` exits 4 (LIMIT) for a usage stop and 1 (ERROR) for a failure, with no "no issues found" message. `rauf resume` sees `reviewPending` and re-runs the standalone review over `reviewItemIds` (`--items`) instead of relaunching the loop.
+
+`LoopRunner.create(projectPath, options, deps?)` accepts optional `readOAuthToken`, `checkUsageLimit` and `sleep` overrides so tests never touch real credentials, the live API or a real clock. Every package's vitest config also loads `vitest.hermetic-setup.ts` (isolated `HOME`, `api.anthropic.com` fetch guard).
 
 ### Usage Preflight OAuth Token
 

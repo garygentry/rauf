@@ -297,6 +297,140 @@ describe("handleResume — nothing to resume", () => {
   });
 });
 
+describe("handleResume — review pass stopped by a usage limit (#146)", () => {
+  function markReviewPending(projectDir: string): void {
+    const p = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(p, JSON.stringify({ ...state, reviewPending: true }, null, 2) + "\n");
+  }
+
+  const cases: Array<[string, object[]]> = [
+    ["all items are done", [item("001", "done")]],
+    [
+      "only genuine blocks remain",
+      [item("001", "done"), item("002", "blocked", { blockedReason: "RAUF_BLOCKED: dep" })],
+    ],
+    ["eligible items remain (review first)", [item("001", "done"), item("002", "pending")]],
+  ];
+  for (const [label, items] of cases) {
+    it(`re-runs the standalone review when ${label}`, async () => {
+      const projectDir = createProject(items);
+      writeState(projectDir, "paused_usage_limit");
+      markReviewPending(projectDir);
+
+      const { calls, runLoop } = captureRunLoop();
+      const reviewCalls: CommandContext[] = [];
+      const runReview = async (ctx: CommandContext): Promise<number> => {
+        reviewCalls.push(ctx);
+        return ExitCode.SUCCESS;
+      };
+      const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop, runReview });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(calls).toHaveLength(0);
+      expect(reviewCalls).toHaveLength(1);
+      expect(reviewCalls[0]!.args[0]).toBe(projectDir);
+    });
+  }
+
+  it("passes the interrupted review's exact scope (reviewItemIds) to the review", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "done")]);
+    writeState(projectDir, "paused_usage_limit");
+    const p = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(
+      p,
+      JSON.stringify({ ...state, reviewPending: true, reviewItemIds: ["002"] }, null, 2),
+    );
+
+    const reviewCalls: CommandContext[] = [];
+    await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: captureRunLoop().runLoop,
+      runReview: async (ctx) => {
+        reviewCalls.push(ctx);
+        return ExitCode.SUCCESS;
+      },
+    });
+
+    expect(reviewCalls[0]!.flags.get("items")).toBe("002");
+  });
+
+  it("failure lifecycle: a failed re-run stays pending and exits non-zero; a later success clears it", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "done")]);
+    writeMarker(projectDir, "true");
+    writeState(projectDir, "paused_usage_limit");
+    const statePath = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ ...state, error: null, reviewPending: true, reviewItemIds: ["002"] }),
+    );
+
+    // Mock agent on PATH: records its prompt (stdin), then answers per MOCK_REVIEW_MODE.
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir);
+    const argsFile = path.join(tmpDir, "agent-args.txt");
+    fs.writeFileSync(
+      path.join(binDir, "claude"),
+      `#!/bin/bash\ncat >> "${argsFile}"\nif [ "$MOCK_REVIEW_MODE" = ok ]; then echo RAUF_DONE; else echo "no signal here"; fi\n`,
+      { mode: 0o755 },
+    );
+    const origPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${origPath}`;
+    configureOutput({ noColor: true, quiet: false, json: false });
+    const out: string[] = [];
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      out.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      process.env.MOCK_REVIEW_MODE = "fail";
+      const failCode = await handleResume(makeCtx({ args: [projectDir] }));
+      expect(failCode).toBe(ExitCode.ERROR);
+      expect(out.join("")).not.toContain("no issues found");
+      const afterFail = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+      expect(afterFail.reviewPending).toBe(true);
+      expect(afterFail.reviewItemIds).toEqual(["002"]);
+
+      // Only the pending scope was reviewed.
+      const prompt = fs.readFileSync(argsFile, "utf-8");
+      expect(prompt).toContain("Item 002");
+      expect(prompt).not.toContain("Item 001");
+
+      process.env.MOCK_REVIEW_MODE = "ok";
+      const okCode = await handleResume(makeCtx({ args: [projectDir] }));
+      expect(okCode).toBe(ExitCode.SUCCESS);
+      const afterOk = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+      expect(afterOk.reviewPending).toBeUndefined();
+      expect(afterOk.status).toBe("idle");
+    } finally {
+      process.stdout.write = origWrite;
+      process.env.PATH = origPath;
+      delete process.env.MOCK_REVIEW_MODE;
+    }
+  });
+
+  it("relaunches the loop as usual when no review is pending", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+
+    const { calls, runLoop } = captureRunLoop();
+    let reviewed = 0;
+    const code = await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop,
+      runReview: async () => {
+        reviewed++;
+        return ExitCode.SUCCESS;
+      },
+    });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    expect(reviewed).toBe(0);
+  });
+});
+
 // ─── Interrupted-iteration detection + --recover ───────────────────
 
 describe("detectInterruptedItems", () => {

@@ -224,7 +224,19 @@ export const LoopStateSchema = z.object({
    */
   deferredItems: z.array(z.string()).default([]),
   error: z.string().nullable(),
+  /**
+   * ISO deadline of the current usage sleep: the limit reset while
+   * `sleeping_limit`/`weekly_limit`, or the end of a usage-disagreement backoff
+   * while `running`/`reviewing` (#146). Absent when not sleeping.
+   */
   sleepUntil: z.string().nullable().optional(),
+  /**
+   * A review pass started but has not succeeded: stopped by a usage limit,
+   * failed, or interrupted (#146). `rauf resume` re-runs it over `reviewItemIds`.
+   */
+  reviewPending: z.boolean().optional(),
+  /** The pending review's scope: exactly the done item ids it was reviewing (#146). */
+  reviewItemIds: z.array(z.string()).optional(),
   /**
    * HEAD commit hash captured at loop start, used as the baseline (`sinceRef`)
    * for commit reconciliation so only commits made during THIS run can recover
@@ -333,6 +345,14 @@ export const DerivedStatusSchema = z.object({
   /** Lock-file liveness for this backlog root (present/alive/stale + PID). */
   lock: LockSummarySchema.optional(),
   sleepUntil: z.string().nullable().optional(),
+  /**
+   * A review pass started and has not succeeded (usage stop, failure, cancel,
+   * crash); `rauf resume` re-runs it over `reviewItemIds` (#146). Present only
+   * when true (from state.json; the Tier-2 fallback cannot see it).
+   */
+  reviewPending: z.boolean().optional(),
+  /** The pending review's exact scope (done item ids); present with `reviewPending`. */
+  reviewItemIds: z.array(z.string()).optional(),
   /** Live-iteration health hint (null when no iteration is live). */
   health: HealthSchema.nullable(),
 });
@@ -606,6 +626,15 @@ const UsageLimitHitSchema = LoopEventBaseSchema.extend({
   type: z.literal("usage_limit_hit"),
   limitType: LoopEventLimitTypeSchema,
   utilization: z.number(),
+  /**
+   * Why the limit was assumed when the usage API did NOT confirm it (#146).
+   * `usage_api_disagreement`: a usage-limit banner/death was seen but the usage
+   * API answered "not limited" or was unavailable (429 / error) on
+   * `consecutiveDisagreements` consecutive attempts, so the runner treated it as
+   * limited. Absent for an API-confirmed (or no-token banner) limit.
+   */
+  reason: z.literal("usage_api_disagreement").optional(),
+  consecutiveDisagreements: z.number().int().positive().optional(),
 });
 
 const UsageLimitClearedSchema = LoopEventBaseSchema.extend({

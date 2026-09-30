@@ -766,6 +766,9 @@ export function loopRunExitCode(result: LoopResult): ExitCode {
   if (isLimitTerminal(result)) {
     return ExitCode.LIMIT; // 4 — limit-reached / usage-paused / sleeping terminal
   }
+  if (result.reviewFailed) {
+    return ExitCode.ERROR; // 1 — the automatic review pass failed; still pending (#146)
+  }
   if (result.blockedCount > 0) {
     return ExitCode.BLOCKED; // 5 — terminal with blocked items
   }
@@ -1144,7 +1147,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         info("Loop force-cancelled.");
       } else if (result.gracefulStop) {
         info("Loop stopped gracefully after completing iteration.");
-      } else {
+      }
+      if (result.cancelled && result.reviewPending) {
+        info(`The review pass did not finish — ${c.cyan("rauf resume .")} re-runs it.`);
+      }
+      if (!result.cancelled) {
         let msg = `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`;
         if (result.needsHumanCount !== undefined && result.needsHumanCount > 0) {
           msg += `, ${result.needsHumanCount} needs human`;
@@ -1156,6 +1163,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
           msg += `\n  Review: ${result.reviewSummary}`;
         }
         success(msg);
+        if (result.reviewFailed) {
+          error(
+            `Review pass failed — see ${c.cyan(".rauf/rauf.log")}. It stays pending; run ${c.cyan("rauf resume .")} to retry it.`,
+          );
+        }
 
         const needsHuman = result.needsHumanCount ?? 0;
         if (result.blockedCount > 0 || needsHuman > 0) {
@@ -1250,13 +1262,29 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
   process.on("SIGTERM", onSigterm);
 
   try {
-    const result = await runner.startReviewOnly();
+    // Explicit scope (e.g. a pending review re-run by `rauf resume`, #146).
+    const itemsFlag = extractStringFlag(ctx.flags, "items");
+    const itemIds = itemsFlag
+      ? itemsFlag
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+      : undefined;
+    const result = await runner.startReviewOnly(itemIds);
 
     if (ctx.globalFlags.json) {
       outputJson(result);
     } else {
       print("");
-      if (result.reviewItemsCreated && result.reviewItemsCreated > 0) {
+      if (result.reviewFailed) {
+        error(
+          `Review failed — see ${c.cyan(".rauf/rauf.log")}. It stays pending; run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} to retry it.`,
+        );
+      } else if (result.reviewPending) {
+        warn(
+          `Review stopped by a usage limit — run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} once the limit resets to re-run it.`,
+        );
+      } else if (result.reviewItemsCreated && result.reviewItemsCreated > 0) {
         success(`Review created ${result.reviewItemsCreated} items`);
         if (result.reviewSummary) {
           info(`Summary: ${result.reviewSummary}`);
@@ -1266,7 +1294,10 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       }
     }
 
-    return ExitCode.SUCCESS;
+    // A failed review is an ERROR; one stopped by a usage limit is a LIMIT
+    // terminal (#146).
+    if (result.reviewFailed) return ExitCode.ERROR;
+    return result.limitReached ? ExitCode.LIMIT : ExitCode.SUCCESS;
   } catch (e) {
     error(`Review failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;
@@ -1417,7 +1448,10 @@ export function formatAndPrintEvent(event: LoopEvent): void {
 
     case "usage_limit_hit":
       print(
-        `${prefix} ${c.yellow("\u26A0")} ${c.yellow("Usage limit hit")} (${event.limitType}, ${event.utilization}%)`,
+        `${prefix} ${c.yellow("\u26A0")} ${c.yellow("Usage limit hit")} (${event.limitType}, ${event.utilization}%)` +
+          (event.reason === "usage_api_disagreement"
+            ? ` \u2014 banner unconfirmed by usage API \u00D7${event.consecutiveDisagreements ?? "?"}`
+            : ""),
       );
       break;
 

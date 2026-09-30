@@ -126,15 +126,15 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ## Exit Codes
 
-| Code | Meaning                                                                |
-| ---- | ---------------------------------------------------------------------- |
-| 0    | Success: clean terminal (idle / complete / iteration budget reached)   |
-| 1    | Error: generic failure                                                 |
-| 2    | Usage: bad args / failed precondition (incl. loop-already-running 409) |
-| 3    | Needs human: loop halted in `paused_human` state                       |
-| 4    | Limit: usage limit reached / usage-paused / sleeping                   |
-| 5    | Blocked: terminal state with genuinely blocked items                   |
-| 6    | Running: loop is currently running (query-time only; `status` command) |
+| Code | Meaning                                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success: clean terminal (idle / complete / iteration budget reached)                                                       |
+| 1    | Error: generic failure (incl. a failed review pass in `loop run --review` / `loop review`; the review stays pending, #146) |
+| 2    | Usage: bad args / failed precondition (incl. loop-already-running 409)                                                     |
+| 3    | Needs human: loop halted in `paused_human` state                                                                           |
+| 4    | Limit: usage limit reached / usage-paused / sleeping                                                                       |
+| 5    | Blocked: terminal state with genuinely blocked items                                                                       |
+| 6    | Running: loop is currently running (query-time only; `status` command)                                                     |
 
 ---
 
@@ -197,6 +197,8 @@ Run a standalone review pass over all completed backlog items, without running a
 - `--model <model>`: model override
 - `--timeout N`: session timeout in minutes (default: 60)
 - Outputs a review summary or "no issues found"
+- `--items <id,id>`: review only these done items (default: every done item). `rauf resume` passes a pending review's `reviewItemIds` here
+- A usage limit that stops the review (#146) leaves a resumable `paused_usage_limit` state with `reviewPending: true` + `reviewItemIds`, prints a `rauf resume` hint and exits 4 (LIMIT). A failed review (spawn/prompt error, unexpected signal) prints an error, stays pending and exits 1 (ERROR). After a review, state is `idle`. `--json` output carries `limitReached`, `reviewPending` and `reviewFailed`
 
 ---
 
@@ -511,6 +513,7 @@ Show a status summary for the project at `[path]`.
 - `--all`: list every live loop machine-wide (reads the active-loop registry), not just the loop at `[path]`
 
 - `--json`: emit the `DerivedStatus` object. This is a **machine-observation surface** with a versioned compatibility promise; see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the canonical field/enum list and the blocked-vs-needsHuman-vs-deferred distinction.
+  - **`reviewPending?`** / **`reviewItemIds?`** (#146): present when a review pass started and did not succeed (failed, cancelled, usage-stopped, crashed). The loop can then be `COMPLETE`/`IDLE` with every item done, yet not finished: `rauf resume` re-runs exactly that review. Supervisors check this before declaring the run done (decision-table row 8).
   - The object now carries a top-level **`statusSchemaVersion: "1"`** marker (mirroring `EVENTS_SCHEMA_VERSION`) and a nested **`health`** block — `{ stuckWarning, iterationFresh, lastActivityAt, secondsSinceActivity }`, or **`null`** when no live iteration exists. Both are **additive** fields; no existing field was renamed or removed. `health` lets a supervisor read the stall hint (`health.stuckWarning`) from this one poll without ever reading `.rauf/iteration-status.json` — see the agent single-poll decision contract in [§A.7.2](./SPEC-BACKLOG-TOOL-CONTRACT.md#a72-canonical-status-surface-rauf-status--json).
 
 **Machine-friendly exit codes for `rauf status`:**
@@ -612,9 +615,11 @@ Detect an interrupted loop and continue it from where it stopped.
 4. Apply the same reconciliation + false-block requeue as `rauf reset`
 5. Relaunch the loop via the normal `rauf loop run` entrypoint with a recomputed budget (`computeMaxIterations`) and `--allow-dirty` (since recovery may leave `.rauf/backlog.json` uncommitted)
 
+**Pending review (#146):** if `state.json` has `reviewPending: true` (a review pass started but did not succeed: usage stop, failure or crash), `resume` runs the usual detection and recovery, then re-runs the standalone review (`rauf loop review --items <reviewItemIds>`, exactly the interrupted review's items) instead of relaunching the loop. It does this even when every item is done or only genuine blocks remain. Its exit code is the review's (1 if it fails again; it stays pending). Run `rauf resume` / `loop run` again afterwards to process remaining or review-created items.
+
 **Early exits:**
 
-- All items done → report "all done", no relaunch
+- All items done (and no pending review) → report "all done", no relaunch
 - No eligible items after recovery (only genuine blocks/needsHuman remain) → report and exit without spawning
 
 **Supervisor pattern (live human-in-the-loop):** run the loop with `rauf loop run . --ndjson --pause-on-needs-human` and watch the NDJSON stream. On a `loop_paused` (or `needs_human`) event, or by detecting the exit code `3` (NEEDS_HUMAN) / a `paused_human` `status --json`, gather the human's answer, then call `rauf resume . --answer <id> "<answer>"` to inject it and continue. The answered item is re-queued, runs with the answer in its prompt, completes, and the answer is cleared. See [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the machine surfaces this pattern relies on.
