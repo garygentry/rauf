@@ -184,6 +184,27 @@ describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)",
       expected: ExitCode.LIMIT,
     },
     {
+      name: "reviewFailed (automatic review pass failed, #146) → ERROR(1)",
+      result: { ...base, completedCount: 1, reviewFailed: true, reviewPending: true },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "reviewFailed precedes blocked (order)",
+      result: { ...base, blockedCount: 1, reviewFailed: true },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "a cancel during the review (reviewPending, no reviewFailed) keeps cancel semantics",
+      result: {
+        ...base,
+        completedCount: 1,
+        cancelled: true,
+        gracefulStop: true,
+        reviewPending: true,
+      },
+      expected: ExitCode.SUCCESS,
+    },
+    {
       name: "setupFailed → ERROR(1) (fail-fast agent unavailable, REQ-DET-02/SC-3)",
       result: { ...base, setupFailed: true },
       expected: ExitCode.ERROR,

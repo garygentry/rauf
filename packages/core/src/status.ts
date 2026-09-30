@@ -252,6 +252,9 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
     elapsed,
     backlogSummary: computeBacklogSummary(paths),
     sleepUntil: state.sleepUntil ?? null,
+    ...(state.reviewPending === true
+      ? { reviewPending: true, reviewItemIds: state.reviewItemIds ?? [] }
+      : {}),
     health: buildHealth(iterationStatus, now),
   });
 }

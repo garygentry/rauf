@@ -833,7 +833,7 @@ fi`,
       runner.on("review_failed", (e) => events.push(e));
       runner.on("review_completed", (e) => events.push(e));
 
-      await runner.start();
+      const result = await runner.start();
 
       const calls = Number(
         fs.readFileSync(path.join(tmpDir, ".rauf", ".claude_calls"), "utf-8").trim(),
@@ -841,7 +841,61 @@ fi`,
       expect(calls).toBe(2);
       expect(events.filter((e) => e.type === "review_completed")).toHaveLength(0);
       expect(events.filter((e) => e.type === "review_failed")).toHaveLength(0);
+
+      // Terminal (#146): the normal on-request stop, never `complete`, with the
+      // review still pending for `rauf resume`.
+      expect(result.cancelled).toBe(true);
+      expect(result.reviewPending).toBe(true);
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("paused");
+      expect(state.reviewPending).toBe(true);
+      expect(state.reviewItemIds).toEqual(["001"]);
+      expect(fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8")).toBe("cancel");
+      const paths = resolveBacklogPaths(tmpDir, path.join(tmpDir, ".rauf"));
+      if (!paths.ok) throw new Error(paths.error.message);
+      const derived = deriveStatus(paths.value);
+      expect(derived.ok && derived.value.loopState).toBe("PAUSED");
+      expect(derived.ok && derived.value.reviewPending).toBe(true);
     }, 15_000);
+
+    it("an automatic review failure is surfaced: reviewFailed, complete + reviewPending, status row 8 (#146)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);
+      const counter = path.join(binDir, "spawns");
+      // Spawn 1: work done; spawn 2 (the review, maxRetries 1): no signal.
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then echo "RAUF_DONE"; else echo "no signal here"; fi`,
+      );
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, maxRetries: 1 });
+      const result = await runner.start();
+
+      expect(result.completedCount).toBe(1);
+      expect(result.cancelled).toBe(false);
+      expect(result.reviewFailed).toBe(true);
+      expect(result.reviewPending).toBe(true);
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("complete");
+      expect(state.reviewPending).toBe(true);
+      expect(state.reviewItemIds).toEqual(["001"]);
+
+      // status --json surface → the supervisor decision table's row 8
+      // ("Review pending": COMPLETE/IDLE + reviewPending), not row 10 ("Done").
+      const paths = resolveBacklogPaths(tmpDir, path.join(tmpDir, ".rauf"));
+      if (!paths.ok) throw new Error(paths.error.message);
+      const derived = deriveStatus(paths.value);
+      if (!derived.ok) throw new Error(derived.error.message);
+      expect(derived.value.loopState).toBe("COMPLETE");
+      expect(derived.value.reviewPending).toBe(true);
+      expect(derived.value.reviewItemIds).toEqual(["001"]);
+      expect(derived.value.backlogSummary.done).toBe(derived.value.backlogSummary.total);
+      const row8 =
+        ["COMPLETE", "IDLE"].includes(derived.value.loopState) &&
+        derived.value.reviewPending === true;
+      expect(row8).toBe(true);
+    });
 
     it("redacts a literal signal-shaped token in the review_failed stdout/stderr tails", async () => {
       setupProject(tmpDir, [pendingItem("001", "Reviewed task")]);

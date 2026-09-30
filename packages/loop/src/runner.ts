@@ -227,6 +227,8 @@ export class LoopRunner extends TypedEventEmitter {
   private reviewPending = false;
   /** The pending review's exact scope (done item ids), persisted with `reviewPending`. */
   private reviewItemIds: string[] | null = null;
+  /** The automatic post-loop review failed (not a usage stop, not a cancel) (#146). */
+  private reviewFailed = false;
   private readonly deps: Required<LoopRunnerDeps>;
   private currentItemId: string | null = null;
   private startedAt: string = "";
@@ -563,6 +565,28 @@ export class LoopRunner extends TypedEventEmitter {
           };
         }
 
+        if (reviewResult === "failed" && this.isCancelled()) {
+          // Cancelled during the review (between attempts or mid-sleep): the
+          // same on-request stop as a main-loop cancel — `paused`, DONE
+          // `cancel` — with the review still pending for `rauf resume` (#146).
+          appendLog(this.paths, "Loop cancelled during review pass (review pending)");
+          this.emitEvent("loop_cancelled", {});
+          this.writeState("paused", null);
+          writeDoneFile(this.paths, "cancel");
+          return {
+            completedCount: this.completedCount,
+            blockedCount: this.blockedCount,
+            ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
+            cancelled: true,
+            gracefulStop: this.softCancelled && !this.abortController.signal.aborted,
+            reviewPending: true,
+          };
+        }
+        // A failed (not cancelled) review: the work is done, so the loop still
+        // completes below, but the result carries reviewFailed (CLI exit 1) and
+        // state.json keeps reviewPending (status --json → "Review pending").
+        if (reviewResult === "failed") this.reviewFailed = true;
+
         if (reviewResult === "continue" && !this.options.reviewOnly) {
           // Re-enter iteration loop to process fix items (using remaining budget)
           while (this.iterationCount < this.options.maxIterations) {
@@ -621,6 +645,7 @@ export class LoopRunner extends TypedEventEmitter {
         ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
         ...(this.limitTerminal ? { limitReached: true } : {}),
         ...(this.reviewPending ? { reviewPending: true } : {}),
+        ...(this.reviewFailed ? { reviewFailed: true } : {}),
       };
     } catch (e) {
       // Crash cleanup: reset in_progress item to pending

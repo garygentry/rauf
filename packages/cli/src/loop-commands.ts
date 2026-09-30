@@ -766,6 +766,9 @@ export function loopRunExitCode(result: LoopResult): ExitCode {
   if (isLimitTerminal(result)) {
     return ExitCode.LIMIT; // 4 — limit-reached / usage-paused / sleeping terminal
   }
+  if (result.reviewFailed) {
+    return ExitCode.ERROR; // 1 — the automatic review pass failed; still pending (#146)
+  }
   if (result.blockedCount > 0) {
     return ExitCode.BLOCKED; // 5 — terminal with blocked items
   }
@@ -1144,7 +1147,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         info("Loop force-cancelled.");
       } else if (result.gracefulStop) {
         info("Loop stopped gracefully after completing iteration.");
-      } else {
+      }
+      if (result.cancelled && result.reviewPending) {
+        info(`The review pass did not finish — ${c.cyan("rauf resume .")} re-runs it.`);
+      }
+      if (!result.cancelled) {
         let msg = `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`;
         if (result.needsHumanCount !== undefined && result.needsHumanCount > 0) {
           msg += `, ${result.needsHumanCount} needs human`;
@@ -1156,6 +1163,11 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
           msg += `\n  Review: ${result.reviewSummary}`;
         }
         success(msg);
+        if (result.reviewFailed) {
+          error(
+            `Review pass failed — see ${c.cyan(".rauf/rauf.log")}. It stays pending; run ${c.cyan("rauf resume .")} to retry it.`,
+          );
+        }
 
         const needsHuman = result.needsHumanCount ?? 0;
         if (result.blockedCount > 0 || needsHuman > 0) {

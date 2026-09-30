@@ -236,7 +236,9 @@ interface DerivedStatus {
   elapsed: number | null; // Seconds
   backlogSummary: BacklogSummary;
   lock?: LockSummary; // Lock-file liveness (present/alive/stale + PID)
-  sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT
+  sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT (or RUNNING during a usage-banner backoff)
+  reviewPending?: boolean; // a review pass started and did not succeed; `rauf resume` re-runs it (#146)
+  reviewItemIds?: string[]; // that review's exact scope; present with reviewPending
 }
 
 interface BacklogSummary {

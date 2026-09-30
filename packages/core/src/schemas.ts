@@ -345,6 +345,14 @@ export const DerivedStatusSchema = z.object({
   /** Lock-file liveness for this backlog root (present/alive/stale + PID). */
   lock: LockSummarySchema.optional(),
   sleepUntil: z.string().nullable().optional(),
+  /**
+   * A review pass started and has not succeeded (usage stop, failure, cancel,
+   * crash); `rauf resume` re-runs it over `reviewItemIds` (#146). Present only
+   * when true (from state.json; the Tier-2 fallback cannot see it).
+   */
+  reviewPending: z.boolean().optional(),
+  /** The pending review's exact scope (done item ids); present with `reviewPending`. */
+  reviewItemIds: z.array(z.string()).optional(),
   /** Live-iteration health hint (null when no iteration is live). */
   health: HealthSchema.nullable(),
 });

@@ -126,15 +126,15 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ## Exit Codes
 
-| Code | Meaning                                                                |
-| ---- | ---------------------------------------------------------------------- |
-| 0    | Success: clean terminal (idle / complete / iteration budget reached)   |
-| 1    | Error: generic failure                                                 |
-| 2    | Usage: bad args / failed precondition (incl. loop-already-running 409) |
-| 3    | Needs human: loop halted in `paused_human` state                       |
-| 4    | Limit: usage limit reached / usage-paused / sleeping                   |
-| 5    | Blocked: terminal state with genuinely blocked items                   |
-| 6    | Running: loop is currently running (query-time only; `status` command) |
+| Code | Meaning                                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success: clean terminal (idle / complete / iteration budget reached)                                                       |
+| 1    | Error: generic failure (incl. a failed review pass in `loop run --review` / `loop review`; the review stays pending, #146) |
+| 2    | Usage: bad args / failed precondition (incl. loop-already-running 409)                                                     |
+| 3    | Needs human: loop halted in `paused_human` state                                                                           |
+| 4    | Limit: usage limit reached / usage-paused / sleeping                                                                       |
+| 5    | Blocked: terminal state with genuinely blocked items                                                                       |
+| 6    | Running: loop is currently running (query-time only; `status` command)                                                     |
 
 ---
 
@@ -513,6 +513,7 @@ Show a status summary for the project at `[path]`.
 - `--all`: list every live loop machine-wide (reads the active-loop registry), not just the loop at `[path]`
 
 - `--json`: emit the `DerivedStatus` object. This is a **machine-observation surface** with a versioned compatibility promise; see [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the canonical field/enum list and the blocked-vs-needsHuman-vs-deferred distinction.
+  - **`reviewPending?`** / **`reviewItemIds?`** (#146): present when a review pass started and did not succeed (failed, cancelled, usage-stopped, crashed). The loop can then be `COMPLETE`/`IDLE` with every item done, yet not finished: `rauf resume` re-runs exactly that review. Supervisors check this before declaring the run done (decision-table row 8).
   - The object now carries a top-level **`statusSchemaVersion: "1"`** marker (mirroring `EVENTS_SCHEMA_VERSION`) and a nested **`health`** block — `{ stuckWarning, iterationFresh, lastActivityAt, secondsSinceActivity }`, or **`null`** when no live iteration exists. Both are **additive** fields; no existing field was renamed or removed. `health` lets a supervisor read the stall hint (`health.stuckWarning`) from this one poll without ever reading `.rauf/iteration-status.json` — see the agent single-poll decision contract in [§A.7.2](./SPEC-BACKLOG-TOOL-CONTRACT.md#a72-canonical-status-surface-rauf-status--json).
 
 **Machine-friendly exit codes for `rauf status`:**
