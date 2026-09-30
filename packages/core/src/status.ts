@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { readJsonFile, fileExists, atomicWrite } from "./fs-utils.js";
-import { readBacklog } from "./backlog.js";
+import { readBacklog, selectNextItem } from "./backlog.js";
 import { type BacklogPaths, SCAN_SKIP_DIRS } from "./backlog-root.js";
 import { checkLock } from "./lock.js";
 import { readIterationStatus } from "./iteration-status.js";
@@ -124,8 +124,8 @@ export function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     paused_human: "PAUSED_HUMAN",
     iterations_complete: "ITERATIONS_COMPLETE",
     // Pre-0.11 runners wrote limit_reached only when the iteration budget ran out
-    // (the stop now written as iterations_complete), so an old state file derives
-    // the same state, exit code and tone as a current budget stop.
+    // (the stop now written as iterations_complete). deriveStatus refines this to
+    // COMPLETE when no eligible work remains (legacyBudgetStopState).
     limit_reached: "ITERATIONS_COMPLETE",
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
@@ -221,7 +221,10 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
   // populating health adds no second read. File read only — no subprocess (C-02).
   const iterationStatus = readIterationStatus(paths);
 
-  let loopState = mapLoopStateStatus(state.status);
+  let loopState =
+    state.status === "limit_reached"
+      ? legacyBudgetStopState(paths)
+      : mapLoopStateStatus(state.status);
 
   // Staleness check: running >5min old → PAUSED, UNLESS a liveness signal shows
   // the loop is mid-iteration. state.json is only written between iterations, so
@@ -289,7 +292,7 @@ function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
       // Unreadable DONE file — treat as COMPLETE
     }
 
-    const doneState = parseDoneFileState(doneContent);
+    const doneState = parseDoneFileState(doneContent, paths);
     return {
       ...base,
       loopState: doneState,
@@ -324,21 +327,40 @@ function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
 }
 
 /**
+ * State for a pre-0.11 budget stop (raw `limit_reached`, or older budget-stop
+ * DONE wording). Those runners wrote it whenever the budget ran out, even when
+ * the last iteration drained the backlog, so apply the check the current runner
+ * makes before writing `iterations_complete` (`hasEligibleItems`): eligible work
+ * left → ITERATIONS_COMPLETE, otherwise COMPLETE. An unreadable backlog counts
+ * as "no eligible work", as it does in the runner.
+ */
+function legacyBudgetStopState(paths: BacklogPaths): LoopStateEnum {
+  const backlogResult = readBacklog(paths);
+  if (!backlogResult.ok) return "COMPLETE";
+  return selectNextItem(backlogResult.value) !== null ? "ITERATIONS_COMPLETE" : "COMPLETE";
+}
+
+/**
  * Parse DONE file content to determine terminal state.
  *
- * The runner leads every non-summary DONE file with a status token
- * (`error:`, `paused_human:`, `paused_usage_limit:`, `weekly_limit:`, `cancel`),
- * so those prefixes are matched first and map to the same state state.json
- * would carry. A trailing summary or error message can therefore never
- * reclassify the file (e.g. an `error:` file whose summary lists needs_human
- * items, or whose message mentions a limit). Everything else is the completion
- * summary (`completed=… blocked=… iterations=…`) or older free-text wording.
+ * Status-bearing DONE files lead with a status token (`error:`, `paused_human:`,
+ * `paused_usage_limit:`, `weekly_limit:`, `iterations_complete:`, `cancel`), so
+ * those prefixes are matched first and map to the state state.json would carry.
+ * A trailing summary or error message can therefore never reclassify the file
+ * (e.g. an `error:` file whose summary lists needs_human items, or whose message
+ * mentions a limit). Everything else is the completion summary
+ * (`completed=… blocked=… iterations=…`) or older free-text wording.
+ *
+ * The `iterations_complete:` prefix comes from #147. Until that lands, the runner
+ * writes a bare completion summary for a budget stop, the same text it writes
+ * for `complete`, so that stop is only recoverable from state.json.
  */
-function parseDoneFileState(content: string): LoopStateEnum {
+function parseDoneFileState(content: string, paths: BacklogPaths): LoopStateEnum {
   if (!content) return "COMPLETE";
 
   const lower = content.toLowerCase();
   if (lower.startsWith("error")) return "ERROR";
+  if (lower.startsWith("iterations_complete")) return "ITERATIONS_COMPLETE";
   if (lower.startsWith("paused_usage_limit")) return "PAUSED_USAGE_LIMIT";
   if (lower.startsWith("weekly_limit")) return "WEEKLY_LIMIT";
   if (lower.startsWith("paused_human")) return "PAUSED_HUMAN";
@@ -351,7 +373,9 @@ function parseDoneFileState(content: string): LoopStateEnum {
   // Older budget-stop wording ("LIMIT REACHED", "iteration limit", "Max
   // iterations … reached"): every usage-limit DONE file is prefixed above, so any
   // remaining "limit" text is an iteration-budget stop.
-  if (lower.includes("limit") || lower.includes("max iterations")) return "ITERATIONS_COMPLETE";
+  if (lower.includes("limit") || lower.includes("max iterations")) {
+    return legacyBudgetStopState(paths);
+  }
   if (lower.includes("error")) return "ERROR";
   return "COMPLETE";
 }

@@ -77,9 +77,9 @@
   <rect class="box-neutral" x="40" y="150" width="150" height="56" rx="8" stroke-width="1" />
   <text class="label" x="115" y="174" font-size="14" font-weight="600" text-anchor="middle">Idle</text>
   <text class="sublabel" x="115" y="190" font-size="11" text-anchor="middle">IDLE</text>
-  <rect class="box-success" x="700" y="150" width="150" height="56" rx="8" stroke-width="1" />
-  <text class="label" x="775" y="174" font-size="14" font-weight="600" text-anchor="middle">Complete</text>
-  <text class="sublabel" x="775" y="190" font-size="11" text-anchor="middle">COMPLETE</text>
+  <rect class="box-success" x="660" y="150" width="210" height="56" rx="8" stroke-width="1" />
+  <text class="label" x="765" y="174" font-size="14" font-weight="600" text-anchor="middle">Complete / Budget spent</text>
+  <text class="sublabel" x="765" y="190" font-size="11" text-anchor="middle">COMPLETE · ITERATIONS_COMPLETE</text>
   <rect class="box-info" x="355" y="40" width="150" height="50" rx="8" stroke-width="1" />
   <text class="label" x="430" y="61" font-size="14" font-weight="600" text-anchor="middle">Reviewing</text>
   <text class="sublabel" x="430" y="77" font-size="11" text-anchor="middle">REVIEWING</text>
@@ -93,14 +93,14 @@
   <text class="label" x="430" y="297" font-size="14" font-weight="600" text-anchor="middle">Needs Human</text>
   <text class="sublabel" x="430" y="313" font-size="11" text-anchor="middle">PAUSED_HUMAN</text>
   <rect class="box-warning" x="620" y="274" width="230" height="54" rx="8" stroke-width="1" />
-  <text class="label" x="735" y="297" font-size="14" font-weight="600" text-anchor="middle">Limit / Sleeping</text>
-  <text class="sublabel" x="735" y="313" font-size="11" text-anchor="middle">LIMIT_REACHED · SLEEPING · WEEKLY · USAGE</text>
+  <text class="label" x="735" y="297" font-size="14" font-weight="600" text-anchor="middle">Usage limit</text>
+  <text class="sublabel" x="735" y="313" font-size="11" text-anchor="middle">SLEEPING · WEEKLY · PAUSED_USAGE</text>
   <polygon class="arrow-head" points="350,178 343.6,180.9 343.6,175.1" />
   <polyline class="arrow-line" points="190,178 343,178" />
   <text class="arrow-label" x="270" y="172" text-anchor="middle">loop run</text>
-  <polygon class="arrow-head" points="700,178 693.6,180.9 693.6,175.1" />
-  <polyline class="arrow-line" points="510,178 693,178" />
-  <text class="arrow-label" x="605" y="172" text-anchor="middle">complete</text>
+  <polygon class="arrow-head" points="660,178 653.6,180.9 653.6,175.1" />
+  <polyline class="arrow-line" points="510,178 653,178" />
+  <text class="arrow-label" x="585" y="172" text-anchor="middle">done / budget</text>
   <polygon class="arrow-head" points="425,150 422.1,143.6 427.9,143.6" />
   <polygon class="arrow-head" points="425,90 427.9,96.4 422.1,96.4" />
   <polyline class="arrow-line" points="425,143 425,97" />
@@ -120,5 +120,5 @@
   <polygon class="arrow-head" points="490,206 497,205.3 495.2,210.7" />
   <polygon class="arrow-head" points="700,274 693,274.7 694.8,269.3" />
   <polyline class="arrow-line" points="496.7,208.2 693.3,271.8" />
-  <text class="arrow-label" x="605" y="254" text-anchor="start">limit / resume</text>
+  <text class="arrow-label" x="605" y="254" text-anchor="start">usage limit / resume</text>
 </svg>

@@ -182,8 +182,8 @@ export const LoopStateStatusSchema = z.enum([
    *  usage/rate `*_limit`. Kept separate so it presents as success, not a limit. */
   "iterations_complete",
   /** @deprecated Pre-0.11 spelling of the iteration-budget stop, now written as
-   *  `iterations_complete` (and derived as ITERATIONS_COMPLETE). Retained so prior
-   *  state.json files still parse. */
+   *  `iterations_complete`. Derived as ITERATIONS_COMPLETE when eligible work
+   *  remains, else COMPLETE. Retained so prior state.json files still parse. */
   "limit_reached",
   "error",
   "sleeping_limit",
@@ -246,7 +246,8 @@ export const LoopStateEnumSchema = z.enum([
   "PAUSED_HUMAN",
   "ITERATIONS_COMPLETE",
   /** @deprecated No longer derived: a legacy `limit_reached` state.json and older
-   *  budget-stop DONE files both derive `ITERATIONS_COMPLETE`. Kept in the enum so
+   *  budget-stop DONE files derive `ITERATIONS_COMPLETE` (eligible work left) or
+   *  `COMPLETE`. Kept in the enum so
    *  consumers of older `status --json` output / API payloads still parse. */
   "LIMIT_REACHED",
   "ERROR",

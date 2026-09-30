@@ -94,16 +94,21 @@ rauf status <root> --backlog <dir> --json
 
 Each poll yields **one** decision. Evaluate the rows **top-to-bottom; first match wins**
 (`needs-human` outranks everything; unfinished work is checked before the backlog is
-declared done). Every input comes from the single `DerivedStatus` object returned by the poll.
+declared done). The table is exhaustive: row 10 catches every poll the earlier rows don't.
+Every input comes from the single `DerivedStatus` object returned by the poll.
 
-| #   | Condition (from ONE `status --json` poll)                                                             | Decision                | Action                                                                                                                                                                                        |
-| --- | ----------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**         | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                         |
-| 2   | `loopState = ITERATIONS_COMPLETE`                                                                     | **Budget spent**        | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead. |
-| 3   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                           | **Stopped short**       | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                    |
-| 4   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.done === backlogSummary.total`                 | **Done**                | Every item is `done`. Report the outcome and **stop**.                                                                                                                                        |
-| 5   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**   | Apply the persist-then-escalate ladder (Step 4).                                                                                                                                              |
-| 6   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress** | **Keep polling** at the interval.                                                                                                                                                             |
+| #   | Condition (from ONE `status --json` poll)                                                             | Decision                 | Action                                                                                                                                                                                         |
+| --- | ----------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**          | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                          |
+| 2   | `loopState = ITERATIONS_COMPLETE`                                                                     | **Budget spent**         | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead.  |
+| 3   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                           | **Stopped short**        | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                     |
+| 4   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.done === backlogSummary.total`                 | **Done**                 | Every item is `done`. Report the outcome and **stop**.                                                                                                                                         |
+| 5   | `loopState ∈ {SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT}`                                      | **Usage-limit pause**    | Not a stall. `SLEEPING_LIMIT` auto-resumes: keep polling (narrate `sleepUntil`). `WEEKLY_LIMIT` / `PAUSED_USAGE_LIMIT` are halted: `rauf resume <root> --backlog <dir>` once the limit resets. |
+| 6   | `loopState ∈ {PAUSED, ERROR}`                                                                         | **Stopped, recoverable** | `PAUSED` (graceful stop or crashed run): `rauf resume`. `ERROR` (crash / circuit breaker): `rauf reset` then re-run, or `resume` (see [Recover](#recover--the-loop-stopped-now-what)).         |
+| 7   | `loopState = NOT_INSTALLED`                                                                           | **Addressing error**     | Not a rauf root. Fix `<root>` / `--backlog`; do not keep polling.                                                                                                                              |
+| 8   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**    | Apply the persist-then-escalate ladder (Step 4).                                                                                                                                               |
+| 9   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress**  | **Keep polling** at the interval.                                                                                                                                                              |
+| 10  | Anything else, e.g. `IDLE` with work left right after launch (before the loop has written its state)  | **Not started yet**      | **Keep polling.** If it persists past startup, the launch failed: check the launch output.                                                                                                     |
 
 Notes:
 
@@ -115,7 +120,7 @@ Notes:
   needs-human or deferred), and `pending` items can be stuck behind them, so compare
   `backlogSummary.done` with `total` (rows 3 and 4) before declaring the backlog finished.
 - **`health` may be `null`** (no live iteration). `status.health?.stuckWarning`
-  short-circuits to falsy, so row 5 does not fire — correct: no live iteration means no stall
+  short-circuits to falsy, so row 8 does not fire — correct: no live iteration means no stall
   to recover.
 - **Row 1's three signals are complementary, not redundant.** `PAUSED_HUMAN` is the halt
   state under `--pause-on-needs-human`; `lastSignal = needs_human` and
@@ -152,7 +157,7 @@ making progress." A single transient hint must **never** trigger a disruptive re
    shows a stale, dead lock: **`lock.stale === true && lock.alive === false`**. `reset` is
    never the first response to a stall hint.
 4. **`needs_human` is the only true stop.** No point on this ladder auto-resolves a
-   needs-human state — that always surfaces to the user (Step 3, row 2).
+   needs-human state — that always surfaces to the user (Step 3, row 1).
 
 Prescribed values (documented, overridable — **not** code constants):
 

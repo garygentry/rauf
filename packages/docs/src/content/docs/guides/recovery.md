@@ -7,7 +7,7 @@ When a loop stops, the first move is always `rauf status <path>`. The derived st
 _why_ it stopped, and that determines how you recover. This page is a runbook: read the status,
 match it to a row in the decision table, run the one command for that row.
 
-![The rauf status state machine: Running is the hub, with transitions to Reviewing, Complete, Error, Paused, Needs Human, and the limit/sleeping states, labelled with the command that drives each transition.](../images/status-states.svg)
+![The rauf status state machine: Running is the hub, with transitions to Reviewing, Complete / Budget spent (ITERATIONS_COMPLETE), Error, Paused, Needs Human, and the usage-limit states, labelled with the command that drives each transition.](../images/status-states.svg)
 
 ## Triage — read the status first
 

@@ -162,12 +162,24 @@ describe("handleStatus", () => {
   });
 
   // A pre-0.11 state.json wrote limit_reached only for iteration-budget
-  // exhaustion. It now derives ITERATIONS_COMPLETE, so it exits like a current
-  // budget stop (SUCCESS, or BLOCKED with genuine blocks), never LIMIT(4).
-  it("returns SUCCESS(0) for a legacy limit_reached state.json (budget stop)", async () => {
+  // exhaustion. It now derives ITERATIONS_COMPLETE (eligible work left) or
+  // COMPLETE, so it exits like a current budget stop or drained run (SUCCESS, or
+  // BLOCKED with genuine blocks), never LIMIT(4).
+  it("returns SUCCESS(0) for a legacy limit_reached state.json with eligible work", async () => {
     const projectDir = path.join(tmpDir, "legacy-limit-project");
     const raufDir = createRaufProject(projectDir);
-    createBacklog(raufDir);
+    createBacklog(raufDir, [
+      {
+        id: "001",
+        type: "feature",
+        priority: 1,
+        title: "Pending item",
+        description: "d",
+        acceptanceCriteria: ["a"],
+        status: "pending",
+        completedAt: null,
+      },
+    ]);
     createStateJson(raufDir, { status: "limit_reached" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
