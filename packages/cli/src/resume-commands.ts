@@ -339,6 +339,11 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   const reviewPending = pendingReview !== null;
   let rerunReview = false;
   let exitCode: number = ExitCode.SUCCESS;
+  // A detached relaunch runs in the server process, which cannot adopt this
+  // process's lock: it keeps the release-then-launch handoff.
+  const detached = extractBoolFlag(ctx.flags, "detached");
+  // Set when the try block reaches a decision without throwing or returning.
+  let decided = false;
   try {
     // 1c. Inject any `--answer <id> "<text>"` answers BEFORE detection/recovery.
     // Each pair re-queues its paused item to pending with the answer attached
@@ -475,10 +480,13 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
         }
       }
     }
+    decided = true;
   } finally {
-    // Release the recovery lock before relaunching: the loop's own entrypoint
-    // acquires its lock, which would conflict with one we still held.
-    releaseRecoveryLock(paths);
+    // Hand the recovery lock straight to the in-process run (it adopts it, no
+    // release/re-acquire gap a competing loop could slip into, #149). Release
+    // it here only when nothing will adopt it.
+    const handingOff = decided && (rerunReview || (relaunch && !detached));
+    if (!handingOff) releaseRecoveryLock(paths);
   }
 
   if (rerunReview) {
@@ -492,7 +500,15 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     if (backlogFlag !== null) reviewCtx.flags.set("backlog", backlogFlag);
     // Review exactly the interrupted review's items, not every done item.
     if (pendingReview?.itemIds) reviewCtx.flags.set("items", pendingReview.itemIds.join(","));
-    return runReview(reviewCtx);
+    reviewCtx.adoptLock = true;
+    try {
+      return await runReview(reviewCtx);
+    } finally {
+      // No-op once the review has released the lock it adopted; frees it if the
+      // review never got as far as adopting it (owner-aware: never a live
+      // lock of another process).
+      releaseRecoveryLock(paths);
+    }
   }
 
   if (!relaunch) return exitCode;
@@ -516,5 +532,11 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     runCtx.flags.set("allow-dirty-for-item", dirtyOwnerItemId);
   }
 
-  return runLoop(runCtx);
+  if (detached) return runLoop(runCtx);
+  runCtx.adoptLock = true;
+  try {
+    return await runLoop(runCtx);
+  } finally {
+    releaseRecoveryLock(paths); // as for the review above
+  }
 }

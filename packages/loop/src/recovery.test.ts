@@ -11,6 +11,7 @@ import {
   releaseRecoveryLock,
   recoverInterruptedLoop,
   readPendingReview,
+  restorePendingReview,
 } from "./recovery.js";
 
 // ─── Fixtures ──────────────────────────────────────────────────────
@@ -207,13 +208,73 @@ describe("readPendingReview", () => {
       paths.state,
       JSON.stringify({ status: "complete", reviewPending: true, reviewItemIds: ["001", 7, "003"] }),
     );
-    expect(readPendingReview(paths)).toEqual({ itemIds: ["001", "003"] });
+    expect(readPendingReview(paths)).toMatchObject({ itemIds: ["001", "003"] });
+    expect(readPendingReview(paths)?.state.status).toBe("complete");
   });
 
   it("falls back to a null scope (every done item) when reviewItemIds is empty or absent", () => {
     fs.writeFileSync(paths.state, JSON.stringify({ reviewPending: true, reviewItemIds: [] }));
-    expect(readPendingReview(paths)).toEqual({ itemIds: null });
+    expect(readPendingReview(paths)).toMatchObject({ itemIds: null });
     fs.writeFileSync(paths.state, JSON.stringify({ reviewPending: true }));
-    expect(readPendingReview(paths)).toEqual({ itemIds: null });
+    expect(readPendingReview(paths)).toMatchObject({ itemIds: null });
+  });
+});
+
+// ─── restorePendingReview (#149) ───────────────────────────────────
+
+describe("restorePendingReview", () => {
+  const preState = {
+    status: "paused_usage_limit",
+    iteration: 7,
+    maxIterations: 20,
+    currentItem: "004",
+    lastSignal: "clean",
+    startedAt: "2026-09-30T10:00:00.000Z",
+    updatedAt: "2026-09-30T11:00:00.000Z",
+    completedItems: ["001"],
+    blockedItems: [],
+    deferredItems: [],
+    error: null,
+    sleepUntil: "2026-09-30T12:00:00.000Z",
+    reviewPending: true,
+    reviewItemIds: ["001"],
+    baseCommitHash: "abc123",
+  };
+
+  it("restores the pre-recovery run context, normalized to a settled idle state", async () => {
+    fs.writeFileSync(paths.state, JSON.stringify(preState));
+    const pending = readPendingReview(paths)!;
+    initGitCommitted();
+    const recovered = await recoverInterruptedLoop(paths);
+    expect(recovered.ok).toBe(true);
+    expect(fs.existsSync(paths.state)).toBe(false);
+
+    expect(restorePendingReview(paths, pending).ok).toBe(true);
+    const state = JSON.parse(fs.readFileSync(paths.state, "utf-8"));
+    expect(state).toMatchObject({
+      status: "idle",
+      currentItem: null,
+      iteration: 7,
+      maxIterations: 20,
+      startedAt: preState.startedAt,
+      completedItems: ["001"],
+      baseCommitHash: "abc123",
+      reviewPending: true,
+      reviewItemIds: ["001"],
+    });
+    expect(state.sleepUntil).toBeUndefined();
+    expect(readPendingReview(paths)?.itemIds).toEqual(["001"]);
+  });
+
+  it("falls back to a minimal idle state that keeps baseCommitHash for an invalid pre-state", () => {
+    fs.writeFileSync(
+      paths.state,
+      JSON.stringify({ reviewPending: true, baseCommitHash: "def456", status: "bogus" }),
+    );
+    const pending = readPendingReview(paths)!;
+    expect(restorePendingReview(paths, pending).ok).toBe(true);
+    const state = JSON.parse(fs.readFileSync(paths.state, "utf-8"));
+    expect(state).toMatchObject({ status: "idle", reviewPending: true, baseCommitHash: "def456" });
+    expect(state.reviewItemIds).toBeUndefined();
   });
 });

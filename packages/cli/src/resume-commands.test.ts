@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 
-import { resolveBacklogPaths } from "@rauf/core";
+import { acquireLock, resolveBacklogPaths } from "@rauf/core";
 
 import { handleResume, parseAnswerFlags, resolveResumeTargetPath } from "./resume-commands.js";
 import { detectInterruptedItems } from "./recovery.js";
@@ -436,6 +436,60 @@ describe("handleResume — review pass stopped by a usage limit (#146)", () => {
     const after = JSON.parse(fs.readFileSync(statePath, "utf-8"));
     expect(after.reviewPending).toBe(true);
     expect(after.reviewItemIds).toEqual(["001"]);
+  });
+
+  it("hands its lock to the run with no gap a competitor can take (#149)", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const lockPath = resolved.value.lock;
+
+    // Loop relaunch: at hand-off the lock is still held, flagged for adoption.
+    const loopSeen: Array<{ adopt?: boolean; competitor: string | null }> = [];
+    await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: async (ctx) => {
+        const r = acquireLock(resolved.value);
+        loopSeen.push({ adopt: ctx.adoptLock, competitor: r.ok ? null : r.error.code });
+        return ExitCode.SUCCESS;
+      },
+    });
+    expect(loopSeen).toEqual([{ adopt: true, competitor: "LOCK_CONFLICT" }]);
+    // A stub that never adopts it: resume releases the lock afterwards.
+    expect(fs.existsSync(lockPath)).toBe(false);
+
+    // Review re-run: same.
+    const p = resolved.value.state;
+    writeState(projectDir, "paused_usage_limit");
+    const st = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(p, JSON.stringify({ ...st, reviewPending: true, reviewItemIds: ["001"] }));
+    const reviewSeen: Array<{ adopt?: boolean; competitor: string | null }> = [];
+    await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: captureRunLoop().runLoop,
+      runReview: async (ctx) => {
+        const r = acquireLock(resolved.value);
+        reviewSeen.push({ adopt: ctx.adoptLock, competitor: r.ok ? null : r.error.code });
+        return ExitCode.SUCCESS;
+      },
+    });
+    expect(reviewSeen).toEqual([{ adopt: true, competitor: "LOCK_CONFLICT" }]);
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  it("keeps the release-then-launch handoff for a --detached relaunch", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const seen: Array<{ adopt?: boolean; locked: boolean }> = [];
+    await handleResume(makeCtx({ args: [projectDir], flags: new Map([["detached", true]]) }), {
+      runLoop: async (ctx) => {
+        seen.push({ adopt: ctx.adoptLock, locked: fs.existsSync(resolved.value.lock) });
+        return ExitCode.SUCCESS;
+      },
+    });
+    // The server process cannot adopt this process's lock.
+    expect(seen).toEqual([{ adopt: undefined, locked: false }]);
   });
 
   it("relaunches the loop as usual when no review is pending", async () => {

@@ -105,7 +105,9 @@ PUT    /api/config                            → { data: ToolConfig }
 POST   /api/projects/:id/loop/start   → { data: { started: true, projectPath } }
        Body (optional): { maxIterations?, maxRetries?, model?, sessionTimeoutMinutes?, review?, reviewOnly?, provider? }
        Defaults: maxIterations=20, maxRetries=3, sessionTimeoutMinutes=60
-       409 Conflict: Loop already running for this project
+       409 Conflict: Loop already running for this project — in this server, or another process holds
+                     the root's .loop.lock (taken synchronously at launch, #149, so a start is never
+                     reported for a run that then loses the lock)
        Note (v0.5.0): This route is the backend for `rauf loop run --detached`. URL and contract unchanged.
 
 POST   /api/projects/:id/loop/stop    → { data: { stopped: true, projectPath } }
@@ -141,8 +143,12 @@ POST   /api/projects/:id/resume
          4. Optionally unblocks blocked items, runs recoverInterruptedLoop. A pending review then
             has its marker restored (recovery deleted state.json) and is re-run instead of
             relaunching; else the loop relaunches if an item is eligible.
-       The review re-run is scoped to exactly reviewItemIds (every done item when absent) and takes
-       the root's .loop.lock synchronously, so the marker is never lost before it launches.
+       The review re-run is scoped to exactly reviewItemIds (every done item when absent).
+       Lock handoff (#149): the relaunched loop or review ADOPTS the recovery lock (same .loop.lock,
+       this process's PID) — there is no release/re-acquire gap in which another loop could take the
+       root or overwrite state. The lock is released only if no run adopted it.
+       A restored pending-review marker is the pre-recovery state normalized to idle (baseCommitHash
+       and the rest of the run context kept), so a later resume stays bounded to the run baseline.
        200: { data: { reconciled: ReconcileSummary | null, interrupted?: string[], relaunched: boolean,
                       reviewRerun?: true, reason?: string } }
             reconciled is null when recovery was skipped (steps 2 and 3).

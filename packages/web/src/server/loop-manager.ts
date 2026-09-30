@@ -65,6 +65,15 @@ const MAX_BUFFER_SIZE = 100;
 /** Outcome of a launch; `conflict` marks a refusal because the root is in use. */
 export type LaunchResult = { ok: true } | { ok: false; error: string; conflict: boolean };
 
+export interface LaunchOptions {
+  /**
+   * The caller already holds the root's `.loop.lock` (the resume route's
+   * recovery lock): the run adopts it with no release/re-acquire gap (#149).
+   * On a refused launch the caller still owns it and must release it.
+   */
+  adoptLock?: boolean;
+}
+
 export class LoopManager {
   /** Active loops keyed by resolved backlog root path */
   private activeLoops = new Map<string, ActiveLoop>();
@@ -88,15 +97,17 @@ export class LoopManager {
    * pass (startReviewLoop). Resolves the backlog-root key, refuses a duplicate,
    * creates the runner, subscribes the event fan-out, and tracks the promise with
    * map cleanup. The `run` thunk selects the runner entrypoint (start vs review).
-   * `prepare` runs synchronously before `run` and can refuse the launch (a
-   * review takes `.loop.lock` here so a conflict is reported, not swallowed).
-   * `conflict` marks a refusal because the root is already in use.
+   * Before `run`, the runner takes the root's `.loop.lock` synchronously — or,
+   * with `adoptLock`, adopts the one the caller (the resume route) already
+   * holds — so a conflict is reported at launch instead of `ok` for a run that
+   * then loses the lock (#149). `conflict` marks a refusal because the root is
+   * already in use.
    */
   private launch(
     projectPath: string,
     options: LoopStartOptions,
     run: (runner: LoopRunner) => Promise<LoopResult>,
-    prepare?: (runner: LoopRunner) => { ok: true } | { ok: false; error: string },
+    launchOpts: LaunchOptions = {},
   ): LaunchResult {
     const key = this.resolveKey(projectPath, options.backlogRoot);
 
@@ -110,10 +121,8 @@ export class LoopManager {
     }
     const runner = runnerResult.value;
 
-    if (prepare) {
-      const prepared = prepare(runner);
-      if (!prepared.ok) return { ok: false, error: prepared.error, conflict: true };
-    }
+    const lock = launchOpts.adoptLock ? runner.adoptRunLock() : runner.acquireRunLock();
+    if (!lock.ok) return { ok: false, error: lock.error.message, conflict: true };
 
     // Subscribe to all event types and fan out to listeners
     for (const eventType of LOOP_EVENT_TYPES) {
@@ -143,31 +152,33 @@ export class LoopManager {
   /**
    * Start a loop for a project. Returns an error string if already running.
    */
-  startLoop(projectPath: string, options: LoopStartOptions): LaunchResult {
-    return this.launch(projectPath, options, (runner) => runner.start());
+  startLoop(
+    projectPath: string,
+    options: LoopStartOptions,
+    launchOpts: LaunchOptions = {},
+  ): LaunchResult {
+    return this.launch(projectPath, options, (runner) => runner.start(), launchOpts);
   }
 
   /**
    * Start a STANDALONE REVIEW pass for a project (D3.2). Mirrors startLoop but
    * runs LoopRunner.startReviewOnly() instead of start(). Returns an error
    * string if a loop is already running for the same backlog root, in this
-   * process or (via `.loop.lock`, taken synchronously here and released when
-   * the review ends) any other. `itemIds` scopes the review to those done items
-   * (a resumed pending review, #146); omitted, it reviews every done item.
+   * process or (via `.loop.lock`, held for the whole review) any other.
+   * `itemIds` scopes the review to those done items (a resumed pending review,
+   * #146); omitted, it reviews every done item.
    */
   startReviewLoop(
     projectPath: string,
     options: LoopStartOptions,
     itemIds?: string[],
+    launchOpts: LaunchOptions = {},
   ): LaunchResult {
     return this.launch(
       projectPath,
       options,
       (runner) => runner.startReviewOnly(itemIds),
-      (runner) => {
-        const lock = runner.acquireRunLock();
-        return lock.ok ? { ok: true } : { ok: false, error: lock.error.message };
-      },
+      launchOpts,
     );
   }
 

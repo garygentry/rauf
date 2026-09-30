@@ -800,9 +800,10 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   // its `reviewItemIds` instead of relaunching the loop — even when every item
   // is done — as the CLI `rauf resume` does (shared `readPendingReview`).
   // Acquire-and-hold guarded (D3.4): the lock is held across answer
-  // injection, recoverInterruptedLoop, and the eligibility decision, then
-  // released in a finally BEFORE the relaunch so the loop's own lock
-  // acquisition succeeds. The --recover reverify+commit path is CLI-only.
+  // injection, recoverInterruptedLoop, the eligibility decision AND the
+  // launch, whose run adopts it (#149: no release/re-acquire gap a competing
+  // loop could take); the finally releases it only if no run adopted it.
+  // The --recover reverify+commit path is CLI-only.
 
   router.post("/:id/resume", async (c) => {
     const id = c.req.param("id");
@@ -871,6 +872,10 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     // Read before recovery, which clears the loop state (and with it the flag).
     const pendingReview = readPendingReview(paths);
     let rerunReview = false;
+    let relaunched = false;
+    let reviewRerun = false;
+    // True once a run has adopted the recovery lock.
+    let handedOff = false;
 
     try {
       // 3. Answer injection (OQ-T2: { itemId, text } → humanAnswer).
@@ -987,47 +992,53 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
           }
         }
       }
-    } finally {
-      // Release BEFORE relaunch so the loop's own lock acquisition succeeds.
-      releaseRecoveryLock(paths);
-    }
 
-    // 6. Relaunch (or re-run the pending review) after release.
-    let relaunched = false;
-    let reviewRerun = false;
-    if (relaunch && relaunchOptions) {
-      const started = getLoopManager().startLoop(projectPath, relaunchOptions);
-      relaunched = started.ok;
-      if (!started.ok) reason = started.error; // e.g. "Loop already running…"
-    } else if (rerunReview && pendingReview !== null) {
-      // Same options as POST /:id/loop/review; scoped to the review's own items
-      // (null scope = older state without reviewItemIds → every done item).
-      const reviewOptions = LoopStartOptionsSchema.parse({
-        maxIterations: 1,
-        maxRetries: 1,
-        review: true,
-        reviewOnly: true,
-        sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
-        backlogRoot: resolvedBacklogRoot,
-      });
-      const started = getLoopManager().startReviewLoop(
-        projectPath,
-        reviewOptions,
-        pendingReview.itemIds ?? undefined,
-      );
-      if (!started.ok) {
-        // The review did not start. Its marker is intact (never removed, or
-        // restored above), so a later resume re-runs it. Report an error.
-        return c.json(
-          errorResponse(
-            started.conflict ? ErrorCodes.LOCK_CONFLICT : ErrorCodes.IO_ERROR,
-            `The pending review could not be started: ${started.error}`,
-          ),
-          started.conflict ? 409 : 500,
+      // 6. Relaunch (or re-run the pending review) STILL HOLDING the recovery
+      // lock: the run adopts it (same .loop.lock, this process's PID), so no
+      // competing loop can take the root between recovery and the run (#149).
+      if (relaunch && relaunchOptions) {
+        const started = getLoopManager().startLoop(projectPath, relaunchOptions, {
+          adoptLock: true,
+        });
+        handedOff = started.ok;
+        relaunched = started.ok;
+        if (!started.ok) reason = started.error; // e.g. "Loop already running…"
+      } else if (rerunReview && pendingReview !== null) {
+        // Same options as POST /:id/loop/review; scoped to the review's own items
+        // (null scope = older state without reviewItemIds → every done item).
+        const reviewOptions = LoopStartOptionsSchema.parse({
+          maxIterations: 1,
+          maxRetries: 1,
+          review: true,
+          reviewOnly: true,
+          sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+          backlogRoot: resolvedBacklogRoot,
+        });
+        const started = getLoopManager().startReviewLoop(
+          projectPath,
+          reviewOptions,
+          pendingReview.itemIds ?? undefined,
+          { adoptLock: true },
         );
+        if (!started.ok) {
+          // The review did not start. Its marker is intact (never removed, or
+          // restored above) and no other loop could run in between, so a later
+          // resume re-runs it. Report an error (the finally releases the lock).
+          return c.json(
+            errorResponse(
+              started.conflict ? ErrorCodes.LOCK_CONFLICT : ErrorCodes.IO_ERROR,
+              `The pending review could not be started: ${started.error}`,
+            ),
+            started.conflict ? 409 : 500,
+          );
+        }
+        handedOff = true;
+        reviewRerun = true;
+        reason = "re-running the pending review";
       }
-      reviewRerun = true;
-      reason = "re-running the pending review";
+    } finally {
+      // Release unless a run adopted the lock (it releases it when it ends).
+      if (!handedOff) releaseRecoveryLock(paths);
     }
 
     const result: ResumeResult = {

@@ -36,7 +36,7 @@ import {
 } from "@rauf/core";
 
 import { createApp } from "../app.js";
-import { resetLoopManager } from "../loop-manager.js";
+import { getLoopManager, resetLoopManager } from "../loop-manager.js";
 
 const ACTIVE_DIR = path.join(TMP_HOME, ".rauf", "active");
 
@@ -288,6 +288,30 @@ describe("POST /:id/loop/start", () => {
     expect(res2.status).toBe(409);
     const body = (await json(res2)) as { error: { code: string } };
     expect(body.error.code).toBe("CONFLICT");
+  });
+
+  it("returns 409, not started, when another process holds .loop.lock (#149)", async () => {
+    const projectPath = createProject("test-project", [pendingItem]);
+    setupLongRunningClaude();
+    // A loop run by another process (e.g. the CLI) holds the root's lock. The
+    // manager has no record of it; before #149 the start returned started:true
+    // and the runner then lost the lock after its first await.
+    const lockPath = path.join(projectPath, ".rauf", LOCK_FILENAME);
+    const held = { pid: process.pid, startedAt: new Date().toISOString(), processStartTime: null };
+    fs.writeFileSync(lockPath, JSON.stringify(held));
+    const app = makeApp(tmpDir);
+
+    const res = await app.request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ maxIterations: 1 }),
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await json(res)) as { error: { code: string; message: string } };
+    expect(body.error.message).toContain("already running");
+    expect(getLoopManager().isRunning(projectPath)).toBe(false);
+    expect(JSON.parse(fs.readFileSync(lockPath, "utf8"))).toEqual(held);
   });
 
   it("uses default options when body is empty", async () => {

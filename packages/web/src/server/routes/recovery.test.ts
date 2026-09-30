@@ -29,7 +29,7 @@ const { TMP_HOME } = vi.hoisted(() => {
   return { TMP_HOME: dir };
 });
 
-import { LOCK_FILENAME } from "@rauf/core";
+import { LOCK_FILENAME, acquireLock, resolveBacklogPaths } from "@rauf/core";
 
 import { createApp } from "../app.js";
 import { getLoopManager, resetLoopManager } from "../loop-manager.js";
@@ -580,6 +580,128 @@ describe("POST /:id/resume", () => {
     expect(state.status).toBe("idle");
     expect(state.reviewPending).toBe(true);
     expect(state.reviewItemIds).toEqual(["000"]);
+  });
+
+  /** A competitor (e.g. a CLI `loop run`) trying to take the root's .loop.lock right now. */
+  function competitorAcquire(name: string): { ok: boolean; code?: string } {
+    const root = path.join(tmpDir, name);
+    const resolved = resolveBacklogPaths(root, path.join(root, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const r = acquireLock(resolved.value);
+    return r.ok ? { ok: true } : { ok: false, code: r.error.code };
+  }
+
+  it("hands the recovery lock to the review with no gap a competitor can take (#149)", async () => {
+    createProject("p", [pendingItem]); // work left → recovery, restore, then review
+    seedPendingReview("p", "paused_usage_limit", ["000"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const manager = getLoopManager();
+    const original = manager.startReviewLoop.bind(manager);
+    const raced: Array<{ ok: boolean; code?: string }> = [];
+    // Run a competitor at exactly the old release-to-reacquire gap: right
+    // before the review launch. It must find the root still locked.
+    vi.spyOn(manager, "startReviewLoop").mockImplementation((...args) => {
+      raced.push(competitorAcquire("p"));
+      return original(...args);
+    });
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: ResumeResult }).data.reviewRerun).toBe(true);
+    expect(raced).toEqual([{ ok: false, code: "LOCK_CONFLICT" }]);
+    // The review adopted the lock and still holds it while it runs.
+    expect(competitorAcquire("p")).toEqual({ ok: false, code: "LOCK_CONFLICT" });
+    const state = readState("p");
+    expect(state.reviewPending).toBe(true);
+  });
+
+  it("hands the recovery lock to the relaunched loop with no gap (#149)", async () => {
+    createProject("p", [pendingItem]);
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const manager = getLoopManager();
+    const original = manager.startLoop.bind(manager);
+    const raced: Array<{ ok: boolean; code?: string }> = [];
+    vi.spyOn(manager, "startLoop").mockImplementation((...args) => {
+      raced.push(competitorAcquire("p"));
+      return original(...args);
+    });
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(((await res.json()) as { data: ResumeResult }).data.relaunched).toBe(true);
+    expect(raced).toEqual([{ ok: false, code: "LOCK_CONFLICT" }]);
+    expect(competitorAcquire("p")).toEqual({ ok: false, code: "LOCK_CONFLICT" });
+  });
+
+  it("releases the recovery lock when the handoff is refused", async () => {
+    createProject("p", [{ ...pendingItem, status: "done", completedAt: "2026-09-30" }]);
+    seedPendingReview("p", "complete", ["001"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    vi.spyOn(getLoopManager(), "startReviewLoop").mockReturnValue({
+      ok: false,
+      error: "boom",
+      conflict: false,
+    });
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", { method: "POST", headers: csrf });
+    expect(res.status).toBe(500);
+    expect(fs.existsSync(path.join(tmpDir, "p", ".rauf", LOCK_FILENAME))).toBe(false);
+  });
+
+  it("keeps the run baseline across a failed launch, so a second resume stays bounded (#149)", async () => {
+    const projectPath = createProject("p", [
+      { ...pendingItem, id: "001", status: "done", completedAt: "2026-09-30" },
+      { ...pendingItem, id: "002" },
+    ]);
+    // Keep bookkeeping out of git so the tree stays clean for commit reconciliation.
+    fs.writeFileSync(path.join(projectPath, ".gitignore"), ".rauf/\n");
+    initGitRepo(projectPath);
+    const git = (...a: string[]) =>
+      execFileSync("git", a, { cwd: projectPath, encoding: "utf8" }).trim();
+    // A PRIOR backlog cycle's commit for an item id that is reused (ids restart at 001).
+    git("commit", "--allow-empty", "-m", "[rauf] 002: old cycle");
+    git("commit", "--allow-empty", "-m", "start of this run");
+    const baseline = git("rev-parse", "HEAD");
+    seedPendingReview("p", "paused_usage_limit", ["001"]);
+    const statePath = path.join(projectPath, ".rauf", "state.json");
+    const seeded = readState("p");
+    fs.writeFileSync(statePath, JSON.stringify({ ...seeded, baseCommitHash: baseline }));
+
+    const reviewSpy = vi
+      .spyOn(getLoopManager(), "startReviewLoop")
+      .mockReturnValue({ ok: false, error: "boom", conflict: false });
+    const app = makeApp(tmpDir);
+    const resume = () =>
+      app.request("/api/projects/p/resume", {
+        method: "POST",
+        headers: csrf,
+        body: JSON.stringify({}),
+      });
+
+    expect((await resume()).status).toBe(500); // 1st: recovery, restore, launch fails
+    expect(readState("p")).toMatchObject({ reviewPending: true, baseCommitHash: baseline });
+    expect((await resume()).status).toBe(500); // 2nd: recovery again, bounded by baseline
+    expect(reviewSpy).toHaveBeenCalledTimes(2);
+
+    const backlog = JSON.parse(
+      fs.readFileSync(path.join(projectPath, ".rauf", "backlog.json"), "utf8"),
+    ) as { items: { id: string; status: string }[] };
+    // Not falsely promoted by the prior cycle's `[rauf] 002:` commit.
+    expect(backlog.items.find((i) => i.id === "002")?.status).toBe("pending");
+    expect(readState("p")).toMatchObject({
+      reviewPending: true,
+      reviewItemIds: ["001"],
+      baseCommitHash: baseline,
+    });
   });
 
   it("reviews every done item when a legacy pending review has no reviewItemIds", async () => {

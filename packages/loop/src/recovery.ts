@@ -357,43 +357,72 @@ export async function recoverInterruptedLoop(
 
 // ─── Pending review (#146) ───────────────────────────────────────
 
+/** A pending review read from state.json by {@link readPendingReview}. */
+export interface PendingReview {
+  /** The review's exact scope; null for a legacy unscoped review (every done item). */
+  itemIds: string[] | null;
+  /**
+   * The raw pre-recovery state.json object, so {@link restorePendingReview}
+   * can put the run context (baseCommitHash, iteration, …) back (#149).
+   */
+  state: Record<string, unknown>;
+}
+
 /**
  * A review pass that started but did not succeed (#146): state.json
  * `reviewPending` plus its exact scope `reviewItemIds`, or null. Read before
  * recovery, which clears the loop state. Shared by the CLI `rauf resume` and
  * the web `POST /:id/resume` so both re-run exactly the same review.
  */
-export function readPendingReview(paths: BacklogPaths): { itemIds: string[] | null } | null {
+export function readPendingReview(paths: BacklogPaths): PendingReview | null {
   // Lenient on purpose: only these fields matter, so a state.json that fails
   // full LoopState validation must not hide a pending review.
   try {
-    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as {
-      reviewPending?: unknown;
-      reviewItemIds?: unknown;
-    };
-    if (raw.reviewPending !== true) return null;
-    const ids = Array.isArray(raw.reviewItemIds)
-      ? raw.reviewItemIds.filter((id): id is string => typeof id === "string")
+    const raw: unknown = JSON.parse(fs.readFileSync(paths.state, "utf-8"));
+    if (typeof raw !== "object" || raw === null) return null;
+    const state = raw as Record<string, unknown>;
+    if (state.reviewPending !== true) return null;
+    const ids = Array.isArray(state.reviewItemIds)
+      ? state.reviewItemIds.filter((id): id is string => typeof id === "string")
       : [];
     // An empty/absent scope (older state) falls back to all done items.
-    return { itemIds: ids.length > 0 ? ids : null };
+    return { itemIds: ids.length > 0 ? ids : null, state };
   } catch {
     return null;
   }
 }
 
 /**
- * Put a pending review's marker back after `recoverInterruptedLoop` deleted
- * state.json (#146, #149): a settled `idle` state carrying `reviewPending` and
- * its exact `reviewItemIds` (omitted for a legacy unscoped review). Call it
- * under the recovery lock, right after recovery, whenever a pending review is
- * about to be re-run, so a review that then fails to start (a concurrent loop
- * took the lock, the launch errored) is still offered by the next resume.
+ * Put a pending review back after `recoverInterruptedLoop` deleted state.json
+ * (#146, #149). Restores the PRE-recovery state object — keeping the run
+ * context reconciliation depends on, above all `baseCommitHash` (without it a
+ * later resume's commit reconciliation is unbounded and can promote a fresh
+ * item on a prior backlog cycle's `[rauf] <id>:` commit) — normalized to a
+ * settled state: status `idle`, no `currentItem` (recovery reset in_progress
+ * items) and no `sleepUntil` (no sleep is in progress). Call it under the lock,
+ * right after recovery, whenever the pending review is about to be re-run.
+ * A pre-recovery state that is not a valid LoopState falls back to a minimal
+ * idle state that still carries its `baseCommitHash` when it has one.
  */
-export function restorePendingReview(
-  paths: BacklogPaths,
-  pending: { itemIds: string[] | null },
-): Result<void> {
+export function restorePendingReview(paths: BacklogPaths, pending: PendingReview): Result<void> {
+  const reviewFields = {
+    reviewPending: true as const,
+    ...(pending.itemIds ? { reviewItemIds: pending.itemIds } : {}),
+  };
+  const rest = { ...pending.state };
+  delete rest.sleepUntil;
+  delete rest.reviewItemIds;
+  const restored = LoopStateSchema.safeParse({
+    ...rest,
+    status: "idle",
+    currentItem: null,
+    ...reviewFields,
+  });
+  if (restored.success) {
+    // writeLoopState stamps a fresh updatedAt (its input type omits it).
+    return writeLoopState(paths, { ...restored.data, updatedAt: undefined });
+  }
+  const base = pending.state.baseCommitHash;
   return writeLoopState(paths, {
     status: "idle",
     iteration: 0,
@@ -404,7 +433,7 @@ export function restorePendingReview(
     completedItems: [],
     blockedItems: [],
     error: null,
-    reviewPending: true,
-    ...(pending.itemIds ? { reviewItemIds: pending.itemIds } : {}),
+    baseCommitHash: typeof base === "string" ? base : null,
+    ...reviewFields,
   });
 }

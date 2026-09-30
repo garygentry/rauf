@@ -38,6 +38,7 @@ import {
   resolveInstructionPaths,
   ensureStateDir,
   acquireLock,
+  checkLock,
   releaseLock,
   MARKER_FILENAME,
   type BacklogPaths,
@@ -163,9 +164,10 @@ export interface LoopResult {
    */
   setupFailed?: boolean;
   /**
-   * A standalone review ({@link LoopRunner.startReviewOnly}) could not take the
-   * backlog root's `.loop.lock` because a live loop holds it: nothing ran and a
-   * pending review (#146) is left untouched. The error is on `loop_error`.
+   * The run ({@link LoopRunner.start} or a standalone review,
+   * {@link LoopRunner.startReviewOnly}) could not take the backlog root's
+   * `.loop.lock` because a live loop holds it: nothing ran, and state (incl. a
+   * pending review, #146) is left untouched. The error is on `loop_error`.
    */
   lockConflict?: boolean;
 }
@@ -371,29 +373,18 @@ export class LoopRunner extends TypedEventEmitter {
 
   /** Run the main loop. Resolves with LoopResult when done. */
   async start(): Promise<LoopResult> {
+    // (1) Take `.loop.lock` synchronously, BEFORE any await (#149): a caller
+    // that launched this run (LoopManager, `rauf resume`) either already holds
+    // it for us (acquireRunLock / adoptRunLock) or learns of a conflict before
+    // anything else happens. A refused start touches nothing of the live
+    // holder's: not its lock, event log or state (the error is in-memory only).
+    const lockResult = this.acquireRunLock();
+    if (!lockResult.ok) return this.refuseRun(lockResult.error);
+
     this.startedAt = new Date().toISOString();
-
-    // Capture git baseline commit hash for review diff
-    this.baseCommitHash = await this.getHeadCommit();
-
-    // Set once this run holds `.loop.lock`; gates the release in `finally`.
-    let lockAcquired = false;
     try {
-      // (1) Ensure state directory exists
-      const ensureResult = ensureStateDir(this.paths);
-      if (!ensureResult.ok) {
-        throw new Error(`Failed to create state directory: ${ensureResult.error.message}`);
-      }
-
-      // (1b) Acquire the lock FIRST (#149): a refused start must not touch
-      // the live holder's lock, event log or state. Its error is emitted
-      // in-memory only (the root's events.ndjson belongs to the holder).
-      const lockResult = acquireLock(this.paths);
-      if (!lockResult.ok) {
-        this.emitRefusal(lockResult.error.message);
-        return { completedCount: 0, blockedCount: 0, cancelled: false };
-      }
-      lockAcquired = true;
+      // Capture git baseline commit hash for review diff
+      this.baseCommitHash = await this.getHeadCommit();
 
       // (2) Rotate the prior run's event log to archive and reset the per-run
       // seq counter BEFORE the first event is emitted, so each run's
@@ -680,14 +671,15 @@ export class LoopRunner extends TypedEventEmitter {
         }
         this.currentItemId = null;
       }
-      // Release the lock and deregister — only if this run took the lock: a
+      // Release the lock and deregister — only if this run holds the lock: a
       // start refused by a live holder must not delete its lock (#149).
       // Deregister is idempotent (unlink-if-exists) and best-effort — pairs
       // with releaseLock. A hard SIGKILL that skips this finally leaves a stale
       // entry that the next listActiveLoops() self-heals (dead pid).
-      if (lockAcquired) {
+      if (this.runLockHeld) {
         releaseLock(this.paths);
         deregisterLoop(this.paths.stateDir);
+        this.runLockHeld = false;
       }
 
       // Dispose every cached provider (REQ-PERF-01 lifecycle). dispose? is optional
@@ -906,6 +898,39 @@ export class LoopRunner extends TypedEventEmitter {
   }
 
   /**
+   * Adopt a `.loop.lock` this process already holds (the recovery lock of
+   * `rauf resume` / web `POST /:id/resume`) as this run's lock, WITHOUT a
+   * release/re-acquire gap (#149): no competing loop can take the root between
+   * recovery and the run. The run then owns it and releases it when it ends.
+   * Refused unless the lock file is present and records this process's PID.
+   */
+  adoptRunLock(): Result<void> {
+    if (this.runLockHeld) return ok(undefined);
+    const status = checkLock(this.paths);
+    if (!status.ok) return status;
+    if (!status.value.locked || status.value.stale || status.value.pid !== process.pid) {
+      return err({
+        code: ErrorCodes.LOCK_CONFLICT,
+        message: "Cannot adopt .loop.lock: it is not held by this process",
+        details: { backlogRoot: this.paths.root },
+      });
+    }
+    this.runLockHeld = true;
+    return ok(undefined);
+  }
+
+  /** Result for a run refused before it started (see acquireRunLock). */
+  private refuseRun(error: RaufError): LoopResult {
+    this.emitRefusal(error.message);
+    return {
+      completedCount: 0,
+      blockedCount: 0,
+      cancelled: false,
+      ...(error.code === ErrorCodes.LOCK_CONFLICT ? { lockConflict: true } : { setupFailed: true }),
+    };
+  }
+
+  /**
    * Run a standalone review of already-completed items.
    * Does not run any fix iterations — just creates review items.
    *
@@ -917,10 +942,7 @@ export class LoopRunner extends TypedEventEmitter {
     // Hold `.loop.lock` for the whole review, as start() does, so a concurrent
     // `loop run`, resume or review on the same root is refused while it runs.
     const lock = this.acquireRunLock();
-    if (!lock.ok) {
-      this.emitRefusal(lock.error.message);
-      return { completedCount: 0, blockedCount: 0, cancelled: false, lockConflict: true };
-    }
+    if (!lock.ok) return this.refuseRun(lock.error);
     try {
       this.startedAt = new Date().toISOString();
       this.baseCommitHash = await this.getHeadCommit();

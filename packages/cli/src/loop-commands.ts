@@ -756,6 +756,9 @@ function isLimitTerminal(result: LoopResult): boolean {
  * RUNNING(6) is NEVER returned here — a finished run is not running.
  */
 export function loopRunExitCode(result: LoopResult): ExitCode {
+  if (result.lockConflict) {
+    return ExitCode.USAGE; // 2 — a live loop already holds this root's .loop.lock (#149)
+  }
   if (result.setupFailed) {
     return ExitCode.ERROR; // 1 — pre-loop setup aborted (e.g. agent unavailable, REQ-DET-02/SC-3)
   }
@@ -887,8 +890,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     }
   }
 
-  // Handle --force: clear existing lock with warning
-  if (force) {
+  // Handle --force: clear existing lock with warning — never a lock handed
+  // over by `rauf resume` (ctx.adoptLock), which is ours.
+  if (force && !ctx.adoptLock) {
     const lockStatus = checkLock(paths);
     if (lockStatus.ok && lockStatus.value.locked) {
       warn(
@@ -963,6 +967,14 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
   const runner = runnerResult.value;
+  if (ctx.adoptLock) {
+    // `rauf resume` hands over the lock it recovered under (#149).
+    const adopted = runner.adoptRunLock();
+    if (!adopted.ok) {
+      error(adopted.error.message);
+      return ExitCode.USAGE;
+    }
+  }
 
   const statusLine = new StatusLine({
     isTTY: ndjson ? false : (process.stdout.isTTY ?? false),
@@ -1229,6 +1241,14 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
   const runner = runnerResult.value;
+  if (ctx.adoptLock) {
+    // `rauf resume` hands over the lock it recovered under (#149).
+    const adopted = runner.adoptRunLock();
+    if (!adopted.ok) {
+      error(adopted.error.message);
+      return ExitCode.USAGE;
+    }
+  }
 
   // Subscribe to review events
   const eventTypes: LoopEvent["type"][] = ["review_started", "review_completed", "review_failed"];

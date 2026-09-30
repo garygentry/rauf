@@ -2569,6 +2569,52 @@ fi`,
       expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8"))).toEqual(heldLock);
     });
 
+    it("start() takes the lock synchronously, before its first await (#149)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, "exec sleep 999");
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      const done = runner.start();
+      // No await yet: the lock must already be ours, so a competitor that runs
+      // in the same tick (the old getHeadCommit gap) is refused.
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8")).pid).toBe(process.pid);
+      const competitor = await createRunner(tmpDir, DEFAULT_OPTIONS).start();
+      expect(competitor.lockConflict).toBe(true);
+      runner.cancel();
+      await done;
+      expect(fs.existsSync(lockFile())).toBe(false);
+    }, 20_000);
+
+    it("a refused start() reports lockConflict and leaves the holder's lock", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const heldLock = { pid: process.pid, startedAt: "x", processStartTime: null };
+      fs.writeFileSync(lockFile(), JSON.stringify(heldLock));
+      const result = await createRunner(tmpDir, DEFAULT_OPTIONS).start();
+      expect(result).toMatchObject({ completedCount: 0, lockConflict: true });
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8"))).toEqual(heldLock);
+    });
+
+    it("adoptRunLock() adopts only a lock this process holds, and the run releases it", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, reviewOnly: true });
+      // No lock → nothing to adopt.
+      expect(runner.adoptRunLock().ok).toBe(false);
+      // Another live process's lock → refused (pid 1 is always alive).
+      fs.writeFileSync(
+        lockFile(),
+        JSON.stringify({ pid: 1, startedAt: "x", processStartTime: null }),
+      );
+      expect(runner.adoptRunLock().ok).toBe(false);
+      // Our own lock (the caller's recovery lock) → adopted without re-acquiring.
+      const ours = { pid: process.pid, startedAt: "recovery", processStartTime: null };
+      fs.writeFileSync(lockFile(), JSON.stringify(ours));
+      expect(runner.adoptRunLock().ok).toBe(true);
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8"))).toEqual(ours);
+      const result = await runner.startReviewOnly(["001"]);
+      expect(result.lockConflict).toBeUndefined();
+      expect(fs.existsSync(lockFile())).toBe(false);
+    });
+
     it("releases the lock after a completed review", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
       writeMockClaude(binDir, 'echo "RAUF_DONE"');

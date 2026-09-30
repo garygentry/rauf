@@ -41,6 +41,7 @@ export type {
   ReconcileSummary,
   RecoverySummary,
   AcquiredRecoveryLock,
+  PendingReview,
 } from "./recovery.js";
 
 // Provider system
