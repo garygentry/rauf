@@ -1417,7 +1417,10 @@ export function formatAndPrintEvent(event: LoopEvent): void {
 
     case "usage_limit_hit":
       print(
-        `${prefix} ${c.yellow("\u26A0")} ${c.yellow("Usage limit hit")} (${event.limitType}, ${event.utilization}%)`,
+        `${prefix} ${c.yellow("\u26A0")} ${c.yellow("Usage limit hit")} (${event.limitType}, ${event.utilization}%)` +
+          (event.reason === "usage_api_disagreement"
+            ? ` \u2014 banner unconfirmed by usage API \u00D7${event.consecutiveDisagreements ?? "?"}`
+            : ""),
       );
       break;
 

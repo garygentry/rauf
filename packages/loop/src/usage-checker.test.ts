@@ -187,27 +187,36 @@ describe("checkUsageLimit", () => {
     expect(result.retryAfter).toBe(0);
   });
 
-  it("returns { limited: false } on network error", async () => {
+  it("returns { limited: false, unavailable: true } on network error", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error("Network error: ECONNREFUSED");
     }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
-    expect(result).toEqual({ limited: false });
+    expect(result).toEqual({ limited: false, unavailable: true });
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Usage API check failed"));
   });
 
-  it("returns { limited: false } on HTTP error status", async () => {
+  it("returns { limited: false, unavailable: true } on HTTP error status", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response("Unauthorized", { status: 401, statusText: "Unauthorized" });
     }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
-    expect(result).toEqual({ limited: false });
+    expect(result).toEqual({ limited: false, unavailable: true });
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("401"));
   });
 
-  it("returns { limited: false } on 500 server error", async () => {
+  it("returns { limited: false, unavailable: true } on 429 Too Many Requests (#146)", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return new Response("", { status: 429, statusText: "Too Many Requests" });
+    }) as unknown as typeof fetch;
+
+    const result = await checkUsageLimit("token");
+    expect(result).toEqual({ limited: false, unavailable: true });
+  });
+
+  it("returns { limited: false, unavailable: true } on 500 server error", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response("Internal Server Error", {
         status: 500,
@@ -216,17 +225,17 @@ describe("checkUsageLimit", () => {
     }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
-    expect(result).toEqual({ limited: false });
+    expect(result).toEqual({ limited: false, unavailable: true });
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("500"));
   });
 
-  it("returns { limited: false } on malformed JSON response", async () => {
+  it("returns { limited: false, unavailable: true } on malformed JSON response", async () => {
     globalThis.fetch = vi.fn(async () => {
       return new Response("not json", { status: 200 });
     }) as unknown as typeof fetch;
 
     const result = await checkUsageLimit("token");
-    expect(result).toEqual({ limited: false });
+    expect(result).toEqual({ limited: false, unavailable: true });
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Usage API check failed"));
   });
 

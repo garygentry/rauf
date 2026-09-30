@@ -79,6 +79,7 @@ import {
   hasSandboxDenialSignature,
 } from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
+import type { UsageLimitResult } from "./usage-checker.js";
 import { gitCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
@@ -86,6 +87,35 @@ import { resolveChildEnv } from "./review-hooks.js";
 import { redactSignalTokens, neutralizeForDetection } from "./signal-redactor.js";
 
 // ─── Types ──────────────────────────────────────────────────────────
+
+/**
+ * Injectable side-effecting collaborators for the usage-limit paths (#146).
+ * Production uses the defaults (the real credentials file, the live usage API,
+ * a real interruptible sleep); tests inject fakes so no test reaches the real
+ * usage API, reads the developer's real credentials, or waits on a real clock.
+ */
+export interface LoopRunnerDeps {
+  /** Read the Claude OAuth token (default: `readClaudeOAuthToken`). */
+  readOAuthToken?: () => Result<string>;
+  /** Query the usage API (default: `checkUsageLimit`). */
+  checkUsageLimit?: (token: string) => Promise<UsageLimitResult>;
+  /** Abortable sleep (default: `interruptibleSleep`). */
+  sleep?: (durationMs: number, signal: AbortSignal, onHeartbeat?: () => void) => Promise<void>;
+}
+
+/**
+ * Usage banner vs usage-API disagreement handling (#146). When a usage-limit
+ * banner/death is seen but the usage API answers "not limited" or is
+ * unavailable (429 / error), the iteration COUNTS against the budget and the
+ * runner backs off exponentially (base doubling, capped). After
+ * `USAGE_DISAGREEMENT_THRESHOLD` consecutive disagreements it trusts the banner
+ * and takes the normal usage-limit path (sleep, or halt when sleepOnLimit is
+ * false) for the banner's reset time, else `USAGE_DISAGREEMENT_DEFAULT_WINDOW_MS`.
+ */
+export const USAGE_DISAGREEMENT_THRESHOLD = 3;
+export const USAGE_DISAGREEMENT_BACKOFF_BASE_MS = 30_000;
+export const USAGE_DISAGREEMENT_BACKOFF_CAP_MS = 5 * 60_000;
+export const USAGE_DISAGREEMENT_DEFAULT_WINDOW_MS = 30 * 60_000;
 
 /** Result returned when the loop finishes */
 export interface LoopResult {
@@ -155,6 +185,12 @@ export class LoopRunner extends TypedEventEmitter {
   private deferredItemIds: string[] = [];
   /** Consecutive infra_error exits; consumed by the circuit breaker (item 008). */
   private consecutiveInfraFailures = 0;
+  /**
+   * Consecutive usage banners the usage API did not confirm (#146). Reset by an
+   * iteration that produced a real signal, or by an API-confirmed limit.
+   */
+  private consecutiveUsageDisagreements = 0;
+  private readonly deps: Required<LoopRunnerDeps>;
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
@@ -232,20 +268,34 @@ export class LoopRunner extends TypedEventEmitter {
    * Create a new LoopRunner for the given project and options.
    * Resolves BacklogPaths from options.backlogRoot (or default .rauf/).
    */
-  static create(projectPath: string, options: LoopStartOptions): Result<LoopRunner> {
+  static create(
+    projectPath: string,
+    options: LoopStartOptions,
+    deps: LoopRunnerDeps = {},
+  ): Result<LoopRunner> {
     const backlogRoot = options.backlogRoot ?? path.join(projectPath, ".rauf");
     const pathsResult = resolveBacklogPaths(projectPath, backlogRoot);
     if (!pathsResult.ok) {
       return pathsResult;
     }
-    return ok(new LoopRunner(projectPath, pathsResult.value, options));
+    return ok(new LoopRunner(projectPath, pathsResult.value, options, deps));
   }
 
-  private constructor(projectPath: string, paths: BacklogPaths, options: LoopStartOptions) {
+  private constructor(
+    projectPath: string,
+    paths: BacklogPaths,
+    options: LoopStartOptions,
+    deps: LoopRunnerDeps,
+  ) {
     super();
     this.projectPath = projectPath;
     this.paths = paths;
     this.options = options;
+    this.deps = {
+      readOAuthToken: deps.readOAuthToken ?? (() => readClaudeOAuthToken()),
+      checkUsageLimit: deps.checkUsageLimit ?? checkUsageLimit,
+      sleep: deps.sleep ?? interruptibleSleep,
+    };
     // `allowDirtyForItemId` is meaningful ONLY alongside `allowDirty` (it scopes
     // the same dirty-tree exemption by identity); ignore a stray id without the
     // base opt-in so the clean-baseline guard can never be bypassed on its own.
@@ -1149,12 +1199,10 @@ export class LoopRunner extends TypedEventEmitter {
       // Reset item to pending
       updateItem(this.paths, item.id, { status: "pending" });
       this.currentItemId = null;
-      // No work was done — this is an API rejection, not an attempt. Don't drain
-      // the iteration budget on it (item 007).
-      this.uncountIteration("usage_limited");
-
       // Check API for 5h vs 7d (pass the banner so the no-token path can parse
-      // the reset time)
+      // the reset time). The handler decides whether the iteration counts: a
+      // confirmed limit is an API rejection, not an attempt, and is uncounted
+      // (item 007); a banner the API does NOT confirm counts (#146).
       const stderrLimitResult = await this.handleStderrUsageLimit(`${stderr}\n${signalText}`);
       if (stderrLimitResult === "exit") {
         return "exit";
@@ -1167,6 +1215,11 @@ export class LoopRunner extends TypedEventEmitter {
     // be mis-parsed as a real completion signal; a genuine final-line signal is
     // preserved (REQ-SEC-02).
     const parsed = parseSignal(neutralizeForDetection(signalText));
+    // A real signal means the agent actually ran — any usage banner/API
+    // disagreement streak is over (#146).
+    if (parsed.signal !== "none") {
+      this.consecutiveUsageDisagreements = 0;
+    }
     this.emitEvent("signal_parsed", {
       itemId: item.id,
       signal: parsed.signal,
@@ -1350,8 +1403,8 @@ export class LoopRunner extends TypedEventEmitter {
             // from this item's own leftover uncommitted work (bug 1, #105 review).
             this.lastPendingRetryItemId = item.id;
             this.currentItemId = null;
-            // No-op death — don't charge the iteration budget (item 007).
-            this.uncountIteration("usage_limited");
+            // The handler uncounts a confirmed limit (item 007) and counts an
+            // unconfirmed one (#146).
             const usageResult = await this.handleStderrUsageLimit(`${stderr}\n${signalText}`);
             return usageResult === "exit" ? "exit" : "continue";
           }
@@ -2038,13 +2091,17 @@ export class LoopRunner extends TypedEventEmitter {
     return "exit";
   }
 
-  private haltForUsageLimit(resetsAt: string): "exit" {
+  private haltForUsageLimit(resetsAt: string, disagreements?: number): "exit" {
     const reset = resetsAt || "unknown";
     appendLog(
       this.paths,
       `Usage limit reached; halting without sleep (sleepOnLimit=false). Run \`rauf resume\` after ${reset}.`,
     );
-    this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
+    this.emitEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: 100,
+      ...this.disagreementFields(disagreements),
+    });
     this.writeState("paused_usage_limit", null);
     writeDoneFile(this.paths, `paused_usage_limit:${reset} — run \`rauf resume\``);
     return "exit";
@@ -2083,7 +2140,7 @@ export class LoopRunner extends TypedEventEmitter {
 
   /** Run pre-loop usage limit preflight check */
   private async runUsagePreflight(): Promise<"continue" | "exit"> {
-    const tokenResult = readClaudeOAuthToken();
+    const tokenResult = this.deps.readOAuthToken();
     if (!tokenResult.ok) {
       const { code, message } = tokenResult.error;
       appendLog(
@@ -2095,7 +2152,7 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    const usageResult = await checkUsageLimit(tokenResult.value);
+    const usageResult = await this.deps.checkUsageLimit(tokenResult.value);
 
     if (!usageResult.limited) {
       return "continue";
@@ -2135,7 +2192,7 @@ export class LoopRunner extends TypedEventEmitter {
       });
       this.writeState("sleeping_limit", null);
 
-      await interruptibleSleep(retryAfter * 1000, this.abortController.signal, () =>
+      await this.deps.sleep(retryAfter * 1000, this.abortController.signal, () =>
         this.writeState("sleeping_limit", null),
       );
 
@@ -2156,63 +2213,170 @@ export class LoopRunner extends TypedEventEmitter {
   }
 
   /**
+   * Parse a human-readable reset time ("resets 5:30pm") out of a usage banner.
+   * Returns the clock string plus ms until then (with a small buffer), or null.
+   */
+  private parseBannerReset(bannerText?: string): { resetsAt: string; sleepMs: number } | null {
+    const RESET_BUFFER_MS = 60_000;
+    const timeStr = bannerText?.match(/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i)?.[1];
+    if (!timeStr) return null;
+    const untilMs = this.msUntilResetTime(timeStr);
+    if (untilMs === null) return null;
+    return { resetsAt: timeStr, sleepMs: untilMs + RESET_BUFFER_MS };
+  }
+
+  /** `usage_limit_hit` fields recording a limit assumed after API disagreement (#146). */
+  private disagreementFields(disagreements?: number): {
+    reason?: "usage_api_disagreement";
+    consecutiveDisagreements?: number;
+  } {
+    return disagreements === undefined
+      ? {}
+      : { reason: "usage_api_disagreement", consecutiveDisagreements: disagreements };
+  }
+
+  /**
+   * Sleep through (or, with sleepOnLimit=false, halt on) a 5h usage limit the
+   * usage API could not confirm — the no-token path and the "trust the banner
+   * after N disagreements" path (#146). `reason` is the sleep_start reason.
+   */
+  private async sleepForUnconfirmedLimit(
+    sleepMs: number,
+    resetsAt: string,
+    reason: string,
+    disagreements?: number,
+  ): Promise<"continue" | "exit"> {
+    // Clean halt instead of sleeping when sleepOnLimit is false.
+    if (!this.sleepOnLimit) {
+      return this.haltForUsageLimit(resetsAt, disagreements);
+    }
+    this.emitEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: 100,
+      ...this.disagreementFields(disagreements),
+    });
+    this.emitEvent("sleep_start", {
+      sleepUntil: new Date(Date.now() + sleepMs).toISOString(),
+      reason,
+    });
+    this.writeState("sleeping_limit", null);
+    await this.deps.sleep(sleepMs, this.abortController.signal, () =>
+      this.writeState("sleeping_limit", null),
+    );
+    this.emitEvent("sleep_end", {});
+    if (this.isCancelled()) {
+      writeDoneFile(this.paths, "cancel");
+      return "exit";
+    }
+    return "continue";
+  }
+
+  /**
+   * A usage banner/death the usage API did not confirm — it answered "not
+   * limited" or was unavailable (#146). The iteration COUNTS (the budget bounds
+   * a persistent disagreement) and the runner backs off exponentially; after
+   * USAGE_DISAGREEMENT_THRESHOLD consecutive disagreements it trusts the banner
+   * and takes the normal usage-limit path.
+   */
+  private async handleUsageDisagreement(
+    usageResult: UsageLimitResult,
+    bannerText?: string,
+  ): Promise<"continue" | "exit"> {
+    this.consecutiveUsageDisagreements++;
+    const n = this.consecutiveUsageDisagreements;
+    const apiSaid = usageResult.unavailable ? "unavailable" : "not limited";
+    appendLog(
+      this.paths,
+      `Usage-limit banner not confirmed by usage API (${apiSaid}); iteration counted ` +
+        `(${this.iterationCount}/${this.options.maxIterations}), disagreement ${n}/${USAGE_DISAGREEMENT_THRESHOLD}`,
+    );
+
+    if (n >= USAGE_DISAGREEMENT_THRESHOLD) {
+      const banner = this.parseBannerReset(bannerText);
+      const sleepMs = banner?.sleepMs ?? USAGE_DISAGREEMENT_DEFAULT_WINDOW_MS;
+      appendLog(
+        this.paths,
+        `${n} consecutive usage-API disagreements — treating as usage-limited ` +
+          (banner
+            ? `(banner reset ${banner.resetsAt})`
+            : `(default ${Math.round(sleepMs / 60_000)}m window)`),
+      );
+      return this.sleepForUnconfirmedLimit(
+        sleepMs,
+        banner?.resetsAt ?? "",
+        `Usage limit (banner unconfirmed by usage API after ${n} attempts` +
+          (banner ? `, banner reset ${banner.resetsAt})` : ")"),
+        n,
+      );
+    }
+
+    const backoffMs = Math.min(
+      USAGE_DISAGREEMENT_BACKOFF_BASE_MS * 2 ** (n - 1),
+      USAGE_DISAGREEMENT_BACKOFF_CAP_MS,
+    );
+    this.emitEvent("sleep_start", {
+      sleepUntil: new Date(Date.now() + backoffMs).toISOString(),
+      reason:
+        `Usage-limit banner unconfirmed by usage API (${apiSaid}); ` +
+        `backoff ${Math.round(backoffMs / 1000)}s (${n}/${USAGE_DISAGREEMENT_THRESHOLD})`,
+    });
+    await this.deps.sleep(backoffMs, this.abortController.signal);
+    this.emitEvent("sleep_end", {});
+    if (this.isCancelled()) {
+      appendLog(this.paths, "Loop cancelled during usage-disagreement backoff");
+      writeDoneFile(this.paths, "cancel");
+      return "exit";
+    }
+    return "continue";
+  }
+
+  /**
    * Handle a usage limit detected mid-loop. `bannerText` is the claude output
    * the limit was detected in — used to parse a reset time when the API token
-   * is unavailable (item 007).
+   * is unavailable (item 007). Owns iteration accounting for the usage death: a
+   * limit taken on the banner alone (no token) or confirmed by the API is a
+   * no-op rejection and is uncounted (item 007); a banner the API does not
+   * confirm is counted (#146).
    */
   private async handleStderrUsageLimit(bannerText?: string): Promise<"continue" | "exit"> {
-    const tokenResult = readClaudeOAuthToken();
+    const tokenResult = this.deps.readOAuthToken();
     if (!tokenResult.ok) {
       // Can't hit the API for an exact reset. Parse the reset time out of the
       // banner if present and sleep until then (plus a small buffer); else 60s.
-      const RESET_BUFFER_MS = 60_000;
+      // Bounded by that sleep, so the uncounted iteration cannot hot-spin.
+      this.uncountIteration("usage_limited");
       const FALLBACK_MS = 60_000;
-      const timeStr = bannerText?.match(/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i)?.[1];
-      let sleepMs = FALLBACK_MS;
-      let resetsAt = "";
-      if (timeStr) {
-        const untilMs = this.msUntilResetTime(timeStr);
-        if (untilMs !== null) {
-          sleepMs = untilMs + RESET_BUFFER_MS;
-          resetsAt = timeStr;
-        }
-      }
+      const banner = this.parseBannerReset(bannerText);
+      const sleepMs = banner?.sleepMs ?? FALLBACK_MS;
+      const resetsAt = banner?.resetsAt ?? "";
 
-      // Clean halt instead of sleeping when sleepOnLimit is false.
-      if (!this.sleepOnLimit) {
-        return this.haltForUsageLimit(resetsAt);
+      if (this.sleepOnLimit) {
+        appendLog(
+          this.paths,
+          `OAuth token unavailable for usage check, sleeping ${Math.round(sleepMs / 1000)}s` +
+            (resetsAt ? ` (banner reset ${resetsAt})` : " (60s fallback)"),
+        );
       }
-
-      appendLog(
-        this.paths,
-        `OAuth token unavailable for usage check, sleeping ${Math.round(sleepMs / 1000)}s` +
-          (resetsAt ? ` (banner reset ${resetsAt})` : " (60s fallback)"),
-      );
-      this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
-      this.emitEvent("sleep_start", {
-        sleepUntil: new Date(Date.now() + sleepMs).toISOString(),
-        reason: resetsAt
+      return this.sleepForUnconfirmedLimit(
+        sleepMs,
+        resetsAt,
+        resetsAt
           ? `Usage limit (API unavailable, banner reset ${resetsAt})`
           : "Usage limit (API unavailable)",
-      });
-      this.writeState("sleeping_limit", null);
-      await interruptibleSleep(sleepMs, this.abortController.signal, () =>
-        this.writeState("sleeping_limit", null),
       );
-      this.emitEvent("sleep_end", {});
-      if (this.isCancelled()) {
-        writeDoneFile(this.paths, "cancel");
-        return "exit";
-      }
-      return "continue";
     }
 
-    const usageResult = await checkUsageLimit(tokenResult.value);
+    const usageResult = await this.deps.checkUsageLimit(tokenResult.value);
 
     if (!usageResult.limited) {
-      // API says we're not limited — proceed
-      return "continue";
+      // The API says "not limited", or could not answer — a disagreement with
+      // the banner we just saw. Never an uncounted, un-backed-off continue (#146).
+      return this.handleUsageDisagreement(usageResult, bannerText);
     }
+
+    // API-confirmed limit: a no-op rejection, not an attempt (item 007).
+    this.consecutiveUsageDisagreements = 0;
+    this.uncountIteration("usage_limited");
 
     if (usageResult.limitType === "7d") {
       // Weekly limit — exit
@@ -2248,7 +2412,7 @@ export class LoopRunner extends TypedEventEmitter {
     });
     this.writeState("sleeping_limit", null);
 
-    await interruptibleSleep(retryAfter * 1000, this.abortController.signal, () =>
+    await this.deps.sleep(retryAfter * 1000, this.abortController.signal, () =>
       this.writeState("sleeping_limit", null),
     );
 
@@ -2286,12 +2450,12 @@ export class LoopRunner extends TypedEventEmitter {
       return "continue";
     }
 
-    const tokenResult = readClaudeOAuthToken();
+    const tokenResult = this.deps.readOAuthToken();
     if (!tokenResult.ok) {
       return "continue";
     }
 
-    const usageResult = await checkUsageLimit(tokenResult.value);
+    const usageResult = await this.deps.checkUsageLimit(tokenResult.value);
     if (!usageResult.limited) {
       return "continue";
     }
@@ -2325,7 +2489,7 @@ export class LoopRunner extends TypedEventEmitter {
     });
     this.writeState("sleeping_limit", null);
 
-    await interruptibleSleep(retryAfter * 1000, this.abortController.signal, () =>
+    await this.deps.sleep(retryAfter * 1000, this.abortController.signal, () =>
       this.writeState("sleeping_limit", null),
     );
 

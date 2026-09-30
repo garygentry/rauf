@@ -22,7 +22,7 @@ export type { ChildEnvOptions } from "./review-hooks.js";
 export { StreamParser } from "./stream-parser.js";
 export type { ClaudeStreamEvent, StreamEventType } from "./stream-parser.js";
 export { LoopRunner } from "./runner.js";
-export type { LoopResult } from "./runner.js";
+export type { LoopResult, LoopRunnerDeps } from "./runner.js";
 export type { LoopEvent, LoopStartOptions } from "@rauf/core";
 
 // Recovery core (shared by `rauf reset` / `rauf resume` and the web routes)

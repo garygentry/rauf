@@ -606,6 +606,15 @@ const UsageLimitHitSchema = LoopEventBaseSchema.extend({
   type: z.literal("usage_limit_hit"),
   limitType: LoopEventLimitTypeSchema,
   utilization: z.number(),
+  /**
+   * Why the limit was assumed when the usage API did NOT confirm it (#146).
+   * `usage_api_disagreement`: a usage-limit banner/death was seen but the usage
+   * API answered "not limited" or was unavailable (429 / error) on
+   * `consecutiveDisagreements` consecutive attempts, so the runner treated it as
+   * limited. Absent for an API-confirmed (or no-token banner) limit.
+   */
+  reason: z.literal("usage_api_disagreement").optional(),
+  consecutiveDisagreements: z.number().int().positive().optional(),
 });
 
 const UsageLimitClearedSchema = LoopEventBaseSchema.extend({

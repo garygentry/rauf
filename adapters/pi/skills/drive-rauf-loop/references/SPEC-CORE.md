@@ -489,7 +489,7 @@ A missing signal (`none`) **never**, by itself, marks an item `blocked`. The `Ex
 
 The `deferred` flag on `BacklogItem` distinguishes a runner "false block" from a genuine agent block. `rauf reset`/`resume` requeue deferred items to `pending` while leaving genuine blocks untouched.
 
-No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget: `iterationCount` is decremented and a note is appended to the log.
+No-op iterations (`usage_limited`, `infra_error`) do **not** consume the iteration budget: `iterationCount` is decremented and a note is appended to the log. The exception is a usage death the usage API does not confirm (see [Usage Banner vs Usage-API Disagreement](#usage-banner-vs-usage-api-disagreement-146)). That iteration **is** counted.
 
 ### Circuit Breaker
 
@@ -524,6 +524,24 @@ When a usage limit is hit and `sleepOnLimit` is `false` (default: `true`):
 - `rauf resume` detects this state, applies reconciliation + false-block requeue, and relaunches the loop
 
 When `sleepOnLimit` is `true` (default), the runner parses the reset time from the banner (`/resets\s+(\d{1,2}(?::\d{2})?\s*[ap]m)/i`) and sleeps until that local time + 60 s buffer, falling back to 60 s if no match.
+
+### Usage Banner vs Usage-API Disagreement (#146)
+
+On a usage death (a banner in the output, or a `usage_limited` exit class), `handleStderrUsageLimit` asks the usage API to confirm. `checkUsageLimit` returns `{ limited: false, unavailable: true }` when the API cannot answer (non-2xx such as 429, network error, timeout, bad body). Outcomes:
+
+| Token / API answer               | Iteration   | Action                                                                                            |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| No OAuth token                   | uncounted   | Trust the banner: sleep to its reset time + 60 s (60 s fallback), or halt if `sleepOnLimit=false` |
+| API confirms 7d / 5h             | uncounted   | Normal `weekly_limit` / `sleeping_limit` / `paused_usage_limit` path; streak reset                |
+| API "not limited" or unavailable | **counted** | Disagreement: streak += 1, then back off or assume limited (below)                                |
+
+A disagreement never returns an uncounted, un-backed-off `continue`, so the iteration budget always bounds a persistent disagreement. Constants are exported from `runner.ts`:
+
+- Streak `n` < `USAGE_DISAGREEMENT_THRESHOLD` (3): sleep `min(30 s × 2^(n−1), 5 min)` (`USAGE_DISAGREEMENT_BACKOFF_BASE_MS` / `_CAP_MS`), reported as a `sleep_start`/`sleep_end` pair. Loop status stays `running`, and the same item retries.
+- Streak `n` ≥ 3: treat it as a 5h limit. Sleep until the banner's reset time + 60 s, or `USAGE_DISAGREEMENT_DEFAULT_WINDOW_MS` (30 min) when the banner has none, in `sleeping_limit`. With `sleepOnLimit=false`, halt with `paused_usage_limit`. The `usage_limit_hit` event carries `reason: "usage_api_disagreement"` and `consecutiveDisagreements: n`.
+- The streak resets to 0 when an iteration produces a real signal (anything but `none`) or when the API confirms a limit. It does **not** reset after an assumed-limit sleep, so a still-disagreeing API goes straight back to the assumed-limit path.
+
+`LoopRunner.create(projectPath, options, deps?)` accepts optional `readOAuthToken`, `checkUsageLimit` and `sleep` overrides so tests never touch real credentials, the live API or a real clock. Every package's vitest config also loads `vitest.hermetic-setup.ts` (isolated `HOME`, `api.anthropic.com` fetch guard).
 
 ### Usage Preflight OAuth Token
 

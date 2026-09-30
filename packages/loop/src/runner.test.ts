@@ -8,6 +8,7 @@ import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
 import { EVENTS_SCHEMA_VERSION, ok } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
+import type { LoopRunnerDeps } from "./runner.js";
 import { registerAgent, getAgentDescriptors } from "./providers/registry.js";
 import type { LLMProvider, ExecuteOptions } from "./providers/types.js";
 
@@ -115,8 +116,12 @@ const DEFAULT_OPTIONS: LoopStartOptions = {
 };
 
 /** Create a LoopRunner via the static factory, throwing on failure */
-function createRunner(projectPath: string, options: LoopStartOptions): LoopRunner {
-  const result = LoopRunner.create(projectPath, options);
+function createRunner(
+  projectPath: string,
+  options: LoopStartOptions,
+  deps?: LoopRunnerDeps,
+): LoopRunner {
+  const result = LoopRunner.create(projectPath, options, deps);
   if (!result.ok) {
     throw new Error(`Failed to create LoopRunner: ${result.error.message}`);
   }
@@ -3099,6 +3104,259 @@ fi`,
       } finally {
         process.env.HOME = origHome;
       }
+    });
+  });
+
+  // ── Usage banner vs usage-API disagreement (#146) ──
+  // A usage-limit banner (or usage death) that the usage API does NOT confirm —
+  // it answers "not limited", or is unavailable (429 / error) — used to return an
+  // uncounted `continue` with no backoff: an unbounded hot loop. These tests
+  // drive the REAL checkUsageLimit through a stubbed global fetch and a fake
+  // credentials file under an isolated HOME (never the developer's real one).
+  describe("usage banner vs usage API disagreement (#146)", () => {
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    let origHome: string | undefined;
+    let fakeHome: string;
+    let fetchCalls: number;
+
+    function writeFakeCredentials(home: string): void {
+      const dir = path.join(home, ".claude");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, ".credentials.json"),
+        JSON.stringify({ claudeAiOauth: { accessToken: "fake-token" } }),
+      );
+    }
+
+    function stubUsageApi(respond: () => Response): void {
+      globalThis.fetch = vi.fn(async () => {
+        fetchCalls++;
+        return respond();
+      }) as unknown as typeof fetch;
+    }
+
+    const notLimited = () =>
+      new Response(
+        JSON.stringify({
+          five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+          seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+        }),
+        { status: 200 },
+      );
+    const tooManyRequests = () =>
+      new Response("", { status: 429, statusText: "Too Many Requests" });
+
+    /**
+     * Mock agent: dies with a usage banner on every spawn, recording the spawn
+     * count OUTSIDE the project tree. After `stopAfter` spawns it prints
+     * RAUF_DONE — a safety valve so a regression shows up as "too many spawns"
+     * rather than a hung test.
+     */
+    function writeBannerAgent(counter: string, stopAfter = 12): void {
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -gt ${stopAfter} ]; then echo "RAUF_DONE"; exit 0; fi
+echo "Claude usage limit reached" >&2
+exit 1`,
+      );
+    }
+
+    function spawns(counter: string): number {
+      return parseInt(fs.readFileSync(counter, "utf-8").trim(), 10);
+    }
+
+    beforeEach(() => {
+      fetchCalls = 0;
+      console.warn = vi.fn();
+      origHome = process.env.HOME;
+      fakeHome = createTmpDir();
+      process.env.HOME = fakeHome;
+      writeFakeCredentials(fakeHome);
+    });
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      process.env.HOME = origHome;
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    });
+
+    function recordingSleep() {
+      const sleeps: number[] = [];
+      const sleep = async (ms: number) => {
+        sleeps.push(ms);
+      };
+      return { sleeps, sleep };
+    }
+
+    for (const [label, respond] of [
+      ["not limited", notLimited],
+      ["unavailable (429)", tooManyRequests],
+    ] as const) {
+      it(`counts each unconfirmed banner (${label}) so the iteration budget bounds it`, async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        const counter = path.join(binDir, "spawns");
+        writeBannerAgent(counter);
+        stubUsageApi(respond);
+        const { sleep } = recordingSleep();
+
+        // sleepOnLimit:false → the 3rd consecutive disagreement halts instead
+        // of sleeping; budget 2 must stop the run before that.
+        const runner = createRunner(
+          tmpDir,
+          { ...DEFAULT_OPTIONS, maxIterations: 2, sleepOnLimit: false },
+          { sleep },
+        );
+        await runner.start();
+
+        expect(spawns(counter)).toBe(2);
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).not.toContain("Iteration not counted (usage_limited)");
+      });
+    }
+
+    it("applies a bounded exponential backoff between unconfirmed attempts", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(binDir, "spawns");
+      writeBannerAgent(counter);
+      stubUsageApi(notLimited);
+      const { sleeps, sleep } = recordingSleep();
+      const sleepStarts: string[] = [];
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 2 }, { sleep });
+      runner.on("sleep_start", (e) => sleepStarts.push(e.reason));
+      await runner.start();
+
+      expect(sleeps).toEqual([30_000, 60_000]);
+      expect(sleepStarts).toHaveLength(2);
+      expect(sleepStarts[0]).toContain("unconfirmed");
+      expect(fetchCalls).toBeGreaterThanOrEqual(2);
+    });
+
+    it("treats 3 consecutive disagreements as limited (sleep path) and records why", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(binDir, "spawns");
+      writeBannerAgent(counter);
+      stubUsageApi(tooManyRequests);
+      const sleeps: number[] = [];
+      const states: string[] = [];
+      // Record the on-disk loop status at each sleep.
+      const sleep = async (ms: number) => {
+        sleeps.push(ms);
+        const st = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        ) as { status: string };
+        states.push(st.status);
+      };
+      const hits: LoopEvent[] = [];
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 3 }, { sleep });
+      runner.on("usage_limit_hit", (e) => hits.push(e));
+      await runner.start();
+
+      expect(spawns(counter)).toBe(3);
+      // 30s, 60s backoff, then the default-window limit sleep (no banner reset time).
+      expect(sleeps.slice(0, 2)).toEqual([30_000, 60_000]);
+      expect(sleeps[2]).toBe(30 * 60_000);
+      const forced = hits.find((e) => e.type === "usage_limit_hit" && e.reason !== undefined);
+      expect(forced).toMatchObject({
+        type: "usage_limit_hit",
+        limitType: "5h",
+        reason: "usage_api_disagreement",
+        consecutiveDisagreements: 3,
+      });
+      // The forced-limit sleep writes the normal sleeping_limit state.
+      expect(states[2]).toBe("sleeping_limit");
+    });
+
+    it("3 consecutive disagreements with sleepOnLimit=false halt as paused_usage_limit", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(binDir, "spawns");
+      writeBannerAgent(counter);
+      stubUsageApi(notLimited);
+      const { sleeps, sleep } = recordingSleep();
+      const hits: LoopEvent[] = [];
+
+      const runner = createRunner(
+        tmpDir,
+        { ...DEFAULT_OPTIONS, maxIterations: 10, sleepOnLimit: false },
+        { sleep },
+      );
+      runner.on("usage_limit_hit", (e) => hits.push(e));
+      const result = await runner.start();
+
+      expect(spawns(counter)).toBe(3);
+      expect(sleeps).toEqual([30_000, 60_000]);
+      expect(result.limitReached).toBe(true);
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.status).toBe("paused_usage_limit");
+      expect(hits.at(-1)).toMatchObject({
+        reason: "usage_api_disagreement",
+        consecutiveDisagreements: 3,
+      });
+    });
+
+    it("a normal iteration resets the consecutive-disagreement counter", async () => {
+      setupProject(tmpDir, [pendingItem("001", "A"), pendingItem("002", "B")]);
+      const counter = path.join(binDir, "spawns");
+      // Spawns 1-2: banner deaths; spawn 3: completes item 001; spawns 4-5: banner deaths.
+      writeMockClaude(
+        binDir,
+        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 3 ] || [ "$n" -gt 5 ]; then echo "RAUF_DONE"; exit 0; fi
+echo "Claude usage limit reached" >&2
+exit 1`,
+      );
+      stubUsageApi(notLimited);
+      const { sleeps, sleep } = recordingSleep();
+      const hits: LoopEvent[] = [];
+
+      const runner = createRunner(
+        tmpDir,
+        { ...DEFAULT_OPTIONS, maxIterations: 5, sleepOnLimit: false },
+        { sleep },
+      );
+      runner.on("usage_limit_hit", (e) => hits.push(e));
+      await runner.start();
+
+      // Without the reset, spawn 4 would be the 3rd disagreement and halt.
+      expect(sleeps).toEqual([30_000, 60_000, 30_000, 60_000]);
+      expect(hits.filter((e) => e.type === "usage_limit_hit" && e.reason)).toHaveLength(0);
+    });
+
+    it("an API-confirmed limit still takes the normal path, uncounted", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(binDir, "spawns");
+      writeBannerAgent(counter);
+      // Not limited at preflight; limited once the agent has died on the banner.
+      stubUsageApi(() =>
+        !fs.existsSync(counter)
+          ? notLimited()
+          : new Response(
+              JSON.stringify({
+                five_hour: { utilization: 100, resets_at: "2099-01-01T00:00:00Z" },
+                seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+              }),
+              { status: 200 },
+            ),
+      );
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        maxIterations: 5,
+        sleepOnLimit: false,
+      });
+      const result = await runner.start();
+
+      expect(spawns(counter)).toBe(1);
+      expect(result.limitReached).toBe(true);
+      const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+      expect(log).toContain("Iteration not counted (usage_limited)");
     });
   });
 

@@ -242,8 +242,15 @@ When `claude -p` exits non-zero with a usage limit message in stderr (matching "
   - Writes DONE file: "weekly_limit:<reset timestamp>"
   - Returns from loop
 
-API unreachable:
-  - Falls back to 60-second sleep, then resumes (assumes transient issue)
+No OAuth token (API cannot be asked):
+  - Sleeps until the banner's reset time + 60s (60-second fallback), then resumes
+
+API answers "not limited", or is unavailable (429 / error) — disagreement (#146):
+  - The iteration COUNTS against the budget
+  - Backs off 30s, doubling to a 5-minute cap, then retries the item
+  - After 3 consecutive disagreements: treated as a 5h limit (sleep to the banner
+    reset time, default 30 min; or paused_usage_limit when sleepOnLimit=false),
+    with usage_limit_hit reason "usage_api_disagreement"
 
 CANCEL during sleep:
   - interruptibleSleep checks AbortController signal every ~30s

@@ -102,7 +102,10 @@ export function formatEvent(ev: PersistedEvent): string {
     case "usage_limit_hit":
       return line(
         c.red("usage limit"),
-        `${ev.limitType} ${c.dim(`(util ${Math.round(ev.utilization * 100)}%)`)}`,
+        `${ev.limitType} ${c.dim(`(util ${Math.round(ev.utilization * 100)}%)`)}` +
+          (ev.reason === "usage_api_disagreement"
+            ? ` ${c.dim(`— banner unconfirmed by usage API ×${ev.consecutiveDisagreements ?? "?"}`)}`
+            : ""),
       );
     case "usage_limit_cleared":
       return line(c.green("usage limit cleared"), ev.limitType);

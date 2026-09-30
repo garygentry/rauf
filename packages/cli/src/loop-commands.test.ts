@@ -508,6 +508,20 @@ describe("formatAndPrintEvent", () => {
     expect(output.stdout).toContain("Usage limit hit");
     expect(output.stdout).toContain("5h");
     expect(output.stdout).toContain("100%");
+    expect(output.stdout).not.toContain("unconfirmed");
+  });
+
+  it("formats a usage_limit_hit assumed after usage-API disagreement (#146)", () => {
+    const event = baseEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: 100,
+      reason: "usage_api_disagreement",
+      consecutiveDisagreements: 3,
+    });
+    const output = captureOutput(() => formatAndPrintEvent(event));
+    expect(output.stdout).toContain("Usage limit hit");
+    expect(output.stdout).toContain("banner unconfirmed by usage API");
+    expect(output.stdout).toContain("\u00D73");
   });
 
   it("formats usage_limit_cleared event", () => {

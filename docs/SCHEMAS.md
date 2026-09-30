@@ -432,32 +432,32 @@ interface LoopEventBase {
 
 ### All 24 Event Types
 
-| Type                  | Additional Fields                                                         | Emitted When                                             |
-| --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `loop_started`        | `maxIterations`, `model?`                                                 | Loop begins                                              |
-| `iteration_start`     | `iteration`, `maxIterations`                                              | Each iteration starts                                    |
-| `item_selected`       | `itemId`, `title`, `priority`                                             | Next item picked from backlog                            |
-| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                          | LLM process launched                                     |
-| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                | LLM process exits                                        |
-| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`      | Exit signal extracted from stdout                        |
-| `item_completed`      | `itemId`, `title`                                                         | Item marked done                                         |
-| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                          | Item marked blocked                                      |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`           | Item re-queued for retry                                 |
-| `needs_human`         | `itemId`, `reason`                                                        | Loop paused for human input                              |
-| `loop_paused`         | `reason` ("needs_human"), `itemId`                                        | Loop halted in `paused_human` (`--pause-on-needs-human`) |
-| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                                 | Claude API usage limit detected                          |
-| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                | Usage limit window reset                                 |
-| `sleep_start`         | `sleepUntil`, `reason`                                                    | Loop enters sleep (usage limit)                          |
-| `sleep_end`           | _(base only)_                                                             | Loop wakes from sleep                                    |
-| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                      | Loop finishes normally                                   |
-| `loop_error`          | `error`                                                                   | Unexpected error terminates loop                         |
-| `loop_cancelled`      | _(base only)_                                                             | Loop cancelled via AbortController or CANCEL file        |
-| `review_started`      | `completedItemIds`                                                        | Post-loop review pass begins                             |
-| `review_completed`    | `itemsCreated`, `summary`                                                 | Review pass finished                                     |
-| `review_failed`       | `reason`                                                                  | Review pass failed (non-fatal)                           |
-| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?` | Tool call starts or finishes in child session            |
-| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                   | Token count update from child session                    |
-| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                      | Child session silent for too long (see below)            |
+| Type                  | Additional Fields                                                                 | Emitted When                                             |
+| --------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                                         | Loop begins                                              |
+| `iteration_start`     | `iteration`, `maxIterations`                                                      | Each iteration starts                                    |
+| `item_selected`       | `itemId`, `title`, `priority`                                                     | Next item picked from backlog                            |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                                  | LLM process launched                                     |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                        | LLM process exits                                        |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`              | Exit signal extracted from stdout                        |
+| `item_completed`      | `itemId`, `title`                                                                 | Item marked done                                         |
+| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                                  | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`                   | Item re-queued for retry                                 |
+| `needs_human`         | `itemId`, `reason`                                                                | Loop paused for human input                              |
+| `loop_paused`         | `reason` ("needs_human"), `itemId`                                                | Loop halted in `paused_human` (`--pause-on-needs-human`) |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`, `reason?`, `consecutiveDisagreements?` | Claude API usage limit detected (see below)              |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                        | Usage limit window reset                                 |
+| `sleep_start`         | `sleepUntil`, `reason`                                                            | Loop enters sleep (usage limit)                          |
+| `sleep_end`           | _(base only)_                                                                     | Loop wakes from sleep                                    |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                              | Loop finishes normally                                   |
+| `loop_error`          | `error`                                                                           | Unexpected error terminates loop                         |
+| `loop_cancelled`      | _(base only)_                                                                     | Loop cancelled via AbortController or CANCEL file        |
+| `review_started`      | `completedItemIds`                                                                | Post-loop review pass begins                             |
+| `review_completed`    | `itemsCreated`, `summary`                                                         | Review pass finished                                     |
+| `review_failed`       | `reason`                                                                          | Review pass failed (non-fatal)                           |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?`         | Tool call starts or finishes in child session            |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                           | Token count update from child session                    |
+| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                              | Child session silent for too long (see below)            |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -553,6 +553,8 @@ type LoopEvent =
       projectPath: string;
       limitType: "5h" | "7d";
       utilization: number;
+      reason?: "usage_api_disagreement"; // limit ASSUMED, not API-confirmed (#146)
+      consecutiveDisagreements?: number; // disagreements that triggered it
     }
   | { type: "usage_limit_cleared"; timestamp: string; projectPath: string; limitType: "5h" | "7d" }
   | {
@@ -614,6 +616,15 @@ type LoopEvent =
       toolRunningMs?: number | null; // ms since currentTool started, or null when currentTool is null
     };
 ```
+
+**`usage_limit_hit` provenance (#146).** Without `reason`, the limit was confirmed by the
+usage API, or taken on the banner alone because no OAuth token was available.
+`reason: "usage_api_disagreement"` means the agent died on a usage-limit banner but the usage
+API answered "not limited" or was unavailable (429 / error) on `consecutiveDisagreements`
+consecutive attempts (threshold 3), so the runner **assumed** a 5h limit and took the normal
+sleep (`sleeping_limit`) or halt (`paused_usage_limit`) path. The backoff sleeps before the
+threshold are reported only as `sleep_start` / `sleep_end` pairs whose `reason` starts with
+`Usage-limit banner unconfirmed by usage API`. The loop status stays `running` during them.
 
 **`llm_stuck_warning` semantics (#141).** The runner tracks which tool calls are in flight
 (a `tool_start` with no matching `tool_end`). The warning fires once the stream has been
