@@ -13,30 +13,20 @@ import type {
 } from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
 import { StateBadge } from "../../components/StateBadge";
-import { describeEvent, reviewPendingNotice } from "../../lib/describe-event";
+import { canResume, describeEvent, reviewPendingNotice } from "../../lib/status-helpers";
 
 // ─── Loop control state sets ──────────────────────────────────────
 
 const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ITERATIONS_COMPLETE", "ERROR"]);
 const STOPPABLE_STATES = new Set(["RUNNING", "SLEEPING_LIMIT"]);
 
-// States from which a Resume action is meaningful (spec 04 §8.7). Iteration
-// budget reached is a clean stop with work likely remaining — re-running
-// continues the backlog, so it is resumable alongside the paused states.
-const RESUMABLE_STATES = new Set([
-  "PAUSED",
-  "PAUSED_HUMAN",
-  "PAUSED_USAGE_LIMIT",
-  "ITERATIONS_COMPLETE",
-  "ERROR",
-  "IDLE",
-]);
 // States in which a standalone Review pass would 409 (a loop is active).
 const REVIEW_BLOCKING_STATES = new Set(["RUNNING", "REVIEWING", "STARTING"]);
 
 // Web shape of the resume route's ResumeResult DTO (spec 04 §4 / 00 §6).
 interface ResumeResultData {
   relaunched: boolean;
+  reviewRerun?: boolean;
   reason?: string;
 }
 
@@ -774,7 +764,9 @@ export function StatusView() {
       setRecoveryMessage(
         data.relaunched
           ? "Resumed — loop relaunched"
-          : `Reconciled — ${data.reason ?? "nothing to relaunch"}`,
+          : data.reviewRerun
+            ? "Resumed — re-running the pending review. Watch the Event Timeline."
+            : `Reconciled — ${data.reason ?? "nothing to relaunch"}`,
       );
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
     },
@@ -1171,11 +1163,7 @@ export function StatusView() {
                 <RecoveryButton
                   label={resumeMutation.isPending ? "Resuming…" : "Resume"}
                   onClick={() => resumeMutation.mutate()}
-                  disabled={
-                    resumeMutation.isPending ||
-                    !RESUMABLE_STATES.has(status.loopState) ||
-                    status.backlogSummary.total - status.backlogSummary.done <= 0
-                  }
+                  disabled={resumeMutation.isPending || !canResume(status)}
                 />
 
                 <RecoveryButton

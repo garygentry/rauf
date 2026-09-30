@@ -62,6 +62,7 @@ import {
   acquireRecoveryLock,
   releaseRecoveryLock,
   recoverInterruptedLoop,
+  readPendingReview,
   type RecoverySummary,
 } from "@rauf/loop";
 
@@ -81,6 +82,8 @@ import { assertNoLiveLoop } from "./recovery-guard.js";
 interface ResumeResult {
   reconciled: RecoverySummary;
   relaunched: boolean;
+  /** A pending review (#146) was re-run instead of relaunching the loop. */
+  reviewRerun?: boolean;
   reason?: string;
 }
 
@@ -784,6 +787,9 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   // ── POST /:id/resume ──────────────────────────────────────────
   //
   // Reconcile + relaunch (web equivalent of CLI resume, minus --recover).
+  // A pending review (#146, state.json `reviewPending`) is re-run over exactly
+  // its `reviewItemIds` instead of relaunching the loop — even when every item
+  // is done — as the CLI `rauf resume` does (shared `readPendingReview`).
   // Acquire-and-hold guarded (D3.4): the lock is held across answer
   // injection, recoverInterruptedLoop, and the eligibility decision, then
   // released in a finally BEFORE the relaunch so the loop's own lock
@@ -852,6 +858,9 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     let relaunchOptions: ReturnType<typeof LoopStartOptionsSchema.parse> | null = null;
     let reconciled: RecoverySummary | null = null;
     let reason: string | undefined;
+    // Read before recovery, which clears the loop state (and with it the flag).
+    const pendingReview = readPendingReview(paths);
+    let rerunReview = false;
 
     try {
       // 3. Answer injection (OQ-T2: { itemId, text } → humanAnswer).
@@ -900,9 +909,12 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
         reason = `${reconciled.interrupted.length} item(s) have uncommitted work — run \`rauf resume --recover\` from the CLI to re-verify and commit before resuming.`;
         relaunch = false;
       } else {
-        // 5. Relaunch decision.
+        // 5. Relaunch decision. A pending review wins: re-run it, not the loop
+        // (the CLI does the same, then a later resume processes remaining items).
         const post = readBacklog(paths);
-        if (post.ok && selectNextItem(post.value) === null) {
+        if (pendingReview !== null) {
+          rerunReview = true;
+        } else if (post.ok && selectNextItem(post.value) === null) {
           reason = "no eligible items";
           relaunch = false;
         } else {
@@ -932,12 +944,31 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
       releaseRecoveryLock(paths);
     }
 
-    // 6. Relaunch after release.
+    // 6. Relaunch (or re-run the pending review) after release.
     let relaunched = false;
+    let reviewRerun = false;
     if (relaunch && relaunchOptions) {
       const started = getLoopManager().startLoop(projectPath, relaunchOptions);
       relaunched = started.ok;
       if (!started.ok) reason = started.error; // e.g. "Loop already running…"
+    } else if (rerunReview && pendingReview !== null) {
+      // Same options as POST /:id/loop/review; scoped to the review's own items
+      // (null scope = older state without reviewItemIds → every done item).
+      const reviewOptions = LoopStartOptionsSchema.parse({
+        maxIterations: 1,
+        maxRetries: 1,
+        review: true,
+        reviewOnly: true,
+        sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+        backlogRoot: resolvedBacklogRoot,
+      });
+      const started = getLoopManager().startReviewLoop(
+        projectPath,
+        reviewOptions,
+        pendingReview.itemIds ?? undefined,
+      );
+      reviewRerun = started.ok;
+      reason = started.ok ? "re-running the pending review" : started.error;
     }
 
     // `reconciled` is set on the only success path; every null-leaving path returns
@@ -949,7 +980,12 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
         500,
       );
     }
-    const result: ResumeResult = { reconciled, relaunched, reason };
+    const result: ResumeResult = {
+      reconciled,
+      relaunched,
+      ...(reviewRerun ? { reviewRerun: true } : {}),
+      reason,
+    };
     return c.json({ data: result });
   });
 

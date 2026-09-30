@@ -133,8 +133,13 @@ POST   /api/projects/:id/resume
        Guard: acquires recovery lock (409 LOCK_CONFLICT if a live loop holds the lock)
        Injects each answer as humanAnswer on the item, optionally unblocks blocked items,
        runs recoverInterruptedLoop, then relaunches the loop if there are eligible items.
-       200: { data: { reconciled: ReconcileSummary, relaunched: boolean, reason?: string } }
-       A failed relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).
+       Pending review (#146): if state.json has reviewPending, it re-runs that standalone
+       review over exactly reviewItemIds (every done item when absent) instead of relaunching,
+       even when every item is done — as the CLI `rauf resume` does. Interrupted uncommitted
+       work still stops first (CLI --recover path).
+       200: { data: { reconciled: ReconcileSummary, relaunched: boolean, reviewRerun?: true, reason?: string } }
+       A failed relaunch or review start is reported as relaunched:false + reason in a 200 (not an HTTP error).
+       The status page's Resume button is enabled for a pending review from any settled state.
        404 if project not installed
 
 POST   /api/projects/:id/loop/review

@@ -353,3 +353,30 @@ export async function recoverInterruptedLoop(
 
   return ok({ ...summary, stalledReset, stateCleared });
 }
+
+// ─── Pending review (#146) ───────────────────────────────────────
+
+/**
+ * A review pass that started but did not succeed (#146): state.json
+ * `reviewPending` plus its exact scope `reviewItemIds`, or null. Read before
+ * recovery, which clears the loop state. Shared by the CLI `rauf resume` and
+ * the web `POST /:id/resume` so both re-run exactly the same review.
+ */
+export function readPendingReview(paths: BacklogPaths): { itemIds: string[] | null } | null {
+  // Lenient on purpose: only these fields matter, so a state.json that fails
+  // full LoopState validation must not hide a pending review.
+  try {
+    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as {
+      reviewPending?: unknown;
+      reviewItemIds?: unknown;
+    };
+    if (raw.reviewPending !== true) return null;
+    const ids = Array.isArray(raw.reviewItemIds)
+      ? raw.reviewItemIds.filter((id): id is string => typeof id === "string")
+      : [];
+    // An empty/absent scope (older state) falls back to all done items.
+    return { itemIds: ids.length > 0 ? ids : null };
+  } catch {
+    return null;
+  }
+}

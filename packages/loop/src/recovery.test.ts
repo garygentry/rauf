@@ -6,7 +6,12 @@ import { spawn, execSync, type ChildProcess } from "node:child_process";
 
 import { resolveBacklogPaths, ErrorCodes, type BacklogPaths } from "@rauf/core";
 
-import { acquireRecoveryLock, releaseRecoveryLock, recoverInterruptedLoop } from "./recovery.js";
+import {
+  acquireRecoveryLock,
+  releaseRecoveryLock,
+  recoverInterruptedLoop,
+  readPendingReview,
+} from "./recovery.js";
 
 // ─── Fixtures ──────────────────────────────────────────────────────
 
@@ -183,5 +188,32 @@ describe("recoverInterruptedLoop", () => {
       items: { id: string; status: string }[];
     };
     expect(backlog.items[0]?.status).toBe("pending");
+  });
+});
+
+// ─── readPendingReview (#146) ──────────────────────────────────────
+
+describe("readPendingReview", () => {
+  it("returns null with no state.json, unparsable state, or no pending review", () => {
+    expect(readPendingReview(paths)).toBeNull();
+    fs.writeFileSync(paths.state, "{not json");
+    expect(readPendingReview(paths)).toBeNull();
+    fs.writeFileSync(paths.state, JSON.stringify({ status: "complete", reviewPending: false }));
+    expect(readPendingReview(paths)).toBeNull();
+  });
+
+  it("returns the pending review's exact scope, dropping non-string ids", () => {
+    fs.writeFileSync(
+      paths.state,
+      JSON.stringify({ status: "complete", reviewPending: true, reviewItemIds: ["001", 7, "003"] }),
+    );
+    expect(readPendingReview(paths)).toEqual({ itemIds: ["001", "003"] });
+  });
+
+  it("falls back to a null scope (every done item) when reviewItemIds is empty or absent", () => {
+    fs.writeFileSync(paths.state, JSON.stringify({ reviewPending: true, reviewItemIds: [] }));
+    expect(readPendingReview(paths)).toEqual({ itemIds: null });
+    fs.writeFileSync(paths.state, JSON.stringify({ reviewPending: true }));
+    expect(readPendingReview(paths)).toEqual({ itemIds: null });
   });
 });

@@ -126,7 +126,8 @@ const REVIEW_IDS_SHOWN = 5;
 /**
  * The status page's pending-review notice (#146), or null when no review is
  * pending. A pending review means the run is not done even when every item is
- * (decision-table row 8); `rauf resume` re-runs exactly that review.
+ * (decision-table row 8); Resume (`POST /:id/resume`) or `rauf resume` re-runs
+ * exactly that review.
  */
 export function reviewPendingNotice(
   status: Pick<DerivedStatus, "reviewPending" | "reviewItemIds">,
@@ -139,5 +140,34 @@ export function reviewPendingNotice(
     ids.length === 0
       ? ""
       : ` over ${ids.length} item${ids.length === 1 ? "" : "s"} (${shown.join(", ")})`;
-  return `The review pass${scope} did not finish — run \`rauf resume\` from the CLI to re-run it.`;
+  return `The review pass${scope} did not finish — Resume (or \`rauf resume\`) re-runs it.`;
+}
+
+/** States from which a Resume action is meaningful (spec 04 §8.7). */
+const RESUMABLE_STATES: ReadonlySet<string> = new Set([
+  "PAUSED",
+  "PAUSED_HUMAN",
+  "PAUSED_USAGE_LIMIT",
+  "ITERATIONS_COMPLETE",
+  "ERROR",
+  "IDLE",
+]);
+
+/** States in which a loop or review is active, so a resume would 409. */
+const ACTIVE_STATES: ReadonlySet<string> = new Set(["RUNNING", "REVIEWING", "STARTING"]);
+
+/**
+ * Whether the status page's Resume button is enabled. Normally it needs a
+ * resumable state and non-done work. A pending review (#146) is resumable from
+ * any settled state — including COMPLETE with every item done — because
+ * `POST /:id/resume` re-runs it, as the CLI `rauf resume` does.
+ */
+export function canResume(
+  status: Pick<DerivedStatus, "loopState" | "backlogSummary" | "reviewPending">,
+): boolean {
+  if (status.reviewPending === true) return !ACTIVE_STATES.has(status.loopState);
+  return (
+    RESUMABLE_STATES.has(status.loopState) &&
+    status.backlogSummary.total - status.backlogSummary.done > 0
+  );
 }

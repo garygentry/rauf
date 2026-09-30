@@ -8,7 +8,8 @@
 
 ### Fixed
 
-- **The web status page now shows a pending review and usage-API disagreements (#149).** A `reviewPending` status renders a "Review pending" notice naming the review's items (`reviewItemIds`) and the `rauf resume` remedy. A `usage_limit_hit` event with `reason: "usage_api_disagreement"` renders "banner unconfirmed by usage API ×N" (from `consecutiveDisagreements`), as the CLI event views do.
+- **The web status page now shows a pending review and usage-API disagreements (#149).** A `reviewPending` status renders a "Review pending" notice naming the review's items (`reviewItemIds`) and the resume remedy. A `usage_limit_hit` event with `reason: "usage_api_disagreement"` renders "banner unconfirmed by usage API ×N" (from `consecutiveDisagreements`), as the CLI event views do.
+- **Web Resume now re-runs a pending review (#149).** `POST /api/projects/:id/resume` re-runs a pending review over exactly its `reviewItemIds` instead of relaunching the loop, as `rauf resume` does, and reports it as `reviewRerun: true`. It used to ignore the pending review and answer "no eligible items" when every item was done. The status page's Resume button is now enabled for a pending review even when every item is done. `readPendingReview` moved from the CLI into `@rauf/loop` so both use the same reader.
 
 ## 0.17.0
 

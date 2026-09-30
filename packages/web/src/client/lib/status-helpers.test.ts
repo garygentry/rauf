@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { PersistedEvent } from "@rauf/core";
-import { describeEvent, reviewPendingNotice } from "./describe-event";
+import { canResume, describeEvent, reviewPendingNotice } from "./status-helpers";
 
 const envelope = {
   timestamp: "2026-09-30T12:00:00.000Z",
@@ -52,7 +52,7 @@ describe("reviewPendingNotice (#146)", () => {
 
   it("names the pending review's items and the resume remedy", () => {
     expect(reviewPendingNotice({ reviewPending: true, reviewItemIds: ["001", "002"] })).toBe(
-      "The review pass over 2 items (#001, #002) did not finish — run `rauf resume` from the CLI to re-run it.",
+      "The review pass over 2 items (#001, #002) did not finish — Resume (or `rauf resume`) re-runs it.",
     );
     expect(reviewPendingNotice({ reviewPending: true, reviewItemIds: ["001"] })).toContain(
       "over 1 item (#001)",
@@ -60,8 +60,7 @@ describe("reviewPendingNotice (#146)", () => {
   });
 
   it("omits the scope when reviewItemIds is empty or absent", () => {
-    const expected =
-      "The review pass did not finish — run `rauf resume` from the CLI to re-run it.";
+    const expected = "The review pass did not finish — Resume (or `rauf resume`) re-runs it.";
     expect(reviewPendingNotice({ reviewPending: true, reviewItemIds: [] })).toBe(expected);
     expect(reviewPendingNotice({ reviewPending: true })).toBe(expected);
   });
@@ -71,5 +70,45 @@ describe("reviewPendingNotice (#146)", () => {
     expect(reviewPendingNotice({ reviewPending: true, reviewItemIds: ids })).toContain(
       "over 7 items (#a, #b, #c, #d, #e, +2 more)",
     );
+  });
+});
+
+describe("canResume — Resume button enablement", () => {
+  const summary = (total: number, done: number) => ({
+    pending: total - done,
+    inProgress: 0,
+    blocked: 0,
+    deferred: 0,
+    done,
+    total,
+  });
+
+  it("needs a resumable state and non-done work when no review is pending", () => {
+    expect(canResume({ loopState: "PAUSED", backlogSummary: summary(3, 1) })).toBe(true);
+    expect(canResume({ loopState: "PAUSED", backlogSummary: summary(3, 3) })).toBe(false);
+    expect(canResume({ loopState: "COMPLETE", backlogSummary: summary(3, 1) })).toBe(false);
+    expect(canResume({ loopState: "RUNNING", backlogSummary: summary(3, 1) })).toBe(false);
+  });
+
+  it("is enabled for a pending review even when every item is done (#146)", () => {
+    for (const loopState of [
+      "COMPLETE",
+      "IDLE",
+      "PAUSED",
+      "PAUSED_USAGE_LIMIT",
+      "ERROR",
+    ] as const) {
+      expect(canResume({ loopState, backlogSummary: summary(2, 2), reviewPending: true })).toBe(
+        true,
+      );
+    }
+  });
+
+  it("stays disabled for a pending review while a loop or review is active", () => {
+    for (const loopState of ["RUNNING", "REVIEWING"] as const) {
+      expect(canResume({ loopState, backlogSummary: summary(2, 2), reviewPending: true })).toBe(
+        false,
+      );
+    }
   });
 });

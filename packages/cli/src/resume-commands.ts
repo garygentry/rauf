@@ -15,7 +15,6 @@
 // backlog.json`, so the tree is dirty by construction. Branch protection stays
 // on (only the dirty-tree guard is relaxed).
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
@@ -44,6 +43,7 @@ import {
   releaseRecoveryLock,
   recoverInterruptedLoop,
   detectInterruptedItems,
+  readPendingReview,
   type InterruptedItem,
 } from "@rauf/loop";
 import { reverifyAndCommitInterrupted, type VerifyRunner } from "./recovery.js";
@@ -270,30 +270,6 @@ export interface ResumeDeps {
   runVerify?: VerifyRunner;
   /** Standalone review launcher (review pending, #146) — injectable. Defaults to `handleLoopReview`. */
   runReview?: (ctx: CommandContext) => Promise<number>;
-}
-
-/**
- * A review pass that started but did not succeed (#146): state.json
- * `reviewPending` plus its exact scope `reviewItemIds`, or null. Read before
- * recovery, which clears the loop state.
- */
-export function readPendingReview(paths: BacklogPaths): { itemIds: string[] | null } | null {
-  // Lenient on purpose: only these fields matter, so a state.json that fails
-  // full LoopState validation must not hide a pending review.
-  try {
-    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as {
-      reviewPending?: unknown;
-      reviewItemIds?: unknown;
-    };
-    if (raw.reviewPending !== true) return null;
-    const ids = Array.isArray(raw.reviewItemIds)
-      ? raw.reviewItemIds.filter((id): id is string => typeof id === "string")
-      : [];
-    // An empty/absent scope (older state) falls back to all done items.
-    return { itemIds: ids.length > 0 ? ids : null };
-  } catch {
-    return null;
-  }
 }
 
 export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): Promise<number> {

@@ -141,13 +141,16 @@ export class LoopManager {
   /**
    * Start a STANDALONE REVIEW pass for a project (D3.2). Mirrors startLoop but
    * runs LoopRunner.startReviewOnly() instead of start(). Returns an error
-   * string if a loop is already running for the same backlog root.
+   * string if a loop is already running for the same backlog root. `itemIds`
+   * scopes the review to those done items (a resumed pending review, #146);
+   * omitted, it reviews every done item.
    */
   startReviewLoop(
     projectPath: string,
     options: LoopStartOptions,
+    itemIds?: string[],
   ): { ok: true } | { ok: false; error: string } {
-    return this.launch(projectPath, options, (runner) => runner.startReviewOnly());
+    return this.launch(projectPath, options, (runner) => runner.startReviewOnly(itemIds));
   }
 
   /**

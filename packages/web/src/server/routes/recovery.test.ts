@@ -40,6 +40,7 @@ const ACTIVE_DIR = path.join(TMP_HOME, ".rauf", "active");
 interface ResumeResult {
   reconciled: { treeClean: boolean; interrupted: unknown[] };
   relaunched: boolean;
+  reviewRerun?: boolean;
   reason?: string;
 }
 
@@ -153,6 +154,16 @@ function seedState(name: string, status: string): void {
       baseCommitHash: null,
     }),
   );
+}
+
+/** Seed a settled state.json whose review pass did not finish (#146). */
+function seedPendingReview(name: string, status: string, reviewItemIds?: string[]): void {
+  seedState(name, status);
+  const statePath = path.join(tmpDir, name, ".rauf", "state.json");
+  const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as Record<string, unknown>;
+  state.reviewPending = true;
+  if (reviewItemIds) state.reviewItemIds = reviewItemIds;
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 }
 
 const pendingItem = {
@@ -424,6 +435,95 @@ describe("POST /:id/resume", () => {
     const item = backlog.items.find((i) => i.id === "001");
     expect(item?.humanAnswer).toBe("do it this way");
     expect(item?.needsHuman).toBe(false);
+  });
+
+  it("re-runs a pending review over reviewItemIds when every item is done (#146)", async () => {
+    const done = (id: string) => ({
+      ...pendingItem,
+      id,
+      status: "done",
+      completedAt: "2026-09-30",
+    });
+    createProject("p", [done("001"), done("002"), done("003")]);
+    seedPendingReview("p", "complete", ["001", "003"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const manager = getLoopManager();
+    const reviewSpy = vi.spyOn(manager, "startReviewLoop");
+    const loopSpy = vi.spyOn(manager, "startLoop");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.relaunched).toBe(false);
+    expect(body.data.reviewRerun).toBe(true);
+    expect(loopSpy).not.toHaveBeenCalled();
+    expect(reviewSpy).toHaveBeenCalledTimes(1);
+    const [projectPath, options, itemIds] = reviewSpy.mock.calls[0]!;
+    expect(projectPath).toBe(path.join(tmpDir, "p"));
+    expect(options).toMatchObject({ reviewOnly: true, review: true, maxIterations: 1 });
+    expect(itemIds).toEqual(["001", "003"]);
+  });
+
+  it("re-runs the pending review instead of relaunching when items remain", async () => {
+    createProject("p", [pendingItem]);
+    seedPendingReview("p", "paused_usage_limit", ["000"]);
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const manager = getLoopManager();
+    const reviewSpy = vi.spyOn(manager, "startReviewLoop");
+    const loopSpy = vi.spyOn(manager, "startLoop");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.relaunched).toBe(false);
+    expect(body.data.reviewRerun).toBe(true);
+    expect(loopSpy).not.toHaveBeenCalled();
+    expect(reviewSpy.mock.calls[0]?.[2]).toEqual(["000"]);
+  });
+
+  it("reviews every done item when a legacy pending review has no reviewItemIds", async () => {
+    createProject("p", [{ ...pendingItem, status: "done", completedAt: "2026-09-30" }]);
+    seedPendingReview("p", "complete");
+    initGitRepo(path.join(tmpDir, "p"));
+    setupLongRunningClaude();
+    const reviewSpy = vi.spyOn(getLoopManager(), "startReviewLoop");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: ResumeResult }).data.reviewRerun).toBe(true);
+    expect(reviewSpy.mock.calls[0]?.[2]).toBeUndefined();
+  });
+
+  it("does not re-run a review when none is pending (all done → nothing to relaunch)", async () => {
+    createProject("p", [{ ...pendingItem, status: "done", completedAt: "2026-09-30" }]);
+    seedState("p", "complete");
+    initGitRepo(path.join(tmpDir, "p"));
+    const reviewSpy = vi.spyOn(getLoopManager(), "startReviewLoop");
+    const app = makeApp(tmpDir);
+    const res = await app.request("/api/projects/p/resume", {
+      method: "POST",
+      headers: csrf,
+      body: JSON.stringify({}),
+    });
+    const body = (await res.json()) as { data: ResumeResult };
+    expect(body.data.relaunched).toBe(false);
+    expect(body.data.reviewRerun).toBeUndefined();
+    expect(body.data.reason).toBe("no eligible items");
+    expect(reviewSpy).not.toHaveBeenCalled();
   });
 
   it("returns 403 without X-Rauf-Request", async () => {
