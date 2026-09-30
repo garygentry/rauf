@@ -119,6 +119,32 @@ When an iteration stops making progress, rauf emits an `llm_stuck_warning` event
 `stuckWarning` in `iteration-status.json`. Treat this as a **hang warning, not a failure** —
 surface it and keep watching; only escalate if it persists.
 
+The warning is tool-aware. It fires after 5 minutes of stream silence, unless a quiet tool call
+is in flight that has been running for less than 30 minutes. A quiet call is one that produces
+no stream events of its own, like a long `bun test && bun run smoke` in the foreground. (A Task
+whose subagent is busy doesn't count, but the subagent's own tool calls do.) The 30 minutes is a
+cap on the tool's runtime, counted from when it started. It is not extra silence, so other
+activity never pushes it back. Once a quiet tool passes the cap, 5 minutes of silence triggers the
+warning as usual. The event says which case you are in: `currentTool` names the tool (`null` means
+the model itself went quiet) and `toolRunningMs` says how long it has been running.
+`iteration-status.json` keeps `currentTool` set, with `currentToolStartedAt`, until that tool
+finishes, and rauf keeps refreshing its `updatedAt` while the tool runs.
+
+Both thresholds are configurable per project in `.rauf.json`:
+
+```json
+{
+  "options": {
+    "stuckThresholdMs": 300000,
+    "toolStuckThresholdMs": 1800000
+  }
+}
+```
+
+Tool tracking needs a streaming agent (`claude`, `codex`). The plain-text agents emit no stream
+events, so for them the warning just means the iteration has run `stuckThresholdMs` without
+finishing.
+
 :::caution[Don't infer a stall from `updatedAt`]
 Do not decide a loop is stuck by reading `state.json`'s `updatedAt` and noticing it hasn't moved.
 A long-but-healthy iteration looks the same. The `llm_stuck_warning` event and `stuckWarning`

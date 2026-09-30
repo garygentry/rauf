@@ -96,6 +96,55 @@ describe("CodexCliProvider", () => {
     expect(spawnOptions?.stdin).toBe(prompt);
   });
 
+  describe("open tool items at process exit (#141)", () => {
+    const started =
+      '{"type":"item.started","item":{"id":"cmd_1","type":"command_execution","status":"in_progress"}}\n';
+    const aborted = { type: "tool_end", blockIndex: 0, toolUseId: "cmd_1", reason: "aborted" };
+    const run = async () => {
+      const events: ClaudeStreamEvent[] = [];
+      const p = new CodexCliProvider();
+      const res = p.execute("go", {
+        timeoutMinutes: 1,
+        outputFormat: "stream-json",
+        onStreamEvent: (e) => events.push(e),
+      });
+      return { events, res };
+    };
+
+    it("closes an open item when the process exits (non-zero / timed out) without turn.completed", async () => {
+      mockSpawn.mockImplementation(async (_cmd, _args, opts) => {
+        opts?.onStdout?.(Buffer.from(started));
+        return ok({ ...PG_OK, exitCode: 143, timedOut: true });
+      });
+      const { events, res } = await run();
+      expect((await res).ok).toBe(true);
+      expect(events).toEqual([
+        { type: "tool_start", toolName: "command_execution", blockIndex: 0, toolUseId: "cmd_1" },
+        aborted,
+      ]);
+    });
+
+    it("closes an open item when the spawn helper throws", async () => {
+      mockSpawn.mockImplementation(async (_cmd, _args, opts) => {
+        opts?.onStdout?.(Buffer.from(started));
+        throw new Error("boom");
+      });
+      const { events, res } = await run();
+      await expect(res).rejects.toThrow("boom");
+      expect(events.at(-1)).toEqual(aborted);
+    });
+
+    it("closes an open item on turn.failed", async () => {
+      mockSpawn.mockImplementation(async (_cmd, _args, opts) => {
+        opts?.onStdout?.(Buffer.from(started + '{"type":"turn.failed","error":{}}\n'));
+        return ok(PG_OK);
+      });
+      const { events, res } = await run();
+      await res;
+      expect(events.filter((e) => e.type === "tool_end")).toEqual([aborted]);
+    });
+  });
+
   it("parses streamed JSONL into events and a reconstructed final message", async () => {
     const jsonl = readFileSync(
       join(import.meta.dirname, "__fixtures__", "codex-exec-command.jsonl"),

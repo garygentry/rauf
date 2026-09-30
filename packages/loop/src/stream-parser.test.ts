@@ -214,8 +214,172 @@ describe("StreamParser", () => {
 
       const toolStarts = events.filter((e) => e.type === "tool_start");
       expect(toolStarts).toHaveLength(2);
-      expect(toolStarts[0]).toEqual({ type: "tool_start", toolName: "Read", blockIndex: 1 });
-      expect(toolStarts[1]).toEqual({ type: "tool_start", toolName: "Edit", blockIndex: 2 });
+      expect(toolStarts[0]).toEqual({
+        type: "tool_start",
+        toolName: "Read",
+        blockIndex: 1,
+        toolUseId: "t1",
+      });
+      expect(toolStarts[1]).toEqual({
+        type: "tool_start",
+        toolName: "Edit",
+        blockIndex: 2,
+        toolUseId: "t2",
+      });
+    });
+
+    // #141: the assistant tool_use block only STARTS the tool; the CLI runs it after
+    // that event, so tool_end must wait for the matching tool_result.
+    it("keeps a tool_use open until its tool_result arrives", () => {
+      const events: ClaudeStreamEvent[] = [];
+      const parser = new StreamParser((e) => events.push(e));
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "tool_use", name: "Bash", id: "toolu_a", input: {} },
+              { type: "tool_use", name: "Read", id: "toolu_b", input: {} },
+            ],
+          },
+        }),
+      );
+      expect(events.filter((e) => e.type === "tool_end")).toHaveLength(0);
+
+      parser.feed(
+        JSON.stringify({
+          type: "user",
+          message: {
+            role: "user",
+            content: [{ type: "tool_result", tool_use_id: "toolu_b", content: "ok" }],
+          },
+        }),
+      );
+      expect(events.filter((e) => e.type === "tool_end")).toEqual([
+        { type: "tool_end", blockIndex: 1, toolUseId: "toolu_b" },
+      ]);
+
+      parser.feed(
+        JSON.stringify({
+          type: "user",
+          message: {
+            content: [{ type: "tool_result", tool_use_id: "toolu_a", content: "done" }],
+          },
+        }),
+      );
+      expect(events.filter((e) => e.type === "tool_end")).toEqual([
+        { type: "tool_end", blockIndex: 1, toolUseId: "toolu_b" },
+        { type: "tool_end", blockIndex: 0, toolUseId: "toolu_a" },
+      ]);
+    });
+
+    it("ignores user events without tool results", () => {
+      const events = collectEvents([
+        JSON.stringify({ type: "user", message: { content: "plain text" } }),
+      ]);
+      expect(events).toHaveLength(0);
+    });
+
+    it("reports a tool_result for an unknown id as stream activity, keeping its parent (#141)", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "user",
+          message: { content: [{ type: "tool_result", tool_use_id: "never-started" }] },
+        }),
+        JSON.stringify({
+          type: "user",
+          parent_tool_use_id: "task_1",
+          message: { content: [{ type: "tool_result", tool_use_id: "lost-child" }] },
+        }),
+      ]);
+      expect(events).toEqual([
+        { type: "stream_activity" },
+        { type: "stream_activity", parentToolUseId: "task_1" },
+      ]);
+    });
+
+    it("closes still-open tool calls when the result event ends the session", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "tool_use", name: "Bash", id: "toolu_x", input: {} }] },
+        }),
+        JSON.stringify({ type: "result", subtype: "success", result: "RAUF_DONE" }),
+      ]);
+      const types = events.map((e) => e.type);
+      expect(types).toContain("tool_end");
+      // The tool is closed before the session's message_stop.
+      expect(types.indexOf("tool_end")).toBeLessThan(types.indexOf("message_stop"));
+    });
+
+    it("finish() closes every open call as aborted, once", () => {
+      const events: ClaudeStreamEvent[] = [];
+      const parser = new StreamParser((e) => events.push(e));
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: { id: "m", content: [{ type: "tool_use", name: "Bash", id: "a", input: {} }] },
+        }),
+      );
+      parser.feed(
+        JSON.stringify({
+          type: "content_block_start",
+          index: 4,
+          content_block: { type: "tool_use", name: "Read" },
+        }),
+      );
+      parser.finish();
+      parser.finish();
+      expect(events.filter((e) => e.type === "tool_end")).toEqual([
+        { type: "tool_end", blockIndex: 0, toolUseId: "a", reason: "aborted" },
+        { type: "tool_end", blockIndex: 4, reason: "aborted" },
+      ]);
+    });
+
+    it("does not reconcile parallel calls from the same message (one event per block)", () => {
+      const events = collectEvents(
+        ["a", "b"].map((id) =>
+          JSON.stringify({
+            type: "assistant",
+            message: { id: "same", content: [{ type: "tool_use", name: "Bash", id, input: {} }] },
+          }),
+        ),
+      );
+      expect(events.filter((e) => e.type === "tool_end")).toHaveLength(0);
+    });
+
+    it("tags nested (subagent) tool starts and token updates with parentToolUseId", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "assistant",
+          parent_tool_use_id: "task_1",
+          message: {
+            id: "s1",
+            content: [{ type: "tool_use", name: "Grep", id: "g", input: {} }],
+            usage: { input_tokens: 5, output_tokens: 1 },
+          },
+        }),
+      ]);
+      expect(events).toEqual([
+        { type: "token_update", inputTokens: 5, outputTokens: 1, parentToolUseId: "task_1" },
+        {
+          type: "tool_start",
+          toolName: "Grep",
+          blockIndex: 0,
+          toolUseId: "g",
+          parentToolUseId: "task_1",
+        },
+      ]);
+    });
+
+    it("treats a tool_use with no id as instantaneous (nothing to pair a result with)", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "assistant",
+          message: { content: [{ type: "tool_use", name: "Read", input: {} }] },
+        }),
+      ]);
+      expect(events.map((e) => e.type)).toEqual(["tool_start", "tool_end"]);
     });
 
     it("extracts tokens from assistant event", () => {
@@ -333,7 +497,12 @@ describe("StreamParser", () => {
 
       const toolStarts = events.filter((e) => e.type === "tool_start");
       expect(toolStarts).toHaveLength(1);
-      expect(toolStarts[0]).toEqual({ type: "tool_start", toolName: "Write", blockIndex: 1 });
+      expect(toolStarts[0]).toEqual({
+        type: "tool_start",
+        toolName: "Write",
+        blockIndex: 1,
+        toolUseId: "t1",
+      });
     });
   });
 });

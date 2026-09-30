@@ -547,7 +547,11 @@ function describeEvent(e: PersistedEvent): { label: string; detail: string } {
     case "llm_stuck_warning":
       return {
         label: "Stuck warning",
-        detail: `#${e.itemId} · silent ${Math.round(e.silentMs / 1000)}s`,
+        detail:
+          `#${e.itemId} · silent ${Math.round(e.silentMs / 1000)}s` +
+          (e.currentTool != null
+            ? ` · ${e.currentTool} running ${Math.round((e.toolRunningMs ?? e.silentMs) / 1000)}s`
+            : ""),
       };
     default:
       return describeUnknownEvent(e);

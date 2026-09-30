@@ -40,6 +40,21 @@ function makeStatus(overrides?: Partial<IterationStatus>): IterationStatus {
 }
 
 describe("iteration-status", () => {
+  it("round-trips currentToolStartedAt, and still reads files written without it (#141)", () => {
+    const startedAt = new Date().toISOString();
+    writeIterationStatus(
+      paths,
+      makeStatus({ currentTool: "Bash", currentToolStartedAt: startedAt }),
+      true,
+    );
+    expect(readIterationStatus(paths)?.currentToolStartedAt).toBe(startedAt);
+
+    writeIterationStatus(paths, makeStatus(), true);
+    const legacy = readIterationStatus(paths);
+    expect(legacy).not.toBeNull();
+    expect(legacy?.currentToolStartedAt).toBeUndefined();
+  });
+
   it("writeIterationStatus writes a valid JSON file that readIterationStatus can parse", () => {
     const status = makeStatus();
     const result = writeIterationStatus(paths, status, true);

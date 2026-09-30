@@ -154,6 +154,18 @@ export const MarkerOptionsSchema = z.object({
    * warning — a stale/misconfigured dispatcher command still warns. (#121)
    */
   acknowledgeEmptyVerify: z.boolean().optional(),
+  /**
+   * Ms of stream silence before the loop emits `llm_stuck_warning`; always required,
+   * tool or not. Default 300000 (5 minutes). (#141)
+   */
+  stuckThresholdMs: z.number().int().positive().optional(),
+  /**
+   * Runtime ceiling for a quiet in-flight tool call (e.g. a long, silent foreground
+   * verification command): until the oldest such call has run this long, silence
+   * does not raise `llm_stuck_warning`. Measured from the call's start, so later
+   * stream activity never extends it. Default 1800000 (30 minutes). (#141)
+   */
+  toolStuckThresholdMs: z.number().int().positive().optional(),
 });
 
 // ─── MarkerFile (.rauf.json) ──────────────────────────────────────
@@ -647,6 +659,16 @@ const LlmToolActivitySchema = LoopEventBaseSchema.extend({
   itemId: z.string(),
   toolName: z.string(),
   phase: z.enum(["start", "end"]),
+  /**
+   * Provider call id pairing a start with its end (#141). Absent when the agent gives
+   * no id, and on events persisted by older runners.
+   */
+  toolUseId: z.string().optional(),
+  /**
+   * On a synthesized `end` only: `reconciled` = the stream moved past the call without
+   * its result; `aborted` = the agent process exited with the call open (#141).
+   */
+  reason: z.enum(["reconciled", "aborted"]).optional(),
 });
 
 const LlmTokenUpdateSchema = LoopEventBaseSchema.extend({
@@ -660,6 +682,14 @@ const LlmStuckWarningSchema = LoopEventBaseSchema.extend({
   type: z.literal("llm_stuck_warning"),
   itemId: z.string(),
   silentMs: z.number().nonnegative(),
+  /**
+   * Tool call in flight when the warning fired, or null when the LLM itself went
+   * silent. Optional only so events persisted before #141 still parse; the runner
+   * always sets it.
+   */
+  currentTool: z.string().nullable().optional(),
+  /** Ms since `currentTool` started, or null with no tool in flight (#141). */
+  toolRunningMs: z.number().nonnegative().nullable().optional(),
 });
 
 export const LoopEventSchema = z.discriminatedUnion("type", [
@@ -785,7 +815,13 @@ export const IterationStatusSchema = z.object({
   itemId: z.string(),
   startedAt: z.string(),
   updatedAt: z.string(),
+  /** Tool call currently in flight (set from its start until its own end), or null. */
   currentTool: z.string().nullable(),
+  /**
+   * ISO time `currentTool` started, or null with no tool in flight (#141). Optional
+   * so status files written by older runners still parse.
+   */
+  currentToolStartedAt: z.string().nullable().optional(),
   recentTools: z.array(z.string()).max(10),
   tokens: z.object({
     input: z.number().nonnegative(),

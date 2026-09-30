@@ -199,30 +199,38 @@ export class CodexCliProvider implements LLMProvider {
       });
     }
 
-    const res = await spawnProcessGroup(CODEX_BINARY, argv, {
-      cwd: process.cwd(), // REQ-SEC-01: agent runs at the project root (sandbox boundary)
-      timeoutMs: options.timeoutMinutes * 60 * 1000,
-      signal: options.signal,
-      ...(options.env ? { env: options.env } : {}),
-      // Codex accepts `-` as the explicit stdin prompt. This avoids argv's per-argument size limit.
-      stdin: prompt,
-      ...(parser
-        ? {
-            onStdout: (chunk: Buffer) => {
-              lineBuf += chunk.toString("utf-8");
-              const lines = lineBuf.split("\n");
-              lineBuf = lines.pop()!; // keep the incomplete trailing line
-              for (const line of lines) {
-                if (line.trim()) parser!.feed(line);
-              }
-            },
-          }
-        : {}),
-    });
+    let res: Awaited<ReturnType<typeof spawnProcessGroup>>;
+    try {
+      res = await spawnProcessGroup(CODEX_BINARY, argv, {
+        cwd: process.cwd(), // REQ-SEC-01: agent runs at the project root (sandbox boundary)
+        timeoutMs: options.timeoutMinutes * 60 * 1000,
+        signal: options.signal,
+        ...(options.env ? { env: options.env } : {}),
+        // Codex accepts `-` as the explicit stdin prompt. This avoids argv's per-argument size limit.
+        stdin: prompt,
+        ...(parser
+          ? {
+              onStdout: (chunk: Buffer) => {
+                lineBuf += chunk.toString("utf-8");
+                const lines = lineBuf.split("\n");
+                lineBuf = lines.pop()!; // keep the incomplete trailing line
+                for (const line of lines) {
+                  if (line.trim()) parser!.feed(line);
+                }
+              },
+            }
+          : {}),
+      });
+    } finally {
+      // #141: on every exit path (normal, spawn error, timeout/kill, throw, truncated
+      // stdout) flush a trailing partial line and close still-open tool items.
+      if (parser) {
+        if (lineBuf.trim()) parser.feed(lineBuf);
+        lineBuf = "";
+        parser.finish();
+      }
+    }
     if (!res.ok) return res; // spawn failure → err(FILE_NOT_FOUND)
-
-    // Flush a trailing partial line.
-    if (parser && lineBuf.trim()) parser.feed(lineBuf);
 
     const { exitCode, stdout, stderr, timedOut, durationMs } = res.value;
     if (parser) {

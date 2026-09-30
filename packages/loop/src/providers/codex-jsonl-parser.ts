@@ -18,7 +18,7 @@
 // Deliberately structurally aligned with {@link StreamParser} (the Claude parser):
 // same callback shape, same reconstructed-text accessor, malformed lines ignored.
 
-import type { ClaudeStreamEvent } from "../stream-parser.js";
+import type { ClaudeStreamEvent, ToolEndReason } from "../stream-parser.js";
 
 /** Codex `item.type`s that represent a tool/command activity (→ tool_start/tool_end). */
 const TOOL_ITEM_TYPES = new Set([
@@ -68,8 +68,27 @@ export class CodexStreamParser {
       case "turn.completed":
         this.handleTurnCompleted(obj);
         break;
-      // thread.started / turn.started / error / turn.failed carry no telemetry we map.
+      case "turn.failed":
+        // The turn is over: nothing it started is still running.
+        this.closeOpenItems("aborted");
+        break;
+      // thread.started / turn.started / error carry no telemetry we map.
     }
+  }
+
+  /**
+   * The codex process has exited: end every tool item still open with
+   * `reason: "aborted"` so start/end telemetry stays balanced (#141). Idempotent.
+   */
+  finish(): void {
+    this.closeOpenItems("aborted");
+  }
+
+  private closeOpenItems(reason: ToolEndReason): void {
+    for (const [id, blockIndex] of this.toolBlocks) {
+      this.onEvent({ type: "tool_end", blockIndex, toolUseId: id, reason });
+    }
+    this.toolBlocks.clear();
   }
 
   /** Returns the reconstructed agent text (joined agent_message fragments). */
@@ -95,22 +114,26 @@ export class CodexStreamParser {
       if (phase === "started") {
         const blockIndex = this.nextBlockIndex++;
         this.toolBlocks.set(id, blockIndex);
-        this.onEvent({ type: "tool_start", toolName: itemType, blockIndex });
+        this.onEvent({ type: "tool_start", toolName: itemType, blockIndex, toolUseId: id });
       } else {
         // completed: pair with the started index (fall back to a fresh index if we
         // never saw the start — e.g. an atomic tool item emitted only on completion).
         let blockIndex = this.toolBlocks.get(id);
         if (blockIndex === undefined) {
           blockIndex = this.nextBlockIndex++;
-          this.onEvent({ type: "tool_start", toolName: itemType, blockIndex });
+          this.onEvent({ type: "tool_start", toolName: itemType, blockIndex, toolUseId: id });
         }
         this.toolBlocks.delete(id);
-        this.onEvent({ type: "tool_end", blockIndex });
+        this.onEvent({ type: "tool_end", blockIndex, toolUseId: id });
       }
     }
   }
 
   private handleTurnCompleted(obj: Record<string, unknown>): void {
+    // A finished turn has no running tools: close any item whose completion never
+    // arrived so the runner does not treat it as in flight (#141).
+    this.closeOpenItems("reconciled");
+
     const usage = obj.usage as Record<string, unknown> | undefined;
     if (!usage) return;
     const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;

@@ -61,6 +61,12 @@ import {
 import type { LLMProvider } from "./providers/types.js";
 import { resolveAgentId } from "./agent-selection.js";
 import type { ClaudeStreamEvent } from "./stream-parser.js";
+import {
+  DEFAULT_STUCK_THRESHOLD_MS,
+  DEFAULT_TOOL_STUCK_THRESHOLD_MS,
+  StuckDetector,
+  type StuckThresholds,
+} from "./stuck-detector.js";
 import { parseSignal } from "./signal-parser.js";
 import { buildPrompt, buildReviewPrompt } from "./prompt-builder.js";
 import {
@@ -111,12 +117,6 @@ export interface LoopResult {
 
 /** Result of a review pass */
 type ReviewPassResult = "clean" | "continue" | "failed";
-
-/** How long without activity before we emit a stuck warning */
-const STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
-
-/** How often to check for stuckness */
-const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
@@ -219,6 +219,14 @@ export class LoopRunner extends TypedEventEmitter {
    * id (and any config-driven factory) resolves its binary from the marker (03 §7.2).
    */
   private projectProviderConfig?: Record<string, unknown>;
+  /**
+   * Stuck-warning thresholds (#141), from `.rauf.json` `options.stuckThresholdMs` /
+   * `options.toolStuckThresholdMs`, read once at loop start.
+   */
+  private stuckThresholds: StuckThresholds = {
+    stuckThresholdMs: DEFAULT_STUCK_THRESHOLD_MS,
+    toolStuckThresholdMs: DEFAULT_TOOL_STUCK_THRESHOLD_MS,
+  };
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -343,6 +351,10 @@ export class LoopRunner extends TypedEventEmitter {
         projectModel = opts.model;
         this.projectProvider = opts.provider; // MarkerOptions.provider (schemas.ts:148)
         this.projectProviderConfig = opts.providerConfig; // MarkerOptions.providerConfig (schemas.ts:149)
+        this.stuckThresholds = {
+          stuckThresholdMs: opts.stuckThresholdMs ?? DEFAULT_STUCK_THRESHOLD_MS,
+          toolStuckThresholdMs: opts.toolStuckThresholdMs ?? DEFAULT_TOOL_STUCK_THRESHOLD_MS,
+        };
       }
       // Read the global default agent once (ToolConfig.defaultProvider, schemas.ts:222).
       // Hoisted out of the iteration loop — it does not vary per item.
@@ -961,6 +973,8 @@ export class LoopRunner extends TypedEventEmitter {
     // Set up iteration status tracking
     let lastActivityAt = new Date().toISOString();
     let currentTool: string | null = null;
+    let currentToolStartedAt: string | null = null;
+    const stuckDetector = new StuckDetector(this.stuckThresholds, Date.now());
     const recentTools: string[] = [];
     let latestInputTokens = 0;
     let latestOutputTokens = 0;
@@ -972,6 +986,7 @@ export class LoopRunner extends TypedEventEmitter {
       startedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       currentTool: null,
+      currentToolStartedAt: null,
       recentTools: [],
       tokens: { input: 0, output: 0 },
       lastActivityAt,
@@ -979,48 +994,68 @@ export class LoopRunner extends TypedEventEmitter {
     };
     writeIterationStatus(this.paths, iterStatus, true);
 
-    // Stuck detection interval
+    // Stuck detection interval. While a tool call is in flight the detector applies
+    // the (much longer) tool ceiling instead of the LLM-silence threshold (#141).
     const stuckTimer = setInterval(() => {
-      const silentMs = Date.now() - new Date(lastActivityAt).getTime();
-      if (silentMs >= STUCK_THRESHOLD_MS && !stuckWarning) {
+      const warning = stuckDetector.check(Date.now());
+      if (warning) {
         stuckWarning = true;
-        this.emitEvent("llm_stuck_warning", { itemId: item.id, silentMs });
+        this.emitEvent("llm_stuck_warning", { itemId: item.id, ...warning });
         iterStatus.stuckWarning = true;
+        iterStatus.updatedAt = new Date().toISOString();
+        writeIterationStatus(this.paths, iterStatus, true);
+      } else if (stuckDetector.currentTool()) {
+        // Heartbeat: a quiet tool call writes nothing for minutes, which would age
+        // `updatedAt` out of the status freshness window (health.iterationFresh) while
+        // the runner is alive and waiting. The tick interval is at most 30 s.
         iterStatus.updatedAt = new Date().toISOString();
         writeIterationStatus(this.paths, iterStatus);
       }
-    }, STUCK_CHECK_INTERVAL_MS);
+    }, StuckDetector.checkIntervalMs(this.stuckThresholds));
+
+    const syncCurrentTool = (): void => {
+      const tool = stuckDetector.currentTool();
+      currentTool = tool?.toolName ?? null;
+      currentToolStartedAt = tool ? new Date(tool.startedAt).toISOString() : null;
+    };
 
     const onStreamEvent = (event: ClaudeStreamEvent): void => {
-      lastActivityAt = new Date().toISOString();
+      const now = Date.now();
+      lastActivityAt = new Date(now).toISOString();
       stuckWarning = false;
+      const endedTool = stuckDetector.onEvent(event, now);
+      const toolBefore = `${currentTool}@${currentToolStartedAt}`;
 
       try {
         switch (event.type) {
           case "tool_start": {
-            currentTool = event.toolName;
+            syncCurrentTool();
             recentTools.push(event.toolName);
             if (recentTools.length > 10) recentTools.shift();
             this.emitEvent("llm_tool_activity", {
               itemId: item.id,
               toolName: event.toolName,
               phase: "start",
+              ...(event.toolUseId !== undefined ? { toolUseId: event.toolUseId } : {}),
             });
             break;
           }
           case "tool_end": {
-            currentTool = null;
+            // currentTool stays set until the tool's own end event (#141); with
+            // parallel calls it falls back to the most recent one still running.
+            syncCurrentTool();
             this.emitEvent("llm_tool_activity", {
               itemId: item.id,
-              toolName: "unknown",
+              toolName: endedTool ?? "unknown",
               phase: "end",
+              ...(event.toolUseId !== undefined ? { toolUseId: event.toolUseId } : {}),
+              ...(event.reason !== undefined ? { reason: event.reason } : {}),
             });
             break;
           }
           case "token_update": {
             latestInputTokens = event.inputTokens;
             latestOutputTokens = event.outputTokens;
-            const now = Date.now();
             if (now - lastTokenEventAt >= TOKEN_EVENT_THROTTLE_MS) {
               lastTokenEventAt = now;
               this.emitEvent("llm_token_update", {
@@ -1035,12 +1070,20 @@ export class LoopRunner extends TypedEventEmitter {
 
         // Update iteration status file
         iterStatus.currentTool = currentTool;
+        iterStatus.currentToolStartedAt = currentToolStartedAt;
         iterStatus.recentTools = [...recentTools];
         iterStatus.tokens = { input: latestInputTokens, output: latestOutputTokens };
         iterStatus.lastActivityAt = lastActivityAt;
         iterStatus.stuckWarning = stuckWarning;
         iterStatus.updatedAt = new Date().toISOString();
-        writeIterationStatus(this.paths, iterStatus);
+        // #141: a tool boundary bypasses the write throttle. A throttled tool_start
+        // would otherwise not reach disk until the NEXT event — for a long, quiet
+        // foreground tool that is minutes later, leaving `currentTool` reading null.
+        writeIterationStatus(
+          this.paths,
+          iterStatus,
+          `${currentTool}@${currentToolStartedAt}` !== toolBefore,
+        );
       } catch {
         // Stream event handling must never crash the loop
       }

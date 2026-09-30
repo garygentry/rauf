@@ -80,34 +80,43 @@ export async function spawnClaude(
 
   const timeoutMs = options.sessionTimeoutMinutes * 60 * 1000;
 
-  const res = await spawnProcessGroup("claude", args, {
-    timeoutMs,
-    signal: options.signal,
-    ...(options.env ? { env: options.env } : {}),
-    stdin: prompt,
-    ...(parser
-      ? {
-          onStdout: (chunk: Buffer) => {
-            lineBuf += chunk.toString("utf-8");
-            const lines = lineBuf.split("\n");
-            lineBuf = lines.pop()!; // keep incomplete trailing line
-            for (const line of lines) {
-              if (line.trim()) {
-                parser!.feed(line);
+  // #141: whatever way the process ends (normal exit, spawn error, timeout/kill, a throw,
+  // truncated stdout), flush the trailing partial line and close every tool call still
+  // open, so each tool_start gets a matching tool_end.
+  const finishStream = (): void => {
+    if (!parser) return;
+    if (lineBuf.trim()) parser.feed(lineBuf);
+    lineBuf = "";
+    parser.finish();
+  };
+
+  let res: Awaited<ReturnType<typeof spawnProcessGroup>>;
+  try {
+    res = await spawnProcessGroup("claude", args, {
+      timeoutMs,
+      signal: options.signal,
+      ...(options.env ? { env: options.env } : {}),
+      stdin: prompt,
+      ...(parser
+        ? {
+            onStdout: (chunk: Buffer) => {
+              lineBuf += chunk.toString("utf-8");
+              const lines = lineBuf.split("\n");
+              lineBuf = lines.pop()!; // keep incomplete trailing line
+              for (const line of lines) {
+                if (line.trim()) {
+                  parser!.feed(line);
+                }
               }
-            }
-          },
-        }
-      : {}),
-  });
+            },
+          }
+        : {}),
+    });
+  } finally {
+    finishStream();
+  }
 
   if (!res.ok) return res;
-
-  // Flush any remaining partial line in stream-json mode
-  if (parser && lineBuf.trim()) {
-    parser.feed(lineBuf);
-    lineBuf = "";
-  }
 
   const { exitCode, stdout, stderr, timedOut, durationMs } = res.value;
   const result: SpawnClaudeResult = {
