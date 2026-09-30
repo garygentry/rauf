@@ -103,7 +103,12 @@ export class StuckDetector {
   onEvent(event: ClaudeStreamEvent, now: number): string | undefined {
     this.lastActivityAt = now;
     this.warned = false;
-    if ((event.type === "tool_start" || event.type === "token_update") && event.parentToolUseId) {
+    if (
+      (event.type === "tool_start" ||
+        event.type === "token_update" ||
+        event.type === "stream_activity") &&
+      event.parentToolUseId
+    ) {
       const parent = this.inFlight.get(`id:${event.parentToolUseId}`);
       if (parent) parent.hasNestedActivity = true;
     }

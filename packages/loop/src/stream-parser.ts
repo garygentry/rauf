@@ -29,7 +29,8 @@ export type StreamEventType =
   | "tool_end"
   | "token_update"
   | "message_stop"
-  | "api_retry";
+  | "api_retry"
+  | "stream_activity";
 
 export interface ToolStartEvent {
   type: "tool_start";
@@ -79,12 +80,24 @@ export interface ApiRetryEvent {
   type: "api_retry";
 }
 
+/**
+ * Stream output that proves the agent is alive but maps to no other event: a
+ * `tool_result` for a call whose start was never seen (lost or out of order). Resets
+ * the silence clock; `parentToolUseId` marks the enclosing Task as having an active
+ * subagent (#141).
+ */
+export interface StreamActivityEvent {
+  type: "stream_activity";
+  parentToolUseId?: string;
+}
+
 export type ClaudeStreamEvent =
   | ToolStartEvent
   | ToolEndEvent
   | TokenUpdateEvent
   | MessageStopEvent
-  | ApiRetryEvent;
+  | ApiRetryEvent
+  | StreamActivityEvent;
 
 // ─── Parser ─────────────────────────────────────────────────────
 
@@ -327,10 +340,20 @@ export class StreamParser {
     const content = message?.content;
     if (!Array.isArray(content)) return;
 
+    const parent = typeof obj.parent_tool_use_id === "string" ? obj.parent_tool_use_id : null;
     for (const raw of content) {
       const block = raw as Record<string, unknown> | undefined;
       if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
-      this.closeToolUse(block.tool_use_id);
+      if (this.openToolUses.has(block.tool_use_id)) {
+        this.closeToolUse(block.tool_use_id);
+      } else {
+        // A result for a call whose start we never saw is still output: don't drop it,
+        // or a live subagent would look like a quiet Task.
+        this.onEvent({
+          type: "stream_activity",
+          ...(parent !== null ? { parentToolUseId: parent } : {}),
+        });
+      }
     }
   }
 

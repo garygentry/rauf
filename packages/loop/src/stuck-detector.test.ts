@@ -194,6 +194,46 @@ describe("StuckDetector (#141)", () => {
     expect(h.check(MIN + 5 * MIN)).toMatchObject({ currentTool: null });
   });
 
+  it("nested Task: a result for a nested call whose start was lost still marks the subagent live", () => {
+    // Reproduction (round-2 review): Task starts, the nested tool's assistant/start line
+    // is lost, but its tool_result arrives with parent_tool_use_id; the subagent hangs.
+    const h = harness()
+      .at(0)
+      .feed(toolUse("m1", "task", "Task"))
+      .at(2 * MIN)
+      .feed(result("lost_child", "task"));
+    expect(h.events.at(-1)).toEqual({ type: "stream_activity", parentToolUseId: "task" });
+    // The result reset the silence clock…
+    expect(h.check(2 * MIN + 5 * MIN - 1)).toBeNull();
+    // …and the Task is a live subagent, not a quiet tool: the hang warns at 5 minutes.
+    expect(h.check(2 * MIN + 5 * MIN)).toEqual({
+      silentMs: 5 * MIN,
+      currentTool: null,
+      toolRunningMs: null,
+    });
+  });
+
+  it("a top-level result for an unknown call is activity only; a quiet tool keeps its ceiling", () => {
+    const h = harness()
+      .at(0)
+      .feed(toolUse("m1", "gate", "Bash"))
+      .at(3 * MIN)
+      .feed(result("unknown_call")); // no parent_tool_use_id
+    expect(h.events.at(-1)).toEqual({ type: "stream_activity" });
+    // Resets the silence clock, but marks nothing: the quiet Bash still holds the
+    // warning off until its ceiling (from its own start).
+    expect(h.check(3 * MIN + 5 * MIN)).toBeNull();
+    expect(h.check(30 * MIN)).toEqual({
+      silentMs: 27 * MIN,
+      currentTool: "Bash",
+      toolRunningMs: 30 * MIN,
+    });
+    // With nothing in flight, the same line alone just resets the 5-minute clock.
+    const idle = harness().at(0).feed(text("m1", "x")).at(MIN).feed(result("unknown_call"));
+    expect(idle.check(MIN + 5 * MIN - 1)).toBeNull();
+    expect(idle.check(MIN + 5 * MIN)).toMatchObject({ currentTool: null, silentMs: 5 * MIN });
+  });
+
   it("the Task's own result reconciles anything still open under it", () => {
     const h = harness()
       .at(0)

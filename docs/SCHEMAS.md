@@ -616,7 +616,9 @@ type LoopEvent =
 silent for `options.stuckThresholdMs` (default 5 min), **unless** a _quiet_ tool call is in
 flight that has been running for less than `options.toolStuckThresholdMs` (default 30 min).
 A quiet tool call is an in-flight call with no nested activity. A Task whose subagent is
-emitting events is a model, not a quiet tool, though its own in-flight children can be. So
+emitting events is a model, not a quiet tool, though its own in-flight children can be. Any
+nested output counts as subagent activity, including a `tool_result` for a nested call whose
+start line was lost. So
 `toolStuckThresholdMs` is a **runtime ceiling measured from the oldest quiet call's start**,
 not a silence threshold. Later stream activity never extends it, and `stuckThresholdMs` of
 silence is always required. Nothing is killed. The warning fires once per silence episode

@@ -273,15 +273,29 @@ describe("StreamParser", () => {
       ]);
     });
 
-    it("ignores tool_results for unknown ids and user events without tool results", () => {
+    it("ignores user events without tool results", () => {
       const events = collectEvents([
         JSON.stringify({ type: "user", message: { content: "plain text" } }),
+      ]);
+      expect(events).toHaveLength(0);
+    });
+
+    it("reports a tool_result for an unknown id as stream activity, keeping its parent (#141)", () => {
+      const events = collectEvents([
         JSON.stringify({
           type: "user",
           message: { content: [{ type: "tool_result", tool_use_id: "never-started" }] },
         }),
+        JSON.stringify({
+          type: "user",
+          parent_tool_use_id: "task_1",
+          message: { content: [{ type: "tool_result", tool_use_id: "lost-child" }] },
+        }),
       ]);
-      expect(events).toHaveLength(0);
+      expect(events).toEqual([
+        { type: "stream_activity" },
+        { type: "stream_activity", parentToolUseId: "task_1" },
+      ]);
     });
 
     it("closes still-open tool calls when the result event ends the session", () => {
