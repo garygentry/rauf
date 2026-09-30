@@ -24,7 +24,7 @@ without touching stdout — the code alone tells you what happened.
 | Exit | Meaning                                                      |
 | ---- | ------------------------------------------------------------ |
 | `0`  | Success — clean terminal                                     |
-| `1`  | Error — generic failure                                      |
+| `1`  | Error — generic failure, or a failed/pending review pass     |
 | `2`  | Usage — bad args / precondition (incl. loop-already-running) |
 | `3`  | Needs human                                                  |
 | `4`  | Limit / usage-paused / sleeping                              |

@@ -37,7 +37,8 @@ rauf status --all               # every live loop on the machine (see below)
 ```
 
 Exit codes mirror the loop state, so a script can branch on `rauf status` without parsing JSON:
-`0` for a clean terminal state (`IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`), `1` for `ERROR`,
+`0` for a clean terminal state (`IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`), `1` for `ERROR`
+(or an `IDLE`/`COMPLETE` run whose review pass is still pending — `rauf resume` re-runs it),
 `3` for needs-human, `4` for a usage/iteration limit, `5` for genuinely blocked items, and `6`
 while a loop is `RUNNING`/`REVIEWING`.
 

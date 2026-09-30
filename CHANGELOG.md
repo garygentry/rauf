@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Upgrade notes / behavior changes
+
+- **`rauf status` now exits 1 for a run whose review pass is still pending.** An `IDLE`/`COMPLETE` status with `reviewPending: true` used to exit 0, so a script branching on `$?` read an unfinished review as a clean finish. It now exits 1 (ERROR), the code `loop run --review` returns for the same failed review, and this takes precedence over BLOCKED (5), in the same order as `loop run`. A review interrupted by a stop or a usage limit keeps its state's own code (`PAUSED` 0/5, `PAUSED_USAGE_LIMIT` 4). The human `rauf status` view gains a `Review: pending (N items)` line. (#149)
+
+### Fixed
+
+- **The web status page now shows a pending review and usage-API disagreements (#149).** A `reviewPending` status renders a "Review pending" notice naming the review's items (`reviewItemIds`) and the `rauf resume` remedy. A `usage_limit_hit` event with `reason: "usage_api_disagreement"` renders "banner unconfirmed by usage API ×N" (from `consecutiveDisagreements`), as the CLI event views do.
+
 ## 0.17.0
 
 _Released 2026-09-30._

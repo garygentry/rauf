@@ -531,6 +531,11 @@ export function genuineBlockedCount(summary: DerivedStatus["backlogSummary"]): n
  * (IDLE / COMPLETE / PAUSED) with a genuine-blocked count > 0 returns BLOCKED(5)
  * instead of SUCCESS(0), so `status` and `loop run` agree on BLOCKED. The
  * derived status is consulted only for that carrier — pass it from the caller.
+ *
+ * ERROR(1) is also derived for IDLE / COMPLETE with `reviewPending` (#149):
+ * the work finished but its review pass did not, which `loop run --review`
+ * reports as ERROR(1). A PAUSED stop or a usage-limit stop that interrupted the
+ * review keeps its own code (0/5 and 4), as `loop run` does.
  */
 export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): number {
   switch (state) {
@@ -547,12 +552,19 @@ export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): n
       return ExitCode.LIMIT; // 4
     case "ERROR":
       return ExitCode.ERROR; // 1
+    case "IDLE":
+    case "COMPLETE":
+      // A pending review (#146, #149) means the run is not done (decision-table row 8):
+      // ERROR(1), matching `loop run --review`'s exit for a failed review pass.
+      // Checked before BLOCKED, in the same order as `loopRunExitCode`.
+      if (derived?.reviewPending === true) {
+        return ExitCode.ERROR; // 1
+      }
     // ITERATIONS_COMPLETE (iteration budget reached) is a clean, user-chosen stop
     // — NOT a usage LIMIT(4). It joins the clean-terminal group below: SUCCESS(0),
     // or BLOCKED(5) if blocks remain.
+    // falls through
     case "ITERATIONS_COMPLETE":
-    case "IDLE":
-    case "COMPLETE":
     case "PAUSED":
       // Clean terminal: BLOCKED(5) if there are genuine blocks, else SUCCESS(0).
       if (derived && genuineBlockedCount(derived.backlogSummary) > 0) {
@@ -648,6 +660,13 @@ function printStatusSummary(status: DerivedStatus): void {
   }
 
   print(`${c.bold("Lock:")}        ${formatLockLine(status.lock)}`);
+
+  if (status.reviewPending === true) {
+    const n = status.reviewItemIds?.length ?? 0;
+    print(
+      `${c.bold("Review:")}      ${c.yellow(`pending (${n} item${n === 1 ? "" : "s"})`)} — ${c.cyan("rauf resume")} re-runs it`,
+    );
+  }
 
   const s = status.backlogSummary;
   // `blocked` is the total; `deferred` is the runner-gave-up subset. The

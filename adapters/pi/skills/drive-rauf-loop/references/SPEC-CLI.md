@@ -521,11 +521,13 @@ Show a status summary for the project at `[path]`.
 | Code | Meaning     | Loop State(s)                                               |
 | ---- | ----------- | ----------------------------------------------------------- |
 | 0    | SUCCESS     | IDLE, COMPLETE, ITERATIONS_COMPLETE, PAUSED, NOT_INSTALLED  |
-| 1    | ERROR       | ERROR                                                       |
+| 1    | ERROR       | ERROR; IDLE/COMPLETE with `reviewPending` (derived)         |
 | 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                |
 | 4    | LIMIT       | SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT            |
 | 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived) |
 | 6    | RUNNING     | RUNNING, REVIEWING (query-time only)                        |
+
+A pending review (#149) exits **1**, the code `loop run --review` returns for a failed review pass: an `IDLE`/`COMPLETE` status with `reviewPending: true` is not done (decision-table row 8), and it maps to 1 ahead of BLOCKED(5), in the same order as `loop run`. A review that a stop or a usage limit interrupted keeps its state's own code (`PAUSED` → 0/5, `PAUSED_USAGE_LIMIT` → 4), as `loop run` does. `--json` output carries `reviewPending` / `reviewItemIds` either way.
 
 ### rauf log [path]
 
