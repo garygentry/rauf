@@ -123,7 +123,10 @@ export function mapLoopStateStatus(status: LoopState["status"]): LoopStateEnum {
     complete: "COMPLETE",
     paused_human: "PAUSED_HUMAN",
     iterations_complete: "ITERATIONS_COMPLETE",
-    limit_reached: "LIMIT_REACHED",
+    // Pre-0.11 runners wrote limit_reached only when the iteration budget ran out
+    // (the stop now written as iterations_complete), so an old state file derives
+    // the same state, exit code and tone as a current budget stop.
+    limit_reached: "ITERATIONS_COMPLETE",
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",
@@ -320,16 +323,35 @@ function deriveFromLogParsing(paths: BacklogPaths): DerivedStatus {
   };
 }
 
-/** Parse DONE file content to determine terminal state */
+/**
+ * Parse DONE file content to determine terminal state.
+ *
+ * The runner leads every non-summary DONE file with a status token
+ * (`error:`, `paused_human:`, `paused_usage_limit:`, `weekly_limit:`, `cancel`),
+ * so those prefixes are matched first and map to the same state state.json
+ * would carry. A trailing summary or error message can therefore never
+ * reclassify the file (e.g. an `error:` file whose summary lists needs_human
+ * items, or whose message mentions a limit). Everything else is the completion
+ * summary (`completed=… blocked=… iterations=…`) or older free-text wording.
+ */
 function parseDoneFileState(content: string): LoopStateEnum {
   if (!content) return "COMPLETE";
 
   const lower = content.toLowerCase();
-  if (lower.includes("human") || lower.includes("needs_human")) return "PAUSED_HUMAN";
-  // Check before the generic "limit" rule: a clean usage-limit pause is resumable
-  // (PAUSED-like), not the terminal LIMIT_REACHED state.
-  if (lower.includes("paused_usage_limit")) return "PAUSED";
-  if (lower.includes("limit")) return "LIMIT_REACHED";
+  if (lower.startsWith("error")) return "ERROR";
+  if (lower.startsWith("paused_usage_limit")) return "PAUSED_USAGE_LIMIT";
+  if (lower.startsWith("weekly_limit")) return "WEEKLY_LIMIT";
+  if (lower.startsWith("paused_human")) return "PAUSED_HUMAN";
+  // Cancel writes state.json `paused`; resumable, not a completed run.
+  if (lower.startsWith("cancel")) return "PAUSED";
+
+  // Completion summary with needs-human items set aside (`needs_human=N`), or an
+  // older free-text needs-human note.
+  if (lower.includes("human")) return "PAUSED_HUMAN";
+  // Older budget-stop wording ("LIMIT REACHED", "iteration limit", "Max
+  // iterations … reached"): every usage-limit DONE file is prefixed above, so any
+  // remaining "limit" text is an iteration-budget stop.
+  if (lower.includes("limit") || lower.includes("max iterations")) return "ITERATIONS_COMPLETE";
   if (lower.includes("error")) return "ERROR";
   return "COMPLETE";
 }

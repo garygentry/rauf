@@ -736,7 +736,7 @@ async function connectSSE(
 
 /**
  * Whether a resolved LoopResult represents a USAGE-limit terminal
- * (weekly_limit / paused_usage_limit / legacy limit_reached). LoopResult carries
+ * (weekly_limit / paused_usage_limit). LoopResult carries
  * this via the `limitReached` flag the runner sets when it writes a terminal
  * usage-limit state (00-core-definitions §2a / 03-exit-codes §3). Iteration-budget
  * exhaustion is NOT a limit here — it writes `iterations_complete` (a clean,

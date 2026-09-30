@@ -239,7 +239,7 @@ Read backlog, reset all `in_progress` items to `pending` via `updateItem`. Retur
 3. Read first 100 lines for start marker
 4. Check file mtime for activity detection
 5. Check DONE file existence and content
-6. Apply state machine: IDLE / RUNNING / PAUSED / COMPLETE / PAUSED_HUMAN / LIMIT_REACHED
+6. Apply state machine: IDLE / RUNNING / PAUSED / COMPLETE / ITERATIONS_COMPLETE / PAUSED_HUMAN / PAUSED_USAGE_LIMIT / WEEKLY_LIMIT / ERROR. A DONE file is classified by its leading status token (`error:`, `paused_usage_limit:`, `weekly_limit:`, `paused_human:`, `cancel` → PAUSED) before its free text; older budget-stop wording maps to ITERATIONS_COMPLETE
 7. Set stateSource = "log-parsing"
 
 **Always:** Read backlog.json for summary counts regardless of state source.

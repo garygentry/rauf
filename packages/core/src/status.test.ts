@@ -40,7 +40,7 @@ vi.mock("./iteration-status.js", async (importOriginal) => {
     },
   };
 });
-import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
+import type { Backlog, BacklogItem, LoopState, LoopStateEnum } from "./schemas.js";
 import { LoopStateStatusSchema, LoopStateEnumSchema } from "./schemas.js";
 
 // ─── Constants (test-local) ────────────────────────────────────────
@@ -287,14 +287,16 @@ describe("deriveStatus — Tier 1: state.json", () => {
     expect(result.value.loopState).toBe("PAUSED_HUMAN");
   });
 
-  it("derives LIMIT_REACHED from state.json with status 'limit_reached'", () => {
+  it("derives ITERATIONS_COMPLETE from a legacy state.json with status 'limit_reached'", () => {
+    // Pre-0.11 runners wrote limit_reached only on iteration-budget exhaustion.
     const state = makeLoopState({ status: "limit_reached" });
     writeStateJson(state);
 
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.loopState).toBe("LIMIT_REACHED");
+    expect(result.value.loopState).toBe("ITERATIONS_COMPLETE");
+    expect(result.value.stateSource).toBe("state.json");
   });
 
   it("derives ERROR from state.json with status 'error'", () => {
@@ -487,15 +489,43 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     expect(result.value.loopState).toBe("PAUSED_HUMAN");
   });
 
-  it("detects LIMIT_REACHED from DONE file content", () => {
+  // Every DONE variant the runner writes (runner.ts writeDoneFile calls) plus the
+  // older free-text forms maps to the state state.json would carry. The prefixed
+  // variants must win over a trailing summary / message that mentions
+  // "human", "limit" or "error".
+  it.each<[string, string, LoopStateEnum]>([
+    ["completion summary", "completed=2 blocked=0 iterations=2 items=001,002", "COMPLETE"],
+    [
+      "completion summary with needs-human items",
+      "completed=1 blocked=1 iterations=2 items=001 needs_human=1 needs_human_items=002",
+      "PAUSED_HUMAN",
+    ],
+    ["cancel", "cancel", "PAUSED"],
+    ["paused_human", "paused_human: needs human input on item 003", "PAUSED_HUMAN"],
+    ["paused_usage_limit", "paused_usage_limit:5:30pm — run `rauf resume`", "PAUSED_USAGE_LIMIT"],
+    ["weekly_limit", "weekly_limit:2026-10-01T00:00:00Z", "WEEKLY_LIMIT"],
+    [
+      "error with a needs-human summary",
+      "error: Circuit breaker: 3 consecutive fast deaths\ncompleted=0 blocked=0 iterations=3 needs_human=1 needs_human_items=001",
+      "ERROR",
+    ],
+    ["error mentioning a limit", "error: provider hit rate limit repeatedly", "ERROR"],
+    ["legacy free-text budget stop", "LIMIT REACHED after 20 iterations", "ITERATIONS_COMPLETE"],
+    [
+      "shell-era budget stop",
+      "Max iterations (20) reached. Done: 3 / 5 | Blocked: 0 | Check backlog.",
+      "ITERATIONS_COMPLETE",
+    ],
+  ])("maps a %s DONE file to %s", (_name, content, expected) => {
     const staleTime = new Date(Date.now() - 120_000);
     writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
-    setupDoneFile("LIMIT REACHED after 20 iterations");
+    setupDoneFile(content);
 
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.loopState).toBe("LIMIT_REACHED");
+    expect(result.value.stateSource).toBe("log-parsing");
+    expect(result.value.loopState).toBe(expected);
   });
 
   it("detects ERROR from DONE file content", () => {
@@ -1591,7 +1621,7 @@ describe("mapLoopStateStatus", () => {
     complete: "COMPLETE",
     paused_human: "PAUSED_HUMAN",
     iterations_complete: "ITERATIONS_COMPLETE",
-    limit_reached: "LIMIT_REACHED",
+    limit_reached: "ITERATIONS_COMPLETE", // legacy budget stop
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",

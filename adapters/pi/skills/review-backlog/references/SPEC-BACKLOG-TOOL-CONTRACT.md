@@ -263,12 +263,13 @@ file-derived snapshot of a backlog root's loop state (no subprocesses are
 invoked to derive it). Its fields:
 
 - **`loopState`**: one of `IDLE`, `RUNNING`, `REVIEWING`, `PAUSED`, `COMPLETE`,
-  `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `ITERATIONS_COMPLETE`, `LIMIT_REACHED`,
-  `ERROR`, `NOT_INSTALLED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`. `ITERATIONS_COMPLETE`
-  means the iteration budget ran out with eligible work left (a clean, resumable
-  stop); `LIMIT_REACHED` is the pre-0.11 spelling of that stop, still read from
-  older `state.json` files. `COMPLETE` means no eligible work is left, which is
-  not necessarily every item done.
+  `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `ITERATIONS_COMPLETE`, `ERROR`,
+  `NOT_INSTALLED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`. `ITERATIONS_COMPLETE`
+  means the iteration budget ran out with eligible work left (a clean,
+  resumable stop). `COMPLETE` means no eligible work is left, which is not
+  necessarily every item done. `LIMIT_REACHED` remains in the enum for
+  compatibility but is no longer emitted: a pre-0.11 `limit_reached`
+  state file derives `ITERATIONS_COMPLETE`.
 - **`stateSource`**: `state.json` | `log-parsing` | `none`.
 - **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
   **`startedAt`**, **`elapsed`**: progress fields (nullable).
@@ -303,21 +304,19 @@ its decisions from **one** `rauf status … --json` poll — it **never** reads
 available for narration/diagnosis only). Evaluate the branches **top-to-bottom,
 first match wins**:
 
-| #   | Condition (from ONE `status --json` poll)                                                               | Decision                | Action                                                                                                                                                                                        |
-| --- | ------------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0`   | **Needs human**         | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                         |
-| 2   | `loopState = ITERATIONS_COMPLETE`, **or** `loopState = LIMIT_REACHED` with `stateSource = "state.json"` | **Budget spent**        | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead. |
-| 3   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                             | **Stopped short**       | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                    |
-| 4   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.done === backlogSummary.total`                   | **Done**                | Every item is `done`. Report the outcome and **stop**.                                                                                                                                        |
-| 5   | `health?.stuckWarning === true`                                                                         | **Recoverable stall**   | Apply the persist-then-escalate recovery ladder.                                                                                                                                              |
-| 6   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                       | **Healthy in-progress** | **Keep polling** at the interval.                                                                                                                                                             |
+| #   | Condition (from ONE `status --json` poll)                                                             | Decision                | Action                                                                                                                                                                                        |
+| --- | ----------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**         | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                         |
+| 2   | `loopState = ITERATIONS_COMPLETE`                                                                     | **Budget spent**        | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead. |
+| 3   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                           | **Stopped short**       | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                    |
+| 4   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.done === backlogSummary.total`                 | **Done**                | Every item is `done`. Report the outcome and **stop**.                                                                                                                                        |
+| 5   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**   | Apply the persist-then-escalate recovery ladder.                                                                                                                                              |
+| 6   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress** | **Keep polling** at the interval.                                                                                                                                                             |
 
 `needs-human` (row 1) outranks everything. `COMPLETE` means no **eligible**
 work is left (no `pending` item with all dependencies `done`), not that every
 item is done, so rows 3 and 4 compare `backlogSummary.done` with `total`.
-`LIMIT_REACHED` read from `state.json` is the pre-0.11 spelling of the budget
-stop (row 2); inferred via `stateSource = "log-parsing"` it comes from a DONE file
-naming a usage limit. `health` may be `null` (no live iteration), so
+`health` may be `null` (no live iteration), so
 `health?.stuckWarning` short-circuits to falsy and row 5 does not fire. The
 **`drive-rauf-loop`** skill is the **authoritative recipe** for this loop (poll interval, N=3 escalation threshold, the persist-then-escalate
 ladder, and `reset`-only-on-dead-lock); this contract defines the surface it
@@ -326,15 +325,15 @@ reads.
 **Exit-code table** (the unified v0.5.0 scheme; `rauf status` and `rauf loop
 run` share it so a supervisor can branch without parsing JSON):
 
-| Exit code | Meaning                                             | `loopState` (from `rauf status`)                                        |
-| --------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| `0`       | Success (clean terminal)                            | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED`    |
-| `1`       | Error                                               | `ERROR`                                                                 |
-| `2`       | Usage error (bad args / IO)                         | (none)                                                                  |
-| `3`       | Needs human                                         | `PAUSED_HUMAN`                                                          |
-| `4`       | Limit / usage-paused / sleeping                     | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
-| `5`       | Blocked (clean terminal with genuine blocked items) | any exit-`0` state when `backlogSummary` has genuine blocks             |
-| `6`       | Running (query-time only)                           | `RUNNING`, `REVIEWING`                                                  |
+| Exit code | Meaning                                             | `loopState` (from `rauf status`)                                     |
+| --------- | --------------------------------------------------- | -------------------------------------------------------------------- |
+| `0`       | Success (clean terminal)                            | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
+| `1`       | Error                                               | `ERROR`                                                              |
+| `2`       | Usage error (bad args / IO)                         | (none)                                                               |
+| `3`       | Needs human                                         | `PAUSED_HUMAN`                                                       |
+| `4`       | Limit / usage-paused / sleeping                     | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |
+| `5`       | Blocked (clean terminal with genuine blocked items) | any exit-`0` state when `backlogSummary` has genuine blocks          |
+| `6`       | Running (query-time only)                           | `RUNNING`, `REVIEWING`                                               |
 
 (`backlog validate` keeps its own triad: `0` valid · `1` findings · `2` usage/IO.)
 

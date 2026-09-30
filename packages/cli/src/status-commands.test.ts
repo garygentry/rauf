@@ -161,14 +161,39 @@ describe("handleStatus", () => {
     expect(code).toBe(ExitCode.NEEDS_HUMAN);
   });
 
-  it("returns LIMIT(4) when loop is LIMIT_REACHED", async () => {
-    const projectDir = path.join(tmpDir, "limit-project");
+  // A pre-0.11 state.json wrote limit_reached only for iteration-budget
+  // exhaustion. It now derives ITERATIONS_COMPLETE, so it exits like a current
+  // budget stop (SUCCESS, or BLOCKED with genuine blocks), never LIMIT(4).
+  it("returns SUCCESS(0) for a legacy limit_reached state.json (budget stop)", async () => {
+    const projectDir = path.join(tmpDir, "legacy-limit-project");
     const raufDir = createRaufProject(projectDir);
     createBacklog(raufDir);
     createStateJson(raufDir, { status: "limit_reached" });
     const ctx = makeCtx([projectDir]);
     const code = await handleStatus(ctx);
-    expect(code).toBe(ExitCode.LIMIT);
+    expect(code).toBe(ExitCode.SUCCESS);
+  });
+
+  it("returns BLOCKED(5) for a legacy limit_reached state.json with a genuine block", async () => {
+    const projectDir = path.join(tmpDir, "legacy-limit-blocked-project");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir, [
+      {
+        id: "001",
+        type: "feature",
+        priority: 1,
+        title: "Blocked item",
+        description: "d",
+        acceptanceCriteria: ["a"],
+        status: "blocked",
+        completedAt: null,
+        blockedReason: "missing dependency",
+      },
+    ]);
+    createStateJson(raufDir, { status: "limit_reached" });
+    const ctx = makeCtx([projectDir]);
+    const code = await handleStatus(ctx);
+    expect(code).toBe(ExitCode.BLOCKED);
   });
 
   it("returns LIMIT(4) and SLEEPING_LIMIT loopState for sleeping_limit status", async () => {
@@ -988,7 +1013,8 @@ describe("statusExitCode (unified exit-code scheme)", () => {
   it.each<[LoopStateEnum, number]>([
     ["RUNNING", ExitCode.RUNNING], // 6
     ["PAUSED_HUMAN", ExitCode.NEEDS_HUMAN], // 3
-    ["LIMIT_REACHED", ExitCode.LIMIT], // 4
+    ["LIMIT_REACHED", ExitCode.LIMIT], // 4 — deprecated enum value, no longer derived
+    ["ITERATIONS_COMPLETE", ExitCode.SUCCESS], // 0 — budget stop (incl. legacy limit_reached)
     ["SLEEPING_LIMIT", ExitCode.LIMIT], // 4
     ["WEEKLY_LIMIT", ExitCode.LIMIT], // 4
     ["ERROR", ExitCode.ERROR], // 1

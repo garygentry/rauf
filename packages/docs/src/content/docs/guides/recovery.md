@@ -35,33 +35,33 @@ accumulated progress), see [Monitoring a Loop](../monitoring/).
 `rauf status` exits with a code you can branch on without parsing JSON. The same scheme is shared
 with `rauf loop run` (exit `6` is query-time only — a `loop run` never terminates with it).
 
-| Exit | Meaning                                                        | Status states                                                           |
-| ---- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `0`  | Success — clean terminal                                       | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED`    |
-| `1`  | Error — generic failure                                        | `ERROR`                                                                 |
-| `2`  | Usage — bad args / precondition (incl. a loop already running) | —                                                                       |
-| `3`  | Needs human                                                    | `PAUSED_HUMAN`                                                          |
-| `4`  | Limit / usage-paused / sleeping                                | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
-| `5`  | Blocked — clean terminal, genuinely blocked items              | (derived from `backlogSummary`)                                         |
-| `6`  | Running (query-time only)                                      | `RUNNING`, `REVIEWING`                                                  |
+| Exit | Meaning                                                        | Status states                                                        |
+| ---- | -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `0`  | Success — clean terminal                                       | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
+| `1`  | Error — generic failure                                        | `ERROR`                                                              |
+| `2`  | Usage — bad args / precondition (incl. a loop already running) | —                                                                    |
+| `3`  | Needs human                                                    | `PAUSED_HUMAN`                                                       |
+| `4`  | Limit / usage-paused / sleeping                                | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |
+| `5`  | Blocked — clean terminal, genuinely blocked items              | (derived from `backlogSummary`)                                      |
+| `6`  | Running (query-time only)                                      | `RUNNING`, `REVIEWING`                                               |
 
 The status labels you'll see: `IDLE` Idle · `RUNNING` Running · `REVIEWING` Reviewing ·
 `PAUSED` Paused · `PAUSED_HUMAN` Needs Human · `PAUSED_USAGE_LIMIT` Usage Limit (Paused) ·
 `SLEEPING_LIMIT` Sleeping (Limit) · `WEEKLY_LIMIT` Weekly Limit ·
-`ITERATIONS_COMPLETE` Iterations Complete · `LIMIT_REACHED` Limit Reached (pre-0.11 budget stop) ·
+`ITERATIONS_COMPLETE` Iterations Complete ·
 `COMPLETE` Complete · `ERROR` Error · `NOT_INSTALLED` Not Installed.
 
 ## The recovery decision table
 
 Pick the row that matches what `status` told you, and run the one command.
 
-| Situation                                                                                                              | Command                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Crashed / `Error` / messy state; want a clean restart                                                                  | `rauf reset <path>` then `rauf loop run <path>`                             |
-| Interrupted but resumable (`Paused`, `Iterations Complete`, `Limit Reached`, a `*_LIMIT` state, dead lock + work left) | `rauf resume <path>`                                                        |
-| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                                                      | `rauf resume <path> --recover` (re-verifies + commits, then relaunches)     |
-| `Needs Human` — a question is waiting                                                                                  | `rauf resume <path> --answer <id> "<answer>"`                               |
-| Items wrongly `blocked` and you want them retried                                                                      | `rauf backlog unblock <path> [id]` (omit `id` for all), then `resume`/`run` |
+| Situation                                                                                             | Command                                                                     |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Crashed / `Error` / messy state; want a clean restart                                                 | `rauf reset <path>` then `rauf loop run <path>`                             |
+| Interrupted but resumable (`Paused`, `Iterations Complete`, a `*_LIMIT` state, dead lock + work left) | `rauf resume <path>`                                                        |
+| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                                     | `rauf resume <path> --recover` (re-verifies + commits, then relaunches)     |
+| `Needs Human` — a question is waiting                                                                 | `rauf resume <path> --answer <id> "<answer>"`                               |
+| Items wrongly `blocked` and you want them retried                                                     | `rauf backlog unblock <path> [id]` (omit `id` for all), then `resume`/`run` |
 
 `--answer` is repeatable (one per pending question), and the threaded answer auto-clears once the
 item completes. `--iterations N` overrides the per-run budget on `resume`. See
