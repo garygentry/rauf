@@ -4,9 +4,11 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { execSync } from "node:child_process";
 
-import { resolveBacklogPaths } from "@rauf/core";
+import { acquireLock, resolveBacklogPaths } from "@rauf/core";
 
 import { handleResume, parseAnswerFlags, resolveResumeTargetPath } from "./resume-commands.js";
+import { handleLoopRun } from "./loop-commands.js";
+import { parseArgs } from "./parser.js";
 import { detectInterruptedItems } from "./recovery.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -409,6 +411,123 @@ describe("handleResume — review pass stopped by a usage limit (#146)", () => {
       process.env.PATH = origPath;
       delete process.env.MOCK_REVIEW_MODE;
     }
+  });
+
+  it("restores the pending marker after recovery, before the review runs (#149)", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    const statePath = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify({ ...state, reviewPending: true, reviewItemIds: ["001"] }),
+    );
+
+    // A review that fails to start (e.g. a live loop took the lock) must leave it pending.
+    let seen: Record<string, unknown> | null = null;
+    const code = await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: captureRunLoop().runLoop,
+      runReview: async () => {
+        seen = JSON.parse(fs.readFileSync(statePath, "utf-8")) as Record<string, unknown>;
+        return ExitCode.USAGE;
+      },
+    });
+
+    expect(code).toBe(ExitCode.USAGE);
+    expect(seen).toMatchObject({ status: "idle", reviewPending: true, reviewItemIds: ["001"] });
+    const after = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+    expect(after.reviewPending).toBe(true);
+    expect(after.reviewItemIds).toEqual(["001"]);
+  });
+
+  it("hands its lock to the run with no gap a competitor can take (#149)", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const lockPath = resolved.value.lock;
+
+    // Loop relaunch: at hand-off the lock is still held, flagged for adoption.
+    const loopSeen: Array<{ adopt?: boolean; competitor: string | null }> = [];
+    await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: async (ctx) => {
+        const r = acquireLock(resolved.value);
+        loopSeen.push({ adopt: ctx.adoptLock, competitor: r.ok ? null : r.error.code });
+        return ExitCode.SUCCESS;
+      },
+    });
+    expect(loopSeen).toEqual([{ adopt: true, competitor: "LOCK_CONFLICT" }]);
+    // A stub that never adopts it: resume releases the lock afterwards.
+    expect(fs.existsSync(lockPath)).toBe(false);
+
+    // Review re-run: same.
+    const p = resolved.value.state;
+    writeState(projectDir, "paused_usage_limit");
+    const st = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(p, JSON.stringify({ ...st, reviewPending: true, reviewItemIds: ["001"] }));
+    const reviewSeen: Array<{ adopt?: boolean; competitor: string | null }> = [];
+    await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop: captureRunLoop().runLoop,
+      runReview: async (ctx) => {
+        const r = acquireLock(resolved.value);
+        reviewSeen.push({ adopt: ctx.adoptLock, competitor: r.ok ? null : r.error.code });
+        return ExitCode.SUCCESS;
+      },
+    });
+    expect(reviewSeen).toEqual([{ adopt: true, competitor: "LOCK_CONFLICT" }]);
+    expect(fs.existsSync(lockPath)).toBe(false);
+  });
+
+  it("forwards --detached through the real loop-run dispatch to the server launch", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
+    if (!resolved.ok) throw new Error(resolved.error.message);
+    const forwarded: Array<boolean> = [];
+    const detachedCalls: Array<{ adopt?: boolean; locked: boolean }> = [];
+    const code = await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["detached", true]]) }),
+      {
+        // The REAL handleLoopRun dispatch, with only the server launch stubbed.
+        runLoop: (ctx) => {
+          forwarded.push(ctx.flags.get("detached") === true);
+          return handleLoopRun(ctx, {
+            runDetached: async (dctx) => {
+              detachedCalls.push({
+                adopt: dctx.adoptLock,
+                locked: fs.existsSync(resolved.value.lock),
+              });
+              return ExitCode.SUCCESS;
+            },
+          });
+        },
+      },
+    );
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(forwarded).toEqual([true]);
+    // Delegated to the server (not run in the foreground), after resume released
+    // its lock: the server process cannot adopt this process's lock.
+    expect(detachedCalls).toEqual([{ adopt: undefined, locked: false }]);
+  });
+
+  it("accepts the -d short alias for a detached resume", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    let detachedRuns = 0;
+    const ctx = makeCtx({
+      args: [projectDir],
+      flags: parseArgs(["resume", projectDir, "-d"]).flags,
+    });
+    await handleResume(ctx, {
+      runLoop: (c) =>
+        handleLoopRun(c, {
+          runDetached: async () => {
+            detachedRuns++;
+            return ExitCode.SUCCESS;
+          },
+        }),
+    });
+    expect(detachedRuns).toBe(1);
   });
 
   it("relaunches the loop as usual when no review is pending", async () => {

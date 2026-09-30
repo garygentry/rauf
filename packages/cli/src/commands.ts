@@ -56,6 +56,13 @@ export interface CommandContext {
   flags: Map<string, string | true>;
   globalFlags: GlobalFlags;
   rawArgv: string[];
+  /**
+   * Internal, never set from argv: the caller (`rauf resume`) holds this
+   * backlog root's `.loop.lock` and hands it to the in-process run, which
+   * adopts it instead of re-acquiring, so no competing loop can take the root
+   * in between (#149). The run releases it when it ends.
+   */
+  adoptLock?: boolean;
 }
 
 /** A documented flag for a command/subcommand, rendered in `rauf help`. */

@@ -177,6 +177,7 @@ Run the loop. Without `--detached`, runs directly in-process, the **unattended-s
 - `--pause-on-needs-human`: opt-in halt mode for **live supervision**. When an item emits `RAUF_NEEDS_HUMAN`, the runner sets it aside (as today: status `blocked` + `needsHuman`) **and then halts** the loop in the resumable `paused_human` state instead of continuing to other items. At the halt it emits the `needs_human` event followed by a `loop_paused` event (`{ reason: "needs_human", itemId }`), writes a `paused_human` DONE marker, and `loop run` exits with the distinct code **3** (`NEEDS_HUMAN`). Default (flag absent) is unchanged: the item is set aside and the loop keeps running other runnable items. Resolve the question with `rauf resume --answer <id> "<text>"` (below). Intended companion to `--ndjson` for a supervising session; see the supervisor pattern in [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7.1](./SPEC-BACKLOG-TOOL-CONTRACT.md#a71-ndjson-event-stream--rauf-loop-run--ndjson).
 - `--force`: skip precondition checks (protected-branch and dirty-tree guards). Use with caution.
 - `--help` / `-h`: print the flag list and exit **without** starting the loop or touching any state. `--help`/`-h` is intercepted before any side-effecting action; a help probe never starts a loop.
+- Takes the root's `.loop.lock` synchronously before anything else (#149). If a live loop already holds it, the run does nothing (it doesn't touch the holder's lock, event log or state) and exits 2 (USAGE; `lockConflict` in the result).
 - Events are printed directly to the terminal with colors and Unicode icons
 - Responds to SIGINT/SIGTERM for graceful cancellation
 - With `--json`: outputs `LoopResult { completedCount, blockedCount, cancelled, reviewItemsCreated?, reviewSummary? }`
@@ -199,6 +200,7 @@ Run a standalone review pass over all completed backlog items, without running a
 - Outputs a review summary or "no issues found"
 - `--items <id,id>`: review only these done items (default: every done item). `rauf resume` passes a pending review's `reviewItemIds` here
 - A usage limit that stops the review (#146) leaves a resumable `paused_usage_limit` state with `reviewPending: true` + `reviewItemIds`, prints a `rauf resume` hint and exits 4 (LIMIT). A failed review (spawn/prompt error, unexpected signal) prints an error, stays pending and exits 1 (ERROR). After a review, state is `idle`. `--json` output carries `limitReached`, `reviewPending` and `reviewFailed`
+- Holds the backlog root's `.loop.lock` for the whole review, like `loop run` (#149): a concurrent `loop run`, `resume` or review on the same root is refused while it runs. If a live loop already holds the lock, the review does not start, a pending review is left untouched, and it exits 2 (USAGE; `--json` carries `lockConflict: true`)
 
 ---
 
@@ -521,11 +523,13 @@ Show a status summary for the project at `[path]`.
 | Code | Meaning     | Loop State(s)                                               |
 | ---- | ----------- | ----------------------------------------------------------- |
 | 0    | SUCCESS     | IDLE, COMPLETE, ITERATIONS_COMPLETE, PAUSED, NOT_INSTALLED  |
-| 1    | ERROR       | ERROR                                                       |
+| 1    | ERROR       | ERROR; IDLE/COMPLETE with `reviewPending` (derived)         |
 | 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                |
 | 4    | LIMIT       | SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT            |
 | 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived) |
 | 6    | RUNNING     | RUNNING, REVIEWING (query-time only)                        |
+
+A pending review (#149) exits **1**, the code `loop run --review` returns for a failed review pass: an `IDLE`/`COMPLETE` status with `reviewPending: true` is not done (decision-table row 8), and it maps to 1 ahead of BLOCKED(5), in the same order as `loop run`. A review that a stop or a usage limit interrupted keeps its state's own code (`PAUSED` → 0/5, `PAUSED_USAGE_LIMIT` → 4), as `loop run` does. `--json` output carries `reviewPending` / `reviewItemIds` either way.
 
 ### rauf log [path]
 
@@ -615,7 +619,9 @@ Detect an interrupted loop and continue it from where it stopped.
 4. Apply the same reconciliation + false-block requeue as `rauf reset`
 5. Relaunch the loop via the normal `rauf loop run` entrypoint with a recomputed budget (`computeMaxIterations`) and `--allow-dirty` (since recovery may leave `.rauf/backlog.json` uncommitted)
 
-**Pending review (#146):** if `state.json` has `reviewPending: true` (a review pass started but did not succeed: usage stop, failure or crash), `resume` runs the usual detection and recovery, then re-runs the standalone review (`rauf loop review --items <reviewItemIds>`, exactly the interrupted review's items) instead of relaunching the loop. It does this even when every item is done or only genuine blocks remain. Its exit code is the review's (1 if it fails again; it stays pending). Run `rauf resume` / `loop run` again afterwards to process remaining or review-created items.
+**Pending review (#146):** if `state.json` has `reviewPending: true` (a review pass started but did not succeed: usage stop, failure or crash), `resume` runs the usual detection and recovery, then re-runs the standalone review (`rauf loop review --items <reviewItemIds>`, exactly the interrupted review's items) instead of relaunching the loop. It does this even when every item is done or only genuine blocks remain. Its exit code is the review's (1 if it fails again; it stays pending). Run `rauf resume` / `loop run` again afterwards to process remaining or review-created items. After a recovery, the pending marker is restored from the pre-recovery state (normalized to `idle`, `baseCommitHash` kept) before the review runs.
+
+**Lock handoff (#149):** `resume` holds the root's `.loop.lock` across detection, recovery and the decision, then hands it straight to the in-process `loop run` / `loop review`, which adopts it rather than releasing and re-acquiring it, so no competing loop can take the root in between. The run releases it when it ends. A `--detached` relaunch runs in the server process, which cannot adopt this process's lock, so it keeps the release-then-launch handoff.
 
 **Early exits:**
 

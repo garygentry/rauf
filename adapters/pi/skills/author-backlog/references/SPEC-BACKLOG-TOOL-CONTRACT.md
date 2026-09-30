@@ -376,7 +376,7 @@ run` share it so a supervisor can branch without parsing JSON):
 | Exit code | Meaning                                             | `loopState` (from `rauf status`)                                     |
 | --------- | --------------------------------------------------- | -------------------------------------------------------------------- |
 | `0`       | Success (clean terminal)                            | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
-| `1`       | Error                                               | `ERROR`                                                              |
+| `1`       | Error                                               | `ERROR`; `IDLE`/`COMPLETE` with `reviewPending` (row 8)              |
 | `2`       | Usage error (bad args / IO)                         | (none)                                                               |
 | `3`       | Needs human                                         | `PAUSED_HUMAN`                                                       |
 | `4`       | Limit / usage-paused / sleeping                     | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |

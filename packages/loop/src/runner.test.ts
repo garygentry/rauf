@@ -2494,6 +2494,137 @@ fi`,
     });
   });
 
+  describe("startReviewOnly — cross-process .loop.lock (#149)", () => {
+    const lockFile = () => path.join(tmpDir, ".rauf", ".loop.lock");
+
+    it("holds .loop.lock while the review runs, refusing a concurrent loop start", async () => {
+      setupProject(tmpDir, [
+        pendingItem("001", "Task", { status: "done" }),
+        pendingItem("002", "Other"),
+      ]);
+      writeMockClaude(binDir, "exec sleep 999");
+      const review = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, reviewOnly: true });
+      let reviewStarted = false;
+      review.on("review_started", () => {
+        reviewStarted = true;
+      });
+      const reviewDone = review.startReviewOnly(["001"]);
+      await vi.waitFor(() => expect(reviewStarted).toBe(true), { timeout: 5_000 });
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8")).pid).toBe(process.pid);
+
+      // A second runner on the same root is refused before doing any work.
+      const other = createRunner(tmpDir, DEFAULT_OPTIONS);
+      const errors: string[] = [];
+      other.on("loop_error", (e) => errors.push(e.error));
+      const otherResult = await other.start();
+      expect(otherResult.completedCount).toBe(0);
+      expect(errors.join(" ")).toContain("already running");
+      // ...and so is a second review.
+      const second = await createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        review: true,
+        reviewOnly: true,
+      }).startReviewOnly(["001"]);
+      expect(second.lockConflict).toBe(true);
+      expect(fs.existsSync(lockFile())).toBe(true);
+
+      review.cancel();
+      await reviewDone;
+      // Released when the review ends.
+      expect(fs.existsSync(lockFile())).toBe(false);
+    }, 20_000);
+
+    it("does not start, and leaves a pending review untouched, when a live loop holds the lock", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+      const statePath = path.join(tmpDir, ".rauf", "state.json");
+      const pendingState = {
+        status: "idle",
+        iteration: 0,
+        maxIterations: 1,
+        currentItem: null,
+        lastSignal: null,
+        startedAt: null,
+        updatedAt: null,
+        completedItems: [],
+        blockedItems: [],
+        error: null,
+        reviewPending: true,
+        reviewItemIds: ["001"],
+      };
+      fs.writeFileSync(statePath, JSON.stringify(pendingState));
+      const heldLock = { pid: process.pid, startedAt: "x", processStartTime: null };
+      fs.writeFileSync(lockFile(), JSON.stringify(heldLock));
+
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, reviewOnly: true });
+      const errors: string[] = [];
+      runner.on("loop_error", (e) => errors.push(e.error));
+      const result = await runner.startReviewOnly(["001"]);
+
+      expect(result.lockConflict).toBe(true);
+      expect(result.reviewFailed).toBeUndefined();
+      expect(errors.join(" ")).toContain("already running");
+      expect(JSON.parse(fs.readFileSync(statePath, "utf-8"))).toEqual(pendingState);
+      // The holder's lock is not released by the refused review.
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8"))).toEqual(heldLock);
+    });
+
+    it("start() takes the lock synchronously, before its first await (#149)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, "exec sleep 999");
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      const done = runner.start();
+      // No await yet: the lock must already be ours, so a competitor that runs
+      // in the same tick (the old getHeadCommit gap) is refused.
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8")).pid).toBe(process.pid);
+      const competitor = await createRunner(tmpDir, DEFAULT_OPTIONS).start();
+      expect(competitor.lockConflict).toBe(true);
+      runner.cancel();
+      await done;
+      expect(fs.existsSync(lockFile())).toBe(false);
+    }, 20_000);
+
+    it("a refused start() reports lockConflict and leaves the holder's lock", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const heldLock = { pid: process.pid, startedAt: "x", processStartTime: null };
+      fs.writeFileSync(lockFile(), JSON.stringify(heldLock));
+      const result = await createRunner(tmpDir, DEFAULT_OPTIONS).start();
+      expect(result).toMatchObject({ completedCount: 0, lockConflict: true });
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8"))).toEqual(heldLock);
+    });
+
+    it("adoptRunLock() adopts only a lock this process holds, and the run releases it", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, reviewOnly: true });
+      // No lock → nothing to adopt.
+      expect(runner.adoptRunLock().ok).toBe(false);
+      // Another live process's lock → refused (pid 1 is always alive).
+      fs.writeFileSync(
+        lockFile(),
+        JSON.stringify({ pid: 1, startedAt: "x", processStartTime: null }),
+      );
+      expect(runner.adoptRunLock().ok).toBe(false);
+      // Our own lock (the caller's recovery lock) → adopted without re-acquiring.
+      const ours = { pid: process.pid, startedAt: "recovery", processStartTime: null };
+      fs.writeFileSync(lockFile(), JSON.stringify(ours));
+      expect(runner.adoptRunLock().ok).toBe(true);
+      expect(JSON.parse(fs.readFileSync(lockFile(), "utf-8"))).toEqual(ours);
+      const result = await runner.startReviewOnly(["001"]);
+      expect(result.lockConflict).toBeUndefined();
+      expect(fs.existsSync(lockFile())).toBe(false);
+    });
+
+    it("releases the lock after a completed review", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, reviewOnly: true });
+      const result = await runner.startReviewOnly(["001"]);
+      expect(result.lockConflict).toBeUndefined();
+      expect(fs.existsSync(lockFile())).toBe(false);
+    });
+  });
+
   describe("LoopResult", () => {
     it("returns correct counts on normal completion", async () => {
       setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);

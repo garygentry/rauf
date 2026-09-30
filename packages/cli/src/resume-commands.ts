@@ -15,7 +15,6 @@
 // backlog.json`, so the tree is dirty by construction. Branch protection stays
 // on (only the dirty-tree guard is relaxed).
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
@@ -44,6 +43,8 @@ import {
   releaseRecoveryLock,
   recoverInterruptedLoop,
   detectInterruptedItems,
+  readPendingReview,
+  restorePendingReview,
   type InterruptedItem,
 } from "@rauf/loop";
 import { reverifyAndCommitInterrupted, type VerifyRunner } from "./recovery.js";
@@ -272,30 +273,6 @@ export interface ResumeDeps {
   runReview?: (ctx: CommandContext) => Promise<number>;
 }
 
-/**
- * A review pass that started but did not succeed (#146): state.json
- * `reviewPending` plus its exact scope `reviewItemIds`, or null. Read before
- * recovery, which clears the loop state.
- */
-export function readPendingReview(paths: BacklogPaths): { itemIds: string[] | null } | null {
-  // Lenient on purpose: only these fields matter, so a state.json that fails
-  // full LoopState validation must not hide a pending review.
-  try {
-    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as {
-      reviewPending?: unknown;
-      reviewItemIds?: unknown;
-    };
-    if (raw.reviewPending !== true) return null;
-    const ids = Array.isArray(raw.reviewItemIds)
-      ? raw.reviewItemIds.filter((id): id is string => typeof id === "string")
-      : [];
-    // An empty/absent scope (older state) falls back to all done items.
-    return { itemIds: ids.length > 0 ? ids : null };
-  } catch {
-    return null;
-  }
-}
-
 export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): Promise<number> {
   const runLoop = deps.runLoop ?? handleLoopRun;
   const runReview = deps.runReview ?? handleLoopReview;
@@ -362,6 +339,13 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   const reviewPending = pendingReview !== null;
   let rerunReview = false;
   let exitCode: number = ExitCode.SUCCESS;
+  // A detached relaunch runs in the server process, which cannot adopt this
+  // process's lock: it keeps the release-then-launch handoff. Read it
+  // NON-destructively: the flag must reach `loop run` (cloned into runCtx
+  // below), whose dispatch delegates to the server on it.
+  const detached = ctx.flags.has("detached");
+  // Set when the try block reaches a decision without throwing or returning.
+  let decided = false;
   try {
     // 1c. Inject any `--answer <id> "<text>"` answers BEFORE detection/recovery.
     // Each pair re-queues its paused item to pending with the answer attached
@@ -467,7 +451,12 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
             // blocks / needs-human left) — the loop would spawn and immediately
             // complete otherwise.
             const postBacklog = readBacklog(paths);
-            if (reviewPending) {
+            if (pendingReview !== null) {
+              // Recovery deleted state.json: put the marker back before the review
+              // runs, so a review that fails to start is still pending (#149).
+              const restored = restorePendingReview(paths, pendingReview);
+              if (!restored.ok)
+                warn(`Could not restore the pending review: ${restored.error.message}`);
               rerunReview = true;
             } else if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
               if (ctx.globalFlags.json) {
@@ -493,10 +482,13 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
         }
       }
     }
+    decided = true;
   } finally {
-    // Release the recovery lock before relaunching: the loop's own entrypoint
-    // acquires its lock, which would conflict with one we still held.
-    releaseRecoveryLock(paths);
+    // Hand the recovery lock straight to the in-process run (it adopts it, no
+    // release/re-acquire gap a competing loop could slip into, #149). Release
+    // it here only when nothing will adopt it.
+    const handingOff = decided && (rerunReview || (relaunch && !detached));
+    if (!handingOff) releaseRecoveryLock(paths);
   }
 
   if (rerunReview) {
@@ -510,7 +502,15 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     if (backlogFlag !== null) reviewCtx.flags.set("backlog", backlogFlag);
     // Review exactly the interrupted review's items, not every done item.
     if (pendingReview?.itemIds) reviewCtx.flags.set("items", pendingReview.itemIds.join(","));
-    return runReview(reviewCtx);
+    reviewCtx.adoptLock = true;
+    try {
+      return await runReview(reviewCtx);
+    } finally {
+      // No-op once the review has released the lock it adopted; frees it if the
+      // review never got as far as adopting it (owner-aware: never a live
+      // lock of another process).
+      releaseRecoveryLock(paths);
+    }
   }
 
   if (!relaunch) return exitCode;
@@ -534,5 +534,11 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     runCtx.flags.set("allow-dirty-for-item", dirtyOwnerItemId);
   }
 
-  return runLoop(runCtx);
+  if (detached) return runLoop(runCtx);
+  runCtx.adoptLock = true;
+  try {
+    return await runLoop(runCtx);
+  } finally {
+    releaseRecoveryLock(paths); // as for the review above
+  }
 }

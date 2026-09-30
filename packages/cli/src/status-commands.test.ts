@@ -151,6 +151,28 @@ describe("handleStatus", () => {
     expect(code).toBe(0);
   });
 
+  it("returns ERROR(1) when COMPLETE with a pending review (#146), in text and --json", async () => {
+    const projectDir = path.join(tmpDir, "review-pending-project");
+    const raufDir = createRaufProject(projectDir);
+    createBacklog(raufDir);
+    createStateJson(raufDir, {
+      status: "complete",
+      reviewPending: true,
+      reviewItemIds: ["001", "002"],
+    });
+    expect(await handleStatus(makeCtx([projectDir]))).toBe(ExitCode.ERROR);
+    const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await handleStatus(makeCtx([projectDir], {}, { json: true }))).toBe(ExitCode.ERROR);
+      const out = JSON.parse(String(writeSpy.mock.calls.at(-1)?.[0])) as DerivedStatus;
+      expect(out.loopState).toBe("COMPLETE");
+      expect(out.reviewPending).toBe(true);
+      expect(out.reviewItemIds).toEqual(["001", "002"]);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
   it("returns NEEDS_HUMAN(3) when loop is PAUSED_HUMAN", async () => {
     const projectDir = path.join(tmpDir, "human-project");
     const raufDir = createRaufProject(projectDir);
@@ -1049,6 +1071,28 @@ describe("statusExitCode (unified exit-code scheme)", () => {
   it("does NOT derive BLOCKED when blocked items are all deferred (runner false-blocks)", () => {
     // 2 blocked, both deferred → genuine blocked is 0 → SUCCESS, not BLOCKED.
     expect(statusExitCode("IDLE", derivedWith(2, 2))).toBe(ExitCode.SUCCESS);
+  });
+
+  it("derives ERROR(1) for IDLE / COMPLETE with a pending review (#146)", () => {
+    const pending = (blocked = 0): DerivedStatus => ({
+      ...derivedWith(blocked),
+      reviewPending: true,
+      reviewItemIds: ["a-001"],
+    });
+    expect(statusExitCode("COMPLETE", pending())).toBe(ExitCode.ERROR);
+    expect(statusExitCode("IDLE", pending())).toBe(ExitCode.ERROR);
+    // A pending review wins over BLOCKED, matching loopRunExitCode's order.
+    expect(statusExitCode("COMPLETE", pending(2))).toBe(ExitCode.ERROR);
+  });
+
+  it("keeps the state's own code when the pending review was stopped or usage-limited", () => {
+    const pending: DerivedStatus = { ...derivedWith(0), reviewPending: true, reviewItemIds: [] };
+    expect(statusExitCode("PAUSED", pending)).toBe(ExitCode.SUCCESS);
+    expect(
+      statusExitCode("PAUSED", { ...pending, backlogSummary: derivedWith(1).backlogSummary }),
+    ).toBe(ExitCode.BLOCKED);
+    expect(statusExitCode("PAUSED_USAGE_LIMIT", pending)).toBe(ExitCode.LIMIT);
+    expect(statusExitCode("ITERATIONS_COMPLETE", pending)).toBe(ExitCode.SUCCESS);
   });
 
   it("does NOT derive BLOCKED for a non-terminal state even with genuine blocks", () => {

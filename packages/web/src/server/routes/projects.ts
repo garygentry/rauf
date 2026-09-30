@@ -62,6 +62,9 @@ import {
   acquireRecoveryLock,
   releaseRecoveryLock,
   recoverInterruptedLoop,
+  readPendingReview,
+  restorePendingReview,
+  detectInterruptedItems,
   type RecoverySummary,
 } from "@rauf/loop";
 
@@ -79,8 +82,17 @@ import { assertNoLiveLoop } from "./recovery-guard.js";
 
 /** Success payload for POST /:id/resume (00 §6). */
 interface ResumeResult {
-  reconciled: RecoverySummary;
+  /**
+   * The recovery summary, or null when recovery was skipped: interrupted
+   * uncommitted work was found first (see `interrupted`), or no work remained
+   * and a pending review was re-run as-is (as the CLI `rauf resume` does).
+   */
+  reconciled: RecoverySummary | null;
+  /** Ids of in_progress items with uncommitted work (the CLI `--recover` path). */
+  interrupted?: string[];
   relaunched: boolean;
+  /** A pending review (#146) was re-run instead of relaunching the loop. */
+  reviewRerun?: boolean;
   reason?: string;
 }
 
@@ -784,10 +796,14 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
   // ── POST /:id/resume ──────────────────────────────────────────
   //
   // Reconcile + relaunch (web equivalent of CLI resume, minus --recover).
+  // A pending review (#146, state.json `reviewPending`) is re-run over exactly
+  // its `reviewItemIds` instead of relaunching the loop — even when every item
+  // is done — as the CLI `rauf resume` does (shared `readPendingReview`).
   // Acquire-and-hold guarded (D3.4): the lock is held across answer
-  // injection, recoverInterruptedLoop, and the eligibility decision, then
-  // released in a finally BEFORE the relaunch so the loop's own lock
-  // acquisition succeeds. The --recover reverify+commit path is CLI-only.
+  // injection, recoverInterruptedLoop, the eligibility decision AND the
+  // launch, whose run adopts it (#149: no release/re-acquire gap a competing
+  // loop could take); the finally releases it only if no run adopted it.
+  // The --recover reverify+commit path is CLI-only.
 
   router.post("/:id/resume", async (c) => {
     const id = c.req.param("id");
@@ -851,7 +867,15 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
     let relaunch = false;
     let relaunchOptions: ReturnType<typeof LoopStartOptionsSchema.parse> | null = null;
     let reconciled: RecoverySummary | null = null;
+    let interrupted: string[] | undefined;
     let reason: string | undefined;
+    // Read before recovery, which clears the loop state (and with it the flag).
+    const pendingReview = readPendingReview(paths);
+    let rerunReview = false;
+    let relaunched = false;
+    let reviewRerun = false;
+    // True once a run has adopted the recovery lock.
+    let handedOff = false;
 
     try {
       // 3. Answer injection (OQ-T2: { itemId, text } → humanAnswer).
@@ -874,82 +898,156 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
         }
       }
 
-      // 3b. retry-blocked convenience: re-queue genuine blocks before reconciling.
-      if (body.retryBlocked) {
-        const ub = unblockItems(paths);
-        if (!ub.ok) {
+      // 3b. Mirror the CLI `rauf resume` ordering (#149). No work left and a
+      // review pending → re-run the review as-is: skip recovery, which would
+      // delete state.json and with it the pending marker.
+      const pre = readBacklog(paths);
+      const nonDone = pre.ok ? pre.value.items.filter((i) => i.status !== "done").length : 1;
+      if (nonDone === 0 && pendingReview !== null) {
+        rerunReview = true;
+      } else {
+        // 3c. Detect interrupted-but-uncommitted work BEFORE any recovery
+        // mutation. It is the CLI-only --recover path: surface it and stop,
+        // leaving state.json (and any pending review) untouched.
+        const interruptedResult = await detectInterruptedItems(paths);
+        if (!interruptedResult.ok) {
           return c.json(
-            errorResponse(ub.error.code, ub.error.message, ub.error.details),
-            recoveryErrorStatus(ub.error.code),
+            errorResponse(
+              interruptedResult.error.code,
+              interruptedResult.error.message,
+              interruptedResult.error.details,
+            ),
+            recoveryErrorStatus(interruptedResult.error.code),
           );
         }
-      }
-
-      // 4. Reconcile (async). recoverInterruptedLoop does NOT touch the lock — we hold it.
-      const recovery = await recoverInterruptedLoop(paths);
-      if (!recovery.ok) {
-        return c.json(
-          errorResponse(recovery.error.code, recovery.error.message, recovery.error.details),
-          recoveryErrorStatus(recovery.error.code),
-        );
-      }
-      reconciled = recovery.value;
-
-      // 4b. Interrupted-but-uncommitted work is the CLI-only --recover path; surface it.
-      if (reconciled.interrupted.length > 0) {
-        reason = `${reconciled.interrupted.length} item(s) have uncommitted work — run \`rauf resume --recover\` from the CLI to re-verify and commit before resuming.`;
-        relaunch = false;
-      } else {
-        // 5. Relaunch decision.
-        const post = readBacklog(paths);
-        if (post.ok && selectNextItem(post.value) === null) {
-          reason = "no eligible items";
-          relaunch = false;
+        if (interruptedResult.value.length > 0) {
+          interrupted = interruptedResult.value.map((i) => i.id);
+          reason = `${interrupted.length} item(s) have uncommitted work — run \`rauf resume --recover\` from the CLI to re-verify and commit before resuming.`;
         } else {
-          relaunch = true;
-          relaunchOptions = LoopStartOptionsSchema.parse({
-            maxIterations: resolveRequestMaxIterations(projectPath, null, resolvedBacklogRoot),
-            maxRetries: DEFAULT_MAX_RETRIES,
-            sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
-            backlogRoot: resolvedBacklogRoot,
-            // Mirrors the CLI's `rauf resume` (loop-commands.ts): recovery just
-            // above rewrote backlog.json, and a needs-human pause deliberately
-            // left its item's work uncommitted — the runner's pre-iteration
-            // clean-baseline guard must not treat that as unexpected dirt (#105
-            // review, bug 2).
-            allowDirty: true,
-            // Identity-aware companion (#115): the needs-human item detected
-            // above (the dirt's true owner) is preferred in selection so it
-            // commits its OWN work rather than a higher-priority sibling sweeping
-            // it into the wrong commit, and the guard's exemption is scoped to it
-            // by identity. undefined (ambiguous owner) → order-based fallback.
-            allowDirtyForItemId: dirtyOwnerItemId,
-          });
+          // 3d. retry-blocked convenience: re-queue genuine blocks before reconciling.
+          if (body.retryBlocked) {
+            const ub = unblockItems(paths);
+            if (!ub.ok) {
+              return c.json(
+                errorResponse(ub.error.code, ub.error.message, ub.error.details),
+                recoveryErrorStatus(ub.error.code),
+              );
+            }
+          }
+
+          // 4. Reconcile (async). recoverInterruptedLoop does NOT touch the lock — we hold it.
+          const recovery = await recoverInterruptedLoop(paths);
+          if (!recovery.ok) {
+            return c.json(
+              errorResponse(recovery.error.code, recovery.error.message, recovery.error.details),
+              recoveryErrorStatus(recovery.error.code),
+            );
+          }
+          reconciled = recovery.value;
+
+          if (pendingReview !== null) {
+            // 5a. A pending review wins over relaunch (the CLI does the same; a
+            // later resume processes remaining items). Recovery deleted
+            // state.json: restore the marker under the lock BEFORE launching, so
+            // a review that fails to start is still pending.
+            const restored = restorePendingReview(paths, pendingReview);
+            if (!restored.ok) {
+              return c.json(
+                errorResponse(
+                  restored.error.code,
+                  `Could not restore the pending review: ${restored.error.message}`,
+                  restored.error.details,
+                ),
+                500,
+              );
+            }
+            rerunReview = true;
+          } else {
+            // 5b. Relaunch decision.
+            const post = readBacklog(paths);
+            if (post.ok && selectNextItem(post.value) === null) {
+              reason = "no eligible items";
+              relaunch = false;
+            } else {
+              relaunch = true;
+              relaunchOptions = LoopStartOptionsSchema.parse({
+                maxIterations: resolveRequestMaxIterations(projectPath, null, resolvedBacklogRoot),
+                maxRetries: DEFAULT_MAX_RETRIES,
+                sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+                backlogRoot: resolvedBacklogRoot,
+                // Mirrors the CLI's `rauf resume` (loop-commands.ts): recovery just
+                // above rewrote backlog.json, and a needs-human pause deliberately
+                // left its item's work uncommitted — the runner's pre-iteration
+                // clean-baseline guard must not treat that as unexpected dirt (#105
+                // review, bug 2).
+                allowDirty: true,
+                // Identity-aware companion (#115): the needs-human item detected
+                // above (the dirt's true owner) is preferred in selection so it
+                // commits its OWN work rather than a higher-priority sibling sweeping
+                // it into the wrong commit, and the guard's exemption is scoped to it
+                // by identity. undefined (ambiguous owner) → order-based fallback.
+                allowDirtyForItemId: dirtyOwnerItemId,
+              });
+            }
+          }
         }
       }
+
+      // 6. Relaunch (or re-run the pending review) STILL HOLDING the recovery
+      // lock: the run adopts it (same .loop.lock, this process's PID), so no
+      // competing loop can take the root between recovery and the run (#149).
+      if (relaunch && relaunchOptions) {
+        const started = getLoopManager().startLoop(projectPath, relaunchOptions, {
+          adoptLock: true,
+        });
+        handedOff = started.ok;
+        relaunched = started.ok;
+        if (!started.ok) reason = started.error; // e.g. "Loop already running…"
+      } else if (rerunReview && pendingReview !== null) {
+        // Same options as POST /:id/loop/review; scoped to the review's own items
+        // (null scope = older state without reviewItemIds → every done item).
+        const reviewOptions = LoopStartOptionsSchema.parse({
+          maxIterations: 1,
+          maxRetries: 1,
+          review: true,
+          reviewOnly: true,
+          sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
+          backlogRoot: resolvedBacklogRoot,
+        });
+        const started = getLoopManager().startReviewLoop(
+          projectPath,
+          reviewOptions,
+          pendingReview.itemIds ?? undefined,
+          { adoptLock: true },
+        );
+        if (!started.ok) {
+          // The review did not start. Its marker is intact (never removed, or
+          // restored above) and no other loop could run in between, so a later
+          // resume re-runs it. Report an error (the finally releases the lock).
+          return c.json(
+            errorResponse(
+              started.conflict ? ErrorCodes.LOCK_CONFLICT : ErrorCodes.IO_ERROR,
+              `The pending review could not be started: ${started.error}`,
+            ),
+            started.conflict ? 409 : 500,
+          );
+        }
+        handedOff = true;
+        reviewRerun = true;
+        reason = "re-running the pending review";
+      }
     } finally {
-      // Release BEFORE relaunch so the loop's own lock acquisition succeeds.
-      releaseRecoveryLock(paths);
+      // Release unless a run adopted the lock (it releases it when it ends).
+      if (!handedOff) releaseRecoveryLock(paths);
     }
 
-    // 6. Relaunch after release.
-    let relaunched = false;
-    if (relaunch && relaunchOptions) {
-      const started = getLoopManager().startLoop(projectPath, relaunchOptions);
-      relaunched = started.ok;
-      if (!started.ok) reason = started.error; // e.g. "Loop already running…"
-    }
-
-    // `reconciled` is set on the only success path; every null-leaving path returns
-    // early inside the try. This explicit guard makes that invariant compiler-checked
-    // (no non-null assertion) and defends a future non-returning edit from sending null.
-    if (!reconciled) {
-      return c.json(
-        errorResponse(ErrorCodes.IO_ERROR, "resume produced no reconcile summary"),
-        500,
-      );
-    }
-    const result: ResumeResult = { reconciled, relaunched, reason };
+    const result: ResumeResult = {
+      reconciled,
+      ...(interrupted ? { interrupted } : {}),
+      relaunched,
+      ...(reviewRerun ? { reviewRerun: true } : {}),
+      reason,
+    };
     return c.json({ data: result });
   });
 

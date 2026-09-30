@@ -280,7 +280,7 @@ never terminates with it. `backlog validate` keeps its own triad: 0 valid / 1 fi
 | Exit | Meaning                                                      | Status states                                                        |
 | ---- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
 | `0`  | Success — clean terminal                                     | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
-| `1`  | Error — generic failure                                      | `ERROR`                                                              |
+| `1`  | Error — generic failure (or a pending review)                | `ERROR`; `IDLE`/`COMPLETE` with `reviewPending` (row 8)              |
 | `2`  | Usage — bad args / precondition (incl. loop-already-running) | —                                                                    |
 | `3`  | Needs human                                                  | `PAUSED_HUMAN`                                                       |
 | `4`  | Limit / usage-paused / sleeping                              | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |

@@ -13,29 +13,24 @@ import type {
 } from "@rauf/core";
 import { raufFetch, raufFetchJson } from "../../lib/fetch";
 import { StateBadge } from "../../components/StateBadge";
+import {
+  STOPPABLE_STATES,
+  canResume,
+  describeEvent,
+  reviewPendingNotice,
+} from "../../lib/status-helpers";
 
 // ─── Loop control state sets ──────────────────────────────────────
 
 const STARTABLE_STATES = new Set(["IDLE", "PAUSED", "COMPLETE", "ITERATIONS_COMPLETE", "ERROR"]);
-const STOPPABLE_STATES = new Set(["RUNNING", "SLEEPING_LIMIT"]);
 
-// States from which a Resume action is meaningful (spec 04 §8.7). Iteration
-// budget reached is a clean stop with work likely remaining — re-running
-// continues the backlog, so it is resumable alongside the paused states.
-const RESUMABLE_STATES = new Set([
-  "PAUSED",
-  "PAUSED_HUMAN",
-  "PAUSED_USAGE_LIMIT",
-  "ITERATIONS_COMPLETE",
-  "ERROR",
-  "IDLE",
-]);
 // States in which a standalone Review pass would 409 (a loop is active).
 const REVIEW_BLOCKING_STATES = new Set(["RUNNING", "REVIEWING", "STARTING"]);
 
 // Web shape of the resume route's ResumeResult DTO (spec 04 §4 / 00 §6).
 interface ResumeResultData {
   relaunched: boolean;
+  reviewRerun?: boolean;
   reason?: string;
 }
 
@@ -453,121 +448,6 @@ function LogPanel({ projectId, backlogRoot }: { projectId: string; backlogRoot?:
 // vocabulary label-map, no status badges, and no recovery actions
 // (those are Phase 4). See spec 05 §7 / §9.
 
-// Maps each PersistedEvent to a short label + salient detail. The switch
-// is exhaustive over the discriminated union — the `never`-typed default
-// makes typecheck fail if a LoopEvent member is ever added without a
-// branch here. An unknown future `type` (forward-stable envelope) still
-// renders generically at runtime rather than crashing.
-/**
- * A short suffix noting a captured stdout/stderr diagnostic tail (#74), when
- * either is present. Keeps the event feed row terse — the full tail lives in
- * rauf.log, not inline here.
- */
-function diagnosticTailNote(stdoutTail?: string, stderrTail?: string): string {
-  return stdoutTail || stderrTail ? " (diagnostic tail captured — see rauf.log)" : "";
-}
-
-function describeEvent(e: PersistedEvent): { label: string; detail: string } {
-  switch (e.type) {
-    case "loop_started":
-      return {
-        label: "Loop started",
-        detail: `max ${e.maxIterations} iterations${e.model ? ` · ${e.model}` : ""}`,
-      };
-    case "iteration_start":
-      return { label: "Iteration", detail: `${e.iteration} / ${e.maxIterations}` };
-    case "item_selected":
-      return { label: "Item selected", detail: `#${e.itemId} · P${e.priority} — ${e.title}` };
-    case "llm_spawned":
-      return {
-        label: "Agent spawned",
-        detail: `#${e.itemId} · ${e.provider}${e.model ? ` ${e.model}` : ""}`,
-      };
-    case "llm_exited":
-      return {
-        label: "Agent exited",
-        detail: `#${e.itemId} · exit ${e.exitCode}${e.timedOut ? " (timed out)" : ""} · ${Math.round(e.durationMs / 1000)}s`,
-      };
-    case "signal_parsed":
-      return {
-        label: "Signal",
-        detail: `#${e.itemId} · ${e.signal}${e.reason ? ` — ${e.reason}` : ""}`,
-      };
-    case "item_completed":
-      return { label: "Item completed", detail: `#${e.itemId} — ${e.title}` };
-    case "item_blocked":
-      return {
-        label: "Item blocked",
-        detail: `#${e.itemId} — ${e.reason}${diagnosticTailNote(e.stdoutTail, e.stderrTail)}`,
-      };
-    case "item_retried":
-      return {
-        label: "Item retried",
-        detail: `#${e.itemId} · attempt ${e.attempt}/${e.maxRetries}${diagnosticTailNote(e.stdoutTail, e.stderrTail)}`,
-      };
-    case "needs_human":
-      return { label: "Needs human", detail: `#${e.itemId} — ${e.reason}` };
-    case "loop_paused":
-      return { label: "Loop paused", detail: `#${e.itemId} · ${e.reason}` };
-    case "usage_limit_hit":
-      return {
-        label: "Usage limit hit",
-        detail: `${e.limitType} · ${Math.round(e.utilization * 100)}%`,
-      };
-    case "usage_limit_cleared":
-      return { label: "Usage limit cleared", detail: e.limitType };
-    case "sleep_start":
-      return { label: "Sleep", detail: `until ${e.sleepUntil} — ${e.reason}` };
-    case "sleep_end":
-      return { label: "Sleep ended", detail: "" };
-    case "loop_completed":
-      return {
-        label: "Loop completed",
-        detail: `${e.completedCount} done · ${e.blockedCount} blocked${
-          e.needsHumanCount != null ? ` · ${e.needsHumanCount} needs human` : ""
-        }`,
-      };
-    case "loop_error":
-      return { label: "Loop error", detail: e.error };
-    case "loop_cancelled":
-      return { label: "Loop cancelled", detail: "" };
-    case "review_started":
-      return { label: "Review started", detail: `${e.completedItemIds.length} items` };
-    case "review_completed":
-      return { label: "Review completed", detail: `${e.itemsCreated} created — ${e.summary}` };
-    case "review_failed":
-      return { label: "Review failed", detail: e.reason };
-    case "llm_tool_activity":
-      return { label: "Tool", detail: `#${e.itemId} · ${e.toolName} (${e.phase})` };
-    case "llm_token_update":
-      return {
-        label: "Tokens",
-        detail: `#${e.itemId} · ${e.inputTokens} in / ${e.outputTokens} out`,
-      };
-    case "llm_stuck_warning":
-      return {
-        label: "Stuck warning",
-        detail:
-          `#${e.itemId} · silent ${Math.round(e.silentMs / 1000)}s` +
-          (e.currentTool != null
-            ? ` · ${e.currentTool} running ${Math.round((e.toolRunningMs ?? e.silentMs) / 1000)}s`
-            : ""),
-      };
-    default:
-      return describeUnknownEvent(e);
-  }
-}
-
-// Exhaustiveness guard: `e` is `never` when every LoopEvent member above
-// is handled. A forward/unknown event still renders by its raw `type`.
-function describeUnknownEvent(e: never): { label: string; detail: string } {
-  const fallback = e as { type?: unknown };
-  return {
-    label: typeof fallback.type === "string" ? fallback.type : "event",
-    detail: "",
-  };
-}
-
 function EventTimeline({ projectId, backlogRoot }: { projectId: string; backlogRoot?: string }) {
   const [events, setEvents] = useState<PersistedEvent[]>([]);
   const [connected, setConnected] = useState(false);
@@ -888,7 +768,9 @@ export function StatusView() {
       setRecoveryMessage(
         data.relaunched
           ? "Resumed — loop relaunched"
-          : `Reconciled — ${data.reason ?? "nothing to relaunch"}`,
+          : data.reviewRerun
+            ? "Resumed — re-running the pending review. Watch the Event Timeline."
+            : `Reconciled — ${data.reason ?? "nothing to relaunch"}`,
       );
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
     },
@@ -1017,6 +899,7 @@ export function StatusView() {
 
   const elapsedDisplay =
     status.loopState === "RUNNING" && status.elapsed != null ? formatElapsed(status.elapsed) : null;
+  const reviewNotice = reviewPendingNotice(status);
 
   return (
     <div className="p-6">
@@ -1180,6 +1063,21 @@ export function StatusView() {
               </div>
             </div>
 
+            {/* Pending review (#146): the run is not done even if every item is */}
+            {reviewNotice && (
+              <div
+                role="status"
+                className="mt-3 rounded-md border px-3 py-2 text-sm"
+                style={{
+                  backgroundColor: "rgba(202, 138, 4, 0.06)",
+                  borderColor: "rgba(202, 138, 4, 0.35)",
+                  color: "#ca8a04",
+                }}
+              >
+                <span className="font-medium">Review pending:</span> {reviewNotice}
+              </div>
+            )}
+
             {/* Error message for loop control failures */}
             {loopError && (
               <div
@@ -1269,11 +1167,7 @@ export function StatusView() {
                 <RecoveryButton
                   label={resumeMutation.isPending ? "Resuming…" : "Resume"}
                   onClick={() => resumeMutation.mutate()}
-                  disabled={
-                    resumeMutation.isPending ||
-                    !RESUMABLE_STATES.has(status.loopState) ||
-                    status.backlogSummary.total - status.backlogSummary.done <= 0
-                  }
+                  disabled={resumeMutation.isPending || !canResume(status)}
                 />
 
                 <RecoveryButton

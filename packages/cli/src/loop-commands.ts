@@ -756,6 +756,9 @@ function isLimitTerminal(result: LoopResult): boolean {
  * RUNNING(6) is NEVER returned here — a finished run is not running.
  */
 export function loopRunExitCode(result: LoopResult): ExitCode {
+  if (result.lockConflict) {
+    return ExitCode.USAGE; // 2 — a live loop already holds this root's .loop.lock (#149)
+  }
   if (result.setupFailed) {
     return ExitCode.ERROR; // 1 — pre-loop setup aborted (e.g. agent unavailable, REQ-DET-02/SC-3)
   }
@@ -777,7 +780,13 @@ export function loopRunExitCode(result: LoopResult): ExitCode {
 
 // ─── handleLoopRun ──────────────────────────────────────────────────
 
-export async function handleLoopRun(ctx: CommandContext): Promise<number> {
+/** Injectable seams for {@link handleLoopRun} (tests). */
+export interface LoopRunDeps {
+  /** Detached (server) launch. Defaults to the real server-POST flow. */
+  runDetached?: (ctx: CommandContext) => Promise<number>;
+}
+
+export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {}): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
 
   // Detached mode (formerly `loop start`): delegate to the server-POST flow and
@@ -786,7 +795,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // the in-process path or the POST body (canon P2: hide the mode, don't change it).
   const detached = extractBoolFlag(ctx.flags, "detached");
   if (detached) {
-    const code = await runDetached(ctx);
+    const code = await (deps.runDetached ?? runDetached)(ctx);
     if (code !== ExitCode.SUCCESS) return code;
     // --follow attaches the live view CLI-side AFTER the POST returns (§3).
     if (extractBoolFlag(ctx.flags, "follow")) {
@@ -887,8 +896,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     }
   }
 
-  // Handle --force: clear existing lock with warning
-  if (force) {
+  // Handle --force: clear existing lock with warning — never a lock handed
+  // over by `rauf resume` (ctx.adoptLock), which is ours.
+  if (force && !ctx.adoptLock) {
     const lockStatus = checkLock(paths);
     if (lockStatus.ok && lockStatus.value.locked) {
       warn(
@@ -963,6 +973,14 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
   const runner = runnerResult.value;
+  if (ctx.adoptLock) {
+    // `rauf resume` hands over the lock it recovered under (#149).
+    const adopted = runner.adoptRunLock();
+    if (!adopted.ok) {
+      error(adopted.error.message);
+      return ExitCode.USAGE;
+    }
+  }
 
   const statusLine = new StatusLine({
     isTTY: ndjson ? false : (process.stdout.isTTY ?? false),
@@ -1229,6 +1247,14 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     return ExitCode.ERROR;
   }
   const runner = runnerResult.value;
+  if (ctx.adoptLock) {
+    // `rauf resume` hands over the lock it recovered under (#149).
+    const adopted = runner.adoptRunLock();
+    if (!adopted.ok) {
+      error(adopted.error.message);
+      return ExitCode.USAGE;
+    }
+  }
 
   // Subscribe to review events
   const eventTypes: LoopEvent["type"][] = ["review_started", "review_completed", "review_failed"];
@@ -1276,7 +1302,11 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       outputJson(result);
     } else {
       print("");
-      if (result.reviewFailed) {
+      if (result.lockConflict) {
+        error(
+          `Review not started — a loop is already running for this backlog root (see ${c.cyan(".rauf/rauf.log")}).`,
+        );
+      } else if (result.reviewFailed) {
         error(
           `Review failed — see ${c.cyan(".rauf/rauf.log")}. It stays pending; run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} to retry it.`,
         );
@@ -1294,8 +1324,9 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       }
     }
 
-    // A failed review is an ERROR; one stopped by a usage limit is a LIMIT
-    // terminal (#146).
+    // A live loop holding the lock is USAGE (loop-already-running); a failed
+    // review is an ERROR; one stopped by a usage limit is a LIMIT terminal (#146).
+    if (result.lockConflict) return ExitCode.USAGE;
     if (result.reviewFailed) return ExitCode.ERROR;
     return result.limitReached ? ExitCode.LIMIT : ExitCode.SUCCESS;
   } catch (e) {

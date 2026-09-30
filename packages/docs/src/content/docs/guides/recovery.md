@@ -38,7 +38,7 @@ with `rauf loop run` (exit `6` is query-time only — a `loop run` never termina
 | Exit | Meaning                                                        | Status states                                                        |
 | ---- | -------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `0`  | Success — clean terminal                                       | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
-| `1`  | Error — generic failure                                        | `ERROR`                                                              |
+| `1`  | Error — generic failure (or a pending review)                  | `ERROR`; `IDLE`/`COMPLETE` with `reviewPending`                      |
 | `2`  | Usage — bad args / precondition (incl. a loop already running) | —                                                                    |
 | `3`  | Needs human                                                    | `PAUSED_HUMAN`                                                       |
 | `4`  | Limit / usage-paused / sleeping                                | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |

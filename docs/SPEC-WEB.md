@@ -105,7 +105,9 @@ PUT    /api/config                            → { data: ToolConfig }
 POST   /api/projects/:id/loop/start   → { data: { started: true, projectPath } }
        Body (optional): { maxIterations?, maxRetries?, model?, sessionTimeoutMinutes?, review?, reviewOnly?, provider? }
        Defaults: maxIterations=20, maxRetries=3, sessionTimeoutMinutes=60
-       409 Conflict: Loop already running for this project
+       409 Conflict: Loop already running for this project — in this server, or another process holds
+                     the root's .loop.lock (taken synchronously at launch, #149, so a start is never
+                     reported for a run that then loses the lock)
        Note (v0.5.0): This route is the backend for `rauf loop run --detached`. URL and contract unchanged.
 
 POST   /api/projects/:id/loop/stop    → { data: { stopped: true, projectPath } }
@@ -131,15 +133,36 @@ POST   /api/projects/:id/reset
 POST   /api/projects/:id/resume
        Body: { backlogRoot?: string, retryBlocked?: boolean, answers?: { itemId: string, text: string }[] }
        Guard: acquires recovery lock (409 LOCK_CONFLICT if a live loop holds the lock)
-       Injects each answer as humanAnswer on the item, optionally unblocks blocked items,
-       runs recoverInterruptedLoop, then relaunches the loop if there are eligible items.
-       200: { data: { reconciled: ReconcileSummary, relaunched: boolean, reason?: string } }
-       A failed relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).
+       Mirrors the CLI `rauf resume` ordering (#149), all under the recovery lock:
+         1. Injects each answer as humanAnswer on the item.
+         2. No work left (every item done) and a pending review (state.json reviewPending,
+            #146) → re-run the review as-is: recovery is SKIPPED (it would delete the marker).
+         3. Otherwise detects interrupted in_progress work with uncommitted changes BEFORE any
+            recovery mutation. Found → stop (the CLI-only --recover path): nothing is recovered,
+            state.json (incl. a pending review) is untouched, `interrupted` lists the ids.
+         4. Optionally unblocks blocked items, runs recoverInterruptedLoop. A pending review then
+            has its marker restored (recovery deleted state.json) and is re-run instead of
+            relaunching; else the loop relaunches if an item is eligible.
+       The review re-run is scoped to exactly reviewItemIds (every done item when absent).
+       Lock handoff (#149): the relaunched loop or review ADOPTS the recovery lock (same .loop.lock,
+       this process's PID) — there is no release/re-acquire gap in which another loop could take the
+       root or overwrite state. The lock is released only if no run adopted it.
+       A restored pending-review marker is the pre-recovery state normalized to idle (baseCommitHash
+       and the rest of the run context kept), so a later resume stays bounded to the run baseline.
+       200: { data: { reconciled: ReconcileSummary | null, interrupted?: string[], relaunched: boolean,
+                      reviewRerun?: true, reason?: string } }
+            reconciled is null when recovery was skipped (steps 2 and 3).
+       409 LOCK_CONFLICT / 500: the pending review could not be started (a live loop holds the root,
+            or the launch failed). The marker stays pending for a later resume.
+       A failed loop relaunch is reported as relaunched:false + reason in a 200 (not an HTTP error).
+       The status page's Resume button is enabled for a pending review from any state no live loop
+       owns (not RUNNING/SLEEPING_LIMIT/REVIEWING/STARTING, no live lock), even when every item is done.
        404 if project not installed
 
 POST   /api/projects/:id/loop/review
        Body: { model?: string, sessionTimeoutMinutes?: number, backlogRoot?: string }
-       Guard: loop-start dedupe (409 CONFLICT if a loop/review is already running for this backlog root)
+       Guard: loop-start dedupe (409 CONFLICT if a loop/review is already running for this backlog root,
+              in this server or — via .loop.lock, held for the whole review — any other process)
        Starts a review-only pass (maxIterations:1, reviewOnly:true).
        200: { data: { started: true } }
        Note: registered in loop.ts alongside loop/start and loop/stop

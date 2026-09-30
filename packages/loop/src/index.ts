@@ -32,6 +32,8 @@ export {
   acquireRecoveryLock,
   releaseRecoveryLock,
   recoverInterruptedLoop,
+  readPendingReview,
+  restorePendingReview,
 } from "./recovery.js";
 export type {
   KeptBlock,
@@ -39,6 +41,7 @@ export type {
   ReconcileSummary,
   RecoverySummary,
   AcquiredRecoveryLock,
+  PendingReview,
 } from "./recovery.js";
 
 // Provider system
