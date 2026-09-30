@@ -1004,6 +1004,12 @@ export class LoopRunner extends TypedEventEmitter {
         iterStatus.stuckWarning = true;
         iterStatus.updatedAt = new Date().toISOString();
         writeIterationStatus(this.paths, iterStatus, true);
+      } else if (stuckDetector.currentTool()) {
+        // Heartbeat: a quiet tool call writes nothing for minutes, which would age
+        // `updatedAt` out of the status freshness window (health.iterationFresh) while
+        // the runner is alive and waiting. The tick interval is at most 30 s.
+        iterStatus.updatedAt = new Date().toISOString();
+        writeIterationStatus(this.paths, iterStatus);
       }
     }, StuckDetector.checkIntervalMs(this.stuckThresholds));
 
@@ -1017,13 +1023,12 @@ export class LoopRunner extends TypedEventEmitter {
       const now = Date.now();
       lastActivityAt = new Date(now).toISOString();
       stuckWarning = false;
-      stuckDetector.recordActivity(now);
+      const endedTool = stuckDetector.onEvent(event, now);
       const toolBefore = `${currentTool}@${currentToolStartedAt}`;
 
       try {
         switch (event.type) {
           case "tool_start": {
-            stuckDetector.toolStarted(event, now);
             syncCurrentTool();
             recentTools.push(event.toolName);
             if (recentTools.length > 10) recentTools.shift();
@@ -1031,18 +1036,20 @@ export class LoopRunner extends TypedEventEmitter {
               itemId: item.id,
               toolName: event.toolName,
               phase: "start",
+              ...(event.toolUseId !== undefined ? { toolUseId: event.toolUseId } : {}),
             });
             break;
           }
           case "tool_end": {
             // currentTool stays set until the tool's own end event (#141); with
             // parallel calls it falls back to the most recent one still running.
-            const endedTool = stuckDetector.toolEnded(event);
             syncCurrentTool();
             this.emitEvent("llm_tool_activity", {
               itemId: item.id,
               toolName: endedTool ?? "unknown",
               phase: "end",
+              ...(event.toolUseId !== undefined ? { toolUseId: event.toolUseId } : {}),
+              ...(event.reason !== undefined ? { reason: event.reason } : {}),
             });
             break;
           }

@@ -1301,6 +1301,19 @@ describe("LoopEventSchema", () => {
     projectPath: "/home/user/projects/my-project",
   };
 
+  describe("llm_tool_activity toolUseId / reason (#141)", () => {
+    const activity = { ...base, type: "llm_tool_activity", itemId: "001", toolName: "Bash" };
+    it("accepts the optional fields and the pre-#141 shape without them", () => {
+      expect(() =>
+        LoopEventSchema.parse({ ...activity, phase: "end", toolUseId: "t", reason: "aborted" }),
+      ).not.toThrow();
+      expect(() => LoopEventSchema.parse({ ...activity, phase: "start" })).not.toThrow();
+    });
+    it("rejects an unknown reason", () => {
+      expect(() => LoopEventSchema.parse({ ...activity, phase: "end", reason: "lost" })).toThrow();
+    });
+  });
+
   describe("llm_stuck_warning (#141)", () => {
     it("accepts the enriched payload with a tool in flight", () => {
       const result = LoopEventSchema.parse({

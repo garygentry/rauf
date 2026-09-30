@@ -62,6 +62,7 @@ import {
   type TableColumn,
 } from "./formatter.js";
 import { StatusLine } from "./status-line.js";
+import { RunningTools } from "./running-tools.js";
 import {
   readServerState,
   isProcessAlive,
@@ -970,7 +971,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // Track current item and tool state for status line
   let currentItemId = "";
   let currentItemTitle = "";
-  let currentToolName: string | null = null;
+  const runningTools = new RunningTools();
   let tokenSummary = "";
 
   // Subscribe to all events for terminal output
@@ -1020,19 +1021,17 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
       // For streaming events, update the detail line without pausing
       switch (event.type) {
         case "llm_tool_activity": {
-          if (event.phase === "start") {
-            currentToolName = event.toolName;
-            const detail = tokenSummary
-              ? `\u2192 ${event.toolName}  (${tokenSummary})`
-              : `\u2192 ${event.toolName}`;
-            statusLine.setDetail(detail);
+          // #141: parallel/nested calls — show the most recent call still running,
+          // not "nothing" as soon as any one call ends.
+          if (event.phase === "start") runningTools.start(event.toolName, event.toolUseId);
+          else runningTools.end(event.toolName, event.toolUseId);
+          const running = runningTools.current();
+          if (running) {
+            statusLine.setDetail(
+              tokenSummary ? `\u2192 ${running}  (${tokenSummary})` : `\u2192 ${running}`,
+            );
           } else {
-            currentToolName = null;
-            if (tokenSummary) {
-              statusLine.setDetail(`(${tokenSummary})`);
-            } else {
-              statusLine.setDetail(null);
-            }
+            statusLine.setDetail(tokenSummary ? `(${tokenSummary})` : null);
           }
           return;
         }
@@ -1040,8 +1039,9 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
           const inK = (event.inputTokens / 1000).toFixed(1);
           const outK = (event.outputTokens / 1000).toFixed(1);
           tokenSummary = `${inK}k in / ${outK}k out`;
-          if (currentToolName) {
-            statusLine.setDetail(`\u2192 ${currentToolName}  (${tokenSummary})`);
+          const running = runningTools.current();
+          if (running) {
+            statusLine.setDetail(`\u2192 ${running}  (${tokenSummary})`);
           } else {
             statusLine.setDetail(`(${tokenSummary})`);
           }
@@ -1065,7 +1065,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
         case "item_selected":
           currentItemId = event.itemId;
           currentItemTitle = event.title;
-          currentToolName = null;
+          runningTools.clear();
           tokenSummary = "";
           break;
         case "llm_spawned":
@@ -1073,7 +1073,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
           break;
         case "llm_exited":
           statusLine.stop();
-          currentToolName = null;
+          runningTools.clear();
           tokenSummary = "";
           break;
         case "sleep_start":

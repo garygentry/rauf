@@ -155,14 +155,15 @@ export const MarkerOptionsSchema = z.object({
    */
   acknowledgeEmptyVerify: z.boolean().optional(),
   /**
-   * Ms of stream silence, with no tool call in flight, before the loop emits
-   * `llm_stuck_warning`. Default 300000 (5 minutes). (#141)
+   * Ms of stream silence before the loop emits `llm_stuck_warning`; always required,
+   * tool or not. Default 300000 (5 minutes). (#141)
    */
   stuckThresholdMs: z.number().int().positive().optional(),
   /**
-   * Ms of stream silence while a tool call is in flight (e.g. a long, quiet
-   * foreground verification command) before the loop emits `llm_stuck_warning`.
-   * Default 1800000 (30 minutes). Values below `stuckThresholdMs` are raised to it. (#141)
+   * Runtime ceiling for a quiet in-flight tool call (e.g. a long, silent foreground
+   * verification command): until the oldest such call has run this long, silence
+   * does not raise `llm_stuck_warning`. Measured from the call's start, so later
+   * stream activity never extends it. Default 1800000 (30 minutes). (#141)
    */
   toolStuckThresholdMs: z.number().int().positive().optional(),
 });
@@ -658,6 +659,16 @@ const LlmToolActivitySchema = LoopEventBaseSchema.extend({
   itemId: z.string(),
   toolName: z.string(),
   phase: z.enum(["start", "end"]),
+  /**
+   * Provider call id pairing a start with its end (#141). Absent when the agent gives
+   * no id, and on events persisted by older runners.
+   */
+  toolUseId: z.string().optional(),
+  /**
+   * On a synthesized `end` only: `reconciled` = the stream moved past the call without
+   * its result; `aborted` = the agent process exited with the call open (#141).
+   */
+  reason: z.enum(["reconciled", "aborted"]).optional(),
 });
 
 const LlmTokenUpdateSchema = LoopEventBaseSchema.extend({

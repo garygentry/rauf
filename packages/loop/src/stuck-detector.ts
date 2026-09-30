@@ -5,20 +5,30 @@
 //
 // A foreground tool call (e.g. a Bash verification gate) emits no stream events
 // between its `tool_start` and `tool_end`, so silence alone is not a hang while a
-// tool is running. With a tool in flight the detector uses a separate, much longer
-// ceiling, so a genuinely hung tool is still surfaced — just not at the
-// normal LLM-silence threshold.
+// tool is running. Exact semantics:
+//
+//   - A "quiet tool" is an in-flight tool with no nested activity. A Task/subagent
+//     call whose subagent has emitted events is a model, not a quiet tool: only its
+//     own in-flight children can be quiet tools.
+//   - No quiet tool in flight: warn once the stream has been silent for
+//     `stuckThresholdMs`.
+//   - A quiet tool in flight: warn once the OLDEST quiet tool has been running for
+//     `toolStuckThresholdMs` (measured from its start, so stream activity after it
+//     started never extends the ceiling) AND the stream has been silent for
+//     `stuckThresholdMs`. The ceiling bounds how long any single tool can hold off
+//     the warning, including when its `tool_result` was lost and the parser could not
+//     reconcile it.
 //
 // Pure: every method takes an explicit `now` (ms since epoch) so the thresholds
 // are testable without timers.
 
-import type { ToolEndEvent, ToolStartEvent } from "./stream-parser.js";
+import type { ClaudeStreamEvent, ToolEndEvent, ToolStartEvent } from "./stream-parser.js";
 
 /** Default LLM-silence threshold with no tool in flight (`.rauf.json` `options.stuckThresholdMs`). */
 export const DEFAULT_STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * Default silence ceiling while a tool call is in flight
+ * Default ceiling on a quiet in-flight tool's runtime before the warning may fire
  * (`.rauf.json` `options.toolStuckThresholdMs`).
  *
  * 30 minutes: Claude Code's Bash tool caps a foreground call at 10 minutes by
@@ -29,10 +39,13 @@ export const DEFAULT_STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
  */
 export const DEFAULT_TOOL_STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
+/** Upper bound on the check (and in-flight heartbeat) interval: under the 60 s freshness window. */
+const MAX_CHECK_INTERVAL_MS = 30_000;
+
 export interface StuckThresholds {
-  /** Silence (ms) with no tool in flight before warning. */
+  /** Stream silence (ms) before warning. Always required, tool or not. */
   stuckThresholdMs: number;
-  /** Silence (ms) with a tool in flight before warning. */
+  /** Runtime (ms) a quiet in-flight tool may reach before the warning is allowed. */
   toolStuckThresholdMs: number;
 }
 
@@ -40,15 +53,20 @@ export interface StuckThresholds {
 export interface StuckWarning {
   /** Ms since the last stream event. */
   silentMs: number;
-  /** Name of the tool call in flight, or null when the LLM itself went silent. */
+  /**
+   * The quiet in-flight tool the warning is about (the oldest one), or null when the
+   * model itself went silent (no quiet tool in flight).
+   */
   currentTool: string | null;
-  /** Ms since `currentTool` started, or null when no tool is in flight. */
+  /** Ms since `currentTool` started, or null when `currentTool` is null. */
   toolRunningMs: number | null;
 }
 
 interface InFlightTool {
   toolName: string;
   startedAt: number;
+  /** A nested (subagent) event named this call as its parent. */
+  hasNestedActivity: boolean;
 }
 
 /** Pairing key for a tool_start/tool_end: the provider's call id, else the block index. */
@@ -60,63 +78,86 @@ export class StuckDetector {
   private readonly stuckThresholdMs: number;
   private readonly toolStuckThresholdMs: number;
   private readonly inFlight = new Map<string, InFlightTool>();
+  /** Last stream event of any kind. */
   private lastActivityAt: number;
   private warned = false;
 
   constructor(thresholds: StuckThresholds, now: number) {
     this.stuckThresholdMs = thresholds.stuckThresholdMs;
-    // A tool in flight must never warn EARLIER than plain LLM silence would.
-    this.toolStuckThresholdMs = Math.max(
-      thresholds.toolStuckThresholdMs,
-      thresholds.stuckThresholdMs,
-    );
+    // No clamp needed: stuckThresholdMs of silence is always required, and a tool's
+    // runtime is never shorter than the current silence (its start is an event).
+    this.toolStuckThresholdMs = thresholds.toolStuckThresholdMs;
     this.lastActivityAt = now;
   }
 
-  /** How often the caller should poll {@link check}: at most once a minute, sooner for short thresholds. */
+  /** How often the caller should poll {@link check}: at most every 30 s, sooner for short thresholds. */
   static checkIntervalMs(thresholds: StuckThresholds): number {
-    return Math.max(50, Math.min(60_000, thresholds.stuckThresholdMs));
+    return Math.max(50, Math.min(MAX_CHECK_INTERVAL_MS, thresholds.stuckThresholdMs));
   }
 
-  /** Any stream event: resets the silence clock and re-arms the warning. */
-  recordActivity(now: number): void {
+  /**
+   * Feed one stream event: resets the silence clock, re-arms the warning, and
+   * tracks tool boundaries. Returns the ended tool's name for a matched
+   * `tool_end`, else undefined.
+   */
+  onEvent(event: ClaudeStreamEvent, now: number): string | undefined {
     this.lastActivityAt = now;
     this.warned = false;
-  }
-
-  toolStarted(event: ToolStartEvent, now: number): void {
-    const key = toolKey(event);
-    // Re-insert so a restarted key becomes the most recent tool.
-    this.inFlight.delete(key);
-    this.inFlight.set(key, { toolName: event.toolName, startedAt: now });
-  }
-
-  /** Returns the ended tool's name, or undefined when no matching start was seen. */
-  toolEnded(event: ToolEndEvent): string | undefined {
-    const key = toolKey(event);
-    const tool = this.inFlight.get(key);
-    this.inFlight.delete(key);
-    return tool?.toolName;
+    if ((event.type === "tool_start" || event.type === "token_update") && event.parentToolUseId) {
+      const parent = this.inFlight.get(`id:${event.parentToolUseId}`);
+      if (parent) parent.hasNestedActivity = true;
+    }
+    switch (event.type) {
+      case "tool_start": {
+        const key = toolKey(event);
+        // Re-insert so a restarted key becomes the most recent tool.
+        this.inFlight.delete(key);
+        this.inFlight.set(key, {
+          toolName: event.toolName,
+          startedAt: now,
+          hasNestedActivity: false,
+        });
+        return undefined;
+      }
+      case "tool_end": {
+        const key = toolKey(event);
+        const tool = this.inFlight.get(key);
+        this.inFlight.delete(key);
+        return tool?.toolName;
+      }
+      default:
+        return undefined;
+    }
   }
 
   /** The most recently started tool still in flight, or null. */
   currentTool(): { toolName: string; startedAt: number } | null {
     let latest: InFlightTool | null = null;
     for (const tool of this.inFlight.values()) latest = tool;
-    return latest;
+    return latest ? { toolName: latest.toolName, startedAt: latest.startedAt } : null;
+  }
+
+  /** The oldest in-flight tool with no nested activity (see file header), or null. */
+  private oldestQuietTool(): InFlightTool | null {
+    let oldest: InFlightTool | null = null;
+    for (const tool of this.inFlight.values()) {
+      if (!tool.hasNestedActivity && (oldest === null || tool.startedAt < oldest.startedAt)) {
+        oldest = tool;
+      }
+    }
+    return oldest;
   }
 
   /**
-   * Returns a warning the first time silence crosses the applicable threshold
-   * (tool ceiling while a tool is in flight, else the LLM-silence threshold);
-   * null otherwise. Fires at most once per silence episode.
+   * Returns a warning the first time the rules in the file header are met; null
+   * otherwise. Fires at most once per silence episode.
    */
   check(now: number): StuckWarning | null {
     if (this.warned) return null;
     const silentMs = Math.max(0, now - this.lastActivityAt);
-    const tool = this.currentTool();
-    const threshold = tool ? this.toolStuckThresholdMs : this.stuckThresholdMs;
-    if (silentMs < threshold) return null;
+    if (silentMs < this.stuckThresholdMs) return null;
+    const tool = this.oldestQuietTool();
+    if (tool && now - tool.startedAt < this.toolStuckThresholdMs) return null;
     this.warned = true;
     return {
       silentMs,

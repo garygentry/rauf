@@ -220,13 +220,16 @@ ignore any `type` they do not recognize, per the promise below):
 | `loop_cancelled`    | _(base fields only)_                                                                       |
 | `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`) |
 
-`llm_stuck_warning` fires after `options.stuckThresholdMs` (default 5 min) of stream
-silence with **no tool call in flight**. While a tool call is in flight (a `tool_start`
-with no `tool_end` yet, e.g. a long, quiet foreground verification command) it waits for
-`options.toolStuckThresholdMs` (default 30 min) instead. When it does fire, `currentTool`
-names the in-flight tool (`null` means the LLM itself went silent) and `toolRunningMs`
-says how long that tool has been running. Both fields are optional in the schema only so
-events persisted by pre-#141 runners still parse. Agents with no stream events (the
+`llm_stuck_warning` fires once the stream has been silent for `options.stuckThresholdMs`
+(default 5 min), **unless** a quiet tool call (in flight, with no nested activity: e.g. a
+long, silent foreground verification command) has been running for less than
+`options.toolStuckThresholdMs` (default 30 min). That ceiling is measured from the call's
+start, not added to the silence, so later stream activity never extends it. When the warning
+fires, `currentTool` names that quiet call (`null` means the model itself went silent) and
+`toolRunningMs` says how long it has been running. Both fields are optional in the schema only
+so events persisted by pre-#141 runners still parse. `llm_tool_activity` also gains optional
+`toolUseId` (pairs parallel calls) and, on a synthesized end, `reason`
+(`reconciled` | `aborted`), so every `start` gets an `end`. Agents with no stream events (the
 plain-text presets and `generic-cli`) never report a tool in flight and keep the plain
 silence threshold. See [SCHEMAS.md](./SCHEMAS.md) for per-agent tool boundaries.
 
@@ -296,8 +299,8 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
   has to read that file to decide:
   - **`stuckWarning`** (`boolean`): the runner's stall hint — an iteration
     appears to have stopped making progress. A **decision aid, not a verdict**.
-    A tool call in flight does not raise it until the longer tool ceiling
-    (`options.toolStuckThresholdMs`, default 30 min) passes.
+    A quiet tool call in flight holds it off until that call has run for
+    `options.toolStuckThresholdMs` (default 30 min, counted from the call's start).
   - **`iterationFresh`** (`boolean`): whether the iteration-status file was
     updated within the freshness window (60 s).
   - **`lastActivityAt`** (ISO string): the last activity timestamp.

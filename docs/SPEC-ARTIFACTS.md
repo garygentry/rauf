@@ -157,22 +157,30 @@ The runner tracks tool calls in flight from the stream (`tool_start` with no `to
 
 ```
 Stuck warning behavior (#141):
-  - No tool in flight: warn after options.stuckThresholdMs of silence (default 300000 = 5 min)
-  - Tool in flight:    warn after options.toolStuckThresholdMs of silence (default 1800000 = 30 min)
+  - Fires once the stream has been silent for options.stuckThresholdMs (default 300000 = 5 min),
+    UNLESS a quiet tool call is in flight that has run for less than
+    options.toolStuckThresholdMs (default 1800000 = 30 min).
+  - Quiet tool call: in flight, no nested activity (a Task with an active subagent is a
+    model, not a quiet tool; its in-flight children can be).
+  - toolStuckThresholdMs is a runtime ceiling from the oldest quiet call's start, NOT a
+    silence threshold: later stream activity never extends it; the silence requirement
+    always applies.
   - Payload: itemId, silentMs, currentTool (string | null), toolRunningMs (number | null)
   - Fires once per silence episode; any stream event re-arms it. Never kills or retries anything.
 ```
 
-The tool ceiling exists because a foreground tool call (e.g. the verification gate, run in the
+The ceiling exists because a foreground tool call (e.g. the verification gate, run in the
 foreground as RAUF.md requires) emits no stream events until it returns. 30 minutes is well
 above Claude Code's default 10-minute Bash cap, and it still leaves half of the default
-60-minute session timeout to act on a genuinely hung tool.
+60-minute session timeout to act on a genuinely hung tool. A `tool_result` that never arrives
+cannot suppress the warning indefinitely either: the Claude parser reconciles the call at
+the model's next message in the same scope, and in any case the ceiling runs from the call's
+start.
 
 MarkerOptions fields:
 
 - `stuckThresholdMs?: number`: default `300000`. Must be a positive integer.
-- `toolStuckThresholdMs?: number`: default `1800000`. Must be a positive integer. Values below
-  `stuckThresholdMs` are raised to it.
+- `toolStuckThresholdMs?: number`: default `1800000`. Must be a positive integer.
 
 ### Graceful Cancel
 

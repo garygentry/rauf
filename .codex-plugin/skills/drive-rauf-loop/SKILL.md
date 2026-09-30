@@ -229,14 +229,15 @@ the same signal on `status --json` as **`health.stuckWarning`**. Read the stall 
 from `state.json`'s `updatedAt` alone.
 
 **A tool in flight is not a stall.** A long, quiet foreground tool call (the verification
-gate, a slow build) emits no stream events until it returns. rauf knows when a tool call is
-in flight and waits for a longer ceiling before warning: 30 min (`options.toolStuckThresholdMs`)
-instead of the usual 5 min of silence (`options.stuckThresholdMs`), both set in `.rauf.json`.
-So a `stuckWarning` during a tool call means that tool has run past the ceiling. When
-narrating, the `llm_stuck_warning` event's `currentTool` names the tool (`null` means the
-model itself went quiet) and `toolRunningMs` says how long it has been running. Say which
-case it is. Don't inspect the process tree to second-guess the warning. Plain-text agents
-(no stream events) never report a tool in flight.
+gate, a slow build) emits no stream events until it returns. rauf knows when such a call is in
+flight and holds off the warning until it has run for 30 min (`options.toolStuckThresholdMs`,
+counted from the call's start). After that, the usual 5 min of silence
+(`options.stuckThresholdMs`) triggers it. Both are set in `.rauf.json`. So a `stuckWarning`
+during a tool call means that tool has run past the ceiling. When narrating, the
+`llm_stuck_warning` event's `currentTool` names the tool (`null` means the model itself went
+quiet) and `toolRunningMs` says how long it has been running. Say which case it is. Don't
+inspect the process tree to second-guess the warning. Plain-text agents (no stream events)
+never report a tool in flight.
 
 ### Exit codes & status vocabulary
 

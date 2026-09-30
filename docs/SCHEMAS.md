@@ -136,8 +136,8 @@ interface MarkerOptions {
   provider?: string; // Default LLM provider for this project
   providerConfig?: Record<string, unknown>; // Per-provider configuration
   acknowledgeEmptyVerify?: boolean; // Silence the "no global verification commands configured" launch warning when the project verifies per item via each backlog item's acceptanceCriteria. Only suppresses that warning; a stale/misconfigured dispatcher command still warns. Default: false.
-  stuckThresholdMs?: number; // Ms of stream silence, with no tool call in flight, before `llm_stuck_warning`. Positive integer. Default: 300000 (5 min).
-  toolStuckThresholdMs?: number; // Ms of stream silence while a tool call is in flight (e.g. a long, quiet foreground verification command) before `llm_stuck_warning`. Positive integer; values below stuckThresholdMs are raised to it. Default: 1800000 (30 min).
+  stuckThresholdMs?: number; // Ms of stream silence before `llm_stuck_warning`; always required, tool or not. Positive integer. Default: 300000 (5 min).
+  toolStuckThresholdMs?: number; // Runtime ceiling for a quiet in-flight tool call: until the oldest one has run this long (measured from its start), silence does not raise `llm_stuck_warning`. Positive integer. Default: 1800000 (30 min).
 }
 ```
 
@@ -428,32 +428,32 @@ interface LoopEventBase {
 
 ### All 24 Event Types
 
-| Type                  | Additional Fields                                                    | Emitted When                                             |
-| --------------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
-| `loop_started`        | `maxIterations`, `model?`                                            | Loop begins                                              |
-| `iteration_start`     | `iteration`, `maxIterations`                                         | Each iteration starts                                    |
-| `item_selected`       | `itemId`, `title`, `priority`                                        | Next item picked from backlog                            |
-| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                     | LLM process launched                                     |
-| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`           | LLM process exits                                        |
-| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?` | Exit signal extracted from stdout                        |
-| `item_completed`      | `itemId`, `title`                                                    | Item marked done                                         |
-| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                     | Item marked blocked                                      |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`      | Item re-queued for retry                                 |
-| `needs_human`         | `itemId`, `reason`                                                   | Loop paused for human input                              |
-| `loop_paused`         | `reason` ("needs_human"), `itemId`                                   | Loop halted in `paused_human` (`--pause-on-needs-human`) |
-| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                            | Claude API usage limit detected                          |
-| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                           | Usage limit window reset                                 |
-| `sleep_start`         | `sleepUntil`, `reason`                                               | Loop enters sleep (usage limit)                          |
-| `sleep_end`           | _(base only)_                                                        | Loop wakes from sleep                                    |
-| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                 | Loop finishes normally                                   |
-| `loop_error`          | `error`                                                              | Unexpected error terminates loop                         |
-| `loop_cancelled`      | _(base only)_                                                        | Loop cancelled via AbortController or CANCEL file        |
-| `review_started`      | `completedItemIds`                                                   | Post-loop review pass begins                             |
-| `review_completed`    | `itemsCreated`, `summary`                                            | Review pass finished                                     |
-| `review_failed`       | `reason`                                                             | Review pass failed (non-fatal)                           |
-| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end")                     | Tool call starts or finishes in child session            |
-| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                              | Token count update from child session                    |
-| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                 | Child session silent for too long (see below)            |
+| Type                  | Additional Fields                                                         | Emitted When                                             |
+| --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                                 | Loop begins                                              |
+| `iteration_start`     | `iteration`, `maxIterations`                                              | Each iteration starts                                    |
+| `item_selected`       | `itemId`, `title`, `priority`                                             | Next item picked from backlog                            |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                          | LLM process launched                                     |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                | LLM process exits                                        |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`      | Exit signal extracted from stdout                        |
+| `item_completed`      | `itemId`, `title`                                                         | Item marked done                                         |
+| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                          | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`           | Item re-queued for retry                                 |
+| `needs_human`         | `itemId`, `reason`                                                        | Loop paused for human input                              |
+| `loop_paused`         | `reason` ("needs_human"), `itemId`                                        | Loop halted in `paused_human` (`--pause-on-needs-human`) |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`                                 | Claude API usage limit detected                          |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                | Usage limit window reset                                 |
+| `sleep_start`         | `sleepUntil`, `reason`                                                    | Loop enters sleep (usage limit)                          |
+| `sleep_end`           | _(base only)_                                                             | Loop wakes from sleep                                    |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                      | Loop finishes normally                                   |
+| `loop_error`          | `error`                                                                   | Unexpected error terminates loop                         |
+| `loop_cancelled`      | _(base only)_                                                             | Loop cancelled via AbortController or CANCEL file        |
+| `review_started`      | `completedItemIds`                                                        | Post-loop review pass begins                             |
+| `review_completed`    | `itemsCreated`, `summary`                                                 | Review pass finished                                     |
+| `review_failed`       | `reason`                                                                  | Review pass failed (non-fatal)                           |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?` | Tool call starts or finishes in child session            |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                   | Token count update from child session                    |
+| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                      | Child session silent for too long (see below)            |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -589,6 +589,8 @@ type LoopEvent =
       itemId: string;
       toolName: string;
       phase: "start" | "end";
+      toolUseId?: string; // provider call id; pairs parallel calls (#141)
+      reason?: "reconciled" | "aborted"; // synthesized end only (#141)
     }
   | {
       type: "llm_token_update";
@@ -604,21 +606,31 @@ type LoopEvent =
       projectPath: string;
       itemId: string;
       silentMs: number;
-      currentTool?: string | null; // tool call in flight, or null when the LLM itself went silent
-      toolRunningMs?: number | null; // ms since currentTool started, or null with no tool in flight
+      currentTool?: string | null; // the quiet tool call in flight the warning is about, or null when the model itself went silent
+      toolRunningMs?: number | null; // ms since currentTool started, or null when currentTool is null
     };
 ```
 
-**`llm_stuck_warning` thresholds (#141).** The runner tracks which tool calls are in flight
-(a `tool_start` with no matching `tool_end`). With no tool in flight it warns after
-`options.stuckThresholdMs` of stream silence (default 5 min). While a tool is in flight it
-waits for the much longer `options.toolStuckThresholdMs` (default 30 min), because a
-foreground tool (e.g. a quiet verification command) emits no stream events until it
-returns. A hung tool still gets surfaced, just not at the LLM-silence threshold. The warning
-fires once per silence episode and re-arms on the next stream event. `currentTool` /
-`toolRunningMs` are always set by current runners; they are optional in the schema only so
-events persisted by older runners still parse. `llm_tool_activity` `end` events now carry
-the ended tool's name rather than `"unknown"`.
+**`llm_stuck_warning` semantics (#141).** The runner tracks which tool calls are in flight
+(a `tool_start` with no matching `tool_end`). The warning fires once the stream has been
+silent for `options.stuckThresholdMs` (default 5 min), **unless** a _quiet_ tool call is in
+flight that has been running for less than `options.toolStuckThresholdMs` (default 30 min).
+A quiet tool call is an in-flight call with no nested activity. A Task whose subagent is
+emitting events is a model, not a quiet tool, though its own in-flight children can be. So
+`toolStuckThresholdMs` is a **runtime ceiling measured from the oldest quiet call's start**,
+not a silence threshold. Later stream activity never extends it, and `stuckThresholdMs` of
+silence is always required. Nothing is killed. The warning fires once per silence episode
+and re-arms on the next stream event. `currentTool` / `toolRunningMs` name the quiet call the
+warning is about (both `null` when the model itself went silent). Current runners always set
+them; they are optional in the schema only so events persisted by older runners still parse.
+
+`llm_tool_activity` `end` events now name the ended tool rather than `"unknown"`. Both phases
+carry an optional `toolUseId` (the provider's call id) so consumers can pair parallel calls.
+A synthesized end carries `reason`: `"reconciled"` when the stream moved past the call
+without its result (the Claude parser closes calls left open by an earlier message in the
+same scope, and calls nested under a finished Task), or `"aborted"` when the agent process
+exited (normal exit without a result, error, timeout/kill, truncated stdout) with the call
+still open. Every `start` therefore gets an `end`.
 
 Tool boundaries per agent: **claude** starts a tool at its assistant `tool_use` block and ends
 it when the matching `tool_result` arrives, which is the real execution window. **codex** uses

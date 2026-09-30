@@ -119,13 +119,16 @@ When an iteration stops making progress, rauf emits an `llm_stuck_warning` event
 `stuckWarning` in `iteration-status.json`. Treat this as a **hang warning, not a failure** —
 surface it and keep watching; only escalate if it persists.
 
-The warning is tool-aware. With no tool call in flight it fires after 5 minutes of stream
-silence. While a tool call is running (a long, quiet `bun test && bun run smoke`, say) the agent
-produces no stream events until the tool returns, so rauf waits for a much longer tool ceiling
-(30 minutes) before warning. The event says which case you are in: `currentTool` names the tool in
-flight (`null` means the model itself went quiet) and `toolRunningMs` says how long it has been
-running. `iteration-status.json` keeps `currentTool` set, with `currentToolStartedAt`, until
-that tool finishes.
+The warning is tool-aware. It fires after 5 minutes of stream silence, unless a quiet tool call
+is in flight that has been running for less than 30 minutes. A quiet call is one that produces
+no stream events of its own, like a long `bun test && bun run smoke` in the foreground. (A Task
+whose subagent is busy doesn't count, but the subagent's own tool calls do.) The 30 minutes is a
+cap on the tool's runtime, counted from when it started. It is not extra silence, so other
+activity never pushes it back. Once a quiet tool passes the cap, 5 minutes of silence triggers the
+warning as usual. The event says which case you are in: `currentTool` names the tool (`null` means
+the model itself went quiet) and `toolRunningMs` says how long it has been running.
+`iteration-status.json` keeps `currentTool` set, with `currentToolStartedAt`, until that tool
+finishes, and rauf keeps refreshing its `updatedAt` while the tool runs.
 
 Both thresholds are configurable per project in `.rauf.json`:
 

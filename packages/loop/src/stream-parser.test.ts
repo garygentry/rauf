@@ -298,6 +298,66 @@ describe("StreamParser", () => {
       expect(types.indexOf("tool_end")).toBeLessThan(types.indexOf("message_stop"));
     });
 
+    it("finish() closes every open call as aborted, once", () => {
+      const events: ClaudeStreamEvent[] = [];
+      const parser = new StreamParser((e) => events.push(e));
+      parser.feed(
+        JSON.stringify({
+          type: "assistant",
+          message: { id: "m", content: [{ type: "tool_use", name: "Bash", id: "a", input: {} }] },
+        }),
+      );
+      parser.feed(
+        JSON.stringify({
+          type: "content_block_start",
+          index: 4,
+          content_block: { type: "tool_use", name: "Read" },
+        }),
+      );
+      parser.finish();
+      parser.finish();
+      expect(events.filter((e) => e.type === "tool_end")).toEqual([
+        { type: "tool_end", blockIndex: 0, toolUseId: "a", reason: "aborted" },
+        { type: "tool_end", blockIndex: 4, reason: "aborted" },
+      ]);
+    });
+
+    it("does not reconcile parallel calls from the same message (one event per block)", () => {
+      const events = collectEvents(
+        ["a", "b"].map((id) =>
+          JSON.stringify({
+            type: "assistant",
+            message: { id: "same", content: [{ type: "tool_use", name: "Bash", id, input: {} }] },
+          }),
+        ),
+      );
+      expect(events.filter((e) => e.type === "tool_end")).toHaveLength(0);
+    });
+
+    it("tags nested (subagent) tool starts and token updates with parentToolUseId", () => {
+      const events = collectEvents([
+        JSON.stringify({
+          type: "assistant",
+          parent_tool_use_id: "task_1",
+          message: {
+            id: "s1",
+            content: [{ type: "tool_use", name: "Grep", id: "g", input: {} }],
+            usage: { input_tokens: 5, output_tokens: 1 },
+          },
+        }),
+      ]);
+      expect(events).toEqual([
+        { type: "token_update", inputTokens: 5, outputTokens: 1, parentToolUseId: "task_1" },
+        {
+          type: "tool_start",
+          toolName: "Grep",
+          blockIndex: 0,
+          toolUseId: "g",
+          parentToolUseId: "task_1",
+        },
+      ]);
+    });
+
     it("treats a tool_use with no id as instantaneous (nothing to pair a result with)", () => {
       const events = collectEvents([
         JSON.stringify({

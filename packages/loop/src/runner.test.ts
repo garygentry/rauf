@@ -1615,6 +1615,49 @@ echo '{"type":"result","result":"RAUF_DONE"}'`,
       expect(warnings[0]?.silentMs).toBeGreaterThanOrEqual(100);
     });
 
+    it("heartbeats iteration-status.json while a quiet tool is in flight", async () => {
+      const updatedAts: string[] = [];
+      registerScriptedAgent("heartbeat-agent", async (emit) => {
+        emit({ type: "tool_start", toolName: "Bash", blockIndex: 0, toolUseId: "hb" });
+        // Samples spaced past the 1 s iteration-status write throttle.
+        for (let i = 0; i < 2; i++) {
+          await sleep(1_150);
+          updatedAts.push(readIterationStatus().updatedAt as string);
+        }
+        emit({ type: "tool_end", blockIndex: 0, toolUseId: "hb" });
+      });
+      // A 100 ms threshold → 100 ms check/heartbeat interval; the tool ceiling keeps
+      // the warning out of the picture so only the heartbeat writes.
+      setupProject(tmpDir, [pendingItem("001", "Heartbeat")], {
+        markerOptions: { stuckThresholdMs: 100, toolStuckThresholdMs: 60_000 },
+      });
+      const warnings = await runCollectingWarnings("heartbeat-agent");
+      expect(warnings).toHaveLength(0);
+      // updatedAt kept advancing with no stream events at all.
+      expect(new Set(updatedAts).size).toBe(2);
+    });
+
+    it("carries toolUseId and the synthetic-end reason on llm_tool_activity", async () => {
+      registerScriptedAgent("reason-agent", async (emit) => {
+        emit({ type: "tool_start", toolName: "Bash", blockIndex: 0, toolUseId: "t1" });
+        emit({ type: "tool_end", blockIndex: 0, toolUseId: "t1", reason: "aborted" });
+      });
+      setupProject(tmpDir, [pendingItem("001", "Reason")]);
+      const activity: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, {
+        ...DEFAULT_OPTIONS,
+        provider: "reason-agent",
+        maxIterations: 1,
+      });
+      runner.on("llm_tool_activity", (e) => activity.push(e));
+      await runner.start();
+      expect(activity).toMatchObject([
+        { toolName: "Bash", phase: "start", toolUseId: "t1" },
+        { toolName: "Bash", phase: "end", toolUseId: "t1", reason: "aborted" },
+      ]);
+      expect(activity[0]).not.toHaveProperty("reason");
+    });
+
     it("names the ended tool on llm_tool_activity end events", async () => {
       registerScriptedAgent("named-end-agent", async (emit) => {
         emit({ type: "tool_start", toolName: "Grep", blockIndex: 0, toolUseId: "g" });
