@@ -263,8 +263,10 @@ file-derived snapshot of a backlog root's loop state (no subprocesses are
 invoked to derive it). Its fields:
 
 - **`loopState`**: one of `IDLE`, `RUNNING`, `REVIEWING`, `PAUSED`, `COMPLETE`,
-  `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `LIMIT_REACHED`, `ERROR`, `NOT_INSTALLED`,
-  `SLEEPING_LIMIT`, `WEEKLY_LIMIT`.
+  `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `ITERATIONS_COMPLETE`, `LIMIT_REACHED`,
+  `ERROR`, `NOT_INSTALLED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`. `ITERATIONS_COMPLETE`
+  means the iteration budget ran out with eligible work left (a clean, resumable
+  stop); `LIMIT_REACHED` is the legacy usage-limit terminal.
 - **`stateSource`**: `state.json` | `log-parsing` | `none`.
 - **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
   **`startedAt`**, **`elapsed`**: progress fields (nullable).
@@ -318,12 +320,12 @@ run` share it so a supervisor can branch without parsing JSON):
 
 | Exit code | Meaning                                             | `loopState` (from `rauf status`)                                        |
 | --------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| `0`       | Success (clean terminal)                            | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
+| `0`       | Success (clean terminal)                            | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED`    |
 | `1`       | Error                                               | `ERROR`                                                                 |
 | `2`       | Usage error (bad args / IO)                         | (none)                                                                  |
 | `3`       | Needs human                                         | `PAUSED_HUMAN`                                                          |
 | `4`       | Limit / usage-paused / sleeping                     | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
-| `5`       | Blocked (clean terminal with genuine blocked items) | `IDLE`/`COMPLETE`/`PAUSED` when `backlogSummary` has genuine blocks     |
+| `5`       | Blocked (clean terminal with genuine blocked items) | any exit-`0` state when `backlogSummary` has genuine blocks             |
 | `6`       | Running (query-time only)                           | `RUNNING`, `REVIEWING`                                                  |
 
 (`backlog validate` keeps its own triad: `0` valid · `1` findings · `2` usage/IO.)

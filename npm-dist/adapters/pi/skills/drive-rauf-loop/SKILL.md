@@ -237,7 +237,7 @@ never terminates with it. `backlog validate` keeps its own triad: 0 valid / 1 fi
 
 | Exit | Meaning                                                      | Status states                                                           |
 | ---- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `0`  | Success — clean terminal                                     | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
+| `0`  | Success — clean terminal                                     | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED`    |
 | `1`  | Error — generic failure                                      | `ERROR`                                                                 |
 | `2`  | Usage — bad args / precondition (incl. loop-already-running) | —                                                                       |
 | `3`  | Needs human                                                  | `PAUSED_HUMAN`                                                          |
@@ -248,20 +248,21 @@ never terminates with it. `backlog validate` keeps its own triad: 0 valid / 1 fi
 **Status vocabulary** (machine enum → human label; the SCREAMING_SNAKE value is the wire
 form in `--json`/API). Authoritative source: `references/state-labels.ts`.
 
-| Machine enum         | Label                | What it means / what to do                                             |
-| -------------------- | -------------------- | ---------------------------------------------------------------------- |
-| `IDLE`               | Idle                 | No loop active. Start one with `loop run`.                             |
-| `RUNNING`            | Running              | A loop is active. Observe with `follow`.                               |
-| `REVIEWING`          | Reviewing            | A review pass is active (still "running" for exit-code purposes).      |
-| `PAUSED`             | Paused               | Gracefully paused/interrupted. `resume` to continue.                   |
-| `PAUSED_HUMAN`       | Needs Human          | Halted on a needs-human item. Answer it: `resume --answer <id> "..."`. |
-| `PAUSED_USAGE_LIMIT` | Usage Limit (Paused) | Halted at a usage limit (no auto-sleep). `resume` once limits reset.   |
-| `SLEEPING_LIMIT`     | Sleeping (Limit)     | Auto-sleeping until a usage limit resets (see `sleepUntil`).           |
-| `WEEKLY_LIMIT`       | Weekly Limit         | Weekly cap hit. `resume` after it resets.                              |
-| `LIMIT_REACHED`      | Limit Reached        | Iteration budget exhausted, work remains. `resume` (fresh budget).     |
-| `COMPLETE`           | Complete             | All items done. Nothing to do.                                         |
-| `ERROR`              | Error                | Crash / circuit-breaker halt. `reset` then re-run, or `resume`.        |
-| `NOT_INSTALLED`      | Not Installed        | No `.rauf.json`. Not a rauf project.                                   |
+| Machine enum          | Label                | What it means / what to do                                             |
+| --------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `IDLE`                | Idle                 | No loop active. Start one with `loop run`.                             |
+| `RUNNING`             | Running              | A loop is active. Observe with `follow`.                               |
+| `REVIEWING`           | Reviewing            | A review pass is active (still "running" for exit-code purposes).      |
+| `PAUSED`              | Paused               | Gracefully paused/interrupted. `resume` to continue.                   |
+| `PAUSED_HUMAN`        | Needs Human          | Halted on a needs-human item. Answer it: `resume --answer <id> "..."`. |
+| `PAUSED_USAGE_LIMIT`  | Usage Limit (Paused) | Halted at a usage limit (no auto-sleep). `resume` once limits reset.   |
+| `SLEEPING_LIMIT`      | Sleeping (Limit)     | Auto-sleeping until a usage limit resets (see `sleepUntil`).           |
+| `WEEKLY_LIMIT`        | Weekly Limit         | Weekly cap hit. `resume` after it resets.                              |
+| `ITERATIONS_COMPLETE` | Iterations Complete  | Iteration budget exhausted, work remains. `resume` (fresh budget).     |
+| `LIMIT_REACHED`       | Limit Reached        | Legacy usage-limit terminal (older state files). `resume` once reset.  |
+| `COMPLETE`            | Complete             | All items done. Nothing to do.                                         |
+| `ERROR`               | Error                | Crash / circuit-breaker halt. `reset` then re-run, or `resume`.        |
+| `NOT_INSTALLED`       | Not Installed        | No `.rauf.json`. Not a rauf project.                                   |
 
 ### Machine surfaces (reference)
 
@@ -304,13 +305,13 @@ Pick by what the poll told you (`status` refuses with exit `2` if a live loop st
 lock — stop that first). Stale locks (dead PID) are cleared automatically; a `reset` is only
 warranted for a confirmed-dead lock (`lock.stale && !lock.alive`).
 
-| Situation                                                                               | Command                                                                     |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Crashed / `ERROR` / messy state; want a clean restart point                             | `rauf reset <root>` then `rauf loop run <root>`                             |
-| Interrupted but resumable (`PAUSED`, `LIMIT_REACHED`, `*_LIMIT`, dead lock + work left) | `rauf resume <root>`                                                        |
-| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                       | `rauf resume <root> --recover` (re-verifies + commits, then relaunches)     |
-| `PAUSED_HUMAN` — a question is waiting                                                  | `rauf resume <root> --answer <id> "<answer>"`                               |
-| Items wrongly `blocked` and you want them retried                                       | `rauf backlog unblock <root> [id]` (omit `id` for all), then `resume`/`run` |
+| Situation                                                                                                      | Command                                                                     |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Crashed / `ERROR` / messy state; want a clean restart point                                                    | `rauf reset <root>` then `rauf loop run <root>`                             |
+| Interrupted but resumable (`PAUSED`, `ITERATIONS_COMPLETE`, `LIMIT_REACHED`, `*_LIMIT`, dead lock + work left) | `rauf resume <root>`                                                        |
+| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                                              | `rauf resume <root> --recover` (re-verifies + commits, then relaunches)     |
+| `PAUSED_HUMAN` — a question is waiting                                                                         | `rauf resume <root> --answer <id> "<answer>"`                               |
+| Items wrongly `blocked` and you want them retried                                                              | `rauf backlog unblock <root> [id]` (omit `id` for all), then `resume`/`run` |
 
 What `reset` vs `resume` actually do:
 
