@@ -1268,7 +1268,7 @@ describe("CLAUDE_ADDON.md / AGENTS_ADDON.md parity", () => {
     const start = lines.findIndex((l) => l.startsWith("> Output the signal"));
     expect(start).toBeGreaterThanOrEqual(0);
     const end = lines.findIndex((l, i) => i > start && !l.startsWith(">"));
-    return lines.slice(start, end).join("\n");
+    return lines.slice(start, end === -1 ? undefined : end).join("\n");
   }
 
   it("both addons carry the identical signal blockquote (incl. RAUF_REVIEW / no-signal paragraph)", () => {
