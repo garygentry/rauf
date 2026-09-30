@@ -298,11 +298,6 @@ whole thing, the intentional differences are noted here.
 | Delegation                        | `### Delegation (Claude Code)` — Task-tool specialization, placed **after** Model Selection | `### Delegation` — host-neutral (use the host's subagent mechanism if it has one, else complete subtasks inline), placed **before** Model Selection  |
 | Model Selection `--no-model` note | "…a Claude-aliased backlog under a non-Claude `--agent`"                                    | "…a backlog whose items carry Claude-only tier aliases under a non-Claude `--agent`"                                                                 |
 
-> **Known gap (tracked):** `AGENTS_ADDON.md` does not yet carry the `RAUF_REVIEW:<json>` /
-> no-signal blockquote paragraph that `CLAUDE_ADDON.md` includes. That paragraph is host-neutral
-> (it describes runner behavior, not a Claude mechanism) and should be mirrored into
-> `AGENTS_ADDON.md`; it is stranded in the Claude-only variant today. Tracked in issue #132.
-
 ## CLAUDE_GREENFIELD.md.tmpl: Full Template
 
 For greenfield projects where no CLAUDE.md exists:

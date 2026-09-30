@@ -10,6 +10,7 @@ STALE_PATTERN="Commit your changes\|Commit with:"
 
 LOCI=(
   "artifacts/variants/backlog-json/CLAUDE_ADDON.md"
+  "artifacts/variants/backlog-json/AGENTS_ADDON.md"
   "artifacts/variants/backlog-json/CLAUDE_GREENFIELD.md.tmpl"
   "artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl"
   "packages/core/src/embedded-artifacts.ts"

@@ -19,6 +19,7 @@ import {
 import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
 import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js";
 import { fileExists } from "./fs-utils.js";
+import { EMBEDDED_ARTIFACTS } from "./embedded-artifacts.js";
 import type { ProjectProfile } from "./schemas.js";
 
 // ─── Test Fixtures ────────────────────────────────────────────────
@@ -1255,5 +1256,33 @@ describe("install / update — no-verification-commands warning", () => {
     expect(
       result.value.warnings.some((w) => w.includes("No global verification commands configured")),
     ).toBe(false);
+  });
+});
+
+// ─── Addon parity (#132) ──────────────────────────────────────────
+
+describe("CLAUDE_ADDON.md / AGENTS_ADDON.md parity", () => {
+  /** The host-agnostic signal-detection blockquote: from "> Output the signal" to the first non-`>` line. */
+  function signalBlockquote(content: string): string {
+    const lines = content.split("\n");
+    const start = lines.findIndex((l) => l.startsWith("> Output the signal"));
+    expect(start).toBeGreaterThanOrEqual(0);
+    const end = lines.findIndex((l, i) => i > start && !l.startsWith(">"));
+    return lines.slice(start, end).join("\n");
+  }
+
+  it("both addons carry the identical signal blockquote (incl. RAUF_REVIEW / no-signal paragraph)", () => {
+    const claude = fs.readFileSync(path.join(ARTIFACTS_DIR, "CLAUDE_ADDON.md"), "utf-8");
+    const agents = fs.readFileSync(path.join(ARTIFACTS_DIR, "AGENTS_ADDON.md"), "utf-8");
+    const quote = signalBlockquote(claude);
+    expect(quote).toContain("`RAUF_REVIEW:<json>` is emitted only by a review pass");
+    expect(signalBlockquote(agents)).toBe(quote);
+  });
+
+  it("embedded copies match the artifact sources (regenerate via scripts/generate-embedded-artifacts.ts)", () => {
+    for (const name of ["CLAUDE_ADDON.md", "AGENTS_ADDON.md"]) {
+      const source = fs.readFileSync(path.join(ARTIFACTS_DIR, name), "utf-8");
+      expect(EMBEDDED_ARTIFACTS.get(name)).toBe(source);
+    }
   });
 });

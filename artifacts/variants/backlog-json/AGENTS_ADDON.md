@@ -26,6 +26,11 @@ apply whichever coding agent (Claude, Codex, Gemini, …) drives the iteration.
 > habit. The runner scans backwards from the end and uses the **last** signal
 > line, so trailing text after it (a commit message, a summary) does **not** break
 > detection.
+>
+> `RAUF_REVIEW:<json>` is emitted only by a review pass, not a normal work
+> iteration. If you emit no recognized signal, the runner does **not** auto-block
+> the item — it classifies the outcome by exit context and reconciles committed
+> work.
 
 ### Rules
 - ONE item per iteration — do not work on multiple items
