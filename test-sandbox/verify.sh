@@ -10,6 +10,19 @@ REPO_ROOT="$(cd "$SANDBOX_DIR/.." && pwd)"
 export GIT_DIR="$SANDBOX_DIR/.sandbox-git"
 export GIT_WORK_TREE="$SANDBOX_DIR"
 
+# Hermetic HOME for the whole suite. Without it the runs read the developer's
+# real ~/.claude credentials (the runner then queries the LIVE Anthropic usage
+# API, so the usage-limit scenario's outcome depends on that API's answer, e.g.
+# a 429) and register in the real ~/.rauf/active. A throwaway HOME makes every
+# machine behave like CI: no OAuth token, so usage handling takes the
+# deterministic banner-parse path. Git identity comes from env, not ~/.gitconfig,
+# so the runner's per-item commits still work.
+VERIFY_HOME="$(mktemp -d)"
+trap 'rm -rf "$VERIFY_HOME"' EXIT
+export HOME="$VERIFY_HOME"
+export GIT_AUTHOR_NAME="Rauf Sandbox" GIT_AUTHOR_EMAIL="sandbox@rauf.test"
+export GIT_COMMITTER_NAME="Rauf Sandbox" GIT_COMMITTER_EMAIL="sandbox@rauf.test"
+
 # Require jq
 if ! command -v jq &>/dev/null; then
   echo "ERROR: jq is required but not installed."
@@ -20,6 +33,7 @@ fi
 
 FAILURES=0
 PASSES=0
+SKIPS=0
 CURRENT_SCENARIO=""
 
 # ─── Assertion helpers ───────────────────────────────────────────────
@@ -32,6 +46,12 @@ fail() {
 pass() {
   echo "  PASS: $1"
   PASSES=$((PASSES + 1))
+}
+
+# Skips are never silent: each prints its reason and is counted in the summary.
+skip() {
+  echo "  SKIP: $1"
+  SKIPS=$((SKIPS + 1))
 }
 
 assert_item_status() {
@@ -173,7 +193,7 @@ assert_events_never_contradict() {
   fi
 
   # The terminal event must be loop_completed (does not contradict a terminal
-  # state.json status such as limit_reached).
+  # state.json status such as iterations_complete / complete).
   if [ "$(tail -n1 "$events" | jq -r '.type')" = "loop_completed" ]; then
     pass "events terminal event = loop_completed (consistent with terminal state)"
   else
@@ -288,13 +308,13 @@ assert_no_agent_telemetry() {
 
 # assert_agent_stream_done <id>
 # The full SC-1/SC-4 per-agent stream-done assertion bundle: item done + DONE
-# file + limit_reached + exactly one [rauf] 001 commit + real provider id + no
+# file + iterations_complete + exactly one [rauf] 001 commit + real provider id + no
 # usage preflight + no telemetry + no events/state contradiction (clean run).
 assert_agent_stream_done() {
   local id="$1"
   assert_item_status "001" "done"
   assert_done_file_exists
-  assert_state_status "limit_reached"
+  assert_state_status "iterations_complete"
   assert_dogfood_commit
   assert_event_provider "$id"
   assert_no_usage_preflight
@@ -382,11 +402,14 @@ run_scenario() {
 # ─── Test cases ───────────────────────────────────────────────────────
 
 # 1. stream-done: RAUF_DONE marks item done
+#    The 1-iteration budget is spent while 002 (dependsOn 001, now done) is
+#    still eligible, so the run ends iterations_complete: a clean, resumable
+#    budget stop (0.11.0 split this out of the old overloaded usage-limit state).
 run_scenario "stream-done"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 # Event-log integration (item 014): events.ndjson and state.json never contradict,
 # and the per-item commit obeys the runner-owns-commit rule without committing
 # the live event log.
@@ -394,25 +417,27 @@ assert_events_never_contradict
 assert_dogfood_commit
 
 # 2. stream-blocked: RAUF_BLOCKED marks item blocked
+#    002 depends on the blocked 001, so nothing is eligible when the budget is
+#    spent: the budget landed as the backlog drained, which is complete.
 run_scenario "stream-blocked"
 assert_item_status "001" "blocked"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "complete"
 
 # 3. stream-tools: Multi-tool RAUF_DONE works
 run_scenario "stream-tools"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 
 # 4. slow-stream: Slow stream completes
 run_scenario "slow-stream"
 assert_item_status "001" "done"
 assert_no_iteration_status
 assert_done_file_exists
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 
 # 5. stream-needs-human: RAUF_NEEDS_HUMAN sets the item aside (blocked) and the
 #    loop continues/ends naturally instead of halting in_progress.
@@ -445,7 +470,8 @@ assert_dir_exists "$SANDBOX_DIR/specs/feature-a/.rauf" "specs/feature-a/.rauf st
 
 # Assert state.json written to custom root state dir
 assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "specs/feature-a/.rauf/state.json"
-assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "limit_reached"
+# feature-a's backlog has a single item, so the budget lands exactly as it drains.
+assert_state_status_at "$SANDBOX_DIR/specs/feature-a/.rauf/state.json" "complete"
 
 # Assert rauf.log written to custom root state dir
 assert_file_exists "$SANDBOX_DIR/specs/feature-a/.rauf/rauf.log" "specs/feature-a/.rauf/rauf.log"
@@ -725,7 +751,7 @@ rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 >/dev/null 2>&1 || true
 
 # The loop completed the item despite the unwritable event log.
 assert_item_status "001" "done"
-assert_state_status "limit_reached"
+assert_state_status "iterations_complete"
 assert_done_file_exists
 
 # Persistence failure was silent: no events were written (path stayed a dir).
@@ -875,8 +901,11 @@ echo "=== Scenario: fail-fast (--agent codex, codex absent from PATH) ==="
 bash "$SANDBOX_DIR/setup.sh" >/dev/null 2>&1
 
 # A minimal PATH: rauf wrapper + bun runtime + base system, deliberately EXCLUDING
-# both the sandbox mocks and ~/.local/bin (where a real codex/claude may live).
-FAILFAST_BUN_DIR="$(dirname "$(command -v bun)")"
+# the sandbox mocks. bun is exposed through a private dir holding ONLY a bun
+# symlink: bun's own install dir (often ~/.local/bin or ~/.bun/bin) can also hold
+# a real codex, which would resolve and actually run against the sandbox.
+FAILFAST_BUN_DIR="$(mktemp -d)"
+ln -s "$(command -v bun)" "$FAILFAST_BUN_DIR/bun"
 FAILFAST_PATH="$REPO_ROOT/scripts/bin:$FAILFAST_BUN_DIR:/usr/bin:/bin"
 
 # Record the baseline commit so we can prove no new commit was made.
@@ -884,47 +913,54 @@ FAILFAST_BASELINE="$(git rev-parse HEAD 2>/dev/null)"
 
 FAILFAST_OUT="$(mktemp)"
 FAILFAST_EXIT=0
-PATH="$FAILFAST_PATH" rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 \
-  --agent codex >"$FAILFAST_OUT" 2>&1 || FAILFAST_EXIT=$?
-
-# Non-zero exit.
-if [ "$FAILFAST_EXIT" -ne 0 ]; then
-  pass "fail-fast exits non-zero (got $FAILFAST_EXIT)"
+FAILFAST_REAL_CODEX="$(PATH="$FAILFAST_PATH" command -v codex || true)"
+if [ -n "$FAILFAST_REAL_CODEX" ]; then
+  # A system-wide codex (/usr/bin or /bin) cannot be hidden without dropping the
+  # base system from PATH. Skip rather than run a real agent against the sandbox.
+  skip "fail-fast: a real codex resolves at $FAILFAST_REAL_CODEX on the minimal PATH, so 'codex absent' cannot be simulated"
 else
-  fail "fail-fast exited 0 (expected non-zero for an absent agent)"
+  PATH="$FAILFAST_PATH" rauf loop run "$SANDBOX_DIR" --iterations 1 --timeout 1 \
+    --agent codex >"$FAILFAST_OUT" 2>&1 || FAILFAST_EXIT=$?
+
+  # Non-zero exit.
+  if [ "$FAILFAST_EXIT" -ne 0 ]; then
+    pass "fail-fast exits non-zero (got $FAILFAST_EXIT)"
+  else
+    fail "fail-fast exited 0 (expected non-zero for an absent agent)"
+  fi
+
+  # Message names the agent and how to install / put it on PATH.
+  if grep -qi "codex" "$FAILFAST_OUT" &&
+    grep -qiE "install|on PATH" "$FAILFAST_OUT"; then
+    pass "fail-fast message names codex + install/PATH remediation"
+  else
+    fail "fail-fast message missing codex or install/PATH remediation"
+  fi
+
+  # No silent fallback to claude (the supported-agents list may contain 'claude-cli',
+  # but the run must not announce it is USING/falling back to claude).
+  if grep -qiE "fall.?back|using claude|defaulting to claude|switching to claude" "$FAILFAST_OUT"; then
+    fail "fail-fast output mentions falling back to claude"
+  else
+    pass "fail-fast output never mentions a claude fallback"
+  fi
+
+  # (a) No state.json written.
+  assert_file_not_exists "$SANDBOX_DIR/.rauf/state.json" ".rauf/state.json (fail-fast wrote no state)"
+
+  # (b) No backlog status mutation — item 001 stays at its setup.sh value (pending).
+  assert_item_status "001" "pending"
+
+  # (c) No per-item commit since the baseline.
+  FAILFAST_NEW="$(git rev-list "${FAILFAST_BASELINE}..HEAD" 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "$FAILFAST_NEW" = "0" ]; then
+    pass "fail-fast made no commit since baseline"
+  else
+    fail "fail-fast made $FAILFAST_NEW commit(s) since baseline (expected 0)"
+  fi
 fi
 
-# Message names the agent and how to install / put it on PATH.
-if grep -qi "codex" "$FAILFAST_OUT" &&
-  grep -qiE "install|on PATH" "$FAILFAST_OUT"; then
-  pass "fail-fast message names codex + install/PATH remediation"
-else
-  fail "fail-fast message missing codex or install/PATH remediation"
-fi
-
-# No silent fallback to claude (the supported-agents list may contain 'claude-cli',
-# but the run must not announce it is USING/falling back to claude).
-if grep -qiE "fall.?back|using claude|defaulting to claude|switching to claude" "$FAILFAST_OUT"; then
-  fail "fail-fast output mentions falling back to claude"
-else
-  pass "fail-fast output never mentions a claude fallback"
-fi
-
-# (a) No state.json written.
-assert_file_not_exists "$SANDBOX_DIR/.rauf/state.json" ".rauf/state.json (fail-fast wrote no state)"
-
-# (b) No backlog status mutation — item 001 stays at its setup.sh value (pending).
-assert_item_status "001" "pending"
-
-# (c) No per-item commit since the baseline.
-FAILFAST_NEW="$(git rev-list "${FAILFAST_BASELINE}..HEAD" 2>/dev/null | wc -l | tr -d ' ')"
-if [ "$FAILFAST_NEW" = "0" ]; then
-  pass "fail-fast made no commit since baseline"
-else
-  fail "fail-fast made $FAILFAST_NEW commit(s) since baseline (expected 0)"
-fi
-
-rm -f "$FAILFAST_OUT"
+rm -rf "$FAILFAST_OUT" "$FAILFAST_BUN_DIR"
 
 # ─── Summary ─────────────────────────────────────────────────────────
 
@@ -932,6 +968,7 @@ echo ""
 echo "=== Results ==="
 echo "  Passed: $PASSES"
 echo "  Failed: $FAILURES"
+echo "  Skipped: $SKIPS"
 
 if [ "$FAILURES" -gt 0 ]; then
   echo ""

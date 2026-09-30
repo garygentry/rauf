@@ -25,3 +25,10 @@ jobs:
       # Single source of truth for the gate — shared with release.yml so the
       # two workflows can never drift apart.
       - uses: ./.github/actions/quality-gate
+
+      # End-to-end loop scenarios against mock agents (no network, no API keys;
+      # ~20s). Kept OUT of `pnpm gate` on purpose: the suite mutates tracked
+      # files under test-sandbox/, and the gate also runs as the loop's per-item
+      # acceptance check, where the runner's `git add -A` would commit them.
+      - name: Sandbox scenarios
+        run: pnpm sandbox:verify
