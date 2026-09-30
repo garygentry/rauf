@@ -171,7 +171,8 @@ interface LoopState {
   baseCommitHash: string | null; // HEAD commit captured at loop start — used as `sinceRef` to bound commit reconciliation to commits after the baseline (prevents false-recovery from a prior backlog cycle; see SPEC-CORE.md § Commit Reconciliation)
   error: string | null;
   sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit, or during a usage-disagreement backoff (status running) (#146)
-  reviewPending?: boolean; // review pass stopped by a usage limit; `rauf resume` re-runs it (#146)
+  reviewPending?: boolean; // a review pass started and has not succeeded (usage stop, failure, crash); `rauf resume` re-runs it (#146)
+  reviewItemIds?: string[]; // the pending review's exact scope (done item ids), present with reviewPending (#146)
 }
 ```
 

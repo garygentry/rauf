@@ -273,17 +273,26 @@ export interface ResumeDeps {
 }
 
 /**
- * Whether the loop's review pass was stopped by a usage limit (#146): state.json
- * `reviewPending`. Read before recovery, which clears the loop state.
+ * A review pass that started but did not succeed (#146): state.json
+ * `reviewPending` plus its exact scope `reviewItemIds`, or null. Read before
+ * recovery, which clears the loop state.
  */
-function readReviewPending(paths: BacklogPaths): boolean {
-  // Lenient on purpose: only this one flag matters, so a state.json that fails
+export function readPendingReview(paths: BacklogPaths): { itemIds: string[] | null } | null {
+  // Lenient on purpose: only these fields matter, so a state.json that fails
   // full LoopState validation must not hide a pending review.
   try {
-    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as { reviewPending?: unknown };
-    return raw.reviewPending === true;
+    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as {
+      reviewPending?: unknown;
+      reviewItemIds?: unknown;
+    };
+    if (raw.reviewPending !== true) return null;
+    const ids = Array.isArray(raw.reviewItemIds)
+      ? raw.reviewItemIds.filter((id): id is string => typeof id === "string")
+      : [];
+    // An empty/absent scope (older state) falls back to all done items.
+    return { itemIds: ids.length > 0 ? ids : null };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -349,7 +358,8 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   let relaunch = false;
   // A review pass stopped by a usage limit (#146) is resumed by re-running the
   // standalone review (all done items) instead of relaunching the loop.
-  const reviewPending = readReviewPending(paths);
+  const pendingReview = readPendingReview(paths);
+  const reviewPending = pendingReview !== null;
   let rerunReview = false;
   let exitCode: number = ExitCode.SUCCESS;
   try {
@@ -490,7 +500,7 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   }
 
   if (rerunReview) {
-    info("The review pass was stopped by a usage limit — re-running it.");
+    info("The last review pass did not finish — re-running it.");
     const reviewCtx: CommandContext = {
       args: [targetPath],
       flags: new Map(ctx.flags),
@@ -498,6 +508,8 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
       rawArgv: ctx.rawArgv,
     };
     if (backlogFlag !== null) reviewCtx.flags.set("backlog", backlogFlag);
+    // Review exactly the interrupted review's items, not every done item.
+    if (pendingReview?.itemIds) reviewCtx.flags.set("items", pendingReview.itemIds.join(","));
     return runReview(reviewCtx);
   }
 

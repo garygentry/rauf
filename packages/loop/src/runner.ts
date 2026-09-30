@@ -143,6 +143,8 @@ export interface LoopResult {
    * loop wrote a resumable state with `reviewPending`, and `rauf resume` re-runs it.
    */
   reviewPending?: boolean;
+  /** The review pass failed (spawn/prompt error, unexpected signal, cancel); still pending (#146). */
+  reviewFailed?: boolean;
   /** Set when the loop halted in paused_human via --pause-on-needs-human (item 008). */
   pausedReason?: "needs_human";
   /**
@@ -218,8 +220,13 @@ export class LoopRunner extends TypedEventEmitter {
   private iterationEndedInUsageDeath = false;
   /** Deadline written to state.json `sleepUntil` while a usage sleep/backoff is in progress. */
   private sleepUntil: string | null = null;
-  /** The review pass was stopped by a usage limit; persisted so `rauf resume` re-runs it. */
+  /**
+   * A review pass started and has not yet succeeded (stopped by a usage limit,
+   * failed, or in progress); persisted so `rauf resume` re-runs it (#146).
+   */
   private reviewPending = false;
+  /** The pending review's exact scope (done item ids), persisted with `reviewPending`. */
+  private reviewItemIds: string[] | null = null;
   private readonly deps: Required<LoopRunnerDeps>;
   private currentItemId: string | null = null;
   private startedAt: string = "";
@@ -562,12 +569,16 @@ export class LoopRunner extends TypedEventEmitter {
             if (this.isCancelled()) break;
 
             const iterResult = await this.runIteration();
-            if (iterResult === "break" || iterResult === "exit") break;
+            if (iterResult === "break") break;
+            // A terminal (usage limit, needs-human pause, git-safety halt…)
+            // already wrote its state + DONE: propagate it exactly like the main
+            // loop, never overwrite it with `complete` below (#146).
+            if (iterResult === "exit") return this.exitResult();
 
             // Between iterations check
             if (this.iterationCount < this.options.maxIterations) {
               const betweenResult = await this.checkBetweenIterations(!!runProvider.checkUsage);
-              if (betweenResult === "exit") break;
+              if (betweenResult === "exit") return this.exitResult();
             }
           }
         }
@@ -609,6 +620,7 @@ export class LoopRunner extends TypedEventEmitter {
         ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
         ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
         ...(this.limitTerminal ? { limitReached: true } : {}),
+        ...(this.reviewPending ? { reviewPending: true } : {}),
       };
     } catch (e) {
       // Crash cleanup: reset in_progress item to pending
@@ -824,32 +836,62 @@ export class LoopRunner extends TypedEventEmitter {
     return { completedCount: 0, blockedCount: 0, cancelled: false, setupFailed: true };
   }
 
+  /** LoopResult for a run that stopped on an iteration/between-iterations "exit". */
+  private exitResult(): LoopResult {
+    return {
+      completedCount: this.completedCount,
+      blockedCount: this.blockedCount,
+      ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
+      cancelled: this.isCancelled(),
+      ...(this.pausedReason ? { pausedReason: this.pausedReason } : {}),
+      ...(this.limitTerminal ? { limitReached: true } : {}),
+      ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
+      ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
+    };
+  }
+
   /**
    * Run a standalone review of already-completed items.
    * Does not run any fix iterations — just creates review items.
+   *
+   * `itemIds` narrows the review to exactly those done items — `rauf resume`
+   * passes the scope persisted with an interrupted review (#146). Without it,
+   * every done item is reviewed.
    */
-  async startReviewOnly(): Promise<LoopResult> {
+  async startReviewOnly(itemIds?: string[]): Promise<LoopResult> {
     this.startedAt = new Date().toISOString();
     this.baseCommitHash = await this.getHeadCommit();
     this.instructionPaths = resolveInstructionPaths(this.paths);
 
-    // Read backlog and find all done items
+    // Read backlog and find the done items to review
     const backlogResult = readBacklog(this.paths);
     if (!backlogResult.ok) {
       appendLog(this.paths, `Failed to read backlog: ${backlogResult.error.message}`);
-      return { completedCount: 0, blockedCount: 0, cancelled: false };
+      return { completedCount: 0, blockedCount: 0, cancelled: false, reviewFailed: true };
     }
 
-    const doneItems = backlogResult.value.items.filter((i) => i.status === "done");
+    const doneItems = backlogResult.value.items.filter(
+      (i) => i.status === "done" && (itemIds === undefined || itemIds.includes(i.id)),
+    );
     if (doneItems.length === 0) {
       appendLog(this.paths, "No completed items to review");
+      if (itemIds !== undefined) {
+        // The pending review's items are no longer done: nothing left to
+        // review, so the pending review is settled (not a failure).
+        this.writeState("idle", null);
+      }
       return { completedCount: 0, blockedCount: 0, cancelled: false };
     }
 
-    // Use done item IDs for the review
     this.completedItemIds = doneItems.map((i) => i.id);
 
     const reviewResult = await this.runReviewPass();
+
+    // Leave a settled state behind (the review wrote `reviewing`). A usage stop
+    // already wrote its resumable state; a failure keeps `reviewPending`.
+    if (reviewResult !== "limited") {
+      this.writeState("idle", null);
+    }
 
     return {
       completedCount: 0,
@@ -858,6 +900,7 @@ export class LoopRunner extends TypedEventEmitter {
       ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
       ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
       ...(reviewResult === "limited" ? { limitReached: true, reviewPending: true } : {}),
+      ...(reviewResult === "failed" ? { reviewFailed: true, reviewPending: true } : {}),
     };
   }
 
@@ -874,11 +917,14 @@ export class LoopRunner extends TypedEventEmitter {
     } finally {
       // Any iteration that did not end in a usage death breaks both usage
       // streaks (#146): "consecutive" means back-to-back usage deaths.
-      if (!this.iterationEndedInUsageDeath) {
-        this.consecutiveUsageDisagreements = 0;
-        this.consecutiveDegenerateLimits = 0;
-      }
+      if (!this.iterationEndedInUsageDeath) this.resetUsageStreaks();
     }
+  }
+
+  /** "Consecutive" means back-to-back usage deaths: any other outcome resets both streaks. */
+  private resetUsageStreaks(): void {
+    this.consecutiveUsageDisagreements = 0;
+    this.consecutiveDegenerateLimits = 0;
   }
 
   private async runIterationBody(projectModel?: string): Promise<"continue" | "break" | "exit"> {
@@ -1615,10 +1661,27 @@ export class LoopRunner extends TypedEventEmitter {
 
   // ─── Review pass ──────────────────────────────────────────────────
 
-  /** Run the post-loop review pass. Returns result indicating outcome. */
+  /**
+   * Run the post-loop review pass. Returns result indicating outcome.
+   *
+   * The review counts as pending (state.json `reviewPending` + `reviewItemIds`,
+   * the exact scope) from the moment it starts until it SUCCEEDS (#146): a
+   * usage stop, a failure or a crash mid-review all leave it for `rauf resume`
+   * to re-run over the same items.
+   */
   private async runReviewPass(): Promise<ReviewPassResult> {
+    this.reviewPending = true;
+    this.reviewItemIds = [...this.completedItemIds];
+    const result = await this.runReviewPassBody();
+    if (result === "clean" || result === "continue") {
+      this.reviewPending = false;
+      this.reviewItemIds = null;
+    }
+    return result;
+  }
+
+  private async runReviewPassBody(): Promise<ReviewPassResult> {
     appendLog(this.paths, "Starting review pass");
-    this.reviewPending = false;
     this.emitEvent("review_started", {
       completedItemIds: [...this.completedItemIds],
     });
@@ -1718,6 +1781,7 @@ export class LoopRunner extends TypedEventEmitter {
       const parsed = parseSignal(neutralizeForDetection(stdout));
 
       if (parsed.signal === "done") {
+        this.resetUsageStreaks();
         appendLog(this.paths, "Review pass: clean — no issues found");
         this.emitEvent("review_completed", {
           itemsCreated: 0,
@@ -1727,6 +1791,7 @@ export class LoopRunner extends TypedEventEmitter {
       }
 
       if (parsed.signal === "review" && parsed.reviewPayload) {
+        this.resetUsageStreaks();
         const batch = new Date().toISOString();
         let created = 0;
 
@@ -1782,6 +1847,9 @@ export class LoopRunner extends TypedEventEmitter {
         if (usage === "retry") continue;
         return usage;
       }
+      // A review attempt that did not die of a usage limit breaks both usage
+      // streaks, exactly like a work iteration (#146).
+      this.resetUsageStreaks();
       if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
         reviewRetryCount++;
         // Same #125 diagnostic as the work-iteration path: a review agent can
@@ -1814,9 +1882,10 @@ export class LoopRunner extends TypedEventEmitter {
    * A review-pass usage death (#146), routed through the same usage policy as a
    * work iteration but with no iteration budget. Returns "retry" after sleeping
    * or backing off through it, or the final review outcome: "limited" when the
-   * loop halted (paused_usage_limit / weekly_limit) or REVIEW_MAX_USAGE_DEATHS was
-   * reached (state.json `reviewPending` so `rauf resume` re-runs the review),
-   * "failed" when cancelled.
+   * loop halted (paused_usage_limit / weekly_limit) or this was death number
+   * REVIEW_MAX_USAGE_DEATHS (which stops at once, without a pointless final
+   * sleep), "failed" when cancelled. `reviewPending` stays set throughout; only
+   * a successful review clears it (runReviewPass).
    */
   private async handleReviewUsageDeath(
     bannerText: string,
@@ -1826,31 +1895,29 @@ export class LoopRunner extends TypedEventEmitter {
       this.paths,
       `Review pass: usage limit detected (${deaths}/${REVIEW_MAX_USAGE_DEATHS})`,
     );
-    // Persist the pending review through any sleep/halt the handler writes.
-    this.reviewPending = true;
-    const usage = await this.handleStderrUsageLimit(bannerText, "review");
-    if (usage === "exit" && !this.limitTerminal) {
-      // Cancelled during a usage sleep.
-      this.reviewPending = false;
-      return "failed";
-    }
-    if (usage === "continue" && deaths < REVIEW_MAX_USAGE_DEATHS && !this.isCancelled()) {
-      this.reviewPending = false;
-      this.writeState("reviewing", null);
-      return "retry";
-    }
-    if (usage === "continue") {
-      if (this.isCancelled()) {
-        this.reviewPending = false;
-        return "failed";
-      }
+    if (deaths >= REVIEW_MAX_USAGE_DEATHS) {
+      // Final allowed death: no retry could follow, so neither sleep nor back
+      // off — stop resumably now (the budget-final rule, for the review).
       appendLog(
         this.paths,
         `Review pass stopped after ${deaths} usage-limit deaths; run \`rauf resume\` to re-run it`,
       );
+      this.emitEvent("usage_limit_hit", { limitType: "5h", utilization: 100 });
       this.writeState("paused_usage_limit", null);
       writeDoneFile(this.paths, "paused_usage_limit:unknown — review pending, run `rauf resume`");
+      return this.reviewStoppedByLimit();
     }
+    const usage = await this.handleStderrUsageLimit(bannerText, "review");
+    if (usage === "exit") {
+      // A halt wrote its terminal state; otherwise it was cancelled mid-sleep.
+      return this.limitTerminal ? this.reviewStoppedByLimit() : "failed";
+    }
+    if (this.isCancelled()) return "failed";
+    this.writeState("reviewing", null);
+    return "retry";
+  }
+
+  private reviewStoppedByLimit(): "limited" {
     const reason = "Review pass stopped by a usage limit (review pending — run `rauf resume`)";
     this.emitEvent("review_failed", { reason });
     return "limited";
@@ -2094,7 +2161,9 @@ export class LoopRunner extends TypedEventEmitter {
       baseCommitHash: this.baseCommitHash,
       error: error ?? null,
       ...(this.sleepUntil ? { sleepUntil: this.sleepUntil } : {}),
-      ...(this.reviewPending ? { reviewPending: true } : {}),
+      ...(this.reviewPending
+        ? { reviewPending: true, reviewItemIds: this.reviewItemIds ?? [] }
+        : {}),
     });
     // Advisory registry refresh (REQ-OBS-02). state.json (just written) stays
     // authoritative; this keeps the cross-root summary's status roughly current.

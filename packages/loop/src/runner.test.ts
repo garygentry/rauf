@@ -5,7 +5,7 @@ import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
-import { EVENTS_SCHEMA_VERSION, ok } from "@rauf/core";
+import { EVENTS_SCHEMA_VERSION, deriveStatus, ok, resolveBacklogPaths } from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
 import type { LoopRunnerDeps } from "./runner.js";
@@ -3144,6 +3144,14 @@ fi`,
         }),
         { status: 200 },
       );
+    const confirmedLimit = () =>
+      new Response(
+        JSON.stringify({
+          five_hour: { utilization: 100, resets_at: "2099-01-01T00:00:00Z" },
+          seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+        }),
+        { status: 200 },
+      );
     const tooManyRequests = () =>
       new Response("", { status: 429, statusText: "Too Many Requests" });
 
@@ -3226,6 +3234,13 @@ exit 1`,
         expect(state.status).toBe("iterations_complete");
         const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
         expect(done.startsWith("iterations_complete: ")).toBe(true);
+        // Tier-2 fallback: with state.json gone, status derives the budget stop
+        // from the DONE prefix, not COMPLETE.
+        fs.rmSync(path.join(tmpDir, ".rauf", "state.json"));
+        const paths = resolveBacklogPaths(tmpDir, path.join(tmpDir, ".rauf"));
+        if (!paths.ok) throw new Error(paths.error.message);
+        const derived = deriveStatus(paths.value);
+        expect(derived.ok && derived.value.loopState).toBe("ITERATIONS_COMPLETE");
       });
     }
 
@@ -3490,24 +3505,21 @@ exit 1`,
       }
 
       it("sleepOnLimit=false: halts resumably (paused_usage_limit + reviewPending), not complete", async () => {
-        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        // An old done item (000) outside this run's scope, plus this run's item.
+        setupProject(tmpDir, [
+          pendingItem("000", "Old", { status: "done" }),
+          pendingItem("001", "Task"),
+        ]);
         const counter = path.join(binDir, "spawns");
         writeReviewDeathAgent(counter);
-        stubUsageApi(
-          () =>
-            new Response(
-              JSON.stringify({
-                five_hour: { utilization: 100, resets_at: "2099-01-01T00:00:00Z" },
-                seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
-              }),
-              { status: 200 },
-            ),
-        );
-        // Preflight must not halt before the work runs: limited only once the
-        // review has died.
-        const origFetch = globalThis.fetch;
-        globalThis.fetch = (async (...args: Parameters<typeof fetch>) =>
-          spawns(counter) >= 2 ? origFetch(...args) : notLimited()) as typeof fetch;
+        // Not limited until the review (spawn 2) has died; then a confirmed 5h
+        // limit. Record which answer each usage call got, in order.
+        const answers: string[] = [];
+        stubUsageApi(() => {
+          const reviewDied = fs.existsSync(counter) && spawns(counter) >= 2;
+          answers.push(reviewDied ? "limited" : "not_limited");
+          return reviewDied ? confirmedLimit() : notLimited();
+        });
         const reviewFailed: string[] = [];
         const runner = createRunner(tmpDir, {
           ...DEFAULT_OPTIONS,
@@ -3517,6 +3529,14 @@ exit 1`,
         runner.on("review_failed", (e) => reviewFailed.push(e.reason));
         const result = await runner.start();
 
+        // Call path: the preflight really answered "not limited", and the
+        // review death was confirmed by the API (not the unavailable path).
+        expect(answers[0]).toBe("not_limited");
+        expect(answers.at(-1)).toBe("limited");
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).not.toContain("unavailable");
+        expect(log).toContain("halting without sleep");
+
         expect(result.completedCount).toBe(1);
         expect(result.limitReached).toBe(true);
         expect(result.reviewPending).toBe(true);
@@ -3525,9 +3545,28 @@ exit 1`,
         );
         expect(state.status).toBe("paused_usage_limit");
         expect(state.reviewPending).toBe(true);
+        // The persisted scope is exactly this run's reviewed items, not every done item.
+        expect(state.reviewItemIds).toEqual(["001"]);
         const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
         expect(done).toContain("paused_usage_limit");
         expect(reviewFailed[0]).toContain("review pending");
+
+        // A resumed review of that scope reviews exactly those ids.
+        writeMockClaude(binDir, 'echo "RAUF_DONE"');
+        const resumed = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          review: true,
+          reviewOnly: true,
+        });
+        const started: string[][] = [];
+        resumed.on("review_started", (e) => started.push(e.completedItemIds));
+        const r2 = await resumed.startReviewOnly(state.reviewItemIds);
+        expect(started).toEqual([["001"]]);
+        expect(r2.reviewPending).toBeUndefined();
+        const after = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(after.reviewPending).toBeUndefined();
       });
 
       it("retries the review through usage sleeps, then stops resumably after the cap", async () => {
@@ -3544,9 +3583,10 @@ exit 1`,
         const result = await runner.start();
 
         // 1 work spawn + REVIEW_MAX_USAGE_DEATHS (4) review attempts: backoff
-        // 30s, 60s, assumed-limit sleep (strike 3), assumed-limit sleep again.
+        // 30s, 60s, assumed-limit sleep (strike 3); death 4 is the last one
+        // allowed, so it stops at once — no pointless final sleep.
         expect(spawns(counter)).toBe(5);
-        expect(sleeps).toEqual([30_000, 60_000, 30 * 60_000, 30 * 60_000]);
+        expect(sleeps).toEqual([30_000, 60_000, 30 * 60_000]);
         expect(result.limitReached).toBe(true);
         expect(result.reviewPending).toBe(true);
         const state = JSON.parse(
@@ -3554,6 +3594,111 @@ exit 1`,
         );
         expect(state.status).toBe("paused_usage_limit");
         expect(state.reviewPending).toBe(true);
+      });
+
+      it("a non-usage review attempt resets the usage streaks", async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        const counter = path.join(binDir, "spawns");
+        // Spawn 1: work done. Review attempts: 2 usage death, 3 no-signal
+        // (genuine retry), 4 usage death, 5 RAUF_DONE.
+        writeMockClaude(
+          binDir,
+          `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ] || [ "$n" -eq 5 ]; then echo "RAUF_DONE"; exit 0; fi
+if [ "$n" -eq 3 ]; then echo "no signal"; exit 0; fi
+echo "Claude usage limit reached" >&2
+exit 1`,
+        );
+        stubUsageApi(notLimited);
+        const { sleeps, sleep } = recordingSleep();
+        const runner = createRunner(
+          tmpDir,
+          { ...DEFAULT_OPTIONS, review: true, maxRetries: 3 },
+          { sleep },
+        );
+        const result = await runner.start();
+
+        // Without the reset, the second usage death would be strike 2 (60s).
+        expect(sleeps).toEqual([30_000, 30_000]);
+        expect(result.reviewPending).toBeUndefined();
+      });
+
+      it("a usage terminal while processing review-created fix items is not overwritten as complete", async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        const counter = path.join(binDir, "spawns");
+        const payload = JSON.stringify({
+          items: [
+            {
+              type: "bug",
+              priority: 1,
+              title: "Fix it",
+              description: "Fix",
+              acceptanceCriteria: ["Fixed"],
+            },
+          ],
+          summary: "1 issue",
+        });
+        // 1: work done; 2: review creates a fix item; 3: the fix iteration
+        // dies on a usage banner.
+        writeMockClaude(
+          binDir,
+          `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then echo "RAUF_DONE"; exit 0; fi
+if [ "$n" -eq 2 ]; then echo 'RAUF_REVIEW:${payload}'; exit 0; fi
+echo "Claude usage limit reached" >&2
+exit 1`,
+        );
+        stubUsageApi(() =>
+          fs.existsSync(counter) && spawns(counter) >= 3 ? confirmedLimit() : notLimited(),
+        );
+        const runner = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          review: true,
+          sleepOnLimit: false,
+        });
+        const result = await runner.start();
+
+        expect(spawns(counter)).toBe(3);
+        expect(result.limitReached).toBe(true);
+        expect(result.reviewItemsCreated).toBe(1);
+        const state = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(state.status).toBe("paused_usage_limit");
+        const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+        expect(done.startsWith("paused_usage_limit")).toBe(true);
+      });
+
+      it("failure lifecycle: a failed review stays pending until a later success", async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
+        // Review attempt produces no signal; maxRetries 1 → review fails.
+        writeMockClaude(binDir, 'echo "no signal here"');
+        const failing = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          review: true,
+          reviewOnly: true,
+          maxRetries: 1,
+        });
+        const r1 = await failing.startReviewOnly(["001"]);
+        expect(r1.reviewFailed).toBe(true);
+        expect(r1.reviewPending).toBe(true);
+        const s1 = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+        expect(s1.status).toBe("idle");
+        expect(s1.reviewPending).toBe(true);
+        expect(s1.reviewItemIds).toEqual(["001"]);
+
+        writeMockClaude(binDir, 'echo "RAUF_DONE"');
+        const ok2 = createRunner(tmpDir, { ...DEFAULT_OPTIONS, review: true, reviewOnly: true });
+        const r2 = await ok2.startReviewOnly(["001"]);
+        expect(r2.reviewFailed).toBeUndefined();
+        const s2 = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+        expect(s2.status).toBe("idle");
+        expect(s2.reviewPending).toBeUndefined();
+        expect(s2.reviewItemIds).toBeUndefined();
       });
 
       it("--review-only surfaces a usage stop in LoopResult", async () => {

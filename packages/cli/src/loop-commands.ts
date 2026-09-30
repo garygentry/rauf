@@ -1250,13 +1250,25 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
   process.on("SIGTERM", onSigterm);
 
   try {
-    const result = await runner.startReviewOnly();
+    // Explicit scope (e.g. a pending review re-run by `rauf resume`, #146).
+    const itemsFlag = extractStringFlag(ctx.flags, "items");
+    const itemIds = itemsFlag
+      ? itemsFlag
+          .split(",")
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0)
+      : undefined;
+    const result = await runner.startReviewOnly(itemIds);
 
     if (ctx.globalFlags.json) {
       outputJson(result);
     } else {
       print("");
-      if (result.reviewPending) {
+      if (result.reviewFailed) {
+        error(
+          `Review failed — see ${c.cyan(".rauf/rauf.log")}. It stays pending; run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} to retry it.`,
+        );
+      } else if (result.reviewPending) {
         warn(
           `Review stopped by a usage limit — run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} once the limit resets to re-run it.`,
         );
@@ -1270,7 +1282,9 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       }
     }
 
-    // A review stopped by a usage limit is a LIMIT terminal (#146).
+    // A failed review is an ERROR; one stopped by a usage limit is a LIMIT
+    // terminal (#146).
+    if (result.reviewFailed) return ExitCode.ERROR;
     return result.limitReached ? ExitCode.LIMIT : ExitCode.SUCCESS;
   } catch (e) {
     error(`Review failed: ${e instanceof Error ? e.message : String(e)}`);

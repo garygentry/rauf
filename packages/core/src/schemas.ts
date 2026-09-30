@@ -231,10 +231,12 @@ export const LoopStateSchema = z.object({
    */
   sleepUntil: z.string().nullable().optional(),
   /**
-   * The post-loop review pass was stopped by a usage limit before it finished
-   * (#146). `rauf resume` re-runs the review when this is set.
+   * A review pass started but has not succeeded: stopped by a usage limit,
+   * failed, or interrupted (#146). `rauf resume` re-runs it over `reviewItemIds`.
    */
   reviewPending: z.boolean().optional(),
+  /** The pending review's scope: exactly the done item ids it was reviewing (#146). */
+  reviewItemIds: z.array(z.string()).optional(),
   /**
    * HEAD commit hash captured at loop start, used as the baseline (`sinceRef`)
    * for commit reconciliation so only commits made during THIS run can recover
