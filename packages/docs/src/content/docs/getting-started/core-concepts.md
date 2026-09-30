@@ -98,20 +98,20 @@ At any moment a loop has a **derived state**. The SCREAMING_SNAKE value is the m
 form (what you see in `--json` output and the API); the Title-Case label is the human form.
 Both come from a single source of truth: `packages/core/src/state-labels.ts`.
 
-| Machine enum         | Label                | Meaning                                                       |
-| -------------------- | -------------------- | ------------------------------------------------------------- |
-| `IDLE`               | Idle                 | No loop active.                                               |
-| `RUNNING`            | Running              | A loop is active.                                             |
-| `REVIEWING`          | Reviewing            | A review pass is active (still "running").                    |
-| `PAUSED`             | Paused               | Gracefully paused — resume to continue.                       |
-| `PAUSED_HUMAN`       | Needs Human          | Halted on a needs-human item — answer with `resume --answer`. |
-| `PAUSED_USAGE_LIMIT` | Usage Limit (Paused) | Halted at a usage limit (no auto-sleep).                      |
-| `SLEEPING_LIMIT`     | Sleeping (Limit)     | Auto-sleeping until a usage limit resets.                     |
-| `WEEKLY_LIMIT`       | Weekly Limit         | The weekly cap was reached.                                   |
-| `LIMIT_REACHED`      | Limit Reached        | Iteration budget exhausted, work remains.                     |
-| `COMPLETE`           | Complete             | All items done.                                               |
-| `ERROR`              | Error                | A crash or circuit-breaker halt.                              |
-| `NOT_INSTALLED`      | Not Installed        | Not a rauf project.                                           |
+| Machine enum          | Label                | Meaning                                                        |
+| --------------------- | -------------------- | -------------------------------------------------------------- |
+| `IDLE`                | Idle                 | No loop active.                                                |
+| `RUNNING`             | Running              | A loop is active.                                              |
+| `REVIEWING`           | Reviewing            | A review pass is active (still "running").                     |
+| `PAUSED`              | Paused               | Gracefully paused — resume to continue.                        |
+| `PAUSED_HUMAN`        | Needs Human          | Halted on a needs-human item — answer with `resume --answer`.  |
+| `PAUSED_USAGE_LIMIT`  | Usage Limit (Paused) | Halted at a usage limit (no auto-sleep).                       |
+| `SLEEPING_LIMIT`      | Sleeping (Limit)     | Auto-sleeping until a usage limit resets.                      |
+| `WEEKLY_LIMIT`        | Weekly Limit         | The weekly cap was reached.                                    |
+| `ITERATIONS_COMPLETE` | Iterations Complete  | Iteration budget exhausted, work remains — resume to continue. |
+| `COMPLETE`            | Complete             | No eligible work left; blocked items may remain.               |
+| `ERROR`               | Error                | A crash or circuit-breaker halt.                               |
+| `NOT_INSTALLED`       | Not Installed        | Not a rauf project.                                            |
 
 For what each state means in practice and how to recover from it, see
 [Recovery & Troubleshooting](../../guides/recovery/). For the exit codes these states map to,

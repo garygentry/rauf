@@ -44,6 +44,7 @@ export const STATE_LABELS: Record<LoopStateEnum, StateLabel> = {
   COMPLETE: { label: "Complete", tone: "success" },
   PAUSED_HUMAN: { label: "Needs Human", tone: "warning" }, // REQ-VOCAB-05
   ITERATIONS_COMPLETE: { label: "Iterations Complete", tone: "success" },
+  // Deprecated: no longer derived (legacy limit_reached → ITERATIONS_COMPLETE / COMPLETE).
   LIMIT_REACHED: { label: "Limit Reached", tone: "warning" },
   ERROR: { label: "Error", tone: "danger" },
   NOT_INSTALLED: { label: "Not Installed", tone: "neutral" },

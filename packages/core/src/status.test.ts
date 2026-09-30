@@ -40,7 +40,7 @@ vi.mock("./iteration-status.js", async (importOriginal) => {
     },
   };
 });
-import type { Backlog, BacklogItem, LoopState } from "./schemas.js";
+import type { Backlog, BacklogItem, LoopState, LoopStateEnum } from "./schemas.js";
 import { LoopStateStatusSchema, LoopStateEnumSchema } from "./schemas.js";
 
 // ─── Constants (test-local) ────────────────────────────────────────
@@ -287,14 +287,76 @@ describe("deriveStatus — Tier 1: state.json", () => {
     expect(result.value.loopState).toBe("PAUSED_HUMAN");
   });
 
-  it("derives LIMIT_REACHED from state.json with status 'limit_reached'", () => {
-    const state = makeLoopState({ status: "limit_reached" });
-    writeStateJson(state);
+  // Pre-0.11 runners wrote limit_reached whenever the iteration budget ran out,
+  // even when the last iteration drained the backlog. It derives the state the
+  // current runner would have written: ITERATIONS_COMPLETE only while an item is
+  // still eligible (pending with all deps done), otherwise COMPLETE.
+  it("derives ITERATIONS_COMPLETE from a legacy 'limit_reached' state.json when eligible work remains", () => {
+    writeStateJson(makeLoopState({ status: "limit_reached" }));
+    writeBacklog(
+      makeBacklog([
+        makeItem({ id: "001", status: "done" }),
+        makeItem({ id: "002", status: "pending", dependsOn: ["001"] }),
+      ]),
+    );
 
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.loopState).toBe("LIMIT_REACHED");
+    expect(result.value.loopState).toBe("ITERATIONS_COMPLETE");
+    expect(result.value.stateSource).toBe("state.json");
+  });
+
+  it.each<[string, BacklogItem[]]>([
+    ["every item done", [makeItem({ id: "001", status: "done" })]],
+    [
+      "only pending work is behind a blocked item",
+      [
+        makeItem({ id: "001", status: "blocked" }),
+        makeItem({ id: "002", status: "pending", dependsOn: ["001"] }),
+      ],
+    ],
+  ])("derives COMPLETE from a legacy 'limit_reached' state.json when %s", (_name, items) => {
+    writeStateJson(makeLoopState({ status: "limit_reached" }));
+    writeBacklog(makeBacklog(items));
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("COMPLETE");
+  });
+
+  // An unreadable backlog must never read as a finished run: the legacy stop
+  // stays resumable, and the all-zero summary (total 0) keeps the supervisor's
+  // "done" row (which requires total > 0) from matching.
+  it.each<[string, string | null]>([
+    ["missing", null],
+    ["malformed", "{ not json"],
+  ])(
+    "derives ITERATIONS_COMPLETE from a legacy 'limit_reached' state.json when the backlog is %s",
+    (_name, raw) => {
+      writeStateJson(makeLoopState({ status: "limit_reached" }));
+      if (raw !== null) {
+        fs.writeFileSync(path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json"), raw);
+      }
+
+      const result = deriveStatus(makePaths());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.loopState).toBe("ITERATIONS_COMPLETE");
+      expect(result.value.backlogSummary.total).toBe(0);
+    },
+  );
+
+  it("reports total 0 (never done === total with work) for an unreadable backlog on a COMPLETE run", () => {
+    writeStateJson(makeLoopState({ status: "complete" }));
+    fs.writeFileSync(path.join(tmpDir, DEFAULT_ROOT_DIR, "backlog.json"), "{ not json");
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("COMPLETE");
+    expect(result.value.backlogSummary).toMatchObject({ done: 0, total: 0 });
   });
 
   it("derives ERROR from state.json with status 'error'", () => {
@@ -487,7 +549,54 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     expect(result.value.loopState).toBe("PAUSED_HUMAN");
   });
 
-  it("detects LIMIT_REACHED from DONE file content", () => {
+  // Each status-bearing DONE variant (runner.ts writeDoneFile calls, the
+  // `iterations_complete:` prefix from #147) plus the older free-text forms maps to
+  // the state state.json would carry. Prefixed variants must win over a trailing
+  // summary / message that mentions "human", "limit" or "error". The backlog has
+  // eligible work, so the legacy budget-stop wording reads ITERATIONS_COMPLETE.
+  it.each<[string, string, LoopStateEnum]>([
+    ["completion summary", "completed=2 blocked=0 iterations=2 items=001,002", "COMPLETE"],
+    [
+      "completion summary with needs-human items",
+      "completed=1 blocked=1 iterations=2 items=001 needs_human=1 needs_human_items=002",
+      "PAUSED_HUMAN",
+    ],
+    ["cancel", "cancel", "PAUSED"],
+    [
+      "iterations_complete (with a needs-human summary)",
+      "iterations_complete: completed=1 blocked=1 iterations=1 items=001 needs_human=1 needs_human_items=003",
+      "ITERATIONS_COMPLETE",
+    ],
+    ["paused_human", "paused_human: needs human input on item 003", "PAUSED_HUMAN"],
+    ["paused_usage_limit", "paused_usage_limit:5:30pm — run `rauf resume`", "PAUSED_USAGE_LIMIT"],
+    ["weekly_limit", "weekly_limit:2026-10-01T00:00:00Z", "WEEKLY_LIMIT"],
+    [
+      "error with a needs-human summary",
+      "error: Circuit breaker: 3 consecutive fast deaths\ncompleted=0 blocked=0 iterations=3 needs_human=1 needs_human_items=001",
+      "ERROR",
+    ],
+    ["error mentioning a limit", "error: provider hit rate limit repeatedly", "ERROR"],
+    ["legacy free-text budget stop", "LIMIT REACHED after 20 iterations", "ITERATIONS_COMPLETE"],
+    [
+      "shell-era budget stop",
+      "Max iterations (20) reached. Done: 3 / 5 | Blocked: 0 | Check backlog.",
+      "ITERATIONS_COMPLETE",
+    ],
+  ])("maps a %s DONE file to %s", (_name, content, expected) => {
+    writeBacklog(makeBacklog([makeItem({ id: "001", status: "pending" })]));
+    const staleTime = new Date(Date.now() - 120_000);
+    writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
+    setupDoneFile(content);
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.stateSource).toBe("log-parsing");
+    expect(result.value.loopState).toBe(expected);
+  });
+
+  it("maps legacy budget-stop DONE wording to COMPLETE when no eligible work remains", () => {
+    writeBacklog(makeBacklog([makeItem({ id: "001", status: "done" })]));
     const staleTime = new Date(Date.now() - 120_000);
     writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
     setupDoneFile("LIMIT REACHED after 20 iterations");
@@ -495,7 +604,23 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
     const result = deriveStatus(makePaths());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.loopState).toBe("LIMIT_REACHED");
+    expect(result.value.loopState).toBe("COMPLETE");
+  });
+
+  // Known gap until #147: a budget stop's DONE file is currently the bare
+  // completion summary, identical to a drained run's, so without state.json it
+  // reads COMPLETE even though eligible work remains. #147 prefixes it with
+  // `iterations_complete:` (covered above).
+  it("reads an unprefixed budget-stop summary (pre-#147 runner) as COMPLETE", () => {
+    writeBacklog(makeBacklog([makeItem({ id: "001", status: "pending" })]));
+    const staleTime = new Date(Date.now() - 120_000);
+    writeLog("[2026-02-21 10:00:00] Some log content\n", staleTime);
+    setupDoneFile("completed=1 blocked=0 iterations=1 items=000");
+
+    const result = deriveStatus(makePaths());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.loopState).toBe("COMPLETE");
   });
 
   it("detects ERROR from DONE file content", () => {
@@ -1591,7 +1716,7 @@ describe("mapLoopStateStatus", () => {
     complete: "COMPLETE",
     paused_human: "PAUSED_HUMAN",
     iterations_complete: "ITERATIONS_COMPLETE",
-    limit_reached: "LIMIT_REACHED",
+    limit_reached: "ITERATIONS_COMPLETE", // legacy budget stop
     error: "ERROR",
     sleeping_limit: "SLEEPING_LIMIT",
     weekly_limit: "WEEKLY_LIMIT",

@@ -128,11 +128,11 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 | Code | Meaning                                                                |
 | ---- | ---------------------------------------------------------------------- |
-| 0    | Success: clean terminal (idle / complete)                              |
+| 0    | Success: clean terminal (idle / complete / iteration budget reached)   |
 | 1    | Error: generic failure                                                 |
 | 2    | Usage: bad args / failed precondition (incl. loop-already-running 409) |
 | 3    | Needs human: loop halted in `paused_human` state                       |
-| 4    | Limit: limit reached / usage-paused / sleeping                         |
+| 4    | Limit: usage limit reached / usage-paused / sleeping                   |
 | 5    | Blocked: terminal state with genuinely blocked items                   |
 | 6    | Running: loop is currently running (query-time only; `status` command) |
 
@@ -515,14 +515,14 @@ Show a status summary for the project at `[path]`.
 
 **Machine-friendly exit codes for `rauf status`:**
 
-| Code | Meaning     | Loop State(s)                                                   |
-| ---- | ----------- | --------------------------------------------------------------- |
-| 0    | SUCCESS     | IDLE, COMPLETE, PAUSED, NOT_INSTALLED (clean terminal)          |
-| 1    | ERROR       | ERROR                                                           |
-| 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                    |
-| 4    | LIMIT       | LIMIT_REACHED, SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT |
-| 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived)     |
-| 6    | RUNNING     | RUNNING, REVIEWING (query-time only)                            |
+| Code | Meaning     | Loop State(s)                                               |
+| ---- | ----------- | ----------------------------------------------------------- |
+| 0    | SUCCESS     | IDLE, COMPLETE, ITERATIONS_COMPLETE, PAUSED, NOT_INSTALLED  |
+| 1    | ERROR       | ERROR                                                       |
+| 3    | NEEDS_HUMAN | PAUSED_HUMAN                                                |
+| 4    | LIMIT       | SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT            |
+| 5    | BLOCKED     | Clean terminal state with genuinely blocked items (derived) |
+| 6    | RUNNING     | RUNNING, REVIEWING (query-time only)                        |
 
 ### rauf log [path]
 
@@ -599,7 +599,7 @@ Detect an interrupted loop and continue it from where it stopped.
 
 - `paused_human`: loop halted on a needs-human item via `loop run --pause-on-needs-human` (resolve with `--answer`)
 - `paused_usage_limit`: loop halted cleanly at a usage limit with `sleepOnLimit=false`
-- `limit_reached`: iteration budget exhausted but non-done items remain
+- `iterations_complete` (or its pre-0.11 spelling `limit_reached`): iteration budget exhausted but eligible items remain (resume gets a fresh budget)
 - `error`: circuit breaker or unexpected termination
 - `paused`, `sleeping_limit`, `weekly_limit`: interrupted sleep or graceful pause
 - Dead lock with non-done items remaining

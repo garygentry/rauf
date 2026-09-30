@@ -540,7 +540,7 @@ export function statusExitCode(state: LoopStateEnum, derived?: DerivedStatus): n
       return ExitCode.NEEDS_HUMAN; // 3
     case "REVIEWING": // a review pass is a running query-time state (preserves prior behavior)
       return ExitCode.RUNNING; // 6
-    case "LIMIT_REACHED":
+    case "LIMIT_REACHED": // deprecated, no longer derived; kept for exhaustiveness
     case "SLEEPING_LIMIT":
     case "WEEKLY_LIMIT":
     case "PAUSED_USAGE_LIMIT": // a usage-limit pause is a LIMIT state (corrects today's silent 0)

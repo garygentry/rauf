@@ -4,7 +4,7 @@
 //
 // Continue an interrupted loop in one step:
 //   1. Refuse if a live loop holds the lock; clear a stale lock.
-//   2. Detect a resumable state (paused_usage_limit / limit_reached / error /
+//   2. Detect a resumable state (paused_usage_limit / iterations_complete / error /
 //      a dead lock with non-done work).
 //   3. Reconcile committed work + requeue runner-deferred false blocks + reset
 //      stalled items + clear state/markers (shared with `rauf reset`).

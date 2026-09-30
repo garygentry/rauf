@@ -71,15 +71,15 @@ it is not a total across restarts. The budget is resolved in this order:
 2. **`.rauf.json`** `options.maxIterations`.
 3. **Computed from the backlog** when neither is set — a `computed` value logged at startup.
 
-When a run exhausts its budget with work still pending, the loop ends in **Limit Reached** rather than
-finishing the backlog. Continue with a fresh budget:
+When a run exhausts its budget with work still pending, the loop ends in **Iterations Complete**
+(exit `0`, `3` if an item needs human input, or `5` if items are blocked) rather than finishing the backlog. Continue with a fresh budget:
 
 ```bash
 rauf resume .
 ```
 
 :::note[Budget vs. usage limit]
-"Limit Reached" here means _your_ iteration budget ran out — a clean stopping point, not a provider
+"Iterations Complete" means _your_ iteration budget ran out — a clean stopping point, not a provider
 limit. The provider-side usage limits below are a separate thing with their own states.
 :::
 

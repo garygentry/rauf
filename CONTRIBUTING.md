@@ -96,8 +96,18 @@ packages/core/src/backlog.test.ts
 Run the full verification pipeline before submitting:
 
 ```bash
-pnpm test && pnpm typecheck && pnpm lint && pnpm build && pnpm format:check
+pnpm gate             # build + schema/version/doc checks + typecheck + lint + format + test
 ```
+
+Changes to `packages/loop/` or the loop CLI commands should also pass the end-to-end
+sandbox suite (mock agents; needs `bun` + `jq`, no network or API keys, ~20s):
+
+```bash
+pnpm sandbox:verify   # = bash test-sandbox/verify.sh
+```
+
+CI runs it as a separate step after `pnpm gate`. It is kept out of the gate because it
+rewrites tracked files under `test-sandbox/`; see `test-sandbox/README.md`.
 
 ## Specification Documents
 

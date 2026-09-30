@@ -23,7 +23,7 @@ not the agent running **inside** a loop iteration.
 This skill is the **one** canonical supervision recipe — **poll, not stream** — and the
 authoritative decision contract that other tools (including feature-forge's `forge-5-loop`)
 reference rather than re-deciding. There is exactly one prescribed pattern: **start the loop
-backgrounded, poll `rauf status … --json`, branch on a four-way decision tree, and recover
+backgrounded, poll `rauf status … --json`, branch on the decision tree, and recover
 via a persist-then-escalate ladder.** Everything else in this file is reference material
 that supports that loop.
 
@@ -90,36 +90,64 @@ rauf status <root> --backlog <dir> --json
   If you ever feel you need a raw file to decide, the contract has a hole. The stream stays
   available only for narration/diagnosis (see [The stream never decides](#the-stream-never-decides)).
 
-### Step 3 — The four-way decision tree
+### Step 3 — The decision tree
 
 Each poll yields **one** decision. Evaluate the rows **top-to-bottom; first match wins**
-(`needs-human` outranks the stall hint; done outranks healthy). Every input comes from the
+(loop-level stops and usage limits come first, then needs-human, then the completion
+rows; unfinished work is checked before the backlog is declared done). The table is
+exhaustive: row 12 catches every poll the earlier rows don't. Every input comes from the
 single `DerivedStatus` object returned by the poll.
 
-| #   | Condition (from ONE `status --json` poll)                                                             | Decision                | Action                                                             |
-| --- | ----------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------ |
-| 1   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary` has nothing `pending`/`inProgress`            | **Done**                | Report the outcome and **stop**.                                   |
-| 2   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**         | **Surface to the user** — the ONLY true stop. Do not auto-recover. |
-| 3   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**   | Apply the persist-then-escalate ladder (Step 4).                   |
-| 4   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress** | **Keep polling** at the interval.                                  |
+| #   | Condition (from ONE `status --json` poll)                                                                                | Decision                 | Action                                                                                                                                                                                                                                                                                                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `loopState = NOT_INSTALLED`                                                                                              | **Addressing error**     | Not a rauf root. Fix `<root>` / `--backlog`; do not keep polling.                                                                                                                                                                                                                                                                                                           |
+| 2   | `loopState = ERROR`, **or** `loopState = PAUSED` **and** `lock.stale === true`                                           | **Crashed, recoverable** | The loop died. `ERROR` (crash / circuit breaker): `rauf reset` then re-run, or `resume` (see [Recover](#recover--the-loop-stopped-now-what)). `PAUSED` with a stale lock (the process was killed or the host went down mid-run, leaving its lock behind): `rauf resume` (clears the stale lock). Also report any set-aside needs-human items (`backlogSummary.needsHuman`). |
+| 3   | `loopState = PAUSED` (lock released)                                                                                     | **Stopped on request**   | Someone stopped the loop (Ctrl-C, `SIGTERM`, `rauf loop stop` / web stop). Report it and **stop**. Resume only if the user asks. Also report any set-aside needs-human items (`backlogSummary.needsHuman`).                                                                                                                                                                 |
+| 4   | `loopState ∈ {SLEEPING_LIMIT, WEEKLY_LIMIT, PAUSED_USAGE_LIMIT}`                                                         | **Usage-limit pause**    | Not a stall. `SLEEPING_LIMIT` auto-resumes: keep polling (narrate `sleepUntil`). `WEEKLY_LIMIT` / `PAUSED_USAGE_LIMIT` are halted: `rauf resume <root> --backlog <dir>` once the limit resets. Also report any set-aside needs-human items (`backlogSummary.needsHuman`).                                                                                                   |
+| 5   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0`                    | **Needs human**          | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                                                                                                                                                                                                       |
+| 6   | `loopState = ITERATIONS_COMPLETE`                                                                                        | **Budget spent**         | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead.                                                                                                                                                                               |
+| 7   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.total === 0`                                                      | **Nothing to run**       | The backlog is empty **or unreadable** (a read failure reports an all-zero summary). Run `rauf backlog validate <root> --backlog <dir>`, report, and **stop**. Never treat this as done.                                                                                                                                                                                    |
+| 8   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                                              | **Stopped short**        | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                                                                                                                                                                                                  |
+| 9   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.total > 0` **and** `backlogSummary.done === backlogSummary.total` | **Done**                 | Every item is `done`. Report the outcome and **stop**.                                                                                                                                                                                                                                                                                                                      |
+| 10  | `health?.stuckWarning === true`                                                                                          | **Recoverable stall**    | Apply the persist-then-escalate ladder (Step 4).                                                                                                                                                                                                                                                                                                                            |
+| 11  | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                                        | **Healthy in-progress**  | **Keep polling** at the interval.                                                                                                                                                                                                                                                                                                                                           |
+| 12  | Anything else, e.g. `IDLE` with work left right after launch (before the loop has written its state)                     | **Not started yet**      | **Keep polling.** If it persists past startup, the launch failed: check the launch output.                                                                                                                                                                                                                                                                                  |
 
 Notes:
 
-- **Ordering matters.** Row 2 (`needs-human`) is checked **before** the stall hint (row 3): a
-  loop paused for a human that also shows a stale iteration is a needs-human stop, not a
-  recovery case.
+- **Ordering matters.** Rows 1–4 act on the loop itself and come before needs-human. In
+  the default "set aside and continue" mode a needs-human item does not stop the loop, so
+  `needsHuman > 0` can still be set when the loop later crashes (`ERROR`), is stopped
+  (`PAUSED`) or hits a usage limit. Recover the loop first and report the needs-human items
+  alongside; a backlog-wide flag must not keep a crashed loop down. Needs-human (row 5) then
+  outranks the completion, stall and healthy rows: a `COMPLETE` or `ITERATIONS_COMPLETE`
+  loop with needs-human items set aside is not finished, and a loop halted in
+  `PAUSED_HUMAN` that also shows a stale iteration is a needs-human stop, not a recovery case.
+- **`COMPLETE` means "no eligible work left", not "all done".** The runner stops when no
+  `pending` item has all its dependencies `done`. Items can still be `blocked` (genuine,
+  needs-human or deferred), and `pending` items can be stuck behind them, so compare
+  `backlogSummary.done` with `total` (rows 8 and 9) before declaring the backlog finished.
+- **`PAUSED` means two different things; `lock` tells them apart.** A requested stop
+  (Ctrl-C, `SIGTERM`, `rauf loop stop`, web stop) writes `paused` and releases the lock:
+  report it and stop (row 3), because the user or an operator chose to stop. A run that
+  died mid-iteration (killed process, host restart) is also derived as `PAUSED`, but its
+  lock stays behind with a dead PID (`lock.stale === true`), so row 2 resumes it. If that
+  lock was removed by hand, the crashed run falls to row 3, which is the safe default.
+- **An unreadable backlog is never "done".** A backlog read failure reports an all-zero
+  `backlogSummary` (`total = 0`), so row 7 catches it before row 9, which requires
+  `total > 0`.
 - **`health` may be `null`** (no live iteration). `status.health?.stuckWarning`
-  short-circuits to falsy, so row 3 does not fire — correct: no live iteration means no stall
+  short-circuits to falsy, so row 10 does not fire — correct: no live iteration means no stall
   to recover.
-- **Row 2's three signals are complementary, not redundant.** `PAUSED_HUMAN` is the halt
+- **Row 5's three signals are complementary, not redundant.** `PAUSED_HUMAN` is the halt
   state under `--pause-on-needs-human`; `lastSignal = needs_human` and
   `backlogSummary.needsHuman > 0` cover the default "set aside and continue" mode. Any one is
   sufficient. Read `needsHuman` (a disjoint subset), **not** the total `blocked`.
 
-**After the loop completes — starting the next cycle.** When row 1 fires
-(`loopState ∈ {COMPLETE, IDLE}`, nothing `pending`/`inProgress`), the backlog is finished:
-every item is `done` and re-running does nothing until it's repopulated. To start a fresh
-cycle, don't hand-edit `backlog.json` — reset it, then re-author:
+**After the loop completes — starting the next cycle.** When row 9 fires
+(`loopState ∈ {COMPLETE, IDLE}`, `total > 0`, `done === total`), the backlog is finished:
+every item is `done` and re-running does nothing until it's repopulated. (Row 8 is **not** this case —
+resetting there would discard unfinished work.) To start a fresh cycle, don't hand-edit `backlog.json` — reset it, then re-author:
 
 ```bash
 rauf backlog reset <root> --clear --yes   # archive done items + progress/log, empty the backlog
@@ -138,15 +166,15 @@ making progress." A single transient hint must **never** trigger a disruptive re
    showing `stuckWarning`, **surface** the warning (narration) and **keep polling**. Do
    **not** act yet.
 2. **Persists across N = 3 consecutive polls → act** (≈ 15–30 s at the 5–10 s interval):
-   - **Paused loop → `resume`.** If `loopState` is a resumable pause (`PAUSED`,
-     `LIMIT_REACHED`, `*_LIMIT`), run `rauf resume <root> --backlog <dir>`.
+   - **Paused loop → `resume`.** If `loopState` is a resumable pause (`PAUSED` with a stale lock,
+     `*_LIMIT`), run `rauf resume <root> --backlog <dir>`.
    - **Otherwise → re-run with `--force`.** If the loop is not paused, re-run the next
      iteration with `--force`.
 3. **`reset` ONLY for a confirmed-dead lock.** Use `rauf reset` **only** when the status
    shows a stale, dead lock: **`lock.stale === true && lock.alive === false`**. `reset` is
    never the first response to a stall hint.
 4. **`needs_human` is the only true stop.** No point on this ladder auto-resolves a
-   needs-human state — that always surfaces to the user (Step 3, row 2).
+   needs-human state — that always surfaces to the user (Step 3, row 5).
 
 Prescribed values (documented, overridable — **not** code constants):
 
@@ -178,15 +206,15 @@ loop.
 
 ### Edge cases the recipe handles (all from the one poll)
 
-| Situation                                                                                                  | What the agent does                                                                                                                                                                 |
-| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Ambiguous / missing target** in machine context                                                          | The poll returns a `TargetError` (`missing_target` / `ambiguous_target`). It's an **addressing error** — pass explicit `<root>` + `--backlog <dir>`; never scan.                    |
-| **Usage-limit / sleeping pause** (`PAUSED_USAGE_LIMIT`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `LIMIT_REACHED`) | Not a stall, not a needs-human stop. **Keep polling**; the loop auto-resumes when limits reset (or `resume` once reset). Use `sleepUntil` for narration. Do **not** run the ladder. |
-| **`health = null`** while `loopState` is `RUNNING` transiently                                             | No stall signal this poll; the stall counter is **not** incremented. Keep polling.                                                                                                  |
-| **Transient single-poll `stuckWarning`**                                                                   | Surface, **do not act**; escalate only if it persists to N = 3 (Step 4).                                                                                                            |
-| **Confirmed-dead lock** (`lock.stale && !lock.alive`) with work remaining                                  | The only case for `reset`; then re-run (Step 4, item 3).                                                                                                                            |
-| **`ERROR` loopState**                                                                                      | Crash / circuit-breaker halt: `reset` then re-run, or `resume` (§Recover). Not a stall-ladder case.                                                                                 |
-| **Sleep between polls**                                                                                    | Sleep the prescribed interval (5 s default). In a harness that forbids a foreground `sleep`, use its wait/until primitive.                                                          |
+| Situation                                                                                 | What the agent does                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Ambiguous / missing target** in machine context                                         | The poll returns a `TargetError` (`missing_target` / `ambiguous_target`). It's an **addressing error** — pass explicit `<root>` + `--backlog <dir>`; never scan.                    |
+| **Usage-limit / sleeping pause** (`PAUSED_USAGE_LIMIT`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`) | Not a stall, not a needs-human stop. **Keep polling**; the loop auto-resumes when limits reset (or `resume` once reset). Use `sleepUntil` for narration. Do **not** run the ladder. |
+| **`health = null`** while `loopState` is `RUNNING` transiently                            | No stall signal this poll; the stall counter is **not** incremented. Keep polling.                                                                                                  |
+| **Transient single-poll `stuckWarning`**                                                  | Surface, **do not act**; escalate only if it persists to N = 3 (Step 4).                                                                                                            |
+| **Confirmed-dead lock** (`lock.stale && !lock.alive`) with work remaining                 | The only case for `reset`; then re-run (Step 4, item 3).                                                                                                                            |
+| **`ERROR` loopState**                                                                     | Crash / circuit-breaker halt: `reset` then re-run, or `resume` (§Recover). Not a stall-ladder case.                                                                                 |
+| **Sleep between polls**                                                                   | Sleep the prescribed interval (5 s default). In a harness that forbids a foreground `sleep`, use its wait/until primitive.                                                          |
 
 ---
 
@@ -242,37 +270,37 @@ never report a tool in flight.
 ### Exit codes & status vocabulary
 
 `rauf status` and `rauf loop run` share **one unified exit-code scheme** — an agent that
-shells out MAY branch on `$?` as a _secondary_ aid, but the four-way tree keyed on
+shells out MAY branch on `$?` as a _secondary_ aid, but the decision tree keyed on
 `--json` fields is the **primary** contract. (`6` RUNNING is query-time only; a `loop run`
 never terminates with it. `backlog validate` keeps its own triad: 0 valid / 1 findings / 2 usage.)
 
-| Exit | Meaning                                                      | Status states                                                           |
-| ---- | ------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `0`  | Success — clean terminal                                     | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
-| `1`  | Error — generic failure                                      | `ERROR`                                                                 |
-| `2`  | Usage — bad args / precondition (incl. loop-already-running) | —                                                                       |
-| `3`  | Needs human                                                  | `PAUSED_HUMAN`                                                          |
-| `4`  | Limit / usage-paused / sleeping                              | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
-| `5`  | Blocked — clean terminal with genuinely blocked items        | (derived from `backlogSummary`)                                         |
-| `6`  | Running (query-time only)                                    | `RUNNING`, `REVIEWING`                                                  |
+| Exit | Meaning                                                      | Status states                                                        |
+| ---- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
+| `0`  | Success — clean terminal                                     | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
+| `1`  | Error — generic failure                                      | `ERROR`                                                              |
+| `2`  | Usage — bad args / precondition (incl. loop-already-running) | —                                                                    |
+| `3`  | Needs human                                                  | `PAUSED_HUMAN`                                                       |
+| `4`  | Limit / usage-paused / sleeping                              | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |
+| `5`  | Blocked — clean terminal with genuinely blocked items        | (derived from `backlogSummary`)                                      |
+| `6`  | Running (query-time only)                                    | `RUNNING`, `REVIEWING`                                               |
 
 **Status vocabulary** (machine enum → human label; the SCREAMING_SNAKE value is the wire
 form in `--json`/API). Authoritative source: `references/state-labels.ts`.
 
-| Machine enum         | Label                | What it means / what to do                                             |
-| -------------------- | -------------------- | ---------------------------------------------------------------------- |
-| `IDLE`               | Idle                 | No loop active. Start one with `loop run`.                             |
-| `RUNNING`            | Running              | A loop is active. Observe with `follow`.                               |
-| `REVIEWING`          | Reviewing            | A review pass is active (still "running" for exit-code purposes).      |
-| `PAUSED`             | Paused               | Gracefully paused/interrupted. `resume` to continue.                   |
-| `PAUSED_HUMAN`       | Needs Human          | Halted on a needs-human item. Answer it: `resume --answer <id> "..."`. |
-| `PAUSED_USAGE_LIMIT` | Usage Limit (Paused) | Halted at a usage limit (no auto-sleep). `resume` once limits reset.   |
-| `SLEEPING_LIMIT`     | Sleeping (Limit)     | Auto-sleeping until a usage limit resets (see `sleepUntil`).           |
-| `WEEKLY_LIMIT`       | Weekly Limit         | Weekly cap hit. `resume` after it resets.                              |
-| `LIMIT_REACHED`      | Limit Reached        | Iteration budget exhausted, work remains. `resume` (fresh budget).     |
-| `COMPLETE`           | Complete             | All items done. Nothing to do.                                         |
-| `ERROR`              | Error                | Crash / circuit-breaker halt. `reset` then re-run, or `resume`.        |
-| `NOT_INSTALLED`      | Not Installed        | No `.rauf.json`. Not a rauf project.                                   |
+| Machine enum          | Label                | What it means / what to do                                                    |
+| --------------------- | -------------------- | ----------------------------------------------------------------------------- |
+| `IDLE`                | Idle                 | No loop active. Start one with `loop run`.                                    |
+| `RUNNING`             | Running              | A loop is active. Observe with `follow`.                                      |
+| `REVIEWING`           | Reviewing            | A review pass is active (still "running" for exit-code purposes).             |
+| `PAUSED`              | Paused               | Stopped on request, or crashed (stale lock). `resume` to continue.            |
+| `PAUSED_HUMAN`        | Needs Human          | Halted on a needs-human item. Answer it: `resume --answer <id> "..."`.        |
+| `PAUSED_USAGE_LIMIT`  | Usage Limit (Paused) | Halted at a usage limit (no auto-sleep). `resume` once limits reset.          |
+| `SLEEPING_LIMIT`      | Sleeping (Limit)     | Auto-sleeping until a usage limit resets (see `sleepUntil`).                  |
+| `WEEKLY_LIMIT`        | Weekly Limit         | Weekly cap hit. `resume` after it resets.                                     |
+| `ITERATIONS_COMPLETE` | Iterations Complete  | Iteration budget exhausted, work remains. `resume` (fresh budget).            |
+| `COMPLETE`            | Complete             | No eligible work left. Check `backlogSummary`: done only if `done === total`. |
+| `ERROR`               | Error                | Crash / circuit-breaker halt. `reset` then re-run, or `resume`.               |
+| `NOT_INSTALLED`       | Not Installed        | No `.rauf.json`. Not a rauf project.                                          |
 
 ### Machine surfaces (reference)
 
@@ -315,13 +343,13 @@ Pick by what the poll told you (`status` refuses with exit `2` if a live loop st
 lock — stop that first). Stale locks (dead PID) are cleared automatically; a `reset` is only
 warranted for a confirmed-dead lock (`lock.stale && !lock.alive`).
 
-| Situation                                                                               | Command                                                                     |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Crashed / `ERROR` / messy state; want a clean restart point                             | `rauf reset <root>` then `rauf loop run <root>`                             |
-| Interrupted but resumable (`PAUSED`, `LIMIT_REACHED`, `*_LIMIT`, dead lock + work left) | `rauf resume <root>`                                                        |
-| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                       | `rauf resume <root> --recover` (re-verifies + commits, then relaunches)     |
-| `PAUSED_HUMAN` — a question is waiting                                                  | `rauf resume <root> --answer <id> "<answer>"`                               |
-| Items wrongly `blocked` and you want them retried                                       | `rauf backlog unblock <root> [id]` (omit `id` for all), then `resume`/`run` |
+| Situation                                                                                     | Command                                                                     |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Crashed / `ERROR` / messy state; want a clean restart point                                   | `rauf reset <root>` then `rauf loop run <root>`                             |
+| Interrupted but resumable (`PAUSED`, `ITERATIONS_COMPLETE`, `*_LIMIT`, dead lock + work left) | `rauf resume <root>`                                                        |
+| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                             | `rauf resume <root> --recover` (re-verifies + commits, then relaunches)     |
+| `PAUSED_HUMAN` — a question is waiting                                                        | `rauf resume <root> --answer <id> "<answer>"`                               |
+| Items wrongly `blocked` and you want them retried                                             | `rauf backlog unblock <root> [id]` (omit `id` for all), then `resume`/`run` |
 
 What `reset` vs `resume` actually do:
 

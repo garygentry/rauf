@@ -7,7 +7,7 @@ When a loop stops, the first move is always `rauf status <path>`. The derived st
 _why_ it stopped, and that determines how you recover. This page is a runbook: read the status,
 match it to a row in the decision table, run the one command for that row.
 
-![The rauf status state machine: Running is the hub, with transitions to Reviewing, Complete, Error, Paused, Needs Human, and the limit/sleeping states, labelled with the command that drives each transition.](../images/status-states.svg)
+![The rauf status state machine: Running is the hub, with transitions to Reviewing, Complete / Budget spent (ITERATIONS_COMPLETE), Error, Paused, Needs Human, and the usage-limit states, labelled with the command that drives each transition.](../images/status-states.svg)
 
 ## Triage — read the status first
 
@@ -35,32 +35,33 @@ accumulated progress), see [Monitoring a Loop](../monitoring/).
 `rauf status` exits with a code you can branch on without parsing JSON. The same scheme is shared
 with `rauf loop run` (exit `6` is query-time only — a `loop run` never terminates with it).
 
-| Exit | Meaning                                                        | Status states                                                           |
-| ---- | -------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `0`  | Success — clean terminal                                       | `IDLE`, `COMPLETE`, `PAUSED`, `NOT_INSTALLED`                           |
-| `1`  | Error — generic failure                                        | `ERROR`                                                                 |
-| `2`  | Usage — bad args / precondition (incl. a loop already running) | —                                                                       |
-| `3`  | Needs human                                                    | `PAUSED_HUMAN`                                                          |
-| `4`  | Limit / usage-paused / sleeping                                | `LIMIT_REACHED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT` |
-| `5`  | Blocked — clean terminal, genuinely blocked items              | (derived from `backlogSummary`)                                         |
-| `6`  | Running (query-time only)                                      | `RUNNING`, `REVIEWING`                                                  |
+| Exit | Meaning                                                        | Status states                                                        |
+| ---- | -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `0`  | Success — clean terminal                                       | `IDLE`, `COMPLETE`, `ITERATIONS_COMPLETE`, `PAUSED`, `NOT_INSTALLED` |
+| `1`  | Error — generic failure                                        | `ERROR`                                                              |
+| `2`  | Usage — bad args / precondition (incl. a loop already running) | —                                                                    |
+| `3`  | Needs human                                                    | `PAUSED_HUMAN`                                                       |
+| `4`  | Limit / usage-paused / sleeping                                | `SLEEPING_LIMIT`, `WEEKLY_LIMIT`, `PAUSED_USAGE_LIMIT`               |
+| `5`  | Blocked — clean terminal, genuinely blocked items              | (derived from `backlogSummary`)                                      |
+| `6`  | Running (query-time only)                                      | `RUNNING`, `REVIEWING`                                               |
 
 The status labels you'll see: `IDLE` Idle · `RUNNING` Running · `REVIEWING` Reviewing ·
 `PAUSED` Paused · `PAUSED_HUMAN` Needs Human · `PAUSED_USAGE_LIMIT` Usage Limit (Paused) ·
-`SLEEPING_LIMIT` Sleeping (Limit) · `WEEKLY_LIMIT` Weekly Limit · `LIMIT_REACHED` Limit Reached ·
+`SLEEPING_LIMIT` Sleeping (Limit) · `WEEKLY_LIMIT` Weekly Limit ·
+`ITERATIONS_COMPLETE` Iterations Complete ·
 `COMPLETE` Complete · `ERROR` Error · `NOT_INSTALLED` Not Installed.
 
 ## The recovery decision table
 
 Pick the row that matches what `status` told you, and run the one command.
 
-| Situation                                                                                       | Command                                                                     |
-| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Crashed / `Error` / messy state; want a clean restart                                           | `rauf reset <path>` then `rauf loop run <path>`                             |
-| Interrupted but resumable (`Paused`, `Limit Reached`, a `*_LIMIT` state, dead lock + work left) | `rauf resume <path>`                                                        |
-| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                               | `rauf resume <path> --recover` (re-verifies + commits, then relaunches)     |
-| `Needs Human` — a question is waiting                                                           | `rauf resume <path> --answer <id> "<answer>"`                               |
-| Items wrongly `blocked` and you want them retried                                               | `rauf backlog unblock <path> [id]` (omit `id` for all), then `resume`/`run` |
+| Situation                                                                                             | Command                                                                     |
+| ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Crashed / `Error` / messy state; want a clean restart                                                 | `rauf reset <path>` then `rauf loop run <path>`                             |
+| Interrupted but resumable (`Paused`, `Iterations Complete`, a `*_LIMIT` state, dead lock + work left) | `rauf resume <path>`                                                        |
+| Killed mid-iteration (dirty tree, uncommitted `in_progress` item)                                     | `rauf resume <path> --recover` (re-verifies + commits, then relaunches)     |
+| `Needs Human` — a question is waiting                                                                 | `rauf resume <path> --answer <id> "<answer>"`                               |
+| Items wrongly `blocked` and you want them retried                                                     | `rauf backlog unblock <path> [id]` (omit `id` for all), then `resume`/`run` |
 
 `--answer` is repeatable (one per pending question), and the threaded answer auto-clears once the
 item completes. `--iterations N` overrides the per-run budget on `resume`. See

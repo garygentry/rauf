@@ -152,7 +152,8 @@ interface LoopState {
     | "paused"
     | "complete"
     | "paused_human"
-    | "limit_reached"
+    | "iterations_complete" // Iteration budget exhausted with eligible work left — clean, resumable
+    | "limit_reached" // Deprecated: pre-0.11 spelling of iterations_complete; still parses; derives ITERATIONS_COMPLETE if eligible work remains, else COMPLETE
     | "error"
     | "sleeping_limit" // Sleeping until 5-hour Claude usage window resets
     | "weekly_limit" // 7-day weekly Claude usage cap exhausted
@@ -173,20 +174,21 @@ interface LoopState {
 }
 ```
 
-| Status value         | Meaning                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------- |
-| `idle`               | No loop active (initial state)                                                              |
-| `starting`           | Loop initializing                                                                           |
-| `running`            | Actively processing an item                                                                 |
-| `paused`             | Gracefully stopped (CANCEL signal)                                                          |
-| `complete`           | All items resolved                                                                          |
-| `paused_human`       | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                |
-| `limit_reached`      | Max iterations config exceeded                                                              |
-| `error`              | Unexpected termination                                                                      |
-| `sleeping_limit`     | Sleeping until 5-hour Claude usage window resets                                            |
-| `weekly_limit`       | 7-day weekly Claude usage cap exhausted                                                     |
-| `reviewing`          | Running post-loop review pass                                                               |
-| `paused_usage_limit` | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume` |
+| Status value          | Meaning                                                                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idle`                | No loop active (initial state)                                                                                                                                                                |
+| `starting`            | Loop initializing                                                                                                                                                                             |
+| `running`             | Actively processing an item                                                                                                                                                                   |
+| `paused`              | Gracefully stopped (CANCEL signal)                                                                                                                                                            |
+| `complete`            | No eligible work left (no `pending` item with all deps `done`). Blocked items, and pending items behind them, may remain                                                                      |
+| `paused_human`        | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                                                                                                                  |
+| `iterations_complete` | Iteration budget (`--iterations`) exhausted with eligible work left; clean stop, resumable                                                                                                    |
+| `limit_reached`       | Deprecated: pre-0.11 spelling of `iterations_complete`. Still parses; derives `ITERATIONS_COMPLETE` if eligible work remains or the backlog is unreadable, else `COMPLETE`. No longer written |
+| `error`               | Unexpected termination                                                                                                                                                                        |
+| `sleeping_limit`      | Sleeping until 5-hour Claude usage window resets                                                                                                                                              |
+| `weekly_limit`        | 7-day weekly Claude usage cap exhausted                                                                                                                                                       |
+| `reviewing`           | Running post-loop review pass                                                                                                                                                                 |
+| `paused_usage_limit`  | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume`                                                                                                   |
 
 File: `.rauf/state.json` (written by the loop runner, read by status derivation)
 
@@ -222,7 +224,7 @@ interface LockSummary {
 
 ```typescript
 interface DerivedStatus {
-  loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | LIMIT_REACHED | ERROR | NOT_INSTALLED | SLEEPING_LIMIT | WEEKLY_LIMIT | REVIEWING | PAUSED_USAGE_LIMIT
+  loopState: LoopStateEnum; // IDLE | RUNNING | PAUSED | COMPLETE | PAUSED_HUMAN | ITERATIONS_COMPLETE | LIMIT_REACHED | ERROR | NOT_INSTALLED | SLEEPING_LIMIT | WEEKLY_LIMIT | REVIEWING | PAUSED_USAGE_LIMIT
   stateSource: "state.json" | "log-parsing" | "none";
   iteration: number | null;
   maxIterations: number | null;
@@ -251,7 +253,8 @@ type LoopStateEnum =
   | "PAUSED"
   | "COMPLETE"
   | "PAUSED_HUMAN"
-  | "LIMIT_REACHED"
+  | "ITERATIONS_COMPLETE" // Iteration budget exhausted, work remains (clean, resumable)
+  | "LIMIT_REACHED" // Deprecated: no longer derived (legacy limit_reached → ITERATIONS_COMPLETE / COMPLETE); kept so older payloads parse
   | "ERROR"
   | "NOT_INSTALLED"
   | "SLEEPING_LIMIT" // Sleeping until 5-hour usage window resets
@@ -277,20 +280,21 @@ const STATE_LABELS: Record<LoopStateEnum, StateLabel>;
 function getStateLabel(state: LoopStateEnum): StateLabel;
 ```
 
-| State              | Label                | Tone    |
-| ------------------ | -------------------- | ------- |
-| IDLE               | Idle                 | neutral |
-| RUNNING            | Running              | info    |
-| PAUSED             | Paused               | info    |
-| COMPLETE           | Complete             | success |
-| PAUSED_HUMAN       | Needs Human          | warning |
-| LIMIT_REACHED      | Limit Reached        | warning |
-| ERROR              | Error                | danger  |
-| NOT_INSTALLED      | Not Installed        | neutral |
-| SLEEPING_LIMIT     | Sleeping (Limit)     | warning |
-| WEEKLY_LIMIT       | Weekly Limit         | warning |
-| REVIEWING          | Reviewing            | info    |
-| PAUSED_USAGE_LIMIT | Usage Limit (Paused) | warning |
+| State               | Label                | Tone                                |
+| ------------------- | -------------------- | ----------------------------------- |
+| IDLE                | Idle                 | neutral                             |
+| RUNNING             | Running              | info                                |
+| PAUSED              | Paused               | info                                |
+| COMPLETE            | Complete             | success                             |
+| PAUSED_HUMAN        | Needs Human          | warning                             |
+| ITERATIONS_COMPLETE | Iterations Complete  | success                             |
+| LIMIT_REACHED       | Limit Reached        | warning (deprecated; never derived) |
+| ERROR               | Error                | danger                              |
+| NOT_INSTALLED       | Not Installed        | neutral                             |
+| SLEEPING_LIMIT      | Sleeping (Limit)     | warning                             |
+| WEEKLY_LIMIT        | Weekly Limit         | warning                             |
+| REVIEWING           | Reviewing            | info                                |
+| PAUSED_USAGE_LIMIT  | Usage Limit (Paused) | warning                             |
 
 ## DiscoveredProject
 

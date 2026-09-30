@@ -21,6 +21,13 @@ bash test-sandbox/run.sh stream-blocked
 bash test-sandbox/verify.sh
 ```
 
+`verify.sh` is hermetic: it runs under a throwaway `HOME` (so your real `~/.claude`
+credentials never make the runner query the live usage API, and `~/.rauf/active` is never
+touched) and it hides any real agent CLI from the absent-agent (fail-fast) scenario. A
+scenario that cannot be made deterministic on the current machine prints `SKIP: <reason>`
+and is counted in the summary; nothing is skipped silently. CI runs it as a step after
+`pnpm gate` (`pnpm sandbox:verify`).
+
 ## Available Scenarios
 
 | Scenario                   | Signal                           | Tools Emitted          | Timing       | Tests                                                                                                                                                                     |

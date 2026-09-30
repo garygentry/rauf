@@ -101,8 +101,15 @@ produces a release-prep PR, and the owner tags the merged commit afterward.
 ```bash
 bash test-sandbox/run.sh                  # Default scenario (stream-done)
 bash test-sandbox/run.sh stream-blocked   # Specific scenario
-bash test-sandbox/verify.sh               # All scenarios with assertions
+bash test-sandbox/verify.sh               # All scenarios with assertions (= pnpm sandbox:verify)
 ```
+
+`verify.sh` runs in CI as its own step after the gate (`.github/workflows/ci.yml`), but it is
+**not** part of `pnpm gate`: it rewrites tracked files under `test-sandbox/` (backlog, mock
+output), and the gate doubles as the loop's per-item acceptance check, where the runner's
+`git add -A` would commit them. Run it yourself when touching `packages/loop/` or the loop CLI
+commands. It needs `bun` and `jq`, no network or API keys, and runs in a throwaway `HOME`, so
+your real `~/.claude` credentials and `~/.rauf/active` are never touched.
 
 When modifying `packages/loop/` or loop CLI commands, use the sandbox to verify changes. See `test-sandbox/README.md` for detailed guidance (scenarios, mock Claude, stream/signal parsing).
 
