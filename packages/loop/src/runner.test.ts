@@ -3202,7 +3202,7 @@ exit 1`,
         const counter = path.join(binDir, "spawns");
         writeBannerAgent(counter);
         stubUsageApi(respond);
-        const { sleep } = recordingSleep();
+        const { sleeps, sleep } = recordingSleep();
 
         // sleepOnLimit:false → the 3rd consecutive disagreement halts instead
         // of sleeping; budget 2 must stop the run before that.
@@ -3216,6 +3216,16 @@ exit 1`,
         expect(spawns(counter)).toBe(2);
         const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
         expect(log).not.toContain("Iteration not counted (usage_limited)");
+        // Budget-final: the attempt that exhausts the budget neither backs off
+        // nor sleeps — only attempt 1 backs off.
+        expect(sleeps).toEqual([30_000]);
+        expect(log).toContain("Iteration budget exhausted by this attempt");
+        const state = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(state.status).toBe("iterations_complete");
+        const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+        expect(done.startsWith("iterations_complete: ")).toBe(true);
       });
     }
 
@@ -3224,15 +3234,35 @@ exit 1`,
       const counter = path.join(binDir, "spawns");
       writeBannerAgent(counter);
       stubUsageApi(notLimited);
-      const { sleeps, sleep } = recordingSleep();
+      const sleeps: number[] = [];
+      const backoffStates: Array<{
+        status: string;
+        currentItem: string | null;
+        sleepUntil?: string;
+      }> = [];
+      // Record the on-disk state during each backoff.
+      const sleep = async (ms: number) => {
+        sleeps.push(ms);
+        backoffStates.push(
+          JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8")),
+        );
+      };
       const sleepStarts: string[] = [];
 
-      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 2 }, { sleep });
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 3 }, { sleep });
       runner.on("sleep_start", (e) => sleepStarts.push(e.reason));
       await runner.start();
 
+      // 30s, 60s; attempt 3 exhausts the budget, so no assumed-limit sleep.
       expect(sleeps).toEqual([30_000, 60_000]);
       expect(sleepStarts).toHaveLength(2);
+      // status --json stays accurate during a backoff: running, no item in
+      // flight, and the backoff deadline in sleepUntil.
+      for (const st of backoffStates) {
+        expect(st.status).toBe("running");
+        expect(st.currentItem).toBeNull();
+        expect(typeof st.sleepUntil).toBe("string");
+      }
       expect(sleepStarts[0]).toContain("unconfirmed");
       expect(fetchCalls).toBeGreaterThanOrEqual(2);
     });
@@ -3243,25 +3273,22 @@ exit 1`,
       writeBannerAgent(counter);
       stubUsageApi(tooManyRequests);
       const sleeps: number[] = [];
-      const states: string[] = [];
-      // Record the on-disk loop status at each sleep.
+      const states: Array<{ status: string; sleepUntil?: string }> = [];
+      // Record the on-disk loop state at each sleep.
       const sleep = async (ms: number) => {
         sleeps.push(ms);
-        const st = JSON.parse(
-          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
-        ) as { status: string };
-        states.push(st.status);
+        states.push(JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8")));
       };
       const hits: LoopEvent[] = [];
 
-      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 3 }, { sleep });
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 4 }, { sleep });
       runner.on("usage_limit_hit", (e) => hits.push(e));
       await runner.start();
 
-      expect(spawns(counter)).toBe(3);
-      // 30s, 60s backoff, then the default-window limit sleep (no banner reset time).
-      expect(sleeps.slice(0, 2)).toEqual([30_000, 60_000]);
-      expect(sleeps[2]).toBe(30 * 60_000);
+      expect(spawns(counter)).toBe(4);
+      // 30s, 60s backoff, then the default-window limit sleep (no banner reset
+      // time); attempt 4 exhausts the budget, so no further sleep.
+      expect(sleeps).toEqual([30_000, 60_000, 30 * 60_000]);
       const forced = hits.find((e) => e.type === "usage_limit_hit" && e.reason !== undefined);
       expect(forced).toMatchObject({
         type: "usage_limit_hit",
@@ -3269,8 +3296,11 @@ exit 1`,
         reason: "usage_api_disagreement",
         consecutiveDisagreements: 3,
       });
-      // The forced-limit sleep writes the normal sleeping_limit state.
-      expect(states[2]).toBe("sleeping_limit");
+      // The forced-limit sleep writes the normal sleeping_limit state, with its
+      // deadline in sleepUntil (status --json narration).
+      expect(states[2]?.status).toBe("sleeping_limit");
+      const until = new Date(states[2]?.sleepUntil ?? "").getTime();
+      expect(until - Date.now()).toBeGreaterThan(29 * 60_000);
     });
 
     it("3 consecutive disagreements with sleepOnLimit=false halt as paused_usage_limit", async () => {
@@ -3300,34 +3330,255 @@ exit 1`,
       });
     });
 
-    it("a normal iteration resets the consecutive-disagreement counter", async () => {
-      setupProject(tmpDir, [pendingItem("001", "A"), pendingItem("002", "B")]);
-      const counter = path.join(binDir, "spawns");
-      // Spawns 1-2: banner deaths; spawn 3: completes item 001; spawns 4-5: banner deaths.
-      writeMockClaude(
-        binDir,
-        `n=$(cat "${counter}" 2>/dev/null || echo 0)
+    for (const [label, middle] of [
+      ["a completed iteration", 'echo "RAUF_DONE"; exit 0'],
+      ["an infra death (no signal)", 'echo "boom" >&2; exit 1'],
+    ] as const) {
+      it(`${label} resets the consecutive-disagreement counter`, async () => {
+        setupProject(tmpDir, [pendingItem("001", "A"), pendingItem("002", "B")]);
+        const counter = path.join(binDir, "spawns");
+        // Spawns 1-2: banner deaths; spawn 3: the interrupting outcome; spawns
+        // 4-5: banner deaths; then RAUF_DONE.
+        writeMockClaude(
+          binDir,
+          `n=$(cat "${counter}" 2>/dev/null || echo 0)
 n=$((n + 1))
 echo "$n" > "${counter}"
-if [ "$n" -eq 3 ] || [ "$n" -gt 5 ]; then echo "RAUF_DONE"; exit 0; fi
+if [ "$n" -eq 3 ]; then ${middle}; fi
+if [ "$n" -gt 5 ]; then echo "RAUF_DONE"; exit 0; fi
 echo "Claude usage limit reached" >&2
 exit 1`,
-      );
-      stubUsageApi(notLimited);
+        );
+        stubUsageApi(notLimited);
+        const { sleeps, sleep } = recordingSleep();
+        const hits: LoopEvent[] = [];
+
+        const runner = createRunner(
+          tmpDir,
+          { ...DEFAULT_OPTIONS, maxIterations: 8, sleepOnLimit: false },
+          { sleep },
+        );
+        runner.on("usage_limit_hit", (e) => hits.push(e));
+        await runner.start();
+
+        // Without the reset, spawn 4 would be the 3rd disagreement and halt.
+        expect(sleeps).toEqual([30_000, 60_000, 30_000, 60_000]);
+        expect(hits.filter((e) => e.type === "usage_limit_hit" && e.reason)).toHaveLength(0);
+      });
+    }
+
+    it("an API confirmation between iterations resets the consecutive-disagreement counter", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      const counter = path.join(binDir, "spawns");
+      writeBannerAgent(counter);
+      // Call 5 is the between-iteration check after the 2nd disagreement: it
+      // confirms a 5h limit. Every other call says "not limited".
+      let call = 0;
+      stubUsageApi(() => {
+        call++;
+        return call === 5
+          ? new Response(
+              JSON.stringify({
+                five_hour: { utilization: 100, resets_at: "2099-01-01T00:00:00Z" },
+                seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+              }),
+              { status: 200 },
+            )
+          : notLimited();
+      });
       const { sleeps, sleep } = recordingSleep();
       const hits: LoopEvent[] = [];
 
       const runner = createRunner(
         tmpDir,
-        { ...DEFAULT_OPTIONS, maxIterations: 5, sleepOnLimit: false },
+        { ...DEFAULT_OPTIONS, maxIterations: 4, sleepOnLimit: true },
         { sleep },
       );
       runner.on("usage_limit_hit", (e) => hits.push(e));
       await runner.start();
 
-      // Without the reset, spawn 4 would be the 3rd disagreement and halt.
-      expect(sleeps).toEqual([30_000, 60_000, 30_000, 60_000]);
+      expect(sleeps.slice(0, 2)).toEqual([30_000, 60_000]);
+      expect(sleeps[2]).toBeGreaterThan(60_000); // the confirmed-limit sleep
+      // After the confirmation, the next unconfirmed banner is strike 1 again.
+      expect(sleeps[3]).toBe(30_000);
       expect(hits.filter((e) => e.type === "usage_limit_hit" && e.reason)).toHaveLength(0);
+    });
+
+    // API-confirmed 5h limit with a missing / invalid / past reset time used to
+    // sleep 0 ms — with the death uncounted, a hot loop on a different answer.
+    for (const [label, fiveHour] of [
+      ["past", { utilization: 100, resets_at: "2000-01-01T00:00:00Z" }],
+      ["missing", { utilization: 100 }],
+      ["invalid", { utilization: 100, resets_at: "not-a-date" }],
+    ] as const) {
+      it(`a confirmed limit with a ${label} reset time sleeps >= 60s and trips a bounded breaker`, async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        const counter = path.join(binDir, "spawns");
+        writeBannerAgent(counter);
+        // Confirmed (degenerate) from the preflight on.
+        stubUsageApi(
+          () =>
+            new Response(
+              JSON.stringify({
+                five_hour: fiveHour,
+                seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+              }),
+              { status: 200 },
+            ),
+        );
+        const { sleeps, sleep } = recordingSleep();
+
+        const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 50 }, { sleep });
+        const result = await runner.start();
+
+        // preflight (1) → sleep; iteration 1 dies → reactive (2) → sleep;
+        // between-iterations (3) → breaker halts. Every sleep honours the floor.
+        expect(sleeps).toEqual([60_000, 60_000]);
+        expect(spawns(counter)).toBe(1);
+        expect(result.limitReached).toBe(true);
+        const state = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(state.status).toBe("paused_usage_limit");
+        const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
+        expect(log).toContain("consecutive usage-limit confirmations without a usable reset time");
+      });
+    }
+
+    it("a confirmed limit with a valid reset writes sleepUntil to state.json", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task")]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+      let call = 0;
+      stubUsageApi(() => {
+        call++;
+        return call === 1
+          ? new Response(
+              JSON.stringify({
+                five_hour: { utilization: 100, resets_at: "2099-01-01T00:00:00Z" },
+                seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+              }),
+              { status: 200 },
+            )
+          : notLimited();
+      });
+      const seen: Array<{ status: string; sleepUntil?: string }> = [];
+      const sleep = async () => {
+        seen.push(JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8")));
+      };
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS, { sleep });
+      await runner.start();
+
+      expect(seen[0]?.status).toBe("sleeping_limit");
+      expect(seen[0]?.sleepUntil).toBeTruthy();
+      // Cleared once the loop is running again.
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.sleepUntil).toBeUndefined();
+    });
+
+    describe("review-pass usage deaths", () => {
+      /** Spawn 1 completes the work item; every later spawn (the review) dies on a banner. */
+      function writeReviewDeathAgent(counter: string): void {
+        writeMockClaude(
+          binDir,
+          `n=$(cat "${counter}" 2>/dev/null || echo 0)
+n=$((n + 1))
+echo "$n" > "${counter}"
+if [ "$n" -eq 1 ]; then echo "RAUF_DONE"; exit 0; fi
+echo "Claude usage limit reached" >&2
+exit 1`,
+        );
+      }
+
+      it("sleepOnLimit=false: halts resumably (paused_usage_limit + reviewPending), not complete", async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        const counter = path.join(binDir, "spawns");
+        writeReviewDeathAgent(counter);
+        stubUsageApi(
+          () =>
+            new Response(
+              JSON.stringify({
+                five_hour: { utilization: 100, resets_at: "2099-01-01T00:00:00Z" },
+                seven_day: { utilization: 10, resets_at: "2099-01-01T00:00:00Z" },
+              }),
+              { status: 200 },
+            ),
+        );
+        // Preflight must not halt before the work runs: limited only once the
+        // review has died.
+        const origFetch = globalThis.fetch;
+        globalThis.fetch = (async (...args: Parameters<typeof fetch>) =>
+          spawns(counter) >= 2 ? origFetch(...args) : notLimited()) as typeof fetch;
+        const reviewFailed: string[] = [];
+        const runner = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          review: true,
+          sleepOnLimit: false,
+        });
+        runner.on("review_failed", (e) => reviewFailed.push(e.reason));
+        const result = await runner.start();
+
+        expect(result.completedCount).toBe(1);
+        expect(result.limitReached).toBe(true);
+        expect(result.reviewPending).toBe(true);
+        const state = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(state.status).toBe("paused_usage_limit");
+        expect(state.reviewPending).toBe(true);
+        const done = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
+        expect(done).toContain("paused_usage_limit");
+        expect(reviewFailed[0]).toContain("review pending");
+      });
+
+      it("retries the review through usage sleeps, then stops resumably after the cap", async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task")]);
+        const counter = path.join(binDir, "spawns");
+        writeReviewDeathAgent(counter);
+        stubUsageApi(notLimited); // every review death is a disagreement
+        const { sleeps, sleep } = recordingSleep();
+        const runner = createRunner(
+          tmpDir,
+          { ...DEFAULT_OPTIONS, review: true, maxRetries: 1 },
+          { sleep },
+        );
+        const result = await runner.start();
+
+        // 1 work spawn + REVIEW_MAX_USAGE_DEATHS (4) review attempts: backoff
+        // 30s, 60s, assumed-limit sleep (strike 3), assumed-limit sleep again.
+        expect(spawns(counter)).toBe(5);
+        expect(sleeps).toEqual([30_000, 60_000, 30 * 60_000, 30 * 60_000]);
+        expect(result.limitReached).toBe(true);
+        expect(result.reviewPending).toBe(true);
+        const state = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(state.status).toBe("paused_usage_limit");
+        expect(state.reviewPending).toBe(true);
+      });
+
+      it("--review-only surfaces a usage stop in LoopResult", async () => {
+        setupProject(tmpDir, [pendingItem("001", "Task", { status: "done" })]);
+        const counter = path.join(binDir, "spawns");
+        // Pre-seed the counter so the first spawn is already "the review".
+        fs.writeFileSync(counter, "1\n");
+        writeReviewDeathAgent(counter);
+        const runner = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          review: true,
+          reviewOnly: true,
+          sleepOnLimit: false,
+        });
+        // No token → banner-only path → halt.
+        fs.rmSync(path.join(fakeHome, ".claude"), { recursive: true, force: true });
+        const result = await runner.startReviewOnly();
+
+        expect(result.limitReached).toBe(true);
+        expect(result.reviewPending).toBe(true);
+        const state = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"),
+        );
+        expect(state.reviewPending).toBe(true);
+      });
     });
 
     it("an API-confirmed limit still takes the normal path, uncounted", async () => {

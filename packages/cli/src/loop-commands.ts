@@ -1256,7 +1256,11 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       outputJson(result);
     } else {
       print("");
-      if (result.reviewItemsCreated && result.reviewItemsCreated > 0) {
+      if (result.reviewPending) {
+        warn(
+          `Review stopped by a usage limit — run ${c.cyan(`rauf resume ${ctx.args[0] ?? "."}`)} once the limit resets to re-run it.`,
+        );
+      } else if (result.reviewItemsCreated && result.reviewItemsCreated > 0) {
         success(`Review created ${result.reviewItemsCreated} items`);
         if (result.reviewSummary) {
           info(`Summary: ${result.reviewSummary}`);
@@ -1266,7 +1270,8 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
       }
     }
 
-    return ExitCode.SUCCESS;
+    // A review stopped by a usage limit is a LIMIT terminal (#146).
+    return result.limitReached ? ExitCode.LIMIT : ExitCode.SUCCESS;
   } catch (e) {
     error(`Review failed: ${e instanceof Error ? e.message : String(e)}`);
     return ExitCode.ERROR;

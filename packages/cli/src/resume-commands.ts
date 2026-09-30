@@ -15,6 +15,7 @@
 // backlog.json`, so the tree is dirty by construction. Branch protection stays
 // on (only the dirty-tree guard is relaxed).
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
@@ -46,7 +47,7 @@ import {
   type InterruptedItem,
 } from "@rauf/loop";
 import { reverifyAndCommitInterrupted, type VerifyRunner } from "./recovery.js";
-import { handleLoopRun } from "./loop-commands.js";
+import { handleLoopRun, handleLoopReview } from "./loop-commands.js";
 
 // ─── --answer parsing ────────────────────────────────────────────
 
@@ -267,10 +268,28 @@ export interface ResumeDeps {
   runLoop?: (ctx: CommandContext) => Promise<number>;
   /** Verify runner for `--recover` — injectable for tests. Defaults to the real shell runner. */
   runVerify?: VerifyRunner;
+  /** Standalone review launcher (review pending, #146) — injectable. Defaults to `handleLoopReview`. */
+  runReview?: (ctx: CommandContext) => Promise<number>;
+}
+
+/**
+ * Whether the loop's review pass was stopped by a usage limit (#146): state.json
+ * `reviewPending`. Read before recovery, which clears the loop state.
+ */
+function readReviewPending(paths: BacklogPaths): boolean {
+  // Lenient on purpose: only this one flag matters, so a state.json that fails
+  // full LoopState validation must not hide a pending review.
+  try {
+    const raw = JSON.parse(fs.readFileSync(paths.state, "utf-8")) as { reviewPending?: unknown };
+    return raw.reviewPending === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): Promise<number> {
   const runLoop = deps.runLoop ?? handleLoopRun;
+  const runReview = deps.runReview ?? handleLoopReview;
   const targetPath = resolveResumeTargetPath(ctx);
   const resolved = path.resolve(targetPath);
   const backlogFlag = extractStringFlag(ctx.flags, "backlog");
@@ -328,6 +347,10 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   // `exitCode` holds the result for every early-return path. Release happens in
   // the finally so the lock is freed before any relaunch and on any throw.
   let relaunch = false;
+  // A review pass stopped by a usage limit (#146) is resumed by re-running the
+  // standalone review (all done items) instead of relaunching the loop.
+  const reviewPending = readReviewPending(paths);
+  let rerunReview = false;
   let exitCode: number = ExitCode.SUCCESS;
   try {
     // 1c. Inject any `--answer <id> "<text>"` answers BEFORE detection/recovery.
@@ -358,7 +381,9 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     // 2. Detect a resumable state.
     const detection = detectResumeState(paths, acquired.value.cleared);
 
-    if (detection.nonDone === 0) {
+    if (detection.nonDone === 0 && reviewPending) {
+      rerunReview = true;
+    } else if (detection.nonDone === 0) {
       if (ctx.globalFlags.json) {
         outputJson({ resumed: false, reason: "all_items_done", detectedState: detection.label });
       } else {
@@ -432,7 +457,9 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
             // blocks / needs-human left) — the loop would spawn and immediately
             // complete otherwise.
             const postBacklog = readBacklog(paths);
-            if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
+            if (reviewPending) {
+              rerunReview = true;
+            } else if (postBacklog.ok && selectNextItem(postBacklog.value) === null) {
               if (ctx.globalFlags.json) {
                 outputJson({
                   resumed: false,
@@ -460,6 +487,18 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
     // Release the recovery lock before relaunching: the loop's own entrypoint
     // acquires its lock, which would conflict with one we still held.
     releaseRecoveryLock(paths);
+  }
+
+  if (rerunReview) {
+    info("The review pass was stopped by a usage limit — re-running it.");
+    const reviewCtx: CommandContext = {
+      args: [targetPath],
+      flags: new Map(ctx.flags),
+      globalFlags: ctx.globalFlags,
+      rawArgv: ctx.rawArgv,
+    };
+    if (backlogFlag !== null) reviewCtx.flags.set("backlog", backlogFlag);
+    return runReview(reviewCtx);
   }
 
   if (!relaunch) return exitCode;

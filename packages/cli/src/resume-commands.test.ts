@@ -297,6 +297,62 @@ describe("handleResume — nothing to resume", () => {
   });
 });
 
+describe("handleResume — review pass stopped by a usage limit (#146)", () => {
+  function markReviewPending(projectDir: string): void {
+    const p = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(p, "utf-8")) as Record<string, unknown>;
+    fs.writeFileSync(p, JSON.stringify({ ...state, reviewPending: true }, null, 2) + "\n");
+  }
+
+  const cases: Array<[string, object[]]> = [
+    ["all items are done", [item("001", "done")]],
+    [
+      "only genuine blocks remain",
+      [item("001", "done"), item("002", "blocked", { blockedReason: "RAUF_BLOCKED: dep" })],
+    ],
+    ["eligible items remain (review first)", [item("001", "done"), item("002", "pending")]],
+  ];
+  for (const [label, items] of cases) {
+    it(`re-runs the standalone review when ${label}`, async () => {
+      const projectDir = createProject(items);
+      writeState(projectDir, "paused_usage_limit");
+      markReviewPending(projectDir);
+
+      const { calls, runLoop } = captureRunLoop();
+      const reviewCalls: CommandContext[] = [];
+      const runReview = async (ctx: CommandContext): Promise<number> => {
+        reviewCalls.push(ctx);
+        return ExitCode.SUCCESS;
+      };
+      const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop, runReview });
+
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(calls).toHaveLength(0);
+      expect(reviewCalls).toHaveLength(1);
+      expect(reviewCalls[0]!.args[0]).toBe(projectDir);
+    });
+  }
+
+  it("relaunches the loop as usual when no review is pending", async () => {
+    const projectDir = createProject([item("001", "done"), item("002", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+
+    const { calls, runLoop } = captureRunLoop();
+    let reviewed = 0;
+    const code = await handleResume(makeCtx({ args: [projectDir] }), {
+      runLoop,
+      runReview: async () => {
+        reviewed++;
+        return ExitCode.SUCCESS;
+      },
+    });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    expect(reviewed).toBe(0);
+  });
+});
+
 // ─── Interrupted-iteration detection + --recover ───────────────────
 
 describe("detectInterruptedItems", () => {

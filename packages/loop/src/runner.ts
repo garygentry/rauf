@@ -116,6 +116,18 @@ export const USAGE_DISAGREEMENT_THRESHOLD = 3;
 export const USAGE_DISAGREEMENT_BACKOFF_BASE_MS = 30_000;
 export const USAGE_DISAGREEMENT_BACKOFF_CAP_MS = 5 * 60_000;
 export const USAGE_DISAGREEMENT_DEFAULT_WINDOW_MS = 30 * 60_000;
+/**
+ * Floor for any usage-limit sleep. An API-confirmed 5h limit whose reset time is
+ * missing, invalid or already past would otherwise sleep 0 ms (#146).
+ */
+export const USAGE_LIMIT_MIN_SLEEP_MS = 60_000;
+/** Consecutive such "degenerate" confirmed limits before halting as `paused_usage_limit`. */
+export const USAGE_DEGENERATE_LIMIT_THRESHOLD = 3;
+/** Usage deaths the review pass retries through before stopping resumably (#146). */
+export const REVIEW_MAX_USAGE_DEATHS = USAGE_DISAGREEMENT_THRESHOLD + 1;
+
+/** Where a usage death is being handled: a counted work iteration, or the review pass. */
+type UsageDeathContext = "iteration" | "review";
 
 /** Result returned when the loop finishes */
 export interface LoopResult {
@@ -126,6 +138,11 @@ export interface LoopResult {
   gracefulStop?: boolean;
   reviewItemsCreated?: number;
   reviewSummary?: string;
+  /**
+   * The review pass was stopped by a usage limit before finishing (#146); the
+   * loop wrote a resumable state with `reviewPending`, and `rauf resume` re-runs it.
+   */
+  reviewPending?: boolean;
   /** Set when the loop halted in paused_human via --pause-on-needs-human (item 008). */
   pausedReason?: "needs_human";
   /**
@@ -146,7 +163,8 @@ export interface LoopResult {
 }
 
 /** Result of a review pass */
-type ReviewPassResult = "clean" | "continue" | "failed";
+/** `limited`: stopped by a usage limit; resumable (state.json `reviewPending`) (#146). */
+type ReviewPassResult = "clean" | "continue" | "failed" | "limited";
 
 /** Minimum interval between token_update event emissions */
 const TOKEN_EVENT_THROTTLE_MS = 5_000;
@@ -186,10 +204,22 @@ export class LoopRunner extends TypedEventEmitter {
   /** Consecutive infra_error exits; consumed by the circuit breaker (item 008). */
   private consecutiveInfraFailures = 0;
   /**
-   * Consecutive usage banners the usage API did not confirm (#146). Reset by an
-   * iteration that produced a real signal, or by an API-confirmed limit.
+   * Consecutive usage banners the usage API did not confirm (#146). Reset by any
+   * iteration that does not end in a usage death, and by any API-confirmed
+   * limit. Deliberately NOT reset after an assumed-limit sleep: the evidence
+   * that the API disagrees with the banner still stands, so the next unconfirmed
+   * banner goes straight back to the limit path instead of re-spending two
+   * counted attempts on short backoffs against a likely-limited account.
    */
   private consecutiveUsageDisagreements = 0;
+  /** Consecutive API-confirmed 5h limits with no usable reset time (#146 breaker). */
+  private consecutiveDegenerateLimits = 0;
+  /** Set when the current work iteration ended in a usage death (streak bookkeeping). */
+  private iterationEndedInUsageDeath = false;
+  /** Deadline written to state.json `sleepUntil` while a usage sleep/backoff is in progress. */
+  private sleepUntil: string | null = null;
+  /** The review pass was stopped by a usage limit; persisted so `rauf resume` re-runs it. */
+  private reviewPending = false;
   private readonly deps: Required<LoopRunnerDeps>;
   private currentItemId: string | null = null;
   private startedAt: string = "";
@@ -513,6 +543,19 @@ export class LoopRunner extends TypedEventEmitter {
       if (this.options.review && this.completedItemIds.length > 0 && !this.isCancelled()) {
         const reviewResult = await this.runReviewPass();
 
+        if (reviewResult === "limited") {
+          // Resumable usage stop (paused_usage_limit / weekly_limit already
+          // written, reviewPending set): never fall through to `complete`.
+          return {
+            completedCount: this.completedCount,
+            blockedCount: this.blockedCount,
+            ...(this.needsHumanCount > 0 ? { needsHumanCount: this.needsHumanCount } : {}),
+            cancelled: false,
+            limitReached: true,
+            reviewPending: true,
+          };
+        }
+
         if (reviewResult === "continue" && !this.options.reviewOnly) {
           // Re-enter iteration loop to process fix items (using remaining budget)
           while (this.iterationCount < this.options.maxIterations) {
@@ -544,8 +587,7 @@ export class LoopRunner extends TypedEventEmitter {
           blockedCount: this.blockedCount,
           needsHumanCount: this.needsHumanCount,
         });
-        const summary = this.buildSummary();
-        writeDoneFile(this.paths, summary);
+        writeDoneFile(this.paths, `iterations_complete: ${this.buildSummary()}`);
       } else {
         // No more items or loop completed naturally
         this.writeState("complete", null);
@@ -815,7 +857,7 @@ export class LoopRunner extends TypedEventEmitter {
       cancelled: false,
       ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
       ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
-      ...(reviewResult === "clean" ? {} : {}),
+      ...(reviewResult === "limited" ? { limitReached: true, reviewPending: true } : {}),
     };
   }
 
@@ -826,6 +868,20 @@ export class LoopRunner extends TypedEventEmitter {
    * Returns "continue" to keep looping, "break" to stop loop, or "exit" to return immediately.
    */
   private async runIteration(projectModel?: string): Promise<"continue" | "break" | "exit"> {
+    this.iterationEndedInUsageDeath = false;
+    try {
+      return await this.runIterationBody(projectModel);
+    } finally {
+      // Any iteration that did not end in a usage death breaks both usage
+      // streaks (#146): "consecutive" means back-to-back usage deaths.
+      if (!this.iterationEndedInUsageDeath) {
+        this.consecutiveUsageDisagreements = 0;
+        this.consecutiveDegenerateLimits = 0;
+      }
+    }
+  }
+
+  private async runIterationBody(projectModel?: string): Promise<"continue" | "break" | "exit"> {
     this.iterationCount++;
     this.emitEvent("iteration_start", {
       iteration: this.iterationCount,
@@ -1215,11 +1271,6 @@ export class LoopRunner extends TypedEventEmitter {
     // be mis-parsed as a real completion signal; a genuine final-line signal is
     // preserved (REQ-SEC-02).
     const parsed = parseSignal(neutralizeForDetection(signalText));
-    // A real signal means the agent actually ran — any usage banner/API
-    // disagreement streak is over (#146).
-    if (parsed.signal !== "none") {
-      this.consecutiveUsageDisagreements = 0;
-    }
     this.emitEvent("signal_parsed", {
       itemId: item.id,
       signal: parsed.signal,
@@ -1567,6 +1618,7 @@ export class LoopRunner extends TypedEventEmitter {
   /** Run the post-loop review pass. Returns result indicating outcome. */
   private async runReviewPass(): Promise<ReviewPassResult> {
     appendLog(this.paths, "Starting review pass");
+    this.reviewPending = false;
     this.emitEvent("review_started", {
       completedItemIds: [...this.completedItemIds],
     });
@@ -1632,6 +1684,7 @@ export class LoopRunner extends TypedEventEmitter {
     // per-item work iterations, the review pass does not participate in the
     // retryCounts Map or the circuit breaker.
     let reviewRetryCount = 0;
+    let reviewUsageDeaths = 0;
     for (;;) {
       // Mirrors the sibling post-review retry loop's cancellation check
       // (`if (this.isCancelled()) break;` above): bail before spawning another
@@ -1710,10 +1763,10 @@ export class LoopRunner extends TypedEventEmitter {
 
       // Other signal or parse failure. Classify WHY the spawn produced no
       // recognized signal the same way a work iteration does — only a
-      // genuine_retry (clean/long no-signal exit) is worth re-spawning. A
-      // classified usage_limited/timeout/infra_error death falls straight
-      // through to review_failed below; the review pass has no usage-sleep or
-      // circuit-breaker handling of its own to route those into.
+      // genuine_retry (clean/long no-signal exit) is worth re-spawning, and a
+      // usage_limited death goes through the same usage policy as a work
+      // iteration (#146). A timeout/infra_error death falls straight through to
+      // review_failed below; the review pass has no circuit breaker of its own.
       // Downgrade a usage_limited classification to genuine_retry when the
       // review-pass provider has no usage semantics (no checkUsage) — same
       // rationale as the work-iteration path above: a "usage_limited" verdict
@@ -1721,6 +1774,14 @@ export class LoopRunner extends TypedEventEmitter {
       const rawExitClass = classifyExit(execResult.value, parsed);
       const exitClass =
         !provider.checkUsage && rawExitClass === "usage_limited" ? "genuine_retry" : rawExitClass;
+      if (exitClass === "usage_limited") {
+        const usage = await this.handleReviewUsageDeath(
+          `${stderr}\n${execResult.value.reconstructedText || stdout}`,
+          ++reviewUsageDeaths,
+        );
+        if (usage === "retry") continue;
+        return usage;
+      }
       if (exitClass === "genuine_retry" && reviewRetryCount + 1 < this.options.maxRetries) {
         reviewRetryCount++;
         // Same #125 diagnostic as the work-iteration path: a review agent can
@@ -1747,6 +1808,52 @@ export class LoopRunner extends TypedEventEmitter {
       this.emitEvent("review_failed", { reason, stdoutTail, stderrTail });
       return "failed";
     }
+  }
+
+  /**
+   * A review-pass usage death (#146), routed through the same usage policy as a
+   * work iteration but with no iteration budget. Returns "retry" after sleeping
+   * or backing off through it, or the final review outcome: "limited" when the
+   * loop halted (paused_usage_limit / weekly_limit) or REVIEW_MAX_USAGE_DEATHS was
+   * reached (state.json `reviewPending` so `rauf resume` re-runs the review),
+   * "failed" when cancelled.
+   */
+  private async handleReviewUsageDeath(
+    bannerText: string,
+    deaths: number,
+  ): Promise<"retry" | "limited" | "failed"> {
+    appendLog(
+      this.paths,
+      `Review pass: usage limit detected (${deaths}/${REVIEW_MAX_USAGE_DEATHS})`,
+    );
+    // Persist the pending review through any sleep/halt the handler writes.
+    this.reviewPending = true;
+    const usage = await this.handleStderrUsageLimit(bannerText, "review");
+    if (usage === "exit" && !this.limitTerminal) {
+      // Cancelled during a usage sleep.
+      this.reviewPending = false;
+      return "failed";
+    }
+    if (usage === "continue" && deaths < REVIEW_MAX_USAGE_DEATHS && !this.isCancelled()) {
+      this.reviewPending = false;
+      this.writeState("reviewing", null);
+      return "retry";
+    }
+    if (usage === "continue") {
+      if (this.isCancelled()) {
+        this.reviewPending = false;
+        return "failed";
+      }
+      appendLog(
+        this.paths,
+        `Review pass stopped after ${deaths} usage-limit deaths; run \`rauf resume\` to re-run it`,
+      );
+      this.writeState("paused_usage_limit", null);
+      writeDoneFile(this.paths, "paused_usage_limit:unknown — review pending, run `rauf resume`");
+    }
+    const reason = "Review pass stopped by a usage limit (review pending — run `rauf resume`)";
+    this.emitEvent("review_failed", { reason });
+    return "limited";
   }
 
   // ─── Git helpers ──────────────────────────────────────────────────
@@ -1969,11 +2076,7 @@ export class LoopRunner extends TypedEventEmitter {
     // state so the resolved LoopResult can carry the LIMIT terminal (00 §2a).
     // sleeping_limit is transient (the loop resumes), so it is NOT terminal here;
     // re-entering a running/active state clears the flag.
-    if (
-      status === "limit_reached" ||
-      status === "weekly_limit" ||
-      status === "paused_usage_limit"
-    ) {
+    if (status === "weekly_limit" || status === "paused_usage_limit") {
       this.limitTerminal = true;
     } else if (status === "running" || status === "starting" || status === "reviewing") {
       this.limitTerminal = false;
@@ -1990,6 +2093,8 @@ export class LoopRunner extends TypedEventEmitter {
       deferredItems: this.deferredItemIds,
       baseCommitHash: this.baseCommitHash,
       error: error ?? null,
+      ...(this.sleepUntil ? { sleepUntil: this.sleepUntil } : {}),
+      ...(this.reviewPending ? { reviewPending: true } : {}),
     });
     // Advisory registry refresh (REQ-OBS-02). state.json (just written) stays
     // authoritative; this keeps the cross-root summary's status roughly current.
@@ -2138,6 +2243,122 @@ export class LoopRunner extends TypedEventEmitter {
     return target.getTime() - now.getTime();
   }
 
+  /**
+   * Sleep `sleepMs` as a usage-limit sleep: state `sleeping_limit` with
+   * `sleepUntil` (re-written on every heartbeat), then `sleep_end`. Returns
+   * "exit" (DONE `cancel`) when cancelled during the sleep.
+   */
+  private async usageLimitSleep(
+    sleepMs: number,
+    sleepStart: { sleepUntil: string; reason: string },
+  ): Promise<"continue" | "exit"> {
+    this.emitEvent("sleep_start", sleepStart);
+    this.sleepUntil = new Date(Date.now() + sleepMs).toISOString();
+    this.writeState("sleeping_limit", null);
+    await this.deps.sleep(sleepMs, this.abortController.signal, () =>
+      this.writeState("sleeping_limit", null),
+    );
+    this.sleepUntil = null;
+    this.emitEvent("sleep_end", {});
+    appendLog(this.paths, "Woke from usage limit sleep");
+    if (this.isCancelled()) {
+      appendLog(this.paths, "Loop cancelled during sleep");
+      this.emitEvent("loop_cancelled", {});
+      writeDoneFile(this.paths, "cancel");
+      return "exit";
+    }
+    return "continue";
+  }
+
+  /**
+   * A usage limit CONFIRMED by the usage API — the single policy for every
+   * confirmed-limit locus (preflight, reactive usage death, between iterations).
+   * 7d → `weekly_limit` + exit. 5h → halt (sleepOnLimit=false) or sleep to the
+   * reset. A reset time that is missing, invalid or already past would make that
+   * a zero-length sleep and, with the death uncounted, a hot loop (#146): such a
+   * "degenerate" confirmation sleeps at least USAGE_LIMIT_MIN_SLEEP_MS, and
+   * USAGE_DEGENERATE_LIMIT_THRESHOLD consecutive ones halt as
+   * `paused_usage_limit` (a bounded breaker).
+   */
+  private async handleConfirmedLimit(
+    usageResult: UsageLimitResult,
+    where: "preflight" | "reactive" | "between",
+  ): Promise<"continue" | "exit"> {
+    // A confirmation ends any banner/API disagreement streak (#146).
+    this.consecutiveUsageDisagreements = 0;
+    const whereText = {
+      preflight: "reached",
+      reactive: "detected",
+      between: "hit between iterations",
+    }[where];
+
+    if (usageResult.limitType === "7d") {
+      const resetsAt = usageResult.resetsAt ?? "unknown";
+      appendLog(this.paths, `Weekly usage limit ${whereText} (resets at ${resetsAt})`);
+      this.emitEvent("usage_limit_hit", {
+        limitType: "7d",
+        utilization: usageResult.utilization ?? 100,
+      });
+      const resetMs = new Date(resetsAt).getTime();
+      this.sleepUntil = Number.isNaN(resetMs) ? null : new Date(resetMs).toISOString();
+      this.writeState("weekly_limit", null);
+      this.sleepUntil = null;
+      writeDoneFile(this.paths, `weekly_limit:${resetsAt}`);
+      return "exit";
+    }
+
+    // 5-hour limit.
+    const resetsAt = usageResult.resetsAt ?? "";
+    const retryAfter = usageResult.retryAfter ?? 0;
+    // `!(x > 0)` also catches NaN (an unparseable resets_at).
+    const degenerate = !(retryAfter > 0);
+    if (degenerate) {
+      this.consecutiveDegenerateLimits++;
+      appendLog(
+        this.paths,
+        `Usage API confirmed a 5-hour limit with no usable reset time (resets_at=${resetsAt || "missing"}); ` +
+          `${this.consecutiveDegenerateLimits}/${USAGE_DEGENERATE_LIMIT_THRESHOLD}`,
+      );
+      if (this.consecutiveDegenerateLimits >= USAGE_DEGENERATE_LIMIT_THRESHOLD) {
+        appendLog(
+          this.paths,
+          `${this.consecutiveDegenerateLimits} consecutive usage-limit confirmations without a usable reset time — halting`,
+        );
+        this.consecutiveDegenerateLimits = 0;
+        return this.haltForUsageLimit(resetsAt);
+      }
+    } else {
+      this.consecutiveDegenerateLimits = 0;
+    }
+
+    // Clean halt instead of sleeping when sleepOnLimit is false.
+    if (!this.sleepOnLimit) {
+      return this.haltForUsageLimit(resetsAt);
+    }
+
+    const sleepMs = Math.max(degenerate ? 0 : retryAfter * 1000, USAGE_LIMIT_MIN_SLEEP_MS);
+    appendLog(
+      this.paths,
+      `5-hour usage limit ${whereText}, sleeping until ${resetsAt || "unknown"} (${Math.round(sleepMs / 1000)}s)`,
+    );
+    this.emitEvent("usage_limit_hit", {
+      limitType: "5h",
+      utilization: usageResult.utilization ?? 100,
+    });
+    const reason = {
+      preflight: "5-hour usage limit",
+      reactive: "5-hour usage limit (stderr)",
+      between: "5-hour usage limit (between iterations)",
+    }[where];
+    const slept = await this.usageLimitSleep(sleepMs, {
+      sleepUntil: degenerate ? new Date(Date.now() + sleepMs).toISOString() : resetsAt,
+      reason,
+    });
+    if (slept === "exit") return "exit";
+    this.emitEvent("usage_limit_cleared", { limitType: "5h" });
+    return "continue";
+  }
+
   /** Run pre-loop usage limit preflight check */
   private async runUsagePreflight(): Promise<"continue" | "exit"> {
     const tokenResult = this.deps.readOAuthToken();
@@ -2153,63 +2374,10 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     const usageResult = await this.deps.checkUsageLimit(tokenResult.value);
-
     if (!usageResult.limited) {
       return "continue";
     }
-
-    if (usageResult.limitType === "7d") {
-      // Weekly limit — write DONE and exit
-      const resetsAt = usageResult.resetsAt ?? "unknown";
-      appendLog(this.paths, `Weekly usage limit reached (resets at ${resetsAt})`);
-      this.emitEvent("usage_limit_hit", {
-        limitType: "7d",
-        utilization: usageResult.utilization ?? 100,
-      });
-      this.writeState("weekly_limit", null);
-      writeDoneFile(this.paths, `weekly_limit:${resetsAt}`);
-      return "exit";
-    }
-
-    if (usageResult.limitType === "5h") {
-      // 5-hour limit. Clean halt instead of sleeping when sleepOnLimit is false.
-      const resetsAt = usageResult.resetsAt ?? "";
-      if (!this.sleepOnLimit) {
-        return this.haltForUsageLimit(resetsAt);
-      }
-      const retryAfter = usageResult.retryAfter ?? 0;
-      appendLog(
-        this.paths,
-        `5-hour usage limit reached, sleeping until ${resetsAt} (${retryAfter}s)`,
-      );
-      this.emitEvent("usage_limit_hit", {
-        limitType: "5h",
-        utilization: usageResult.utilization ?? 100,
-      });
-      this.emitEvent("sleep_start", {
-        sleepUntil: resetsAt,
-        reason: "5-hour usage limit",
-      });
-      this.writeState("sleeping_limit", null);
-
-      await this.deps.sleep(retryAfter * 1000, this.abortController.signal, () =>
-        this.writeState("sleeping_limit", null),
-      );
-
-      this.emitEvent("sleep_end", {});
-      appendLog(this.paths, "Woke from usage limit sleep");
-
-      if (this.isCancelled()) {
-        appendLog(this.paths, "Loop cancelled during sleep");
-        this.emitEvent("loop_cancelled", {});
-        writeDoneFile(this.paths, "cancel");
-        return "exit";
-      }
-
-      this.emitEvent("usage_limit_cleared", { limitType: "5h" });
-    }
-
-    return "continue";
+    return this.handleConfirmedLimit(usageResult, "preflight");
   }
 
   /**
@@ -2255,41 +2423,45 @@ export class LoopRunner extends TypedEventEmitter {
       utilization: 100,
       ...this.disagreementFields(disagreements),
     });
-    this.emitEvent("sleep_start", {
+    return this.usageLimitSleep(sleepMs, {
       sleepUntil: new Date(Date.now() + sleepMs).toISOString(),
       reason,
     });
-    this.writeState("sleeping_limit", null);
-    await this.deps.sleep(sleepMs, this.abortController.signal, () =>
-      this.writeState("sleeping_limit", null),
-    );
-    this.emitEvent("sleep_end", {});
-    if (this.isCancelled()) {
-      writeDoneFile(this.paths, "cancel");
-      return "exit";
-    }
-    return "continue";
   }
 
   /**
    * A usage banner/death the usage API did not confirm — it answered "not
-   * limited" or was unavailable (#146). The iteration COUNTS (the budget bounds
-   * a persistent disagreement) and the runner backs off exponentially; after
-   * USAGE_DISAGREEMENT_THRESHOLD consecutive disagreements it trusts the banner
-   * and takes the normal usage-limit path.
+   * limited" or was unavailable (#146). In a work iteration the attempt COUNTS
+   * (the budget bounds a persistent disagreement). Streak 1 and 2 back off 30 s
+   * and 60 s; at USAGE_DISAGREEMENT_THRESHOLD (3) the runner trusts the banner
+   * and takes the usage-limit path. If the counted attempt used up the budget,
+   * nothing more can run, so it neither backs off nor sleeps: the loop stops as
+   * `iterations_complete`.
    */
   private async handleUsageDisagreement(
     usageResult: UsageLimitResult,
-    bannerText?: string,
+    bannerText: string | undefined,
+    context: UsageDeathContext,
   ): Promise<"continue" | "exit"> {
     this.consecutiveUsageDisagreements++;
     const n = this.consecutiveUsageDisagreements;
     const apiSaid = usageResult.unavailable ? "unavailable" : "not limited";
     appendLog(
       this.paths,
-      `Usage-limit banner not confirmed by usage API (${apiSaid}); iteration counted ` +
-        `(${this.iterationCount}/${this.options.maxIterations}), disagreement ${n}/${USAGE_DISAGREEMENT_THRESHOLD}`,
+      `Usage-limit banner not confirmed by usage API (${apiSaid}); ` +
+        (context === "iteration"
+          ? `iteration counted (${this.iterationCount}/${this.options.maxIterations})`
+          : "review pass") +
+        `, disagreement ${n}/${USAGE_DISAGREEMENT_THRESHOLD}`,
     );
+
+    if (context === "iteration" && this.iterationCount >= this.options.maxIterations) {
+      appendLog(
+        this.paths,
+        "Iteration budget exhausted by this attempt — stopping without backoff",
+      );
+      return "continue";
+    }
 
     if (n >= USAGE_DISAGREEMENT_THRESHOLD) {
       const banner = this.parseBannerReset(bannerText);
@@ -2314,37 +2486,44 @@ export class LoopRunner extends TypedEventEmitter {
       USAGE_DISAGREEMENT_BACKOFF_BASE_MS * 2 ** (n - 1),
       USAGE_DISAGREEMENT_BACKOFF_CAP_MS,
     );
+    const backoffUntil = new Date(Date.now() + backoffMs).toISOString();
     this.emitEvent("sleep_start", {
-      sleepUntil: new Date(Date.now() + backoffMs).toISOString(),
+      sleepUntil: backoffUntil,
       reason:
         `Usage-limit banner unconfirmed by usage API (${apiSaid}); ` +
         `backoff ${Math.round(backoffMs / 1000)}s (${n}/${USAGE_DISAGREEMENT_THRESHOLD})`,
     });
+    // Keep status accurate during the backoff: still running (not a limit
+    // state), no item in flight, and when the next attempt starts.
+    this.sleepUntil = backoffUntil;
+    this.writeState(context === "review" ? "reviewing" : "running", null);
     await this.deps.sleep(backoffMs, this.abortController.signal);
+    this.sleepUntil = null;
     this.emitEvent("sleep_end", {});
-    if (this.isCancelled()) {
-      appendLog(this.paths, "Loop cancelled during usage-disagreement backoff");
-      writeDoneFile(this.paths, "cancel");
-      return "exit";
-    }
+    // A cancel during the backoff is handled by the caller's loop-top check.
     return "continue";
   }
 
   /**
-   * Handle a usage limit detected mid-loop. `bannerText` is the claude output
-   * the limit was detected in — used to parse a reset time when the API token
-   * is unavailable (item 007). Owns iteration accounting for the usage death: a
-   * limit taken on the banner alone (no token) or confirmed by the API is a
-   * no-op rejection and is uncounted (item 007); a banner the API does not
-   * confirm is counted (#146).
+   * Handle a usage limit detected mid-loop (a work iteration or the review
+   * pass). `bannerText` is the agent output the limit was detected in, used to
+   * parse a reset time when the API token is unavailable (item 007). For a work
+   * iteration it owns the iteration accounting: a limit taken on the banner
+   * alone (no token) or confirmed by the API is a no-op rejection and is
+   * uncounted (item 007); a banner the API does not confirm is counted (#146).
+   * The review pass has no iteration budget.
    */
-  private async handleStderrUsageLimit(bannerText?: string): Promise<"continue" | "exit"> {
+  private async handleStderrUsageLimit(
+    bannerText: string | undefined,
+    context: UsageDeathContext = "iteration",
+  ): Promise<"continue" | "exit"> {
+    if (context === "iteration") this.iterationEndedInUsageDeath = true;
     const tokenResult = this.deps.readOAuthToken();
     if (!tokenResult.ok) {
       // Can't hit the API for an exact reset. Parse the reset time out of the
       // banner if present and sleep until then (plus a small buffer); else 60s.
       // Bounded by that sleep, so the uncounted iteration cannot hot-spin.
-      this.uncountIteration("usage_limited");
+      if (context === "iteration") this.uncountIteration("usage_limited");
       const FALLBACK_MS = 60_000;
       const banner = this.parseBannerReset(bannerText);
       const sleepMs = banner?.sleepMs ?? FALLBACK_MS;
@@ -2371,62 +2550,12 @@ export class LoopRunner extends TypedEventEmitter {
     if (!usageResult.limited) {
       // The API says "not limited", or could not answer — a disagreement with
       // the banner we just saw. Never an uncounted, un-backed-off continue (#146).
-      return this.handleUsageDisagreement(usageResult, bannerText);
+      return this.handleUsageDisagreement(usageResult, bannerText, context);
     }
 
     // API-confirmed limit: a no-op rejection, not an attempt (item 007).
-    this.consecutiveUsageDisagreements = 0;
-    this.uncountIteration("usage_limited");
-
-    if (usageResult.limitType === "7d") {
-      // Weekly limit — exit
-      const resetsAt = usageResult.resetsAt ?? "unknown";
-      appendLog(this.paths, `Weekly usage limit detected (resets at ${resetsAt})`);
-      this.emitEvent("usage_limit_hit", {
-        limitType: "7d",
-        utilization: usageResult.utilization ?? 100,
-      });
-      this.writeState("weekly_limit", null);
-      writeDoneFile(this.paths, `weekly_limit:${resetsAt}`);
-      return "exit";
-    }
-
-    // 5-hour limit. Clean halt instead of sleeping when sleepOnLimit is false.
-    const resetsAt = usageResult.resetsAt ?? "";
-    if (!this.sleepOnLimit) {
-      return this.haltForUsageLimit(resetsAt);
-    }
-
-    const retryAfter = usageResult.retryAfter ?? 0;
-    appendLog(
-      this.paths,
-      `5-hour usage limit detected, sleeping until ${resetsAt} (${retryAfter}s)`,
-    );
-    this.emitEvent("usage_limit_hit", {
-      limitType: "5h",
-      utilization: usageResult.utilization ?? 100,
-    });
-    this.emitEvent("sleep_start", {
-      sleepUntil: resetsAt,
-      reason: "5-hour usage limit (stderr)",
-    });
-    this.writeState("sleeping_limit", null);
-
-    await this.deps.sleep(retryAfter * 1000, this.abortController.signal, () =>
-      this.writeState("sleeping_limit", null),
-    );
-
-    this.emitEvent("sleep_end", {});
-    appendLog(this.paths, "Woke from usage limit sleep");
-
-    if (this.isCancelled()) {
-      appendLog(this.paths, "Loop cancelled during sleep");
-      writeDoneFile(this.paths, "cancel");
-      return "exit";
-    }
-
-    this.emitEvent("usage_limit_cleared", { limitType: "5h" });
-    return "continue";
+    if (context === "iteration") this.uncountIteration("usage_limited");
+    return this.handleConfirmedLimit(usageResult, "reactive");
   }
 
   /**
@@ -2459,51 +2588,7 @@ export class LoopRunner extends TypedEventEmitter {
     if (!usageResult.limited) {
       return "continue";
     }
-
-    if (usageResult.limitType === "7d") {
-      const resetsAt = usageResult.resetsAt ?? "unknown";
-      appendLog(this.paths, `Weekly usage limit hit between iterations (resets at ${resetsAt})`);
-      this.emitEvent("usage_limit_hit", {
-        limitType: "7d",
-        utilization: usageResult.utilization ?? 100,
-      });
-      this.writeState("weekly_limit", null);
-      writeDoneFile(this.paths, `weekly_limit:${resetsAt}`);
-      return "exit";
-    }
-
-    // 5h limit. Clean halt instead of sleeping when sleepOnLimit is false.
-    const resetsAt = usageResult.resetsAt ?? "";
-    if (!this.sleepOnLimit) {
-      return this.haltForUsageLimit(resetsAt);
-    }
-    const retryAfter = usageResult.retryAfter ?? 0;
-    appendLog(this.paths, `5-hour usage limit between iterations, sleeping until ${resetsAt}`);
-    this.emitEvent("usage_limit_hit", {
-      limitType: "5h",
-      utilization: usageResult.utilization ?? 100,
-    });
-    this.emitEvent("sleep_start", {
-      sleepUntil: resetsAt,
-      reason: "5-hour usage limit (between iterations)",
-    });
-    this.writeState("sleeping_limit", null);
-
-    await this.deps.sleep(retryAfter * 1000, this.abortController.signal, () =>
-      this.writeState("sleeping_limit", null),
-    );
-
-    this.emitEvent("sleep_end", {});
-    appendLog(this.paths, "Woke from usage limit sleep");
-
-    if (this.isCancelled()) {
-      appendLog(this.paths, "Loop cancelled during sleep");
-      writeDoneFile(this.paths, "cancel");
-      return "exit";
-    }
-
-    this.emitEvent("usage_limit_cleared", { limitType: "5h" });
-    return "continue";
+    return this.handleConfirmedLimit(usageResult, "between");
   }
 
   /** Build a summary string for the DONE file */

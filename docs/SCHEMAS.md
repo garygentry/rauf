@@ -170,7 +170,8 @@ interface LoopState {
   deferredItems: string[]; // Item IDs the runner gave up on ("false blocks" — distinct from genuine agent blocks)
   baseCommitHash: string | null; // HEAD commit captured at loop start — used as `sinceRef` to bound commit reconciliation to commits after the baseline (prevents false-recovery from a prior backlog cycle; see SPEC-CORE.md § Commit Reconciliation)
   error: string | null;
-  sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit
+  sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit, or during a usage-disagreement backoff (status running) (#146)
+  reviewPending?: boolean; // review pass stopped by a usage limit; `rauf resume` re-runs it (#146)
 }
 ```
 
@@ -623,8 +624,11 @@ usage API, or taken on the banner alone because no OAuth token was available.
 API answered "not limited" or was unavailable (429 / error) on `consecutiveDisagreements`
 consecutive attempts (threshold 3), so the runner **assumed** a 5h limit and took the normal
 sleep (`sleeping_limit`) or halt (`paused_usage_limit`) path. The backoff sleeps before the
-threshold are reported only as `sleep_start` / `sleep_end` pairs whose `reason` starts with
-`Usage-limit banner unconfirmed by usage API`. The loop status stays `running` during them.
+threshold (30 s, then 60 s) are reported as `sleep_start` / `sleep_end` pairs whose `reason`
+starts with `Usage-limit banner unconfirmed by usage API`. During them state.json stays
+`running`, with `currentItem: null` and `sleepUntil` set to the backoff deadline. A backoff
+or sleep is skipped when the counted attempt used up the iteration budget; the loop then stops
+as `iterations_complete`, and its DONE file reads `iterations_complete: <summary>`.
 
 **`llm_stuck_warning` semantics (#141).** The runner tracks which tool calls are in flight
 (a `tool_start` with no matching `tool_end`). The warning fires once the stream has been

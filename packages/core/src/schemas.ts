@@ -224,7 +224,17 @@ export const LoopStateSchema = z.object({
    */
   deferredItems: z.array(z.string()).default([]),
   error: z.string().nullable(),
+  /**
+   * ISO deadline of the current usage sleep: the limit reset while
+   * `sleeping_limit`/`weekly_limit`, or the end of a usage-disagreement backoff
+   * while `running`/`reviewing` (#146). Absent when not sleeping.
+   */
   sleepUntil: z.string().nullable().optional(),
+  /**
+   * The post-loop review pass was stopped by a usage limit before it finished
+   * (#146). `rauf resume` re-runs the review when this is set.
+   */
+  reviewPending: z.boolean().optional(),
   /**
    * HEAD commit hash captured at loop start, used as the baseline (`sinceRef`)
    * for commit reconciliation so only commits made during THIS run can recover

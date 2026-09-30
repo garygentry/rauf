@@ -197,6 +197,7 @@ Run a standalone review pass over all completed backlog items, without running a
 - `--model <model>`: model override
 - `--timeout N`: session timeout in minutes (default: 60)
 - Outputs a review summary or "no issues found"
+- A usage limit that stops the review (#146) leaves a resumable `paused_usage_limit` state with `reviewPending: true`, prints a `rauf resume` hint and exits 4 (LIMIT). `--json` output carries `limitReached` and `reviewPending`
 
 ---
 
@@ -612,9 +613,11 @@ Detect an interrupted loop and continue it from where it stopped.
 4. Apply the same reconciliation + false-block requeue as `rauf reset`
 5. Relaunch the loop via the normal `rauf loop run` entrypoint with a recomputed budget (`computeMaxIterations`) and `--allow-dirty` (since recovery may leave `.rauf/backlog.json` uncommitted)
 
+**Pending review (#146):** if `state.json` has `reviewPending: true` (the loop's review pass was stopped by a usage limit), `resume` runs the usual detection and recovery, then re-runs the standalone review (`rauf loop review`, all done items) instead of relaunching the loop. It does this even when every item is done or only genuine blocks remain. Run `rauf resume` / `loop run` again afterwards to process remaining or review-created items.
+
 **Early exits:**
 
-- All items done → report "all done", no relaunch
+- All items done (and no pending review) → report "all done", no relaunch
 - No eligible items after recovery (only genuine blocks/needsHuman remain) → report and exit without spawning
 
 **Supervisor pattern (live human-in-the-loop):** run the loop with `rauf loop run . --ndjson --pause-on-needs-human` and watch the NDJSON stream. On a `loop_paused` (or `needs_human`) event, or by detecting the exit code `3` (NEEDS_HUMAN) / a `paused_human` `status --json`, gather the human's answer, then call `rauf resume . --answer <id> "<answer>"` to inject it and continue. The answered item is re-queued, runs with the answer in its prompt, completes, and the answer is cleared. See [SPEC-BACKLOG-TOOL-CONTRACT.md §A.7](./SPEC-BACKLOG-TOOL-CONTRACT.md#a7-machine-observation-surfaces-versioned) for the machine surfaces this pattern relies on.

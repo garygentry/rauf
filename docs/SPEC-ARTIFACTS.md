@@ -247,10 +247,15 @@ No OAuth token (API cannot be asked):
 
 API answers "not limited", or is unavailable (429 / error) — disagreement (#146):
   - The iteration COUNTS against the budget
-  - Backs off 30s, doubling to a 5-minute cap, then retries the item
-  - After 3 consecutive disagreements: treated as a 5h limit (sleep to the banner
-    reset time, default 30 min; or paused_usage_limit when sleepOnLimit=false),
-    with usage_limit_hit reason "usage_api_disagreement"
+  - Strike 1: backs off 30s; strike 2: 60s; then retries the item
+  - Strike 3+: treated as a 5h limit (sleep to the banner reset time, default
+    30 min; or paused_usage_limit when sleepOnLimit=false), with
+    usage_limit_hit reason "usage_api_disagreement"
+  - If the counted attempt used up the budget: no backoff/sleep, stop as
+    iterations_complete
+
+API confirms a 5h limit but resets_at is missing / invalid / past:
+  - Sleeps at least 60s; 3 in a row → halts as paused_usage_limit
 
 CANCEL during sleep:
   - interruptibleSleep checks AbortController signal every ~30s
