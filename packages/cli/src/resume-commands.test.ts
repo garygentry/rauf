@@ -7,6 +7,8 @@ import { execSync } from "node:child_process";
 import { acquireLock, resolveBacklogPaths } from "@rauf/core";
 
 import { handleResume, parseAnswerFlags, resolveResumeTargetPath } from "./resume-commands.js";
+import { handleLoopRun } from "./loop-commands.js";
+import { parseArgs } from "./parser.js";
 import { detectInterruptedItems } from "./recovery.js";
 import { ExitCode } from "./commands.js";
 import type { CommandContext } from "./commands.js";
@@ -476,20 +478,56 @@ describe("handleResume — review pass stopped by a usage limit (#146)", () => {
     expect(fs.existsSync(lockPath)).toBe(false);
   });
 
-  it("keeps the release-then-launch handoff for a --detached relaunch", async () => {
+  it("forwards --detached through the real loop-run dispatch to the server launch", async () => {
     const projectDir = createProject([item("001", "pending")]);
     writeState(projectDir, "paused_usage_limit");
     const resolved = resolveBacklogPaths(projectDir, path.join(projectDir, ".rauf"));
     if (!resolved.ok) throw new Error(resolved.error.message);
-    const seen: Array<{ adopt?: boolean; locked: boolean }> = [];
-    await handleResume(makeCtx({ args: [projectDir], flags: new Map([["detached", true]]) }), {
-      runLoop: async (ctx) => {
-        seen.push({ adopt: ctx.adoptLock, locked: fs.existsSync(resolved.value.lock) });
-        return ExitCode.SUCCESS;
+    const forwarded: Array<boolean> = [];
+    const detachedCalls: Array<{ adopt?: boolean; locked: boolean }> = [];
+    const code = await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["detached", true]]) }),
+      {
+        // The REAL handleLoopRun dispatch, with only the server launch stubbed.
+        runLoop: (ctx) => {
+          forwarded.push(ctx.flags.get("detached") === true);
+          return handleLoopRun(ctx, {
+            runDetached: async (dctx) => {
+              detachedCalls.push({
+                adopt: dctx.adoptLock,
+                locked: fs.existsSync(resolved.value.lock),
+              });
+              return ExitCode.SUCCESS;
+            },
+          });
+        },
       },
+    );
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(forwarded).toEqual([true]);
+    // Delegated to the server (not run in the foreground), after resume released
+    // its lock: the server process cannot adopt this process's lock.
+    expect(detachedCalls).toEqual([{ adopt: undefined, locked: false }]);
+  });
+
+  it("accepts the -d short alias for a detached resume", async () => {
+    const projectDir = createProject([item("001", "pending")]);
+    writeState(projectDir, "paused_usage_limit");
+    let detachedRuns = 0;
+    const ctx = makeCtx({
+      args: [projectDir],
+      flags: parseArgs(["resume", projectDir, "-d"]).flags,
     });
-    // The server process cannot adopt this process's lock.
-    expect(seen).toEqual([{ adopt: undefined, locked: false }]);
+    await handleResume(ctx, {
+      runLoop: (c) =>
+        handleLoopRun(c, {
+          runDetached: async () => {
+            detachedRuns++;
+            return ExitCode.SUCCESS;
+          },
+        }),
+    });
+    expect(detachedRuns).toBe(1);
   });
 
   it("relaunches the loop as usual when no review is pending", async () => {

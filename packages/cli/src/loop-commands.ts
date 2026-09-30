@@ -780,7 +780,13 @@ export function loopRunExitCode(result: LoopResult): ExitCode {
 
 // ─── handleLoopRun ──────────────────────────────────────────────────
 
-export async function handleLoopRun(ctx: CommandContext): Promise<number> {
+/** Injectable seams for {@link handleLoopRun} (tests). */
+export interface LoopRunDeps {
+  /** Detached (server) launch. Defaults to the real server-POST flow. */
+  runDetached?: (ctx: CommandContext) => Promise<number>;
+}
+
+export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {}): Promise<number> {
   const projectPath = resolveProjectPath(ctx);
 
   // Detached mode (formerly `loop start`): delegate to the server-POST flow and
@@ -789,7 +795,7 @@ export async function handleLoopRun(ctx: CommandContext): Promise<number> {
   // the in-process path or the POST body (canon P2: hide the mode, don't change it).
   const detached = extractBoolFlag(ctx.flags, "detached");
   if (detached) {
-    const code = await runDetached(ctx);
+    const code = await (deps.runDetached ?? runDetached)(ctx);
     if (code !== ExitCode.SUCCESS) return code;
     // --follow attaches the live view CLI-side AFTER the POST returns (§3).
     if (extractBoolFlag(ctx.flags, "follow")) {

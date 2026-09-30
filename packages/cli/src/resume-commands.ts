@@ -340,8 +340,10 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   let rerunReview = false;
   let exitCode: number = ExitCode.SUCCESS;
   // A detached relaunch runs in the server process, which cannot adopt this
-  // process's lock: it keeps the release-then-launch handoff.
-  const detached = extractBoolFlag(ctx.flags, "detached");
+  // process's lock: it keeps the release-then-launch handoff. Read it
+  // NON-destructively: the flag must reach `loop run` (cloned into runCtx
+  // below), whose dispatch delegates to the server on it.
+  const detached = ctx.flags.has("detached");
   // Set when the try block reaches a decision without throwing or returning.
   let decided = false;
   try {
