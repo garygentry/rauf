@@ -48,7 +48,7 @@ with `rauf loop run` (exit `6` is query-time only — a `loop run` never termina
 The status labels you'll see: `IDLE` Idle · `RUNNING` Running · `REVIEWING` Reviewing ·
 `PAUSED` Paused · `PAUSED_HUMAN` Needs Human · `PAUSED_USAGE_LIMIT` Usage Limit (Paused) ·
 `SLEEPING_LIMIT` Sleeping (Limit) · `WEEKLY_LIMIT` Weekly Limit ·
-`ITERATIONS_COMPLETE` Iterations Complete · `LIMIT_REACHED` Limit Reached (legacy usage limit) ·
+`ITERATIONS_COMPLETE` Iterations Complete · `LIMIT_REACHED` Limit Reached (pre-0.11 budget stop) ·
 `COMPLETE` Complete · `ERROR` Error · `NOT_INSTALLED` Not Installed.
 
 ## The recovery decision table

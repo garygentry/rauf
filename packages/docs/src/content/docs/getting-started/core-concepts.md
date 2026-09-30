@@ -109,8 +109,8 @@ Both come from a single source of truth: `packages/core/src/state-labels.ts`.
 | `SLEEPING_LIMIT`      | Sleeping (Limit)     | Auto-sleeping until a usage limit resets.                      |
 | `WEEKLY_LIMIT`        | Weekly Limit         | The weekly cap was reached.                                    |
 | `ITERATIONS_COMPLETE` | Iterations Complete  | Iteration budget exhausted, work remains — resume to continue. |
-| `LIMIT_REACHED`       | Limit Reached        | Legacy usage-limit terminal from an older state file.          |
-| `COMPLETE`            | Complete             | All items done.                                                |
+| `LIMIT_REACHED`       | Limit Reached        | Pre-0.11 budget stop from an older state file — resume.        |
+| `COMPLETE`            | Complete             | No eligible work left; blocked items may remain.               |
 | `ERROR`               | Error                | A crash or circuit-breaker halt.                               |
 | `NOT_INSTALLED`       | Not Installed        | Not a rauf project.                                            |
 

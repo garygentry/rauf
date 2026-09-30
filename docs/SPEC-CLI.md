@@ -600,7 +600,7 @@ Detect an interrupted loop and continue it from where it stopped.
 - `paused_human`: loop halted on a needs-human item via `loop run --pause-on-needs-human` (resolve with `--answer`)
 - `paused_usage_limit`: loop halted cleanly at a usage limit with `sleepOnLimit=false`
 - `iterations_complete`: iteration budget exhausted but eligible items remain (resume gets a fresh budget)
-- `limit_reached`: legacy usage-limit terminal from an older `state.json`
+- `limit_reached`: the pre-0.11 spelling of `iterations_complete`, from an older `state.json`
 - `error`: circuit breaker or unexpected termination
 - `paused`, `sleeping_limit`, `weekly_limit`: interrupted sleep or graceful pause
 - Dead lock with non-done items remaining

@@ -72,7 +72,7 @@ it is not a total across restarts. The budget is resolved in this order:
 3. **Computed from the backlog** when neither is set — a `computed` value logged at startup.
 
 When a run exhausts its budget with work still pending, the loop ends in **Iterations Complete**
-(exit `0`, or `5` if items are blocked) rather than finishing the backlog. Continue with a fresh budget:
+(exit `0`, `3` if an item needs human input, or `5` if items are blocked) rather than finishing the backlog. Continue with a fresh budget:
 
 ```bash
 rauf resume .

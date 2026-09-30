@@ -151,7 +151,7 @@ interface LoopState {
     | "complete"
     | "paused_human"
     | "iterations_complete" // Iteration budget exhausted with eligible work left — clean, resumable
-    | "limit_reached" // Deprecated: legacy usage-limit terminal; still parses, no longer written for budget exhaustion
+    | "limit_reached" // Deprecated: pre-0.11 spelling of the budget stop (now iterations_complete); still parses, no longer written
     | "error"
     | "sleeping_limit" // Sleeping until 5-hour Claude usage window resets
     | "weekly_limit" // 7-day weekly Claude usage cap exhausted
@@ -172,21 +172,21 @@ interface LoopState {
 }
 ```
 
-| Status value          | Meaning                                                                                                        |
-| --------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `idle`                | No loop active (initial state)                                                                                 |
-| `starting`            | Loop initializing                                                                                              |
-| `running`             | Actively processing an item                                                                                    |
-| `paused`              | Gracefully stopped (CANCEL signal)                                                                             |
-| `complete`            | All items resolved, or the iteration budget ran out exactly as the backlog drained                             |
-| `paused_human`        | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                                   |
-| `iterations_complete` | Iteration budget (`--iterations`) exhausted with eligible work left; clean stop, resumable                     |
-| `limit_reached`       | Deprecated usage-limit terminal. Retained so older `state.json` files parse; not written for budget exhaustion |
-| `error`               | Unexpected termination                                                                                         |
-| `sleeping_limit`      | Sleeping until 5-hour Claude usage window resets                                                               |
-| `weekly_limit`        | 7-day weekly Claude usage cap exhausted                                                                        |
-| `reviewing`           | Running post-loop review pass                                                                                  |
-| `paused_usage_limit`  | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume`                    |
+| Status value          | Meaning                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `idle`                | No loop active (initial state)                                                                                           |
+| `starting`            | Loop initializing                                                                                                        |
+| `running`             | Actively processing an item                                                                                              |
+| `paused`              | Gracefully stopped (CANCEL signal)                                                                                       |
+| `complete`            | No eligible work left (no `pending` item with all deps `done`). Blocked items, and pending items behind them, may remain |
+| `paused_human`        | Waiting for human input (`RAUF_NEEDS_HUMAN`)                                                                             |
+| `iterations_complete` | Iteration budget (`--iterations`) exhausted with eligible work left; clean stop, resumable                               |
+| `limit_reached`       | Deprecated: the pre-0.11 iteration-budget stop (now `iterations_complete`). Still parses; no longer written              |
+| `error`               | Unexpected termination                                                                                                   |
+| `sleeping_limit`      | Sleeping until 5-hour Claude usage window resets                                                                         |
+| `weekly_limit`        | 7-day weekly Claude usage cap exhausted                                                                                  |
+| `reviewing`           | Running post-loop review pass                                                                                            |
+| `paused_usage_limit`  | Usage limit hit with `sleepOnLimit=false`; loop halted cleanly, resumable via `rauf resume`                              |
 
 File: `.rauf/state.json` (written by the loop runner, read by status derivation)
 
@@ -252,7 +252,7 @@ type LoopStateEnum =
   | "COMPLETE"
   | "PAUSED_HUMAN"
   | "ITERATIONS_COMPLETE" // Iteration budget exhausted, work remains (clean, resumable)
-  | "LIMIT_REACHED" // Legacy usage-limit terminal (older state.json / DONE file)
+  | "LIMIT_REACHED" // Pre-0.11 budget stop from an older state.json; via log-parsing, a DONE file naming a usage limit
   | "ERROR"
   | "NOT_INSTALLED"
   | "SLEEPING_LIMIT" // Sleeping until 5-hour usage window resets

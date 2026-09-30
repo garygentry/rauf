@@ -266,7 +266,9 @@ invoked to derive it). Its fields:
   `PAUSED_HUMAN`, `PAUSED_USAGE_LIMIT`, `ITERATIONS_COMPLETE`, `LIMIT_REACHED`,
   `ERROR`, `NOT_INSTALLED`, `SLEEPING_LIMIT`, `WEEKLY_LIMIT`. `ITERATIONS_COMPLETE`
   means the iteration budget ran out with eligible work left (a clean, resumable
-  stop); `LIMIT_REACHED` is the legacy usage-limit terminal.
+  stop); `LIMIT_REACHED` is the pre-0.11 spelling of that stop, still read from
+  older `state.json` files. `COMPLETE` means no eligible work is left, which is
+  not necessarily every item done.
 - **`stateSource`**: `state.json` | `log-parsing` | `none`.
 - **`iteration`**, **`maxIterations`**, **`currentItem`**, **`lastSignal`**,
   **`startedAt`**, **`elapsed`**: progress fields (nullable).
@@ -295,23 +297,29 @@ deferred?, done, total }`. **`blocked` is the TOTAL** of items with status
     `lastActivityAt` (clamped to `0` for a future timestamp) — a supplementary
     time-based signal if an agent prefers age over a poll count.
 
-**The agent single-poll decision contract.** A supervisor answers **all four**
-of its decisions from **one** `rauf status … --json` poll — it **never** reads
+**The agent single-poll decision contract.** A supervisor answers **all** of
+its decisions from **one** `rauf status … --json` poll — it **never** reads
 `.rauf/iteration-status.json` or `events.ndjson` to decide (those remain
 available for narration/diagnosis only). Evaluate the branches **top-to-bottom,
 first match wins**:
 
-| #   | Condition (from ONE `status --json` poll)                                                             | Decision                | Action                                                         |
-| --- | ----------------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------- |
-| 1   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary` has nothing `pending`/`inProgress`            | **Done**                | Report the outcome and stop.                                   |
-| 2   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0` | **Needs human**         | Surface to the user — the only true stop. Do not auto-recover. |
-| 3   | `health?.stuckWarning === true`                                                                       | **Recoverable stall**   | Apply the persist-then-escalate recovery ladder.               |
-| 4   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                     | **Healthy in-progress** | Keep polling at the interval.                                  |
+| #   | Condition (from ONE `status --json` poll)                                                               | Decision                | Action                                                                                                                                                                                        |
+| --- | ------------------------------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `loopState = PAUSED_HUMAN` **or** `lastSignal = "needs_human"` **or** `backlogSummary.needsHuman > 0`   | **Needs human**         | **Surface to the user** and wait for the answer. Do not auto-recover.                                                                                                                         |
+| 2   | `loopState = ITERATIONS_COMPLETE`, **or** `loopState = LIMIT_REACHED` with `stateSource = "state.json"` | **Budget spent**        | The iteration budget ran out with eligible work left. `rauf resume <root> --backlog <dir>` (fresh budget), then keep polling. If the user capped the run on purpose, report and stop instead. |
+| 3   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                             | **Stopped short**       | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                    |
+| 4   | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.done === backlogSummary.total`                   | **Done**                | Every item is `done`. Report the outcome and **stop**.                                                                                                                                        |
+| 5   | `health?.stuckWarning === true`                                                                         | **Recoverable stall**   | Apply the persist-then-escalate recovery ladder.                                                                                                                                              |
+| 6   | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                       | **Healthy in-progress** | **Keep polling** at the interval.                                                                                                                                                             |
 
-`needs-human` (row 2) outranks the stall hint (row 3); `health` may be `null`
-(no live iteration), so `health?.stuckWarning` short-circuits to falsy and row 3
-does not fire. The **`drive-rauf-loop`** skill is the **authoritative recipe**
-for this loop (poll interval, N=3 escalation threshold, the persist-then-escalate
+`needs-human` (row 1) outranks everything. `COMPLETE` means no **eligible**
+work is left (no `pending` item with all dependencies `done`), not that every
+item is done, so rows 3 and 4 compare `backlogSummary.done` with `total`.
+`LIMIT_REACHED` read from `state.json` is the pre-0.11 spelling of the budget
+stop (row 2); inferred via `stateSource = "log-parsing"` it comes from a DONE file
+naming a usage limit. `health` may be `null` (no live iteration), so
+`health?.stuckWarning` short-circuits to falsy and row 5 does not fire. The
+**`drive-rauf-loop`** skill is the **authoritative recipe** for this loop (poll interval, N=3 escalation threshold, the persist-then-escalate
 ladder, and `reset`-only-on-dead-lock); this contract defines the surface it
 reads.
 
