@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`AGENTS_ADDON.md` now carries the host-neutral `RAUF_REVIEW:<json>` / no-signal paragraph (#132).** The signal-detection blockquote in the cross-agent `AGENTS.md` block ended after the "last signal line" note, so every non-Claude host missed that `RAUF_REVIEW` is review-pass-only and that a missing signal is reconciled by exit context rather than auto-blocked. The paragraph is mirrored from `CLAUDE_ADDON.md` (embedded copy regenerated), the stale "Known gap" note is dropped from `docs/SPEC-ARTIFACTS.md`, and a new installer test asserts the two addons' signal blockquotes stay identical and that the embedded copies match their sources. `scripts/check-agent-commit-rule.sh` now also guards `AGENTS_ADDON.md`'s commit-rule clause (#134).
+
 ## 0.16.1
 
 ### Fixed
