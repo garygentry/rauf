@@ -56,17 +56,23 @@ export class CopilotCliProvider implements LLMProvider {
       argv.push("--prompt", bootstrap);
 
       const parser = new CopilotJsonlParser((event) => options.onStreamEvent?.(event));
-      const result = await spawnProcessGroup(COPILOT_BINARY, argv, {
-        cwd,
-        env: sanitizedEnvironment(options.env),
-        replaceEnv: true,
-        timeoutMs: options.timeoutMinutes * 60 * 1000,
-        signal: options.signal,
-        onStdout: (chunk) => parser.feed(chunk.toString("utf-8")),
-      });
+      let result: Awaited<ReturnType<typeof spawnProcessGroup>>;
+      try {
+        result = await spawnProcessGroup(COPILOT_BINARY, argv, {
+          cwd,
+          env: sanitizedEnvironment(options.env),
+          replaceEnv: true,
+          timeoutMs: options.timeoutMinutes * 60 * 1000,
+          signal: options.signal,
+          onStdout: (chunk) => parser.feed(chunk.toString("utf-8")),
+        });
+      } finally {
+        // #141: on every exit path (normal, spawn error, timeout/kill, throw) flush a
+        // trailing partial record and close still-open tool calls.
+        parser.finish();
+      }
       if (!result.ok) return result;
 
-      parser.finish();
       return ok({
         ...result.value,
         reconstructedText: parser.getReconstructedText(),
