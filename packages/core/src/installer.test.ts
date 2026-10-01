@@ -21,6 +21,7 @@ import { CLAUDE_MD_SENTINEL_START, CLAUDE_MD_SENTINEL_END } from "./claude-md.js
 import { fileExists } from "./fs-utils.js";
 import { EMBEDDED_ARTIFACTS } from "./embedded-artifacts.js";
 import type { ProjectProfile } from "./schemas.js";
+import { renderTemplate } from "./template.js";
 
 // ─── Test Fixtures ────────────────────────────────────────────────
 
@@ -850,6 +851,121 @@ describe("update — RAUF.md sentinel preservation", () => {
     expect(second.ok).toBe(true);
     expect(fs.readFileSync(raufMdPath, "utf-8")).toBe(migrated);
     expect(fs.readFileSync(backupPath, "utf-8")).toBe(legacy);
+  });
+
+  /** A shipped release's RAUF.md, rendered with (deliberately non-profile) values. */
+  function shippedRaufMd(version: string, verifyCommand = "make ci-old"): string {
+    const template = fs.readFileSync(
+      path.join(__dirname, "__fixtures__", "raufmd-shipped", `${version}.md.tmpl`),
+      "utf-8",
+    );
+    return renderTemplate(template, {
+      testCommand: "make test-old",
+      typecheckCommand: "",
+      lintCommand: "",
+      buildCommand: "",
+      formatCommand: "",
+      verifyCommand,
+      verificationWarning: "",
+    });
+  }
+
+  function expectCleanMigration(raufMdPath: string, userLine: string): string {
+    const migrated = fs.readFileSync(raufMdPath, "utf-8");
+    expect(migrated.match(/## Workflow/g)).toHaveLength(1);
+    expect(migrated.match(/## Project-Specific Instructions/g)).toHaveLength(1);
+    expect(migrated.indexOf("## Workflow")).toBeLessThan(migrated.indexOf(RAUF_MD_MANAGED_END));
+    expect(migrated).toContain(userLine);
+    expect(migrated).not.toContain("Preserved pre-managed instructions");
+    expect(
+      fs.readdirSync(path.dirname(raufMdPath)).filter((f) => f.includes("pre-ownership")),
+    ).toEqual([]);
+    return migrated;
+  }
+
+  it("migrates a pristine shipped 0.18 RAUF.md without a backup", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
+    fs.writeFileSync(raufMdPath, shippedRaufMd("v0.18.0") + "USER_RULE_18\n");
+
+    const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.actions.find((a) => a.file === ".rauf/RAUF.md")?.detail).toContain(
+      "v0.18.0 layout",
+    );
+    const migrated = expectCleanMigration(raufMdPath, "USER_RULE_18");
+    expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+    expect(fs.readFileSync(raufMdPath, "utf-8")).toBe(migrated);
+  });
+
+  it("backs up an edited shipped 0.18 RAUF.md", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
+    const edited = shippedRaufMd("v0.18.0").replace(
+      "Work on ONE item only",
+      "Work on ONE item only (and always run e2e)",
+    );
+    fs.writeFileSync(raufMdPath, edited);
+
+    expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+    expect(fs.readFileSync(raufMdPath, "utf-8")).not.toContain("always run e2e");
+    expect(fs.readFileSync(path.join(tmpDir, ".rauf", "RAUF.md.pre-ownership.md"), "utf-8")).toBe(
+      edited,
+    );
+  });
+
+  it.each(["v0.3.0-rc.1", "v0.9.0", "v0.15.0"])(
+    "migrates a pristine shipped %s RAUF.md without a backup",
+    (version) => {
+      createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+      install(tmpDir, installOpts());
+      const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
+      fs.writeFileSync(raufMdPath, shippedRaufMd(version) + "OLDER_USER_RULE\n");
+
+      expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+      expectCleanMigration(raufMdPath, "OLDER_USER_RULE");
+    },
+  );
+
+  it("migrates an older install whose managed block a later update refreshed", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
+    const managed = (s: string) =>
+      s.slice(s.indexOf(RAUF_MD_MANAGED_START), s.indexOf(RAUF_MD_MANAGED_END));
+    const v9 = shippedRaufMd("v0.9.0", "make old-verify");
+    const hybrid = v9.replace(managed(v9), managed(shippedRaufMd("v0.16.0", "make new-verify")));
+    fs.writeFileSync(raufMdPath, hybrid);
+
+    expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+    expectCleanMigration(raufMdPath, "## Project-Specific Instructions");
+  });
+
+  it("migrates a shipped RAUF.md whose sentinels were stripped without duplicating it", () => {
+    createFakeProject(tmpDir, { git: true, packageJson: true, tsconfig: true, pnpmLock: true });
+    install(tmpDir, installOpts());
+    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
+    const stripped = (shippedRaufMd("v0.16.0") + "STRIPPED_USER_RULE\n")
+      .replace(`${RAUF_MD_MANAGED_START}\n`, "")
+      .replace(`${RAUF_MD_MANAGED_END}\n`, "");
+    fs.writeFileSync(raufMdPath, stripped);
+
+    expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+    expectCleanMigration(raufMdPath, "STRIPPED_USER_RULE");
+  });
+
+  it("uninstalls a pristine shipped 0.18 RAUF.md without a backup", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts());
+    const raufMdPath = path.join(tmpDir, ".rauf", "RAUF.md");
+    fs.writeFileSync(raufMdPath, shippedRaufMd("v0.18.0") + "USER_RULE_18\n");
+
+    expect(uninstall(tmpDir).ok).toBe(true);
+    expect(fs.readFileSync(raufMdPath, "utf-8")).toContain("USER_RULE_18");
+    expect(fileExists(path.join(tmpDir, ".rauf", "RAUF.md.pre-ownership.md"))).toBe(false);
   });
 
   /** Build a 0.18-layout file (end sentinel right after Verification) from the current one. */

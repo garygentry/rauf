@@ -328,7 +328,8 @@ Re-sync artifacts:
 Remove rauf-owned artifacts and sentinel regions. Remove only the managed region from RAUF.md and
 keep everything outside it (text above the block and the project-specific section); delete the file
 when only rauf scaffolding remains. A RAUF.md with no managed sentinels has no rauf-owned region and
-is left untouched. A pre-ownership (0.18 and earlier) layout is copied verbatim to
+is left untouched. A pre-ownership (0.18 and earlier) layout that differs from every shipped
+release is copied verbatim to
 `.rauf/RAUF.md.pre-ownership.md` before its formerly unmanaged contract is dropped; such backups are
 user data and are never deleted. Remove only rauf's independent AGENTS.md and CLAUDE.md regions.
 Malformed RAUF.md ownership markers fail closed before the marker file is deleted. A later install

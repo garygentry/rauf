@@ -1,0 +1,94 @@
+# Rauf — Per-Iteration Instructions
+
+<!-- rauf:managed:start -->
+
+## Verification Commands
+
+Before marking any task as complete, run the full verification pipeline:
+
+```
+{{verifyCommand}}
+```
+
+Individual commands:
+- Test: `{{testCommand}}`
+- Typecheck: `{{typecheckCommand}}`
+- Lint: `{{lintCommand}}`
+- Build: `{{buildCommand}}`
+- Format: `{{formatCommand}}`
+
+If any command is not configured (empty), skip it.
+<!-- rauf:managed:end -->
+
+## Workflow
+
+1. You are one iteration of an autonomous coding loop
+2. Read the backlog — find the current `in_progress` item
+   (The Active Backlog Root section in the prompt tells you the exact path)
+3. Read the item's `acceptanceCriteria` — each must pass
+4. Read `progress.md` for context from previous iterations
+5. Implement the task
+6. Run verification: `{{verifyCommand}}`
+7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as `[rauf] <id>: <title>` after you signal `RAUF_DONE`).
+8. Output your exit signal on a line by itself, as your final line:
+   - `RAUF_DONE` — all criteria met, verification passes
+   - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
+   - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
+   - `RAUF_REVIEW:<json>` — review pass only (a normal work iteration does not
+     emit this); JSON matching the `ReviewPayload` schema.
+
+   Putting the signal last is the safest habit, but it does not have to be
+   strictly the final line: the runner scans backwards from the end and uses the
+   **last** signal line, so trailing text after it (a commit message, a summary)
+   does **not** break detection.
+
+   If you emit **no** recognized signal, the runner does **not** auto-block the
+   item — it classifies the outcome by exit context (clean / non-zero / timeout /
+   usage-limit), logs the tail of your output, and reconciles any already-committed
+   work. (Emitting a signal is still strongly preferred.)
+
+## Model Selection
+
+The runner resolves which model drives an iteration by this precedence
+(highest wins):
+
+`item.model` > `--model` / run options > project default > provider default
+
+- `item.model` — the selected backlog item's `model` field (per-task override).
+- `--model` / run options — the per-run override (`rauf loop run --model …`, or
+  the project's configured run options).
+- project default — the project's configured default model.
+- provider default — if none of the above is set, no model is forced and the
+  provider/CLI uses its own configured default.
+
+`rauf loop run --no-model` (alias `--model none`) ignores `item.model` for that
+run, so resolution drops to `--model` > project default > provider default. Use it
+to run a backlog whose items carry Claude-only tier aliases under a non-Claude
+`--agent` without editing `backlog.json`.
+
+## Agent Delegation
+
+Some backlog items include an `agentDelegation` field with guidance for parallel execution.
+When present:
+- Use the **Task** tool to spawn sub-agents for each subtask listed
+- Follow the `strategy` and `recommendedConcurrency` hints
+- Give each sub-agent clear, self-contained instructions including relevant file paths
+- Wait for **all** sub-agents to complete before running final verification
+- You (the main agent) own the exit signal — sub-agents do not emit RAUF_DONE/RAUF_BLOCKED
+- If any sub-agent fails, assess whether the overall task can still be completed
+
+Items may also include a `specReferences` field listing paths to specification documents. Read these before starting work.
+
+## Important Rules
+
+- Work on ONE item only — the current `in_progress` item
+- Do NOT run `git commit` or `git add` — the iteration agent never commits or stages; the loop runner owns the commit. Committing yourself causes a duplicate commit and triggers per-iteration commit hooks.
+- Do NOT modify `backlog.json` — the loop runner manages status
+- Do NOT modify `state.json` — the loop runner manages state
+- DO read `progress.md` for accumulated learnings
+- DO append new learnings to `progress.md` if you discover important patterns
+- The backlog.json file is your source of truth for what to work on
+- Claude Code Tasks (if you use them internally) are your own planning — they don't affect the backlog
+
+## Project-Specific Instructions
+<!-- Add custom instructions below this line — they survive rauf update -->
