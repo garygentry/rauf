@@ -42,7 +42,7 @@ export const NPM_LAUNCHER_FILES = [
   "rauf.mjs",
 ];
 
-/** Exact top-level entries of `npm-dist/` (directories suffixed with `/`). */
+/** Required top-level entries of `npm-dist/` (directories suffixed with `/`). */
 const NPM_LAUNCHER_ENTRIES = ["LICENSE", "README.md", "adapters/", "package.json", "rauf.mjs"];
 
 function fail(message: string): never {
@@ -100,12 +100,16 @@ export function checkCopilotDistribution(
   if (!sameList(allowlisted, NPM_LAUNCHER_FILES)) {
     fail(`npm files allowlist changed: ${[...allowlisted].sort().join(", ")}`);
   }
-  const entries = fs
-    .readdirSync(path.join(root, "npm-dist"), { withFileTypes: true })
-    .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name));
-  if (!sameList(entries, NPM_LAUNCHER_ENTRIES)) {
-    fail(`npm-dist contents changed: ${[...entries].sort().join(", ")}`);
-  }
+  // The exact allowlist above decides what publishes, so untracked extras in the working tree
+  // (an inspected `npm pack` tarball, `.DS_Store`, `node_modules/`) are harmless and must not fail
+  // the gate. Only the launcher's own entries must be present.
+  const entries = new Set(
+    fs
+      .readdirSync(path.join(root, "npm-dist"), { withFileTypes: true })
+      .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name)),
+  );
+  const missing = NPM_LAUNCHER_ENTRIES.filter((entry) => !entries.has(entry));
+  if (missing.length > 0) fail(`npm-dist is missing: ${missing.join(", ")}`);
   const adapters = fs.readdirSync(path.join(root, "npm-dist/adapters"));
   if (!sameList(adapters, ["pi"])) {
     fail(`npm-dist/adapters must contain only pi, found: ${[...adapters].sort().join(", ")}`);

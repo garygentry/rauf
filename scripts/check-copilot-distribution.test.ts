@@ -112,6 +112,19 @@ describe("checkCopilotDistribution", () => {
     expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow("npm files allowlist changed");
   });
 
+  it("ignores unpublished working-tree extras in npm-dist", () => {
+    const root = makeFixture();
+    write(root, "npm-dist/garygentry-rauf-1.2.3.tgz", "x");
+    write(root, "npm-dist/node_modules/x/index.js", "x");
+    expect(() => checkCopilotDistribution(root, "1.2.3")).not.toThrow();
+  });
+
+  it("fails when a launcher entry is missing", () => {
+    const root = makeFixture();
+    fs.rmSync(path.join(root, "npm-dist/rauf.mjs"));
+    expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow("npm-dist is missing: rauf.mjs");
+  });
+
   it("fails on a non-lockstep npm launcher version", () => {
     const root = makeFixture();
     const pkg = JSON.parse(fs.readFileSync(path.join(root, "npm-dist/package.json"), "utf-8"));
