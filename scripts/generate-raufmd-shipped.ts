@@ -32,7 +32,14 @@ const TEMPLATE_PATH = "artifacts/variants/backlog-json/.rauf/RAUF.md.tmpl";
 const FIXTURES_DIR = path.join(REPO_ROOT, "packages/core/src/__fixtures__/raufmd-shipped");
 const OUTPUT_FILE = path.join(REPO_ROOT, "packages/core/src/raufmd-shipped-hashes.ts");
 
-/** The last pre-ownership release: v0.18.0's release-prep commit (#159), merged but not yet tagged. */
+/**
+ * The last release with a pre-ownership layout. Later templates use the full-contract managed
+ * block, which `rauf update` replaces wholesale, so they are never recorded — capping here keeps a
+ * future release tag from making --check (and so `pnpm gate`) report drift.
+ */
+const LAST_PRE_OWNERSHIP_RELEASE = "v0.18.0";
+
+/** v0.18.0's release-prep commit (#159), merged but not yet tagged. */
 const EXTRA_REFS: Record<string, string> = {
   "v0.18.0": "e0a12c5",
 };
@@ -74,7 +81,10 @@ interface Shipped {
 }
 
 function collectFromGit(): Shipped[] {
-  const tags = (git(["tag", "-l", "v*"]) ?? "").split("\n").filter(Boolean);
+  const tags = (git(["tag", "-l", "v*"]) ?? "")
+    .split("\n")
+    .filter((t) => /^v\d+\.\d+\.\d+(-[\w.]+)?$/.test(t))
+    .filter((t) => compareTags(t, LAST_PRE_OWNERSHIP_RELEASE) <= 0);
   // Without tags (CI's shallow checkout) the record cannot be rebuilt; EXTRA_REFS alone would
   // make every older fixture look unexpected.
   if (tags.length === 0) return [];
