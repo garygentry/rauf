@@ -27,7 +27,7 @@ const WRAPPERS = new Set(["nohup", "setsid", "env", "exec", "time", "command", "
 
 const BLOCK_REASON =
   "Blocked: this runs the rauf loop so that it ties up (or escapes) this session — a foreground " +
-  "run blocks for hours, and nohup/setsid/`&` leave it unsupervised. Use the rauf_loop_launch tool " +
+  "run (or `--detached --follow`) blocks for hours, and nohup/setsid/`&` leave it unsupervised. Use the rauf_loop_launch tool " +
   "instead: it starts the loop detached, posts a card per completed item, and wakes this session " +
   "on needs-human, blocked, stuck, errors and completion. (From bash, `rauf loop run <root> " +
   "--backlog <dir> --detached` is also allowed; the supervisor attaches to it.)";
@@ -183,6 +183,9 @@ function flagValue(args: string[], name: string): string | undefined {
 export function classifyBashCommand(command: string | undefined): GuardVerdict {
   if (!command || !/rauf/.test(command)) return { kind: "allow" };
   const { masked, quoted } = maskQuotes(command);
+  // Check EVERY segment: one detached launch must not wave through a foreground
+  // run later in the same command line. A block anywhere wins.
+  let launch: GuardVerdict | null = null;
   for (const seg of segments(masked)) {
     const r = raufArgs(seg.words);
     if (!r) continue;
@@ -192,18 +195,17 @@ export function classifyBashCommand(command: string | undefined): GuardVerdict {
     if (!isRun && !isResume) continue;
     if (r.args.includes("--help") || r.args.includes("-h")) continue;
     const detached = r.args.includes("--detached") || r.args.includes("-d");
-    if (detached) {
-      // `--detached` returns immediately; nohup/& around it is harmless.
-      const rootIdx = isRun ? 2 : 1;
-      return {
-        kind: "detached-launch",
-        root: unmask(positional[rootIdx], quoted),
-        backlog: unmask(flagValue(r.args, "--backlog"), quoted),
-      };
-    }
-    return { kind: "block", reason: BLOCK_REASON };
+    // `--detached --follow` attaches the never-ending follow view: it blocks.
+    const follows = r.args.includes("--follow") || r.args.includes("-f");
+    if (!detached || follows) return { kind: "block", reason: BLOCK_REASON };
+    // `--detached` returns immediately; nohup/& around it is harmless.
+    launch ??= {
+      kind: "detached-launch",
+      root: unmask(positional[isRun ? 2 : 1], quoted),
+      backlog: unmask(flagValue(r.args, "--backlog"), quoted),
+    };
   }
-  return { kind: "allow" };
+  return launch ?? { kind: "allow" };
 }
 
 /** Tool names that delegate work to another agent. */

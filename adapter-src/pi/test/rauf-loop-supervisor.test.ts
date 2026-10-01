@@ -114,6 +114,27 @@ describe("NdjsonTailer", () => {
     expect(got).toEqual(["run1a", "run1b", "run2a", "run2b", "run2c"]);
   });
 
+  it("a poll that lands between the archive rename and the new file still signals the rotation", () => {
+    const dir = tmp();
+    const file = join(dir, "events.ndjson");
+    const got: string[] = [];
+    let rotations = 0;
+    const t = new NdjsonTailer(
+      file,
+      (r) => got.push(r.type),
+      undefined,
+      () => rotations++,
+    );
+    writeFileSync(file, nl({ type: "run1", seq: 0 }));
+    t.poll();
+    renameSync(file, join(dir, "archived.ndjson"));
+    t.poll(); // the gap: no file yet
+    writeFileSync(file, nl({ type: "run2", seq: 0 }));
+    t.poll();
+    expect(rotations).toBe(1);
+    expect(got).toEqual(["run1", "run2"]);
+  });
+
   it("a seeded inode detects a rotation that happened while away", () => {
     const file = join(tmp(), "events.ndjson");
     writeFileSync(file, nl({ type: "run2", seq: 0 }));
@@ -377,6 +398,15 @@ describe("launch guard", () => {
     expect(classifyBashCommand(cmd).kind).toBe("allow");
   });
 
+  it.each([
+    "rauf loop run . --detached --follow",
+    "rauf loop run . -d -f",
+    "rauf loop run a --detached; rauf loop run b",
+    "rauf loop run b; rauf loop run a -d",
+  ])("blocks %s (a follow view or a foreground run alongside)", (cmd) => {
+    expect(classifyBashCommand(cmd).kind).toBe("block");
+  });
+
   it("reports a detached launch with its root and backlog (quoted values restored)", () => {
     expect(classifyBashCommand('rauf loop run "my proj" --backlog "specs/a b" --detached')).toEqual(
       {
@@ -565,6 +595,24 @@ describe("wiring: tools", () => {
     );
     h.watches[0]!.onChange();
     expect(h.sent.map((s) => s.m.content)).toEqual(["[1/3] ✓ 002 Title 002"]);
+  });
+
+  it("a new run is reported even when a poll lands in the rotation gap", async () => {
+    const { cwd, eventsFile } = project();
+    const old = Array.from({ length: 10 }, (_, i) => nl({ type: "llm_token_update", seq: i })).join(
+      "",
+    );
+    writeFileSync(eventsFile, old); // previous run, lastSeq 9
+    const h = harness(cwd);
+    await h.run("rauf_loop_launch", { backlogDir: "specs/auth" });
+    renameSync(eventsFile, `${eventsFile}.archived`);
+    h.watches[0]!.onChange(); // the gap
+    writeFileSync(
+      eventsFile,
+      nl({ type: "loop_started", maxIterations: 5, seq: 0 }) + nl(completed("001", 1)),
+    );
+    h.watches[0]!.onChange();
+    expect(h.sent.map((m) => m.m.content)).toEqual(["[1/3] ✓ 001 Title 001"]);
   });
 
   it("cards are triggerTurn:false custom messages; wakes are triggerTurn:true; footer and widget follow", async () => {

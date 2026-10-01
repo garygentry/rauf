@@ -210,6 +210,21 @@ describe("decideCodexStop", () => {
     expect(d.decision === "allow" ? d.systemMessage : "").toContain("sleeping on a usage limit");
   });
 
+  it("finds a supervised loop outside the hook's cwd through the session index", () => {
+    running(paths);
+    recordSupervision(paths, SESSION, { nextSeq: 2, runId: "R" });
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-cli-hook-cwd-"));
+    try {
+      expect(decideCodexStop(input({ cwd: elsewhere })).decision).toBe("block");
+    } finally {
+      fs.rmSync(elsewhere, { recursive: true, force: true });
+    }
+    // Once the marker is gone, the index entry is pruned and the stop allowed.
+    fs.rmSync(supervisorMarkerPath(paths.stateDir, SESSION));
+    expect(decideCodexStop(input({ cwd: os.tmpdir() })).decision).toBe("allow");
+    expect(findSupervisorMarkers(os.tmpdir(), SESSION)).toEqual([]);
+  });
+
   it("allows on malformed input (no session id)", () => {
     expect(decideCodexStop({})).toEqual({ decision: "allow" });
   });

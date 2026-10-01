@@ -758,7 +758,10 @@ rauf hook codex-stop --print-config  # print the hooks.json entry
   equal to the hook's `session_id`). The marker holds the cursor for the next `loop wait`;
   `loop wait` refreshes it on every call and removes it once the loop has ended (exit 11).
   `supervisors/` is runtime state: `rauf install` gitignores it and the runner never commits it.
-- **Decision.** For each of the session's markers under the hook's `cwd`, the hook derives the
+  A per-session index, `~/.rauf/supervisors/<session-id>.json`, lists every state dir the session
+  supervises, so the hook finds a loop outside its `cwd` (a sibling project, or a session started
+  in a subdirectory); entries whose marker is gone are pruned.
+- **Decision.** For each of the session's markers (from the index, plus any under the hook's `cwd`), the hook derives the
   loop's status. A running loop (`RUNNING`/`REVIEWING`, or a live lock holder) → print
   `{"decision":"block","reason":"…"}`, where the reason tells the model to run the exact next
   `rauf loop wait … --since-seq N --run-id R --timeout 240s`, report the card, and keep going

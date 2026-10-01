@@ -8,9 +8,12 @@
 //
 // Markers live in `<stateDir>/supervisors/<id>.json`. The whole `supervisors/`
 // directory is runtime state: it is gitignored by `rauf install` and excluded
-// from the runner's per-item commits.
+// from the runner's per-item commits. A per-session index in
+// `~/.rauf/supervisors/<id>.json` lists the state dirs a session supervises, so
+// a hook finds them wherever the loop lives (not only under the hook's cwd).
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import type { BacklogPaths } from "./backlog-root.js";
@@ -48,6 +51,41 @@ export interface SupervisorMarker {
 export function supervisorIdFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
   const id = env.RAUF_SUPERVISOR_ID || env.CODEX_THREAD_ID;
   return id && id.trim() !== "" ? id.trim() : null;
+}
+
+/** The per-session index directory (`~/.rauf/supervisors/`). Read at call time. */
+export function supervisorIndexDir(): string {
+  return path.join(os.homedir(), ".rauf", SUPERVISORS_DIRNAME);
+}
+
+function indexPath(sessionId: string): string {
+  return path.join(supervisorIndexDir(), `${safeId(sessionId)}.json`);
+}
+
+function readIndex(sessionId: string): string[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(indexPath(sessionId), "utf-8")) as {
+      stateDirs?: unknown;
+    };
+    return Array.isArray(raw.stateDirs)
+      ? raw.stateDirs.filter((d): d is string => typeof d === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeIndex(sessionId: string, stateDirs: string[]): void {
+  try {
+    if (stateDirs.length === 0) {
+      fs.rmSync(indexPath(sessionId), { force: true });
+      return;
+    }
+    if (!ensureDir(supervisorIndexDir()).ok) return;
+    atomicWrite(indexPath(sessionId), JSON.stringify({ sessionId, stateDirs }, null, 2) + "\n");
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** Filesystem-safe form of a session id. */
@@ -91,7 +129,11 @@ export function readSupervisorMarker(file: string): SupervisorMarker | null {
 export function writeSupervisorMarker(marker: SupervisorMarker): boolean {
   const file = supervisorMarkerPath(marker.stateDir, marker.sessionId);
   if (!ensureDir(path.dirname(file)).ok) return false;
-  return atomicWrite(file, JSON.stringify(marker, null, 2) + "\n").ok;
+  if (!atomicWrite(file, JSON.stringify(marker, null, 2) + "\n").ok) return false;
+  const dirs = readIndex(marker.sessionId);
+  const stateDir = path.resolve(marker.stateDir);
+  if (!dirs.includes(stateDir)) writeIndex(marker.sessionId, [...dirs, stateDir]);
+  return true;
 }
 
 /**
@@ -123,19 +165,42 @@ export function clearSupervisorMarker(stateDir: string, sessionId: string): void
   } catch {
     /* best-effort */
   }
+  const resolved = path.resolve(stateDir);
+  const dirs = readIndex(sessionId);
+  if (dirs.includes(resolved))
+    writeIndex(
+      sessionId,
+      dirs.filter((d) => d !== resolved),
+    );
 }
 
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "archive", ".next"]);
 const SCAN_MAX_DEPTH = 6;
 
 /**
- * Every marker for `sessionId` under `root` (bounded scan: skips heavy
- * directories, caps depth, tolerates unreadable dirs). Markers live at
- * `<…>/.rauf/supervisors/<id>.json`, so only `.rauf` dirs are looked into.
+ * Every marker for `sessionId`: those listed in the session's index (any
+ * location), plus any under `root` (bounded scan: skips heavy directories, caps
+ * depth, tolerates unreadable dirs; only `.rauf` dirs are looked into). Index
+ * entries whose marker is gone are pruned.
  */
 export function findSupervisorMarkers(root: string, sessionId: string): SupervisorMarker[] {
   const name = `${safeId(sessionId)}.json`;
   const found: SupervisorMarker[] = [];
+  const seen = new Set<string>();
+  const add = (m: SupervisorMarker | null): void => {
+    if (!m || m.sessionId !== sessionId) return;
+    const key = path.resolve(m.stateDir);
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push(m);
+  };
+  const indexed = readIndex(sessionId);
+  const live = indexed.filter((dir) => {
+    const m = readSupervisorMarker(supervisorMarkerPath(dir, sessionId));
+    add(m);
+    return m !== null;
+  });
+  if (live.length !== indexed.length) writeIndex(sessionId, live);
   const walk = (dir: string, depth: number): void => {
     if (depth > SCAN_MAX_DEPTH) return;
     let entries: fs.Dirent[];
@@ -148,8 +213,7 @@ export function findSupervisorMarkers(root: string, sessionId: string): Supervis
       if (!e.isDirectory() || SKIP_DIRS.has(e.name)) continue;
       const sub = path.join(dir, e.name);
       if (e.name === ".rauf") {
-        const marker = readSupervisorMarker(path.join(sub, SUPERVISORS_DIRNAME, name));
-        if (marker && marker.sessionId === sessionId) found.push(marker);
+        add(readSupervisorMarker(path.join(sub, SUPERVISORS_DIRNAME, name)));
       } else {
         walk(sub, depth + 1);
       }

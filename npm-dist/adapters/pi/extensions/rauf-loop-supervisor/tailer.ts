@@ -25,6 +25,10 @@ import type { RaufEvent } from "./types.js";
 export class NdjsonTailer {
   private offset = 0;
   private ino: number | null = null;
+  /** The file we were reading vanished (rauf renamed it to archive/ at a run
+   *  start). Whatever file appears next is a NEW run, even if no poll ever sees
+   *  the inode change — so the next read must signal onRotate. */
+  private vanished = false;
   private partial = "";
   // A StringDecoder holds back an incomplete trailing multibyte sequence between
   // reads, so a UTF-8 character split across two polls (e.g. an accented char or
@@ -71,8 +75,10 @@ export class NdjsonTailer {
       size = st.size;
       ino = st.ino;
     } catch {
-      // File gone (pre-launch, or mid-rotation between unlink and recreate).
-      // Reset so the next existing file is read from its start.
+      // File gone: pre-launch, or mid-rotation (rauf renamed it to archive/ and
+      // the new run has not written yet). Remember that a file we had been
+      // reading vanished, so the next file to appear is treated as a rotation.
+      if (this.ino !== null || this.offset > 0) this.vanished = true;
       this.offset = 0;
       this.ino = null;
       this.partial = "";
@@ -86,7 +92,8 @@ export class NdjsonTailer {
     // previous run would silently swallow the whole new run). This only fires
     // on a genuine rotation: the first poll has ino === null, so neither branch
     // trips on initial attach.
-    if ((this.ino !== null && ino !== this.ino) || size < this.offset) {
+    if (this.vanished || (this.ino !== null && ino !== this.ino) || size < this.offset) {
+      this.vanished = false;
       this.offset = 0;
       this.partial = "";
       this.decoder = new StringDecoder("utf8");
