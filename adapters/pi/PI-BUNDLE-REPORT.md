@@ -15,3 +15,8 @@ so generated Pi skills remain self-contained after package installation.
 | `drive-rauf-loop` | 1 | `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`, `docs/SPEC-CLI.md`, `docs/SPEC-CORE.md`, `packages/core/src/state-labels.ts` |
 | `review-backlog` | 1 | `docs/SPEC-BACKLOG-TOOL-CONTRACT.md`, `docs/SPEC-CLI.md`, `docs/SPEC-CORE.md` |
 | `review-rauf-guidance` | 1 | none |
+
+Extensions are copied from `adapter-src/pi/extensions/` (tests excluded); the supervisor's
+`item-card.ts` is vendored from `packages/core/src/item-card.ts`.
+
+- `./extensions/rauf-loop-supervisor/index.ts`

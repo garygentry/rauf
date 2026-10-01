@@ -26,6 +26,9 @@ import { spawnSync } from "node:child_process";
 import {
   deriveStatus,
   readEvents,
+  recordSupervision,
+  clearSupervisorMarker,
+  supervisorIdFromEnv,
   resolveBacklogPaths,
   resolveTarget,
   formatSupervisionCard,
@@ -121,8 +124,34 @@ function readCurrentEvents(paths: BacklogPaths): PersistedEvent[] {
   return r.ok ? r.value : [];
 }
 
+/**
+ * The cursor a supervisor should start from right now: the end of the current
+ * log plus its run id. A run that starts after this (rotating the log) has a
+ * different run id, so `loop wait` replays it from seq 0 — nothing between a
+ * launch and the first wait is lost.
+ */
+export function currentWaitCursor(paths: BacklogPaths): { nextSeq: number; runId: string | null } {
+  const events = readCurrentEvents(paths);
+  return {
+    nextSeq: events.length > 0 ? events[events.length - 1]!.seq + 1 : 0,
+    runId: runIdOf(events),
+  };
+}
+
+/**
+ * Keep this session's supervisor marker current (#156): the cursor for its
+ * next wait, or removed once the loop has ended. Only when the session is
+ * identifiable (`$RAUF_SUPERVISOR_ID` / `$CODEX_THREAD_ID`); best-effort.
+ */
+export function updateSupervision(paths: BacklogPaths, result: WaitResult): void {
+  const id = supervisorIdFromEnv();
+  if (id === null) return;
+  if (result.terminal) clearSupervisorMarker(paths.stateDir, id);
+  else recordSupervision(paths, id, { nextSeq: result.nextSeq, runId: result.runId });
+}
+
 /** The loop is no longer doing work: not in a live state and no live lock holder. */
-function loopEnded(st: DerivedStatus): boolean {
+export function loopEnded(st: DerivedStatus): boolean {
   if (LIVE_LOOP_STATES.has(st.loopState)) {
     // A live state with a stale lock is a dead runner (crash) — ended.
     return Boolean(st.lock?.present && st.lock.stale);
@@ -324,6 +353,7 @@ export async function handleLoopWait(ctx: CommandContext): Promise<number> {
   });
 
   if (notifyCmd) runNotifyCommand(notifyCmd, result);
+  updateSupervision(pathsResult.value, result);
 
   if (json) {
     process.stdout.write(JSON.stringify(result) + "\n");

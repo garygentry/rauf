@@ -309,8 +309,11 @@ only — the §3.6 rule holds unchanged:
 So the canonical loop becomes: launch `--detached` → repeat `loop wait` → on an
 exception or terminal, poll `status --json` and branch per §3.4. The §3.3 5s
 `status --json` poll remains valid where a host can sustain it. The
-`drive-rauf-loop` skill rewrite that adopts the wait loop (with per-host
-supervision recipes) is a follow-up (rauf#155), not part of this amendment.
+`drive-rauf-loop` skill adopts the wait loop as its Step 2, with per-host
+supervision recipes (Claude Code background/`Monitor`, the Pi `rauf_loop_*`
+extension, the Codex wait loop + `rauf hook codex-stop`) and one hard rule:
+never end the turn while a supervised loop runs unless the host wakes you
+(rauf#154–#156).
 
 **Item cards.** `item_completed` now carries optional `commitSha`,
 `filesChanged`, `durationMs`, `attempt`, `doneCount`/`totalCount` and the

@@ -67,6 +67,8 @@ const RAUF_GITIGNORE = [
   "**/.rauf/rauf.log",
   "**/.rauf/iteration-status.json",
   "**/.rauf/.loop.lock",
+  "**/.rauf/events.ndjson",
+  "**/.rauf/supervisors/",
   // backlog.json.bak sits beside backlog.json (root .rauf/ or specs/<feature>/).
   "**/backlog.json.bak",
 ].join("\n");

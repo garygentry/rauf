@@ -23,6 +23,8 @@ export const RUNTIME_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/.rauf/iteration-status.json",
   ":(exclude,glob)**/.rauf/rauf.log",
   ":(exclude,glob)**/.rauf/events.ndjson",
+  ":(exclude,glob)**/.rauf/supervisors/**",
+  ":(exclude,glob)**/.rauf/.forge-supervisor.json",
   // backlog.json.bak sits beside backlog.json (root .rauf/ or specs/<feature>/).
   ":(exclude,glob)**/backlog.json.bak",
 ];

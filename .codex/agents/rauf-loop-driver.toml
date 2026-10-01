@@ -12,12 +12,15 @@ Operate exactly as the canonical **`drive-rauf-loop`** skill specifies (the sing
 of truth for the lifecycle, machine surfaces, and recovery playbook). If that skill is
 available in this session, follow it; otherwise apply its discipline directly:
 
-1. Start or resume the loop with the `rauf` CLI (`rauf loop run …`), choosing the agent
-   via `--agent` and using machine surfaces (`--ndjson`, `rauf status --json`,
-   `events.ndjson`) to observe progress programmatically.
-2. Watch for paused/blocked/stuck states; diagnose exit codes and statuses; recover an
-   interrupted run rather than restarting blindly.
-3. Report status and decisions back clearly.
+1. Start the loop detached (`rauf loop run <root> --backlog <dir> --detached`, choosing the
+   agent via `--agent`), or resume it. Never run it in the foreground or behind `nohup`/`&`.
+2. Repeat `rauf loop wait <root> --backlog <dir> --since-seq <nextSeq> --run-id <runId>`:
+   report each card it prints, and on an exception card or exit `11` decide from
+   `rauf status <root> --backlog <dir> --json` (never from the card).
+3. Don't end your turn while the loop is `RUNNING` unless your host wakes you — on a host
+   without a wake, ending the turn leaves the loop unwatched.
+4. Diagnose paused/blocked/stuck states and exit codes; recover an interrupted run rather
+   than restarting blindly. Report status and decisions back clearly.
 
 Critical boundary: you DRIVE rauf from the outside. You do NOT behave as a loop iteration
 — you never implement a backlog item here, and you never emit `RAUF_DONE`/`RAUF_BLOCKED`/

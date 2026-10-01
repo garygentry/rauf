@@ -34,6 +34,8 @@ import {
   ErrorCodes,
   type BacklogPaths,
   type Result,
+  recordSupervision,
+  supervisorIdFromEnv,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
 import {
@@ -63,6 +65,7 @@ import {
 } from "./formatter.js";
 import { StatusLine } from "./status-line.js";
 import { RunningTools } from "./running-tools.js";
+import { currentWaitCursor } from "./wait-command.js";
 import {
   readServerState,
   isProcessAlive,
@@ -464,6 +467,11 @@ async function runDetached(ctx: CommandContext): Promise<number> {
   if (backlogFlag !== null) body.backlogRoot = backlogFlag;
   if (suppressIterationReview) body.suppressIterationReview = true;
 
+  // The wait cursor as of BEFORE the start: the new run rotates the log, so a
+  // `loop wait` from here replays it from seq 0 rather than skipping it.
+  const startPaths = prResult && prResult.ok ? prResult.value : null;
+  const startCursor = startPaths ? currentWaitCursor(startPaths) : null;
+
   try {
     const url = apiUrl(port, id, "start");
     const resp = await fetch(url, {
@@ -482,6 +490,13 @@ async function runDetached(ctx: CommandContext): Promise<number> {
       } else {
         success(`Loop started for ${c.cyan(id)} ${c.dim("(detached, server-owned)")}`);
         info(`Follow: ${c.cyan(`rauf follow ${ctx.args[0] ?? "."}`)}`);
+        if (startCursor) {
+          const backlogArg = backlogFlag !== null ? ` --backlog ${backlogFlag}` : "";
+          const runArg = startCursor.runId !== null ? ` --run-id ${startCursor.runId}` : "";
+          info(
+            `Wait:   ${c.cyan(`rauf loop wait ${ctx.args[0] ?? "."}${backlogArg} --since-seq ${startCursor.nextSeq}${runArg}`)}`,
+          );
+        }
         // Surfaces the same empty/dispatcher-guessed-verification warning the
         // in-process path prints via warnStaleVerificationProfile — the
         // detached start reaches it through the server's response instead of
@@ -489,6 +504,12 @@ async function runDetached(ctx: CommandContext): Promise<number> {
         for (const w of data.data?.warnings ?? []) {
           warn(w);
         }
+      }
+      // A session that launches a loop is supervising it (#156): record the
+      // marker a host stop hook reads. Only when the session is identifiable.
+      const supervisorId = supervisorIdFromEnv();
+      if (supervisorId !== null && startPaths && startCursor) {
+        recordSupervision(startPaths, supervisorId, startCursor);
       }
       return ExitCode.SUCCESS;
     }

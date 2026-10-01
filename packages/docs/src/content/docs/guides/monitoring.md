@@ -83,6 +83,15 @@ Exit codes: `0` an event, `10` timeout while the loop is still running, `11` the
 and you have seen everything. The card is narration only. To decide what to do next, read
 `rauf status --json` (see [Detecting a stall](#detecting-a-stall)).
 
+**Supervising from an agent session.** Which tool keeps a session watching depends on the host.
+On **Claude Code**, run `loop wait` as a background command (its exit wakes the session) or arm
+a `Monitor` on `events.ndjson`. On **Pi**, install rauf's Pi package (`pi install
+npm:@garygentry/rauf`) and use its `rauf_loop_launch` tool: each completed item arrives as a
+card, and the session is woken on needs-human, blocked, stuck, errors and completion. On
+**Codex**, which cannot wake a session on background output, stay in the turn and loop on
+`loop wait`; the optional Stop hook `rauf hook codex-stop` keeps the session from ending its
+turn while the loop runs. The `drive-rauf-loop` skill has the full per-host recipe.
+
 The summary after the dash comes from the iteration agent, which may write one
 `RAUF_SUMMARY: <text>` line just above `RAUF_DONE`. Without one, the card shows the item title.
 

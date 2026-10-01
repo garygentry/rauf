@@ -1,0 +1,20 @@
+{
+  "name": "@rauf/pi-extension",
+  "private": true,
+  "type": "module",
+  "description": "Hand-written source of rauf's Pi extensions (rauf-loop-supervisor). scripts/build-pi-bundle.ts copies extensions/ into adapters/pi/extensions/ (and vendors packages/core/src/item-card.ts into it); pi loads the .ts directly. The pi packages here are devDependencies for typechecking only: at runtime pi provides @earendil-works/pi-coding-agent, @earendil-works/pi-tui and typebox to extensions.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint extensions/ test/"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@earendil-works/pi-tui": "0.84.4",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "typebox": "1.3.7",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

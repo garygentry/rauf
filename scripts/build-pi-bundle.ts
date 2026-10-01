@@ -19,6 +19,12 @@ import * as path from "node:path";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const PI_ADAPTER_DIR = path.join(REPO_ROOT, "adapters", "pi");
+/** Hand-written Pi extension sources (a pnpm workspace package with its own tests). */
+const EXT_SRC_DIR = path.join(REPO_ROOT, "adapter-src", "pi", "extensions");
+/** The supervisor extension renders cards with core's formatter, vendored beside it. */
+const ITEM_CARD_SRC = path.join(REPO_ROOT, "packages", "core", "src", "item-card.ts");
+const VENDORED_ITEM_CARD = path.join(EXT_SRC_DIR, "rauf-loop-supervisor", "item-card.ts");
+const ITEM_CARD_TYPE_IMPORT = 'import type { PersistedEvent, LoopEvent } from "./schemas.js";';
 
 const SUPPORTED_FRONTMATTER_KEYS = new Set(["name", "description"]);
 const REPO_REFERENCE_RE =
@@ -207,6 +213,65 @@ function readSkills(): SkillSource[] {
   return skills;
 }
 
+/**
+ * `packages/core/src/item-card.ts` made standalone for the Pi extension: its one
+ * type import (the event union in schemas.ts, which the bundle does not ship) is
+ * replaced by a structural `any`, so cards render whatever event shape arrives.
+ * The logic is byte-identical to core, so Pi prints the same cards as
+ * `rauf loop wait` and `rauf follow`.
+ */
+export function vendoredItemCard(): string {
+  const src = fs.readFileSync(ITEM_CARD_SRC, "utf-8");
+  if (!src.includes(ITEM_CARD_TYPE_IMPORT)) {
+    throw new Error(
+      `packages/core/src/item-card.ts no longer has the expected import line ` +
+        `(${ITEM_CARD_TYPE_IMPORT}). Update vendoredItemCard() in scripts/build-pi-bundle.ts.`,
+    );
+  }
+  const header =
+    "// GENERATED — DO NOT EDIT. Vendored from packages/core/src/item-card.ts by\n" +
+    "// scripts/build-pi-bundle.ts (pnpm pi:generate); `pnpm pi:check` guards drift.\n";
+  const loose =
+    "// The rauf event union (core schemas.ts) is not shipped with the Pi bundle;\n" +
+    "// cards read events structurally.\n" +
+    "// eslint-disable-next-line @typescript-eslint/no-explicit-any\n" +
+    "type LoopEvent = any;\n" +
+    "type PersistedEvent = LoopEvent;";
+  const out = header + src.replace(ITEM_CARD_TYPE_IMPORT, loose);
+  if (/^import\b[^\n]*from\s*"\.\//m.test(out)) {
+    throw new Error("vendored item-card.ts still has a relative import; it must stand alone.");
+  }
+  return out;
+}
+
+/** Extension files to ship: every non-test file under adapter-src/pi/extensions/. */
+function readExtensionFiles(): Map<string, string> {
+  const files = new Map<string, string>();
+  function visit(dir: string): void {
+    for (const e of fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
+      const abs = path.join(dir, e.name);
+      if (e.isDirectory()) visit(abs);
+      else if (e.isFile() && !e.name.endsWith(".test.ts")) {
+        files.set(path.relative(EXT_SRC_DIR, abs), fs.readFileSync(abs, "utf-8"));
+      }
+    }
+  }
+  if (fs.existsSync(EXT_SRC_DIR)) visit(EXT_SRC_DIR);
+  // Always ship the freshly vendored formatter, even before it is written to adapter-src.
+  files.set(path.relative(EXT_SRC_DIR, VENDORED_ITEM_CARD), vendoredItemCard());
+  return files;
+}
+
+/** Entry points declared in the Pi manifest (one `index.ts` per extension dir). */
+export function extensionEntries(extFiles: Map<string, string>): string[] {
+  return [...extFiles.keys()]
+    .filter((rel) => rel.split(path.sep).length === 2 && rel.endsWith(`${path.sep}index.ts`))
+    .map((rel) => `./extensions/${rel.split(path.sep).join("/")}`)
+    .sort();
+}
+
 export function buildBundle(): Map<string, string> {
   const pkg = readJson(path.join(REPO_ROOT, "package.json"));
   const skills = readSkills();
@@ -216,13 +281,19 @@ export function buildBundle(): Map<string, string> {
     name: "rauf-pi-adapter",
     private: true,
     version: String(pkg.version ?? "0.0.0"),
-    description: "Generated Pi skill bundle for rauf autonomous coding loops",
+    description: "Generated Pi package for rauf autonomous coding loops (skills + loop supervisor)",
     keywords: ["pi-package", "rauf", "agent-skills"],
+    // pi provides these to extensions at runtime; declared optional so nothing installs them.
+    peerDependencies: PI_PEER_DEPENDENCIES,
+    peerDependenciesMeta: PI_PEER_DEPENDENCIES_META,
     pi: {
       skills: ["./skills"],
+      extensions: [] as string[],
     },
   };
-  files.set("package.json", JSON.stringify(adapterManifest, null, 2) + "\n");
+
+  const extFiles = readExtensionFiles();
+  for (const [rel, content] of extFiles) files.set(path.join("extensions", rel), content);
 
   const reportRows: string[] = [];
   for (const skill of skills) {
@@ -254,11 +325,23 @@ export function buildBundle(): Map<string, string> {
     );
   }
 
-  files.set("PI-BUNDLE-REPORT.md", buildReport(reportRows));
+  adapterManifest.pi.extensions = extensionEntries(extFiles);
+  files.set("package.json", JSON.stringify(adapterManifest, null, 2) + "\n");
+  files.set("PI-BUNDLE-REPORT.md", buildReport(reportRows, extensionEntries(extFiles)));
   return files;
 }
 
-function buildReport(rows: string[]): string {
+/** Core packages pi bundles for extensions (pi docs: packages.md § Dependencies). */
+export const PI_PEER_DEPENDENCIES: Record<string, string> = {
+  "@earendil-works/pi-coding-agent": "*",
+  "@earendil-works/pi-tui": "*",
+  typebox: "*",
+};
+export const PI_PEER_DEPENDENCIES_META: Record<string, { optional: true }> = Object.fromEntries(
+  Object.keys(PI_PEER_DEPENDENCIES).map((k) => [k, { optional: true as const }]),
+);
+
+function buildReport(rows: string[], extensions: string[]): string {
   return [
     "<!-- GENERATED — DO NOT EDIT. Regenerate: bun run scripts/build-pi-bundle.ts -->",
     "",
@@ -274,6 +357,11 @@ function buildReport(rows: string[]): string {
     "| Skill | Canonical files | Copied repo references |",
     "| ----- | --------------- | ---------------------- |",
     ...rows,
+    "",
+    "Extensions are copied from `adapter-src/pi/extensions/` (tests excluded); the supervisor's",
+    "`item-card.ts` is vendored from `packages/core/src/item-card.ts`.",
+    "",
+    ...extensions.map((e) => `- \`${e}\``),
     "",
   ].join("\n");
 }
@@ -297,6 +385,7 @@ function listGenerated(dir: string, base = dir): string[] {
  * buildBundle() pass; omit it to build fresh.
  */
 export function writeBundle(bundle: Map<string, string> = buildBundle()): number {
+  fs.writeFileSync(VENDORED_ITEM_CARD, vendoredItemCard());
   fs.rmSync(PI_ADAPTER_DIR, { recursive: true, force: true });
   for (const [rel, content] of bundle) {
     const abs = path.join(PI_ADAPTER_DIR, rel);
@@ -319,6 +408,14 @@ function main(): void {
     }
     for (const rel of listGenerated(PI_ADAPTER_DIR)) {
       if (!bundle.has(rel)) drift.push(`${rel} (stale — not produced by generator)`);
+    }
+    const vendoredNow = fs.existsSync(VENDORED_ITEM_CARD)
+      ? fs.readFileSync(VENDORED_ITEM_CARD, "utf-8")
+      : "";
+    if (vendoredNow !== vendoredItemCard()) {
+      drift.push(
+        `../../${path.relative(REPO_ROOT, VENDORED_ITEM_CARD)} (vendored item-card is stale)`,
+      );
     }
     if (drift.length > 0) {
       // eslint-disable-next-line no-console

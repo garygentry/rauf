@@ -22,6 +22,8 @@ rauf/
 │   ├── loop/    — Loop runner engine (LoopRunner, events, claude process, signal parsing)
 │   ├── cli/     — CLI tool (commands call core directly or HTTP when server is running)
 │   └── web/     — Hono API server + React frontend (TanStack Router + Query)
+├── adapter-src/pi/ — Hand-written Pi extension source (rauf-loop-supervisor); a pnpm workspace
+│                    package with its own tests. `pnpm pi:generate` copies it into adapters/pi/.
 ├── artifacts/   — Canonical template files installed into target projects
 │   └── variants/
 │       └── backlog-json/

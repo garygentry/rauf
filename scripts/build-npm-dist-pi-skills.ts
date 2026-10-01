@@ -35,6 +35,9 @@ import * as path from "node:path";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SOURCE_DIR = path.join(REPO_ROOT, "adapters", "pi", "skills");
 const DEST_DIR = path.join(REPO_ROOT, "npm-dist", "adapters", "pi", "skills");
+/** The generated Pi extensions (rauf-loop-supervisor, #154) ship the same way. */
+const EXT_SOURCE_DIR = path.join(REPO_ROOT, "adapters", "pi", "extensions");
+const EXT_DEST_DIR = path.join(REPO_ROOT, "npm-dist", "adapters", "pi", "extensions");
 
 /** Recursively read every file under `dir` as a relative-path → content map. */
 function readTree(dir: string): Map<string, string> {
@@ -67,6 +70,17 @@ export function buildBundle(): Map<string, string> {
   return bundle;
 }
 
+/** Build the expected extensions copy, from generated `adapters/pi/extensions/`. */
+export function buildExtensionsBundle(): Map<string, string> {
+  if (!fs.existsSync(EXT_SOURCE_DIR)) {
+    throw new Error(
+      `${path.relative(REPO_ROOT, EXT_SOURCE_DIR)} does not exist — run ` +
+        `\`bun run scripts/build-pi-bundle.ts\` first.`,
+    );
+  }
+  return readTree(EXT_SOURCE_DIR);
+}
+
 /** Recursively list committed files under `dir` as paths relative to `dir`. */
 function listCommitted(dir: string, base = dir): string[] {
   if (!fs.existsSync(dir)) return [];
@@ -81,43 +95,56 @@ function listCommitted(dir: string, base = dir): string[] {
 
 function main(): void {
   const check = process.argv.includes("--check");
-  const bundle = buildBundle();
+  const trees = [
+    { bundle: buildBundle(), dest: DEST_DIR, label: "skills" },
+    { bundle: buildExtensionsBundle(), dest: EXT_DEST_DIR, label: "extensions" },
+  ];
 
   if (check) {
     const drift: string[] = [];
-    for (const [rel, content] of bundle) {
-      const abs = path.join(DEST_DIR, rel);
-      const current = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : "";
-      if (current !== content) drift.push(rel);
-    }
-    for (const rel of listCommitted(DEST_DIR)) {
-      if (!bundle.has(rel)) drift.push(`${rel} (stale — not produced by generator)`);
+    for (const { bundle, dest, label } of trees) {
+      for (const [rel, content] of bundle) {
+        const abs = path.join(dest, rel);
+        const current = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : "";
+        if (current !== content) drift.push(`${label}/${rel}`);
+      }
+      for (const rel of listCommitted(dest)) {
+        if (!bundle.has(rel)) drift.push(`${label}/${rel} (stale — not produced by generator)`);
+      }
     }
     if (drift.length > 0) {
       // eslint-disable-next-line no-console
       console.error(
-        `npm-dist Pi skill copy drift detected — these differ from adapters/pi/skills/:\n` +
-          drift.map((d) => `  - npm-dist/adapters/pi/skills/${d}`).join("\n") +
+        `npm-dist Pi copy drift detected — these differ from adapters/pi/:\n` +
+          drift.map((d) => `  - npm-dist/adapters/pi/${d}`).join("\n") +
           `\n\nRun: bun run scripts/build-npm-dist-pi-skills.ts  (then commit the result)`,
       );
       process.exit(1);
     }
     // eslint-disable-next-line no-console
     console.log(
-      `npm-dist/adapters/pi/skills is in sync with adapters/pi/skills (${bundle.size} files).`,
+      `npm-dist/adapters/pi is in sync with adapters/pi (${trees
+        .map((t) => `${t.bundle.size} ${t.label} files`)
+        .join(", ")}).`,
     );
     process.exit(0);
   }
 
-  // Write mode: rebuild from scratch so a skill removed upstream is pruned here too.
-  fs.rmSync(DEST_DIR, { recursive: true, force: true });
-  for (const [rel, content] of bundle) {
-    const abs = path.join(DEST_DIR, rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content);
+  // Write mode: rebuild from scratch so a file removed upstream is pruned here too.
+  for (const { bundle, dest } of trees) {
+    fs.rmSync(dest, { recursive: true, force: true });
+    for (const [rel, content] of bundle) {
+      const abs = path.join(dest, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, content);
+    }
   }
   // eslint-disable-next-line no-console
-  console.log(`Copied adapters/pi/skills into npm-dist/adapters/pi/skills (${bundle.size} files).`);
+  console.log(
+    `Copied adapters/pi/{skills,extensions} into npm-dist/adapters/pi (${trees
+      .map((t) => `${t.bundle.size} ${t.label} files`)
+      .join(", ")}).`,
+  );
 }
 
 if (import.meta.main) main();

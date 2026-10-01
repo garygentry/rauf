@@ -20,12 +20,13 @@ This skill is for **operating** the rauf CLI as a tool: starting a loop, watchin
 and recovering it when it stops. It is the operator's view — the agent **driving** rauf —
 not the agent running **inside** a loop iteration.
 
-This skill is the **one** canonical supervision recipe — **poll, not stream** — and the
-authoritative decision contract that other tools (including feature-forge's `forge-5-loop`)
-reference rather than re-deciding. There is exactly one prescribed pattern: **start the loop
-backgrounded, poll `rauf status … --json`, branch on the decision tree, and recover
-via a persist-then-escalate ladder.** Everything else in this file is reference material
-that supports that loop.
+This skill is the **one** canonical supervision recipe and the authoritative decision
+contract that other tools (including feature-forge's `forge-5-loop`) reference rather than
+re-deciding. There is exactly one prescribed pattern: **start the loop detached, wait on
+`rauf loop wait` (one card per item, a bounded block per call), decide from `rauf status …
+--json` via the decision tree, and recover via a persist-then-escalate ladder.** How you keep
+waiting depends on your harness — see [Supervising from your harness](#supervising-from-your-harness).
+Everything else in this file is reference material that supports that loop.
 
 **Boundaries (what this skill is NOT):**
 
@@ -48,8 +49,8 @@ be explicit — do not rely on a `.`/cwd default.
 
 ## The canonical recipe
 
-Run this loop. Every decision comes from a single `status --json` poll; nothing below reads
-a raw state file to decide.
+Run this loop. `rauf loop wait` paces it and narrates each item; every **decision** comes from
+a single `status --json` poll; nothing below reads a raw state file to decide.
 
 ### Step 1 — Start backgrounded
 
@@ -60,17 +61,42 @@ rauf loop run <root> --backlog <dir> --detached
 ```
 
 `--detached` / `-d` auto-starts the server daemon and returns immediately; the loop then
-runs independently. (Where a harness offers its own background primitive that survives the
-session, that is an acceptable substitute — the requirement is "the loop survives and
-doesn't block," not a specific mechanism.)
+runs independently. It prints a `Wait:` line — the exact `rauf loop wait … --since-seq N
+--run-id R` for your first wait. (On Pi, use the `rauf_loop_launch` tool instead; it does this
+and supervises the run for you. Never run `rauf loop run` in the foreground, behind
+`nohup`/`setsid`/`&`, or inside a subagent: it either ties up the session for hours or leaves
+the loop unwatched.)
 
 A start **refused for a precondition** — a dirty working tree or a protected branch — is a
 **setup error, not a stall**. Resolve it before entering the poll loop with the §0 guards
 (`--create-branch`, `--seed-backlog`, `--force`), then start again.
 
-### Step 2 — Poll the single decision surface
+### Step 2 — Wait for the next event, then decide from the one decision surface
 
-The **only** surface the agent reads to **decide** is:
+**Wait** (narration + pacing):
+
+```
+rauf loop wait <root> --backlog <dir> --since-seq <nextSeq> --run-id <runId> [--json]
+```
+
+It blocks until the next **significant** event (an item completed or blocked, needs-human,
+a stuck warning, a review failure, a loop error/pause, a long sleep, the loop ending) or until
+`--timeout` (default 240 s), then prints one card and exits:
+
+| Exit | Meaning                                           | What you do                                                                                    |
+| ---- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `0`  | An event. Its card is printed.                    | Report the card. `✓` (item done) → wait again. Any other card → **poll and decide** (below).   |
+| `10` | Timeout, loop still running, nothing new.         | Wait again. (Optionally poll `status --json` first — it is the 5 s poll at a longer interval.) |
+| `11` | The loop has ended and you have seen it all.      | **Poll and decide** — usually rows 5–10 of the tree. Stop waiting.                             |
+| `2`  | Usage error (bad flag, missing/ambiguous target). | Fix your addressing, as for `status` below.                                                    |
+
+Pass back the `nextSeq` and `runId` it prints (`next: --since-seq N --run-id R`, or the
+`--json` fields) on every call, so nothing is lost or repeated — including across a new run,
+which `loop wait` replays from its start. The card is **narration, never a decision**; it is
+the same line `rauf follow` and the Pi extension print, e.g.
+`[7/26] ✓ 008 Add login form — wired the form to /api/login · abc1234 · 5 files · 6m`.
+
+**Decide** — the **only** surface the agent reads to **decide** is:
 
 ```
 rauf status <root> --backlog <dir> --json
@@ -80,15 +106,16 @@ rauf status <root> --backlog <dir> --json
   `--backlog <dir>` MUST be explicit. A `TargetError` (`missing_target` / `ambiguous_target`)
   means **"fix your addressing"** — pass both explicitly — **not** a loop state, and never a
   silent scan (see `references/SPEC-CLI.md` and the target-resolution rules).
-- **Poll interval — 5 seconds default, 5–10 second band.** Poll every **5 s** by default.
-  You MAY widen toward **10 s** to reduce `deriveStatus` read cost, or narrow toward **5 s**
-  for lower detection latency. This is **documented guidance, not a code constant** — there
-  is no interval export in `core`.
+- **When to poll.** After every non-`✓` card, on exit `11`, and before any recovery action.
+  Where a host cannot run `loop wait` (no bounded blocking command), poll every **5 s** by
+  default instead (**5–10 s** band: widen toward 10 s to reduce read cost, narrow toward 5 s
+  for latency). These are documented guidance, not code constants.
 - **KEYSTONE — never read a raw file to decide.** The agent **NEVER** reads
-  `.rauf/iteration-status.json` or `events.ndjson` to make a decision. One `status --json`
-  poll is a **complete superset** — including the stall hint via **`health.stuckWarning`**.
-  If you ever feel you need a raw file to decide, the contract has a hole. The stream stays
-  available only for narration/diagnosis (see [The stream never decides](#the-stream-never-decides)).
+  `.rauf/iteration-status.json` or `events.ndjson` to make a decision, and never decides from
+  a card. One `status --json` poll is a **complete superset** — including the stall hint via
+  **`health.stuckWarning`**. If you ever feel you need a raw file to decide, the contract has
+  a hole. Cards and the stream stay narration/diagnosis only (see
+  [The stream never decides](#the-stream-never-decides)).
 
 ### Step 3 — The decision tree
 
@@ -111,7 +138,7 @@ single `DerivedStatus` object returned by the poll.
 | 9   | `loopState = COMPLETE` **and** `backlogSummary.done < backlogSummary.total`                                              | **Stopped short**        | No _eligible_ work is left, but items are unfinished (blocked/deferred, or `pending` behind a blocked dependency). Report them and **stop**. Do **not** reset the backlog.                                                                                                                                                                                                  |
 | 10  | `loopState ∈ {COMPLETE, IDLE}` **and** `backlogSummary.total > 0` **and** `backlogSummary.done === backlogSummary.total` | **Done**                 | Every item is `done`. Report the outcome and **stop**.                                                                                                                                                                                                                                                                                                                      |
 | 11  | `health?.stuckWarning === true`                                                                                          | **Recoverable stall**    | Apply the persist-then-escalate ladder (Step 4).                                                                                                                                                                                                                                                                                                                            |
-| 12  | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                                        | **Healthy in-progress**  | **Keep polling** at the interval. A `RUNNING` poll with `sleepUntil` set is a usage-banner backoff (30 s, then 60 s): still healthy.                                                                                                                                                                                                                                        |
+| 12  | `loopState ∈ {RUNNING, REVIEWING}`, no stall hint                                                                        | **Healthy in-progress**  | **Keep waiting** (`loop wait`; or poll at the interval). A `RUNNING` poll with `sleepUntil` set is a usage-banner backoff (30 s, then 60 s): still healthy.                                                                                                                                                                                                                 |
 | 13  | Anything else, e.g. `IDLE` with work left right after launch (before the loop has written its state)                     | **Not started yet**      | **Keep polling.** If it persists past startup, the launch failed: check the launch output.                                                                                                                                                                                                                                                                                  |
 
 Notes:
@@ -194,8 +221,9 @@ poll count), so the agent owns the threshold.
 
 ### The stream never decides
 
-The event stream (`rauf loop run … --ndjson`, `events.ndjson`, and any harness push/`Monitor`
-model) stays **available** as a lower-latency narration and diagnosis aid. But:
+The event stream (`rauf loop wait` cards, `rauf loop run … --ndjson`, `events.ndjson`, the Pi
+extension's cards, and any harness push/`Monitor` model) stays **available** as a
+lower-latency narration and diagnosis aid. But:
 
 > **Agent decisions MUST NEVER depend on the stream.** The stream is for narration and
 > diagnosis only. Every done / needs-human / stall / healthy decision is made from the
@@ -217,7 +245,33 @@ loop.
 | **Transient single-poll `stuckWarning`**                                                                                  | Surface, **do not act**; escalate only if it persists to N = 3 (Step 4).                                                                                                                                                                                         |
 | **Confirmed-dead lock** (`lock.stale && !lock.alive`) with work remaining                                                 | The only case for `reset`; then re-run (Step 4, item 3).                                                                                                                                                                                                         |
 | **`ERROR` loopState**                                                                                                     | Crash / circuit-breaker halt: `reset` then re-run, or `resume` (§Recover). Not a stall-ladder case.                                                                                                                                                              |
-| **Sleep between polls**                                                                                                   | Sleep the prescribed interval (5 s default). In a harness that forbids a foreground `sleep`, use its wait/until primitive.                                                                                                                                       |
+| **Pacing between decisions**                                                                                              | `rauf loop wait` (bounded, ≤ 240 s per call). Without it, sleep the prescribed interval (5 s default); in a harness that forbids a foreground `sleep`, use its wait/until primitive.                                                                             |
+
+## Supervising from your harness
+
+**The hard rule, for every host:** while a loop you supervise is `RUNNING`, never end your turn
+and never block for longer than one `loop wait` window (≤ 240 s) — **unless your host wakes
+you** when something happens (Claude Code's background tasks / `Monitor`, rauf's Pi
+extension). On a host that cannot wake you, ending the turn means the loop runs unwatched
+until the user next types.
+
+| Host              | Launch                                                                             | Keep watching                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Claude Code**   | `rauf loop run <root> --backlog <dir> --detached`                                  | Run `rauf loop wait …` as a **background** command (its exit wakes you), or arm a persistent `Monitor` on `<stateDir>/events.ndjson` filtered to the significant events. Print each card; poll and decide on exceptions. You may end the turn between events — the harness wakes you.                                                                                                                                                          |
+| **Pi**            | The `rauf_loop_launch` tool (rauf's Pi package: `pi install npm:@garygentry/rauf`) | Nothing to do: each completed item arrives as a card (no model turn), and the session is **woken** on needs-human, blocked, stuck, review failure, errors and completion. End your turn. Use `rauf_loop_status` before acting on a wake, `rauf_loop_stop` to stop. The extension **blocks** foreground/`nohup`/`&` loop runs and subagents told to run or watch the loop. Without the extension, use the wait loop below.                      |
+| **Codex**         | `rauf loop run <root> --backlog <dir> --detached`                                  | Codex cannot wake you on background output, so **stay in the turn** running the wait loop: one `rauf loop wait … --timeout 240s` per call (fits one exec window), print each card, decide on exceptions, until exit `11`. Optional: the Stop hook (`rauf hook codex-stop`, below) holds the session open if it tries to end its turn early, and `--notify-cmd 'notify-send rauf "$RAUF_CARD"'` gives a desktop ping on exceptions and the end. |
+| **Anything else** | `rauf loop run <root> --backlog <dir> --detached`                                  | The wait loop, as for Codex. A host that can't run a blocking command polls `status --json` every 5 s instead.                                                                                                                                                                                                                                                                                                                                 |
+
+**Codex Stop hook.** `rauf hook codex-stop --print-config` prints the `hooks.json` entry; add
+it to `~/.codex/hooks.json` (with `[features] hooks = true` in `config.toml`), then trust it in
+Codex's hooks view — Codex runs only hooks you have trusted, and records each one under
+`[hooks.state]` in `config.toml`. `rauf loop wait` and `loop run --detached` record which
+loop a Codex session supervises (a marker under `<stateDir>/supervisors/`, keyed by
+`$CODEX_THREAD_ID`). When that session tries to end its turn while the loop is still running,
+the hook blocks the stop and hands it the exact next `loop wait`. It lets go when the loop ends
+or pauses for a human, while it sleeps on a usage limit, and after 3 stops in a row with no
+`loop wait` in between (so a session that ignores it is not trapped). Sessions that never touch
+rauf are unaffected.
 
 ---
 
@@ -231,7 +285,7 @@ _the_ skill.
 
 | You want…                                   | Command                                           | Why                                                                                               |
 | ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| To launch it backgrounded (the recipe)      | `rauf loop run <root> --backlog <dir> --detached` | Auto-starts the server daemon, returns immediately. Observe with `follow`, stop with `loop stop`. |
+| To launch it backgrounded (the recipe)      | `rauf loop run <root> --backlog <dir> --detached` | Auto-starts the server daemon, returns immediately. Wait with `loop wait`, stop with `loop stop`. |
 | To run it now and watch it (interactive)    | `rauf loop run <root>`                            | Foreground, blocks, streams to the terminal. **Unattended-safe** — a `server stop` can't kill it. |
 | To detach but immediately watch             | `rauf loop run <root> -d --follow`                | Detaches, then attaches the live view. Ctrl-C detaches the **view only** — the loop runs on.      |
 | To stop a detached/server-owned loop        | `rauf loop stop <root>`                           | Graceful cancel via the server. (A foreground `loop run` stops with Ctrl-C.)                      |
@@ -244,15 +298,16 @@ complete; `rauf loop review` reviews the already-`done` work without running a l
 
 ### Observe — what's the loop doing?
 
-| Command                                 | Use it to…                                                                                                                                                       |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rauf status <root> --json`             | **The decision surface** (the recipe polls this). `DerivedStatus`: `loopState`, `health`, `lock`, `currentItem`, `backlogSummary`, `lastSignal`, `sleepUntil`.   |
-| `rauf status <root>`                    | Human one-shot snapshot: state, iteration, current item, backlog counts, lock liveness, blocked/deferred breakdown.                                              |
-| `rauf status <root> --follow`           | Live-refresh that snapshot (`--interval N`).                                                                                                                     |
-| `rauf status --all`                     | Every live loop machine-wide (reads the active-loop registry).                                                                                                   |
-| `rauf follow <root>`                    | Rich live view — replays the current run's `events.ndjson`, then tails it. File-backed; **needs no server**. Narration/diagnosis only — never the decision path. |
-| `rauf log <root> [--tail N] [--follow]` | Tail the human log (`.rauf/rauf.log`).                                                                                                                           |
-| `rauf progress <root>`                  | The loop's accumulated learnings (`.rauf/progress.md`).                                                                                                          |
+| Command                                 | Use it to…                                                                                                                                                                                   |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rauf status <root> --json`             | **The decision surface** (the recipe polls this). `DerivedStatus`: `loopState`, `health`, `lock`, `currentItem`, `backlogSummary`, `lastSignal`, `sleepUntil`.                               |
+| `rauf status <root>`                    | Human one-shot snapshot: state, iteration, current item, backlog counts, lock liveness, blocked/deferred breakdown.                                                                          |
+| `rauf status <root> --follow`           | Live-refresh that snapshot (`--interval N`).                                                                                                                                                 |
+| `rauf status --all`                     | Every live loop machine-wide (reads the active-loop registry).                                                                                                                               |
+| `rauf loop wait <root> --backlog <dir>` | **The pacing surface** (the recipe waits on this): blocks ≤ 240 s for the next significant event, prints its card, exits 0 / 10 timeout / 11 ended. Narration — decide from `status --json`. |
+| `rauf follow <root>`                    | Rich live view — replays the current run's `events.ndjson`, then tails it. File-backed; **needs no server**. Narration/diagnosis only — never the decision path.                             |
+| `rauf log <root> [--tail N] [--follow]` | Tail the human log (`.rauf/rauf.log`).                                                                                                                                                       |
+| `rauf progress <root>`                  | The loop's accumulated learnings (`.rauf/progress.md`).                                                                                                                                      |
 
 **The stall hint lives on the poll.** rauf emits an `llm_stuck_warning` event and surfaces
 the same signal on `status --json` as **`health.stuckWarning`**. Read the stall hint from
