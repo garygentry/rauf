@@ -464,6 +464,32 @@ describe("install — idempotency", () => {
     expect(markerResult.value.options.runtime).toBe("global");
   });
 
+  it("reinstall with a different provider drops the stale providerConfig", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts({ projectName: "orig" }));
+
+    const markerPath = path.join(tmpDir, ".rauf.json");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+    marker.options.provider = "codex";
+    marker.options.providerConfig = { binary: "codex", promptDelivery: "arg" };
+    marker.options.model = "gpt-5";
+    fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+
+    // e.g. `rauf install . --agent copilot` — copilot rejects any providerConfig.
+    const r2 = install(
+      tmpDir,
+      installOpts({ projectName: "orig", options: { provider: "copilot" } }),
+    );
+    expect(r2.ok).toBe(true);
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+    expect(markerResult.value.options.provider).toBe("copilot");
+    expect(markerResult.value.options.providerConfig).toBeUndefined();
+    expect(markerResult.value.options.model).toBe("gpt-5");
+  });
+
   it("second install preserves existing backlog.json", () => {
     createFakeProject(tmpDir, { git: true });
 

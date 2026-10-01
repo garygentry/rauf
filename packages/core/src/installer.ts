@@ -399,8 +399,16 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   // existing object means cross-agent project config survives reinstall instead of silently
   // reverting to the Claude default (P1 review). The three required fields keep their defaults
   // via the explicit `??` chain below the spreads.
+  // A providerConfig belongs to the provider it was written for: when the install
+  // switches provider (e.g. `--agent copilot` over a codex/generic-cli setup), drop
+  // the stale config rather than carry it into a marker the schema may reject.
+  const providerChanged =
+    options.options?.provider !== undefined &&
+    options.options.provider !== existingOptions?.provider;
+  const preservedOptions: Partial<MarkerOptions> = { ...existingOptions };
+  if (providerChanged) delete preservedOptions.providerConfig;
   const markerOptions: MarkerOptions = {
-    ...existingOptions,
+    ...preservedOptions,
     ...options.options,
     // The three required fields always resolve to a concrete value (override → existing → default).
     ignoreInTool: options.options?.ignoreInTool ?? existingOptions?.ignoreInTool ?? false,

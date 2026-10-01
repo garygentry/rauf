@@ -20,32 +20,16 @@ export function redactSignalTokens(text: string): string {
  * whose trimmed content IS the signal is preserved untouched.
  */
 export function neutralizeForDetection(text: string): string {
-  let fence: { marker: "`" | "~"; length: number } | undefined;
+  const lines = text.split("\n");
+  const fenced = closedFenceLines(lines);
 
-  return text
-    .split("\n")
-    .map((line) => {
-      const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
-      const insideFence = fence !== undefined;
-      if (fenceMatch) {
-        const markerRun = fenceMatch[1]!;
-        const marker = markerRun[0] as "`" | "~";
-        if (!fence) {
-          fence = { marker, length: markerRun.length };
-        } else if (
-          marker === fence.marker &&
-          markerRun.length >= fence.length &&
-          line.slice(fenceMatch[0].length).trim().length === 0
-        ) {
-          fence = undefined;
-        }
-      }
-
+  return lines
+    .map((line, index) => {
       const trimmed = line.trim();
       const isSignalLine = SIGNAL_TOKENS.some(
         (token) => trimmed === token || trimmed.startsWith(`${token}:`),
       );
-      if (!insideFence && !fenceMatch && isSignalLine) return line;
+      if (!fenced.has(index) && isSignalLine) return line;
 
       let result = line;
       for (const token of SIGNAL_TOKENS) {
@@ -54,4 +38,31 @@ export function neutralizeForDetection(text: string): string {
       return result;
     })
     .join("\n");
+}
+
+/**
+ * Indexes of lines inside (or delimiting) a CLOSED fenced code block. An opener with
+ * no matching closer is ignored: multi-message agent text (e.g. Copilot's joined
+ * `assistant.message`s) can carry a truncated fence, and treating it as running to
+ * the end would neutralize the agent's genuine final signal line.
+ */
+function closedFenceLines(lines: readonly string[]): Set<number> {
+  const fenced = new Set<number>();
+  let open: { marker: string; length: number; start: number } | undefined;
+  lines.forEach((line, index) => {
+    const match = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+    if (!match) return;
+    const run = match[1]!;
+    if (!open) {
+      open = { marker: run[0]!, length: run.length, start: index };
+    } else if (
+      run[0] === open.marker &&
+      run.length >= open.length &&
+      line.slice(match[0].length).trim().length === 0
+    ) {
+      for (let i = open.start; i <= index; i++) fenced.add(i);
+      open = undefined;
+    }
+  });
+  return fenced;
 }
