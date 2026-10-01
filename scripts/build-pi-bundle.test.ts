@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { buildBundle, frontmatterKeys, makeTsReferenceSelfContained } from "./build-pi-bundle";
+import {
+  buildBundle,
+  frontmatterKeys,
+  makeTsReferenceSelfContained,
+  vendoredItemCard,
+} from "./build-pi-bundle";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -114,5 +119,46 @@ describe("makeTsReferenceSelfContained", () => {
   it("throws on a leftover relative import (guards against a new dangling import)", () => {
     const src = 'import { helper } from "./util.js";\nexport const x = helper;\n';
     expect(() => makeTsReferenceSelfContained("x.ts", src)).toThrow(/unresolved relative import/);
+  });
+});
+
+describe("Pi extensions (#154)", () => {
+  const bundle = buildBundle();
+
+  it("declares the loop supervisor extension and pi's core packages as optional peers", () => {
+    const manifest = JSON.parse(bundle.get("package.json")!);
+    expect(manifest.pi.extensions).toEqual(["./extensions/rauf-loop-supervisor/index.ts"]);
+    for (const dep of ["@earendil-works/pi-coding-agent", "@earendil-works/pi-tui", "typebox"]) {
+      expect(manifest.peerDependencies[dep]).toBe("*");
+      expect(manifest.peerDependenciesMeta[dep]).toEqual({ optional: true });
+    }
+  });
+
+  it("ships every extension source file but no tests", () => {
+    const srcDir = path.join(REPO_ROOT, "adapter-src", "pi", "extensions", "rauf-loop-supervisor");
+    for (const name of fs.readdirSync(srcDir)) {
+      const rel = path.join("extensions", "rauf-loop-supervisor", name);
+      if (name === "item-card.ts") continue;
+      expect(bundle.get(rel), `bundle missing ${rel}`).toBe(
+        fs.readFileSync(path.join(srcDir, name), "utf-8"),
+      );
+    }
+    expect([...bundle.keys()].some((k) => k.endsWith(".test.ts"))).toBe(false);
+  });
+
+  it("vendors core's card formatter without its schema import, logic unchanged", () => {
+    const vendored = vendoredItemCard();
+    const core = fs.readFileSync(
+      path.join(REPO_ROOT, "packages", "core", "src", "item-card.ts"),
+      "utf-8",
+    );
+    expect(vendored).not.toContain('from "./schemas.js"');
+    expect(vendored).toContain("type LoopEvent = any;");
+    expect(bundle.get(path.join("extensions", "rauf-loop-supervisor", "item-card.ts"))).toBe(
+      vendored,
+    );
+    // Everything after the import line is byte-identical to core.
+    const tail = (s: string) => s.slice(s.indexOf("/** Cap on an agent-written"));
+    expect(tail(vendored)).toBe(tail(core));
   });
 });

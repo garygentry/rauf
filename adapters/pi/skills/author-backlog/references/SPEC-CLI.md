@@ -106,6 +106,12 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | [config set](#rauf-config-set-key-value) | Set a single global config value |
 | [config list](#rauf-config-list)         | List all global config values    |
 
+### [hook](#hook): Host hooks for supervising agent sessions
+
+| Command                                  | Description                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------- |
+| [hook codex-stop](#rauf-hook-codex-stop) | Codex Stop hook: hold a session open while a loop it supervises runs |
+
 ### [version / help](#utilities): Utilities
 
 | Command                    | Description             |
@@ -162,7 +168,7 @@ Run the loop. Without `--detached`, runs directly in-process, the **unattended-s
 > **Per-run iteration budget:** `maxIterations` bounds a single `loop run` invocation, not the total work across restarts. The iteration counter resets to zero each time the process starts. Run `rauf resume` (or `rauf loop run` again) to continue across restarts; each run gets its own fresh budget.
 
 - `--iterations N`: max iterations. Resolution order: `--iterations` flag > `.rauf.json` `options.maxIterations` > `computeMaxIterations` from backlog (`ceil(pending × avgEstimatedIterations × 1.5) + 5`, floored at 20). The resolved value and its source (`flag` / `.rauf.json` / `computed`) are logged at startup.
-- `--detached` / `-d`: delegate to the server API instead of running in-process (auto-starts the server; prints a follow hint; returns immediately)
+- `--detached` / `-d`: delegate to the server API instead of running in-process (auto-starts the server; prints a follow hint and a `Wait:` line — the `rauf loop wait … --since-seq N --run-id R` to start supervising from, captured before the run rotates its log; returns immediately). With `$RAUF_SUPERVISOR_ID` or `$CODEX_THREAD_ID` set it also records a supervisor marker for [`hook codex-stop`](#rauf-hook-codex-stop)
 - `--follow` / `-f`: with `--detached`, attach the `follow` view after the server accepts the job. Ctrl-C detaches the view only; the loop keeps running server-side.
 - `--retries N`: max retries per item (default: 3)
 - `--model <model>`: model override (run-level). Sets the model for every iteration unless an item carries its own `model`. Precedence: `item.model > --model > .rauf.json options.model > provider default`.
@@ -209,6 +215,7 @@ It is **narration, not a decision surface.** Decide what to do next from `rauf s
 - `--json`: print one JSON object: `{ event, card, nextSeq, runId, runChanged, loopState, progress, terminal, timedOut }` (`event` is the `PersistedEvent` or `null`; `progress` is `{ done, total }`).
 - Human output: the card, then `next: --since-seq N --run-id ID` (omitted once terminal). On a timeout the first line reads `… no new events in 240s — RUNNING · 7/26 done`.
 - `--notify-cmd <cmd>`: on an exception or loop end (not a routine `item_completed`, not a timeout), run `<cmd>` through the shell with the card in `$RAUF_CARD`, the event type in `$RAUF_EVENT_TYPE` (`loop_ended` when no event) and the state in `$RAUF_LOOP_STATE`, e.g. `--notify-cmd 'notify-send rauf "$RAUF_CARD"'`. Output is discarded; a failure only warns on stderr.
+- **Supervisor marker:** when the calling session is identifiable (`$RAUF_SUPERVISOR_ID`, or `$CODEX_THREAD_ID` inside Codex), each call records its cursor in `<stateDir>/supervisors/<session-id>.json`, and exit 11 removes it. [`hook codex-stop`](#rauf-hook-codex-stop) reads it.
 - **Exit codes** (specific to this verb): `0` an event was returned (the loop may still be running), `10` timeout with no event while the loop is live, `11` the loop has ended and you are caught up, `2` usage error (bad flag, missing/ambiguous target), `1` the backlog root could not be resolved. A terminal outcome is never exit 0.
 
 **Cards.** One plain-text line per event, the same line `follow` and the host extensions print (`formatSupervisionCard` in `@rauf/core`):
@@ -728,6 +735,55 @@ Set a single global config value.
 ### rauf config list
 
 List all global config values.
+
+---
+
+## hook
+
+### rauf hook codex-stop
+
+A Codex **Stop hook** (#156). Codex cannot wake the model when a background process prints or
+exits, so a session that ends its turn stops watching the loop it started. Wired into Codex,
+this hook runs whenever the session tries to end its turn, and blocks the stop while a loop
+that session supervises is still running.
+
+```
+rauf hook codex-stop                 # run by Codex: reads the Stop-hook JSON on stdin
+rauf hook codex-stop --print-config  # print the hooks.json entry
+```
+
+- **Which loops a session supervises.** `rauf loop wait` and `rauf loop run --detached` write a
+  marker at `<stateDir>/supervisors/<session-id>.json` when the session is identifiable:
+  `$RAUF_SUPERVISOR_ID` if set, else `$CODEX_THREAD_ID` (Codex sets it in every shell command,
+  equal to the hook's `session_id`). The marker holds the cursor for the next `loop wait`;
+  `loop wait` refreshes it on every call and removes it once the loop has ended (exit 11).
+  `supervisors/` is runtime state: `rauf install` gitignores it and the runner never commits it.
+  A per-session index, `~/.rauf/supervisors/<session-id>.json`, lists every state dir the session
+  supervises, so the hook finds a loop outside its `cwd` (a sibling project, or a session started
+  in a subdirectory); entries whose marker is gone are pruned.
+- **Decision.** For each of the session's markers (from the index, plus any under the hook's `cwd`), the hook derives the
+  loop's status. A running loop (`RUNNING`/`REVIEWING`, or a live lock holder) → print
+  `{"decision":"block","reason":"…"}`, where the reason tells the model to run the exact next
+  `rauf loop wait … --since-seq N --run-id R --timeout 240s`, report the card, and keep going
+  until exit 11 (or delete the marker if the user asked to stop supervising).
+- **When it lets go** (prints nothing, or only a `systemMessage`): no marker for the session; the
+  loop has ended or paused (complete, `PAUSED_HUMAN`, error, …; the marker is removed);
+  `SLEEPING_LIMIT` (the loop sleeps for hours; holding the session would only burn turns); or
+  the session has ended its turn 3 times in a row without running `loop wait` in between
+  (`stop_hook_active` alone never releases — a session that keeps waiting is held while the loop
+  runs). Unreadable input never blocks. Always exits 0.
+- **Install.** Add the `--print-config` output to `~/.codex/hooks.json`, enable hooks
+  (`[features] hooks = true` in `~/.codex/config.toml`), and trust the hook in Codex's hooks
+  view; Codex records the trust under `[hooks.state]` and does not run an untrusted hook.
+  Sessions that never touch rauf are unaffected.
+
+```json
+{
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "rauf hook codex-stop", "timeout": 30 }] }]
+  }
+}
+```
 
 ---
 

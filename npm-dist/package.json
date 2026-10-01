@@ -10,15 +10,35 @@
     "rauf.mjs",
     "README.md",
     "LICENSE",
-    "adapters/pi/skills"
+    "adapters/pi/skills",
+    "adapters/pi/extensions"
   ],
   "pi": {
     "skills": [
       "./adapters/pi/skills"
+    ],
+    "extensions": [
+      "./adapters/pi/extensions/rauf-loop-supervisor/index.ts"
     ]
   },
   "engines": {
     "node": ">=18"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
   },
   "license": "MIT",
   "repository": {

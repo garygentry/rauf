@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { buildBundle } from "./build-npm-dist-pi-skills";
+import { buildBundle, buildExtensionsBundle } from "./build-npm-dist-pi-skills";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -38,5 +38,21 @@ describe("buildBundle", () => {
       "utf-8",
     );
     expect(bundle.get(rel)).toBe(canonical);
+  });
+});
+
+describe("buildExtensionsBundle (#154)", () => {
+  it("copies the generated extensions and the package manifest declares them", () => {
+    const ext = buildExtensionsBundle();
+    const rel = path.join("rauf-loop-supervisor", "index.ts");
+    expect(ext.get(rel)).toBe(
+      fs.readFileSync(path.join(REPO_ROOT, "adapters", "pi", "extensions", rel), "utf-8"),
+    );
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, "npm-dist", "package.json"), "utf-8"),
+    );
+    expect(pkg.files).toContain("adapters/pi/extensions");
+    expect(pkg.pi.extensions).toEqual(["./adapters/pi/extensions/rauf-loop-supervisor/index.ts"]);
+    expect(pkg.peerDependenciesMeta.typebox).toEqual({ optional: true });
   });
 });

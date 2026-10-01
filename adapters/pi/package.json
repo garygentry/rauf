@@ -2,15 +2,34 @@
   "name": "rauf-pi-adapter",
   "private": true,
   "version": "0.17.1",
-  "description": "Generated Pi skill bundle for rauf autonomous coding loops",
+  "description": "Generated Pi package for rauf autonomous coding loops (skills + loop supervisor)",
   "keywords": [
     "pi-package",
     "rauf",
     "agent-skills"
   ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
   "pi": {
     "skills": [
       "./skills"
+    ],
+    "extensions": [
+      "./extensions/rauf-loop-supervisor/index.ts"
     ]
   }
 }

@@ -79,6 +79,10 @@ export const RAUF_GITIGNORE_ENTRIES = [
   "**/.rauf/iteration-status.json",
   "**/.rauf/rauf.log",
   "**/.rauf/events.ndjson",
+  // Session supervisor state (Pi extension mirror, Codex Stop-hook markers) and
+  // feature-forge's legacy Pi mirror.
+  "**/.rauf/supervisors/",
+  "**/.rauf/.forge-supervisor.json",
   "**/backlog.json.bak",
 ] as const;
 

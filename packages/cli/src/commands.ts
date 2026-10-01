@@ -28,6 +28,7 @@ import {
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import { handleFollow } from "./follow-command.js";
 import { handleLoopWait } from "./wait-command.js";
+import { handleHookCodexStop } from "./hook-commands.js";
 import {
   handleProfileShow,
   handleProfileDetect,
@@ -304,6 +305,26 @@ export const COMMANDS: CommandDef[] = [
           },
         ],
         handler: handleLoopReview,
+      },
+    ],
+  },
+  {
+    name: "hook",
+    description: "Host hooks for agent sessions that supervise a loop",
+    usage: "rauf hook <subcommand>",
+    subcommands: [
+      {
+        name: "codex-stop",
+        description:
+          "Codex Stop hook: keep a Codex session that launched or is waiting on a loop from ending its turn while the loop runs",
+        usage: "rauf hook codex-stop [--print-config]",
+        flags: [
+          {
+            name: "--print-config",
+            description: "Print the hooks.json snippet that wires this hook into Codex",
+          },
+        ],
+        handler: handleHookCodexStop,
       },
     ],
   },
