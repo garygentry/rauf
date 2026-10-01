@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.18.0
+
 ### Upgrade notes / behavior changes
 
 - **`drive-rauf-loop` now prescribes the wait loop.** Step 2 is "wait on `rauf loop wait`, decide from `status --json`" (the 5 s poll remains for hosts that can't block). A new "Supervising from your harness" section gives the Claude Code / Pi / Codex recipes and one hard rule: never end the turn while a supervised loop runs unless your host wakes you. The decision tree is unchanged; row 12 now says "keep waiting". Agents and tools that cite Step 2 should re-read it. (#155)
