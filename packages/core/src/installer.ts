@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { atomicWrite, computeHash, fileExists, ensureDir, readJsonFile } from "./fs-utils.js";
+import { matchShippedRaufMd } from "./raufmd-history.js";
 import {
   BacklogSchema,
   normalizeBacklogItems,
@@ -930,6 +931,13 @@ function backupLegacyRaufMd(raufDir: string, content: string): Result<string> {
   }
 }
 
+/** "v0.9.0" or "v0.9.0–v0.14.0" for a list of releases that shipped the same template. */
+function shippedRange(versions: readonly string[]): string {
+  const first = versions[0] ?? "";
+  const last = versions[versions.length - 1] ?? first;
+  return first === last ? first : `${first}–${last}`;
+}
+
 /** True when a legacy layout carries text the new contract would not reproduce. */
 function legacyNeedsBackup(
   legacy: NonNullable<Extract<RaufMdLayout, { kind: "managed" }>["legacy"]>,
@@ -964,7 +972,7 @@ function hasProjectContent(content: string): boolean {
  * Remove only the managed RAUF.md region. Everything outside it (text above the block and the
  * project-specific section) survives; a file left with only rauf scaffolding is deleted. A file
  * with no sentinels has no rauf-owned region and is left untouched. Malformed ownership markers
- * fail closed. A pre-ownership layout is backed up verbatim first.
+ * fail closed. A pre-ownership layout that a user edited is backed up verbatim first.
  */
 function removeRaufMdManagedSection(filePath: string): Result<void> {
   if (!fileExists(filePath)) return ok(undefined);
@@ -995,10 +1003,12 @@ function removeRaufMdManagedSection(filePath: string): Result<void> {
   const prefix = content.slice(0, layout.startIdx);
   let rest: string;
   if (layout.legacy) {
-    // Uninstall has no rendered contract to compare against, so a pre-ownership file is always
-    // copied before its formerly unmanaged contract region is dropped.
-    const backup = backupLegacyRaufMd(path.dirname(filePath), content);
-    if (!backup.ok) return backup;
+    // Unless it is exactly what a rauf release shipped, a pre-ownership file is copied before its
+    // formerly unmanaged contract region is dropped.
+    if (!matchShippedRaufMd(content)) {
+      const backup = backupLegacyRaufMd(path.dirname(filePath), content);
+      if (!backup.ok) return backup;
+    }
     const section = layout.legacy.userSection;
     rest =
       layout.legacy.gap +
@@ -1087,7 +1097,12 @@ function deployRaufMd(
         current.slice(0, layout.startIdx),
         layout.legacy.userSection?.userSuffix ?? "",
       );
-      if (legacyNeedsBackup(layout.legacy, newManagedContent)) {
+      const shipped = matchShippedRaufMd(current);
+      if (shipped) {
+        detail =
+          `RAUF.md migrated from the rauf ${shippedRange(shipped)} layout to the full managed ` +
+          "contract, project-specific content preserved";
+      } else if (legacyNeedsBackup(layout.legacy, newManagedContent)) {
         const backup = backupLegacyRaufMd(raufDir, current);
         if (!backup.ok) return backup;
         detail =
@@ -1106,7 +1121,14 @@ function deployRaufMd(
       const section = findUserSection(current, 0);
       const preamble = section ? current.slice(0, section.start) : current;
       const preambleBody = preamble.replace(RAUF_MD_TITLE, "");
-      if (section && !preambleBody.includes("## Workflow")) {
+      const shipped = matchShippedRaufMd(current);
+      if (shipped) {
+        // A shipped release's file with its sentinels stripped: nothing to keep but user content.
+        updated = recomposeRaufMd(rendered, "", section?.userSuffix ?? "");
+        detail =
+          `RAUF.md migrated from the rauf ${shippedRange(shipped)} layout to the full managed ` +
+          "contract, project-specific content preserved";
+      } else if (section && !preambleBody.includes("## Workflow")) {
         // No sentinels but a recognizable user section — e.g. what uninstall leaves behind.
         // Re-wrap it: preamble text stays above the managed block, user content below its anchor.
         updated = recomposeRaufMd(
