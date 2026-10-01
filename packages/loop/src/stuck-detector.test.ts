@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { StreamParser, type ClaudeStreamEvent } from "./stream-parser.js";
+import { StreamParser, type AgentStreamEvent } from "./stream-parser.js";
 import {
   DEFAULT_STUCK_THRESHOLD_MS,
   DEFAULT_TOOL_STUCK_THRESHOLD_MS,
@@ -21,7 +21,7 @@ const DEFAULTS: StuckThresholds = {
 function harness(thresholds: StuckThresholds = DEFAULTS) {
   let now = 0;
   const detector = new StuckDetector(thresholds, now);
-  const events: ClaudeStreamEvent[] = [];
+  const events: AgentStreamEvent[] = [];
   const parser = new StreamParser((e) => {
     events.push(e);
     detector.onEvent(e, now);

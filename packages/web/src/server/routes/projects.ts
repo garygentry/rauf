@@ -125,6 +125,8 @@ const ResumeBodySchema = z
   .object({
     backlogRoot: z.string().optional(),
     retryBlocked: z.boolean().optional(),
+    provider: z.string().optional(),
+    ignoreItemModel: z.boolean().optional(),
     answers: z.array(z.object({ itemId: z.string(), text: z.string() }).strict()).optional(),
   })
   .strict();
@@ -987,6 +989,8 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
                 // it into the wrong commit, and the guard's exemption is scoped to it
                 // by identity. undefined (ambiguous owner) → order-based fallback.
                 allowDirtyForItemId: dirtyOwnerItemId,
+                provider: body.provider,
+                ...(body.ignoreItemModel ? { ignoreItemModel: true } : {}),
               });
             }
           }
@@ -1013,6 +1017,8 @@ export function createProjectsRouter(rootDirectoryOverride?: string): Hono {
           reviewOnly: true,
           sessionTimeoutMinutes: DEFAULT_SESSION_TIMEOUT_MINUTES,
           backlogRoot: resolvedBacklogRoot,
+          provider: body.provider,
+          ...(body.ignoreItemModel ? { ignoreItemModel: true } : {}),
         });
         const started = getLoopManager().startReviewLoop(
           projectPath,

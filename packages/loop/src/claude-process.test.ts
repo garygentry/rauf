@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { spawnClaude } from "./claude-process.js";
-import type { ClaudeStreamEvent } from "./stream-parser.js";
+import type { AgentStreamEvent } from "./stream-parser.js";
 
 // We test spawnClaude by replacing the "claude" binary with a small
 // shell script that echoes args, stdin, and controls exit behavior.
@@ -316,8 +316,8 @@ describe("spawnClaude", () => {
       },
     });
     const collect = () => {
-      const events: ClaudeStreamEvent[] = [];
-      return { events, onStreamEvent: (e: ClaudeStreamEvent) => events.push(e) };
+      const events: AgentStreamEvent[] = [];
+      return { events, onStreamEvent: (e: AgentStreamEvent) => events.push(e) };
     };
     const aborted = { type: "tool_end", blockIndex: 0, toolUseId: "toolu_open", reason: "aborted" };
 

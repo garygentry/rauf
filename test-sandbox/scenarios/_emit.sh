@@ -8,8 +8,9 @@
 #            non-empty line and NO stream-json telemetry whatsoever (no
 #            message_start / content_block_* / message_delta). This exercises the
 #            non-claude CLI-agent path where token/tool telemetry is absent.
-#   stream → (default) Claude stream-json NDJSON, with the SAME signal carried in
-#            the final text_delta — byte-compatible with the legacy claude path.
+#   copilot-jsonl → Copilot CLI JSONL with the signal in assistant.message.
+#   stream        → (default) Claude stream-json NDJSON, with the SAME signal carried in
+#                   the final text_delta — byte-compatible with the legacy claude path.
 #
 # Scenarios source this file and call emit_done / emit_blocked / emit_needs_human
 # (or is_plain) so the two formats stay in lockstep. Scenarios that need bespoke
@@ -24,6 +25,10 @@ is_plain() {
   [ "$MOCK_AGENT_FORMAT" = "plain" ]
 }
 
+is_copilot() {
+  [ "$MOCK_AGENT_FORMAT" = "copilot-jsonl" ]
+}
+
 # _emit_signal <message> <signal>
 # plain : "<message>" line then "<signal>" on its own final non-empty line.
 # stream: a single text content block whose text is "<message>\n\n<signal>",
@@ -34,6 +39,9 @@ _emit_signal() {
   if is_plain; then
     printf '%s\n' "$message"
     printf '%s\n' "$signal"
+  elif is_copilot; then
+    printf '{"type":"assistant.message","data":{"content":"%s\\n\\n%s"}}\n' "$message" "$signal"
+    echo '{"type":"result","usage":{"consumption":1,"codeChanges":{"linesAdded":1}}}'
   else
     echo '{"type":"message_start","message":{"usage":{"input_tokens":12000}}}'
     echo '{"type":"content_block_start","index":0,"content_block":{"type":"text"}}'

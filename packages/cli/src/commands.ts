@@ -296,8 +296,22 @@ export const COMMANDS: CommandDef[] = [
       {
         name: "review",
         description: "Review completed items and create fix items",
-        usage: "rauf loop review [path] [--model MODEL] [--timeout N] [--items ID,ID]",
+        usage:
+          "rauf loop review [path] [--agent ID] [--model MODEL|--no-model] [--timeout N] [--items ID,ID]",
         flags: [
+          {
+            name: "--agent <id>",
+            description: `Coding agent CLI for the review. Supported: ${SUPPORTED_AGENT_IDS}`,
+          },
+          {
+            name: "--model <name>",
+            description: "Model to pass to the selected agent; omit for the provider default",
+          },
+          {
+            name: "--no-model",
+            description: "Ignore project/item model pins and use the provider default",
+          },
+          { name: "--timeout <N>", description: "Review timeout in minutes" },
           {
             name: "--items",
             description:
@@ -335,6 +349,10 @@ export const COMMANDS: CommandDef[] = [
       "re-detects the profile and resyncs only RAUF.md's managed section",
     usage: "rauf install <path> [options]",
     flags: [
+      {
+        name: "--agent <id>",
+        description: `Set the project default coding agent. Supported: ${SUPPORTED_AGENT_IDS}`,
+      },
       { name: "--yes", description: "Skip the preflight-check confirmation prompt" },
       {
         name: "--gitignore-scripts",
@@ -368,6 +386,10 @@ export const COMMANDS: CommandDef[] = [
     description: "Initialize a new project with rauf",
     usage: "rauf init <path> [options]",
     flags: [
+      {
+        name: "--agent <id>",
+        description: `Set the project default coding agent. Supported: ${SUPPORTED_AGENT_IDS}`,
+      },
       { name: "--name <name>", description: "Project name (defaults to directory basename)" },
       { name: "--description <text>", description: "Project description" },
       {

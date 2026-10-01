@@ -235,7 +235,9 @@ The completion card is built from `item_completed`'s optional fields (commit sha
 Run a standalone review pass over all completed backlog items, without running a full loop.
 
 - Reads all `done` items, spawns a review Claude session, and creates fix items with `source: "review"`
+- `--agent <id>`: coding agent CLI for the review (same ids as `loop run --agent`); omitted → the project default / `claude-cli`
 - `--model <model>`: model override
+- `--no-model`: ignore project/item model pins and use the selected provider's default
 - `--timeout N`: session timeout in minutes (default: 60)
 - Outputs a review summary or "no issues found"
 - `--items <id,id>`: review only these done items (default: every done item). `rauf resume` passes a pending review's `reviewItemIds` here
@@ -448,8 +450,8 @@ Show loop state and backlog progress for all discovered projects.
 
 List every supported coding agent and whether its CLI is available on this machine.
 
-- Output: a table with columns **ID**, **NAME**, **AVAILABLE** (`yes`/`no`), and **DETAIL** (PATH location, "not found", or credential/configurable status)
-- `--json`: emit the availability list as `{ agents: AgentAvailability[] }` (`{ id, displayName, binaryName?, available, detail? }`)
+- Output: a table with columns **ID**, **NAME**, **BINARY** (`present`/`missing`), **AUTH** (`ready`/`not ready`/`unknown` — `unknown` when the provider has no safe, file-only auth probe), and **DETAIL** (PATH location, "not found", or credential/configurable status)
+- `--json`: emit the availability list as `{ agents: AgentAvailability[] }` (`{ id, displayName, binaryName?, available, binaryAvailable, authenticated, detail? }`; `authenticated` is `true`/`false`/`null`)
 - Availability is derived by a PATH stat / credential read only; it **never** spawns an agent subprocess (status reads files, not subprocesses)
 - Always exits `0` for a successful listing, even when every agent is unavailable
 - Built-ins listed: `claude-cli`, `codex`, `gemini`, `copilot`, `cursor`, `pi`, and the reserved configurable `generic-cli`
