@@ -1,5 +1,11 @@
 # Architecture
 
+> **Current state (since #131).** This document describes the feature as first built. `codex`
+> and `copilot` have since moved off the `CliAgent` engine onto dedicated JSONL-streaming
+> adapters (`packages/loop/src/providers/codex-cli.ts`, `copilot-cli.ts`); the shipped presets
+> are now `gemini`, `cursor`, and `pi`. Selection (`--agent <id>`) is unchanged. For the current
+> provider table see [SPEC-BACKLOG-TOOL-CONTRACT.md §5](../../SPEC-BACKLOG-TOOL-CONTRACT.md#5-provider-specifications).
+
 This document explains how the agent-agnostic loop is built: the registry that makes
 agents enumerable and probeable, the single engine that drives every non-Claude CLI, how
 the runner routes an iteration through the selected agent, and the two cross-cutting

@@ -178,7 +178,7 @@ Both thresholds are configurable per project in `.rauf.json`:
 }
 ```
 
-Tool tracking needs a streaming agent (`claude`, `codex`). The plain-text agents emit no stream
+Tool tracking needs a streaming agent (`claude`, `codex`, `copilot`). The plain-text agents emit no stream
 events, so for them the warning just means the iteration has run `stuckThresholdMs` without
 finishing.
 
