@@ -143,8 +143,8 @@ describe("CopilotCliProvider", () => {
     );
     expect(mockSpawn.mock.calls[0]![1]).not.toContain("--model");
     expect(events).toEqual([
-      { type: "tool_start", toolName: "bash", blockIndex: 0 },
-      { type: "tool_end", blockIndex: 0 },
+      { type: "tool_start", toolName: "bash", blockIndex: 0, toolUseId: "tool-1" },
+      { type: "tool_end", blockIndex: 0, toolUseId: "tool-1" },
     ]);
   });
 

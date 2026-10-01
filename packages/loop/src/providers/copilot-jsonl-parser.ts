@@ -18,10 +18,18 @@ export class CopilotJsonlParser {
     for (const line of lines) this.handleLine(line);
   }
 
-  /** Flush the final record when stdout closes without a trailing newline. */
+  /**
+   * Flush the final record when stdout closes without a trailing newline, then close
+   * every still-open tool call with `reason: "aborted"` so start/end telemetry stays
+   * balanced on every exit path (#141). Idempotent.
+   */
   finish(): void {
     this.handleLine(this.buffer);
     this.buffer = "";
+    for (const [toolUseId, blockIndex] of this.toolBlocks) {
+      this.emit({ type: "tool_end", blockIndex, toolUseId, reason: "aborted" });
+    }
+    this.toolBlocks.clear();
   }
 
   getReconstructedText(): string {
@@ -56,7 +64,12 @@ export class CopilotJsonlParser {
       if (typeof data?.toolCallId !== "string" || typeof data.toolName !== "string") return;
       const blockIndex = this.nextBlockIndex++;
       this.toolBlocks.set(data.toolCallId, blockIndex);
-      this.emit({ type: "tool_start", toolName: data.toolName, blockIndex });
+      this.emit({
+        type: "tool_start",
+        toolName: data.toolName,
+        blockIndex,
+        toolUseId: data.toolCallId,
+      });
       return;
     }
 
@@ -66,7 +79,7 @@ export class CopilotJsonlParser {
       const blockIndex = this.toolBlocks.get(data.toolCallId);
       if (blockIndex === undefined) return;
       this.toolBlocks.delete(data.toolCallId);
-      this.emit({ type: "tool_end", blockIndex });
+      this.emit({ type: "tool_end", blockIndex, toolUseId: data.toolCallId });
     }
   }
 

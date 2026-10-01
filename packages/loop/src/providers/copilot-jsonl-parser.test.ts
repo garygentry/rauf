@@ -25,13 +25,28 @@ describe("CopilotJsonlParser", () => {
     );
     expect(parser.getRawOutput()).toBe(jsonl);
     expect(events).toEqual([
-      { type: "tool_start", toolName: "bash", blockIndex: 0 },
-      { type: "tool_end", blockIndex: 0 },
+      { type: "tool_start", toolName: "bash", blockIndex: 0, toolUseId: "tool-1" },
+      { type: "tool_end", blockIndex: 0, toolUseId: "tool-1" },
     ]);
     expect(parseSignal(neutralizeForDetection(parser.getReconstructedText()))).toEqual({
       signal: "needs_human",
       reason: "region required",
     });
+  });
+
+  it("closes still-open tool calls as aborted on finish, once (#141)", () => {
+    const events: AgentStreamEvent[] = [];
+    const parser = new CopilotJsonlParser((event) => events.push(event));
+    parser.feed(
+      '{"type":"tool.execution_start","data":{"toolCallId":"t-open","toolName":"bash"}}\n',
+    );
+    parser.finish();
+    parser.finish();
+
+    expect(events).toEqual([
+      { type: "tool_start", toolName: "bash", blockIndex: 0, toolUseId: "t-open" },
+      { type: "tool_end", blockIndex: 0, toolUseId: "t-open", reason: "aborted" },
+    ]);
   });
 
   it("uses the last assistant signal and excludes non-assistant control tokens", () => {
