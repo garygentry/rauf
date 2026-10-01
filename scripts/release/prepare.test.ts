@@ -103,6 +103,20 @@ describe("dryRunLines (Pi bundle regeneration, issue #119)", () => {
     expect(lines[piIdx]).toContain("0.15.1");
     expect(lines[piIdx]).toContain("scripts/build-pi-bundle.ts");
   });
+
+  it("advertises regenerating the Copilot bundle before the changelog roll (#131)", () => {
+    const lines = dryRunLines(makePlan("0.15.1"));
+    const copilotIdx = lines.findIndex((l) => /adapters\/copilot\/.*regenerate/.test(l));
+    const changelogIdx = lines.findIndex((l) => l.startsWith("  CHANGELOG.md:"));
+
+    expect(
+      copilotIdx,
+      "dry-run should mention regenerating adapters/copilot",
+    ).toBeGreaterThanOrEqual(0);
+    expect(copilotIdx).toBeLessThan(changelogIdx);
+    expect(lines[copilotIdx]).toContain("0.15.1");
+    expect(lines[copilotIdx]).toContain("scripts/build-copilot-bundle.ts");
+  });
 });
 
 describe("guard messages are distinct (REQ-PREP-07)", () => {
