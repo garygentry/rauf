@@ -325,10 +325,14 @@ Re-sync artifacts:
 
 ### uninstall(projectPath, options) → Result<void>
 
-Remove rauf-owned artifacts and sentinel regions. Remove only the managed region from RAUF.md;
-delete the file when no project-specific content exists, otherwise preserve content below the user
-anchor. Remove only rauf's independent AGENTS.md and CLAUDE.md regions. Malformed RAUF.md ownership
-markers fail closed before the marker file is deleted. Preserve backlog/progress/log per user choice.
+Remove rauf-owned artifacts and sentinel regions. Remove only the managed region from RAUF.md and
+keep everything outside it (text above the block and the project-specific section); delete the file
+when only rauf scaffolding remains. A RAUF.md with no managed sentinels has no rauf-owned region and
+is left untouched. A pre-ownership (0.18 and earlier) layout is copied verbatim to
+`.rauf/RAUF.md.pre-ownership.md` before its formerly unmanaged contract is dropped; such backups are
+user data and are never deleted. Remove only rauf's independent AGENTS.md and CLAUDE.md regions.
+Malformed RAUF.md ownership markers fail closed before the marker file is deleted. A later install
+re-wraps the remaining project content in place. Preserve backlog/progress/log per user choice.
 
 ## Module: greenfield.ts
 

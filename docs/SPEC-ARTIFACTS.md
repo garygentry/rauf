@@ -437,7 +437,9 @@ the explicit user anchor and survives install, repeated update, and uninstall. P
 whose sentinels bounded only verification commands (0.18 and earlier) migrate by preserving bytes
 below the old user anchor; if their formerly unmanaged Workflow … Important Rules region differs
 from the shipped contract (it may hold hand edits), the whole pre-migration file is first copied
-verbatim to `.rauf/RAUF.md.pre-ownership.md` and the update reports it. Existing files with no ownership sentinels are preserved verbatim below the new managed
+verbatim to `.rauf/RAUF.md.pre-ownership.md` (`.2.md`, `.3.md`, … if a different copy already
+exists) and the update reports it; text above the managed block stays in place. A sentinel-free file
+that still has the user section (what uninstall leaves) is re-wrapped without nesting. Other files with no ownership sentinels are preserved verbatim below the new managed
 contract. Malformed or duplicate sentinels fail closed without rewriting the file.
 
 ```markdown

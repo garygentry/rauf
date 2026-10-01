@@ -65,6 +65,7 @@ const AGENTS_ADDON_FILE = "AGENTS_ADDON.md";
 /** Sentinels for the tool-owned block in RAUF.md. User content lives below its anchor. */
 const RAUF_MD_MANAGED_START = "<!-- rauf:managed:start -->";
 const RAUF_MD_MANAGED_END = "<!-- rauf:managed:end -->";
+const RAUF_MD_TITLE = "# Rauf — Per-Iteration Instructions";
 const RAUF_MD_USER_HEADING = "## Project-Specific Instructions";
 const RAUF_MD_USER_ANCHOR =
   "<!-- Add custom instructions below this line — they survive rauf update and uninstall -->";
@@ -817,12 +818,153 @@ function legacyContractRegion(content: string): string {
 /** Join a freshly rendered template to bytes that were explicitly placed below the user anchor. */
 function appendPreservedUserContent(rendered: string, userSuffix: string): string {
   if (userSuffix.trim() === "") return rendered;
-  return rendered.replace(/\s*$/, "\n") + userSuffix.replace(/^\r?\n/, "\n");
+  // `userSuffix` starts with the newline that ended the anchor line; the template already has it.
+  return rendered.replace(/\s*$/, "\n") + userSuffix.replace(/^\r?\n/, "");
 }
 
 /**
- * Remove only the managed RAUF.md region. A fresh managed-only file is deleted; content below the
- * explicit project-specific anchor survives. Malformed ownership markers fail closed.
+ * Rebuild RAUF.md from the rendered template, keeping the caller's bytes above the managed block
+ * (in place of the template's title) and below the user anchor.
+ */
+function recomposeRaufMd(rendered: string, prefix: string, userSuffix: string): string {
+  const renderedStart = rendered.indexOf(RAUF_MD_MANAGED_START);
+  const head =
+    prefix.trim() === "" ? rendered.slice(0, renderedStart) : prefix.replace(/\s*$/, "\n\n");
+  return appendPreservedUserContent(head + rendered.slice(renderedStart), userSuffix);
+}
+
+/** Bytes after `## Project-Specific Instructions` / its anchor, starting the search at `from`. */
+function findUserSection(
+  content: string,
+  from: number,
+): { start: number; userSuffix: string } | null {
+  const anchor = findRaufUserAnchor(content.slice(from));
+  const headingIdx = content.indexOf(RAUF_MD_USER_HEADING, from);
+  if (anchor) {
+    const anchorIdx = from + anchor.index;
+    // Count the heading as part of the section only when it directly precedes the anchor.
+    const start =
+      headingIdx !== -1 && content.slice(headingIdx, anchorIdx).trim() === RAUF_MD_USER_HEADING
+        ? headingIdx
+        : anchorIdx;
+    return { start, userSuffix: content.slice(anchorIdx + anchor.marker.length) };
+  }
+  if (headingIdx === -1) return null;
+  const lineEnd = content.indexOf("\n", headingIdx);
+  return { start: headingIdx, userSuffix: lineEnd === -1 ? "" : content.slice(lineEnd) };
+}
+
+/** Parsed ownership layout of an existing RAUF.md. */
+type RaufMdLayout =
+  | { kind: "malformed"; reason: string; startCount: number; endCount: number }
+  | { kind: "unbounded" }
+  | {
+      kind: "managed";
+      startIdx: number;
+      endIdx: number;
+      /**
+       * Set for the pre-ownership (0.18 and earlier) layout whose sentinels bounded only the
+       * verification commands, leaving Workflow … Important Rules unmanaged after the end marker.
+       */
+      legacy: {
+        /** Text between the old end marker and `## Workflow` (normally blank). */
+        gap: string;
+        /** The formerly unmanaged contract: `## Workflow` up to the user section (or EOF). */
+        contract: string;
+        userSection: { start: number; userSuffix: string } | null;
+      } | null;
+    };
+
+function parseRaufMd(content: string): RaufMdLayout {
+  const startCount = countOccurrences(content, RAUF_MD_MANAGED_START);
+  const endCount = countOccurrences(content, RAUF_MD_MANAGED_END);
+  if (startCount === 0 && endCount === 0) return { kind: "unbounded" };
+  if (startCount !== 1 || endCount !== 1) {
+    return { kind: "malformed", reason: "malformed or duplicate", startCount, endCount };
+  }
+  const startIdx = content.indexOf(RAUF_MD_MANAGED_START);
+  const endIdx = content.indexOf(RAUF_MD_MANAGED_END);
+  if (endIdx <= startIdx) {
+    return { kind: "malformed", reason: "out-of-order", startCount, endCount };
+  }
+
+  const afterEnd = endIdx + RAUF_MD_MANAGED_END.length;
+  const userSection = findUserSection(content, afterEnd);
+  const workflowIdx = content.indexOf("## Workflow", afterEnd);
+  const isLegacy = workflowIdx !== -1 && (userSection === null || workflowIdx < userSection.start);
+  if (!isLegacy) return { kind: "managed", startIdx, endIdx, legacy: null };
+
+  const legacyUserSection = findUserSection(content, workflowIdx);
+  return {
+    kind: "managed",
+    startIdx,
+    endIdx,
+    legacy: {
+      gap: content.slice(afterEnd, workflowIdx),
+      contract: content.slice(workflowIdx, legacyUserSection?.start ?? content.length),
+      userSection: legacyUserSection,
+    },
+  };
+}
+
+/**
+ * Copy a pre-ownership RAUF.md verbatim before rauf discards text it can no longer attribute.
+ * Never overwrites a different earlier copy; returns the `.rauf/`-relative name actually holding it.
+ */
+function backupLegacyRaufMd(raufDir: string, content: string): Result<string> {
+  const base = RAUF_MD_LEGACY_BACKUP.replace(/\.md$/, "");
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? RAUF_MD_LEGACY_BACKUP : `${base}.${n}.md`;
+    const backupPath = path.join(raufDir, name);
+    if (fileExists(backupPath)) {
+      try {
+        if (fs.readFileSync(backupPath, "utf-8") === content) return ok(`.rauf/${name}`);
+      } catch {
+        // Unreadable existing copy — never overwrite it; try the next name.
+      }
+      continue;
+    }
+    const writeResult = atomicWrite(backupPath, content);
+    if (!writeResult.ok) return writeResult;
+    return ok(`.rauf/${name}`);
+  }
+}
+
+/** True when a legacy layout carries text the new contract would not reproduce. */
+function legacyNeedsBackup(
+  legacy: NonNullable<Extract<RaufMdLayout, { kind: "managed" }>["legacy"]>,
+  newManagedContent: string,
+): boolean {
+  return (
+    legacy.gap.trim() !== "" ||
+    legacyContractRegion(legacy.contract) !== legacyContractRegion(newManagedContent)
+  );
+}
+
+/** Strip rauf's own scaffolding lines; whatever remains is project-specific content. */
+function hasProjectContent(content: string): boolean {
+  return (
+    content
+      .split("\n")
+      .filter(
+        (line) =>
+          ![
+            RAUF_MD_TITLE,
+            RAUF_MD_USER_HEADING,
+            RAUF_MD_USER_ANCHOR,
+            RAUF_MD_LEGACY_USER_ANCHOR,
+          ].includes(line.trim()),
+      )
+      .join("\n")
+      .trim() !== ""
+  );
+}
+
+/**
+ * Remove only the managed RAUF.md region. Everything outside it (text above the block and the
+ * project-specific section) survives; a file left with only rauf scaffolding is deleted. A file
+ * with no sentinels has no rauf-owned region and is left untouched. Malformed ownership markers
+ * fail closed. A pre-ownership layout is backed up verbatim first.
  */
 function removeRaufMdManagedSection(filePath: string): Result<void> {
   if (!fileExists(filePath)) return ok(undefined);
@@ -838,41 +980,37 @@ function removeRaufMdManagedSection(filePath: string): Result<void> {
     });
   }
 
-  const startCount = countOccurrences(content, RAUF_MD_MANAGED_START);
-  const endCount = countOccurrences(content, RAUF_MD_MANAGED_END);
-  if (startCount !== 1 || endCount !== 1) {
+  const layout = parseRaufMd(content);
+  if (layout.kind === "unbounded") return ok(undefined);
+  if (layout.kind === "malformed") {
     return err({
       code: ErrorCodes.VALIDATION_ERROR,
-      message: "RAUF.md has malformed or duplicate managed sentinels; refusing to remove it",
-      details: { path: filePath, startCount, endCount },
+      message:
+        `RAUF.md has ${layout.reason} managed sentinels; refusing to remove it. Fix or remove ` +
+        `${filePath} by hand, then re-run uninstall.`,
+      details: { path: filePath, startCount: layout.startCount, endCount: layout.endCount },
     });
   }
 
-  const startIdx = content.indexOf(RAUF_MD_MANAGED_START);
-  const endIdx = content.indexOf(RAUF_MD_MANAGED_END);
-  if (endIdx <= startIdx) {
-    return err({
-      code: ErrorCodes.VALIDATION_ERROR,
-      message: "RAUF.md managed sentinels are out of order; refusing to remove it",
-      details: { path: filePath },
-    });
+  const prefix = content.slice(0, layout.startIdx);
+  let rest: string;
+  if (layout.legacy) {
+    // Uninstall has no rendered contract to compare against, so a pre-ownership file is always
+    // copied before its formerly unmanaged contract region is dropped.
+    const backup = backupLegacyRaufMd(path.dirname(filePath), content);
+    if (!backup.ok) return backup;
+    const section = layout.legacy.userSection;
+    rest =
+      layout.legacy.gap +
+      (section ? `${RAUF_MD_USER_HEADING}\n${RAUF_MD_USER_ANCHOR}${section.userSuffix}` : "");
+  } else {
+    let endOffset = layout.endIdx + RAUF_MD_MANAGED_END.length;
+    if (content[endOffset] === "\n") endOffset++;
+    rest = content.slice(endOffset);
   }
 
-  const anchor = findRaufUserAnchor(content);
-  if (anchor && anchor.index > endIdx) {
-    const userSuffix = content.slice(anchor.index + anchor.marker.length);
-    if (userSuffix.trim() === "") {
-      safeUnlink(filePath);
-      return ok(undefined);
-    }
-    const preserved = `${RAUF_MD_USER_HEADING}\n${RAUF_MD_USER_ANCHOR}${userSuffix}`;
-    return atomicWrite(filePath, preserved);
-  }
-
-  let endOffset = endIdx + RAUF_MD_MANAGED_END.length;
-  if (content[endOffset] === "\n") endOffset++;
-  const outside = content.slice(0, startIdx) + content.slice(endOffset);
-  if (outside.trim() === "" || outside.trim() === "# Rauf — Per-Iteration Instructions") {
+  const outside = prefix + rest;
+  if (!hasProjectContent(outside)) {
     safeUnlink(filePath);
     return ok(undefined);
   }
@@ -918,78 +1056,12 @@ function deployRaufMd(
       });
     }
 
-    const startCount = countOccurrences(current, RAUF_MD_MANAGED_START);
-    const endCount = countOccurrences(current, RAUF_MD_MANAGED_END);
-    if ((startCount === 0) !== (endCount === 0) || startCount > 1 || endCount > 1) {
+    const layout = parseRaufMd(current);
+    if (layout.kind === "malformed") {
       return err({
         code: ErrorCodes.VALIDATION_ERROR,
-        message: "RAUF.md has malformed or duplicate managed sentinels; refusing to update it",
-        details: { path: outputPath, startCount, endCount },
-      });
-    }
-
-    if (startCount === 1 && endCount === 1) {
-      const startIdx = current.indexOf(RAUF_MD_MANAGED_START);
-      const endIdx = current.indexOf(RAUF_MD_MANAGED_END);
-      if (endIdx <= startIdx) {
-        return err({
-          code: ErrorCodes.VALIDATION_ERROR,
-          message: "RAUF.md managed sentinels are out of order; refusing to update it",
-          details: { path: outputPath },
-        });
-      }
-
-      const anchor = findRaufUserAnchor(current);
-      const contentBetweenManagedEndAndAnchor = anchor
-        ? current.slice(endIdx + RAUF_MD_MANAGED_END.length, anchor.index)
-        : "";
-      let updated: string;
-      let legacyBackup: string | null = null;
-      if (anchor && contentBetweenManagedEndAndAnchor.includes("## Workflow")) {
-        // Pre-RAUF-203 templates bounded only verification commands. Everything below the explicit
-        // user anchor is user-owned; migrate that suffix into the new full-contract boundary.
-        const userSuffix = current.slice(anchor.index + anchor.marker.length);
-        updated = appendPreservedUserContent(rendered, userSuffix);
-        // The old unbounded middle (Workflow … Important Rules) is replaced by the new contract.
-        // If it differs from what rauf now ships, it may hold hand edits: keep a verbatim copy.
-        if (
-          legacyContractRegion(contentBetweenManagedEndAndAnchor) !==
-          legacyContractRegion(newManagedContent)
-        ) {
-          const backupPath = path.join(raufDir, RAUF_MD_LEGACY_BACKUP);
-          if (!fileExists(backupPath)) {
-            const backupResult = atomicWrite(backupPath, current);
-            if (!backupResult.ok) return backupResult;
-          }
-          legacyBackup = `.rauf/${RAUF_MD_LEGACY_BACKUP}`;
-        }
-      } else {
-        updated = updateSentinelBlock(
-          current,
-          RAUF_MD_MANAGED_START,
-          RAUF_MD_MANAGED_END,
-          newManagedContent,
-        );
-      }
-
-      if (updated === current) {
-        return ok({
-          file: ".rauf/RAUF.md",
-          action: "skipped" as const,
-          detail: "RAUF.md already up to date",
-        });
-      }
-
-      const writeResult = atomicWrite(outputPath, updated);
-      if (!writeResult.ok) return writeResult;
-      return ok({
-        file: ".rauf/RAUF.md",
-        action: "updated" as const,
-        detail: legacyBackup
-          ? "RAUF.md migrated to the full managed contract, project-specific content preserved; " +
-            `the previous file is saved at ${legacyBackup} — move any edits you made outside ` +
-            "Project-Specific Instructions below its anchor, then delete the copy"
-          : "RAUF.md managed instructions updated, project-specific content preserved",
+        message: `RAUF.md has ${layout.reason} managed sentinels; refusing to update it`,
+        details: { path: outputPath, startCount: layout.startCount, endCount: layout.endCount },
       });
     }
 
@@ -1003,19 +1075,68 @@ function deployRaufMd(
       });
     }
 
-    // An unbounded legacy file has no trustworthy ownership boundary. Preserve every byte as user
-    // content beneath the new managed contract rather than overwriting it.
-    const migrated = appendPreservedUserContent(
-      rendered,
-      `\n\n### Preserved pre-managed instructions\n\n${current}`,
-    );
-    const writeResult = atomicWrite(outputPath, migrated);
+    let updated: string;
+    let detail = "RAUF.md managed instructions updated, project-specific content preserved";
+    if (layout.kind === "managed" && layout.legacy) {
+      // Pre-ownership templates bounded only verification commands. Text above the block and
+      // below the user anchor is user-owned and carried over; the old unmanaged Workflow …
+      // Important Rules region is replaced by the new full contract. If that region (or any gap
+      // text before it) differs from what rauf now ships, it may hold hand edits: keep a copy.
+      updated = recomposeRaufMd(
+        rendered,
+        current.slice(0, layout.startIdx),
+        layout.legacy.userSection?.userSuffix ?? "",
+      );
+      if (legacyNeedsBackup(layout.legacy, newManagedContent)) {
+        const backup = backupLegacyRaufMd(raufDir, current);
+        if (!backup.ok) return backup;
+        detail =
+          "RAUF.md migrated to the full managed contract, project-specific content preserved; " +
+          `the previous file is saved at ${backup.value} — move any edits you made outside ` +
+          "Project-Specific Instructions below its anchor, then delete the copy";
+      }
+    } else if (layout.kind === "managed") {
+      updated = updateSentinelBlock(
+        current,
+        RAUF_MD_MANAGED_START,
+        RAUF_MD_MANAGED_END,
+        newManagedContent,
+      );
+    } else {
+      const section = findUserSection(current, 0);
+      const preamble = section ? current.slice(0, section.start) : current;
+      const preambleBody = preamble.replace(RAUF_MD_TITLE, "");
+      if (section && !preambleBody.includes("## Workflow")) {
+        // No sentinels but a recognizable user section — e.g. what uninstall leaves behind.
+        // Re-wrap it: preamble text stays above the managed block, user content below its anchor.
+        updated = recomposeRaufMd(
+          rendered,
+          preambleBody.trim() === "" ? "" : preamble,
+          section.userSuffix,
+        );
+        detail = "RAUF.md managed instructions restored, project-specific content preserved";
+      } else {
+        // An unbounded legacy file has no trustworthy ownership boundary. Preserve every byte as
+        // user content beneath the new managed contract rather than overwriting it.
+        updated = appendPreservedUserContent(
+          rendered,
+          `\n\n### Preserved pre-managed instructions\n\n${current}`,
+        );
+        detail = "RAUF.md managed instructions added; unbounded legacy content preserved";
+      }
+    }
+
+    if (updated === current) {
+      return ok({
+        file: ".rauf/RAUF.md",
+        action: "skipped" as const,
+        detail: "RAUF.md already up to date",
+      });
+    }
+
+    const writeResult = atomicWrite(outputPath, updated);
     if (!writeResult.ok) return writeResult;
-    return ok({
-      file: ".rauf/RAUF.md",
-      action: "updated" as const,
-      detail: "RAUF.md managed instructions added; unbounded legacy content preserved",
-    });
+    return ok({ file: ".rauf/RAUF.md", action: "updated" as const, detail });
   }
 
   // First install: write full rendered template
