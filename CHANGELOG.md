@@ -17,6 +17,16 @@
 
 ### Changed
 
+- **Installed child instructions now have ownership-safe lifecycle boundaries** — the complete
+  `.rauf/RAUF.md` iteration contract is managed separately from project-specific content, legacy
+  layouts migrate without user-data loss, repeated updates are idempotent, malformed sentinels fail
+  closed, and uninstall removes only rauf-owned content. Host-neutral `AGENTS.md`, Claude-specific
+  `CLAUDE.md`, and isolated Copilot prompt injection remain independent.
+  **Upgrading from 0.18 or earlier:** the first `rauf update` moves the managed end sentinel to
+  cover the whole contract. A file still exactly as a release (0.3.0–0.18.0) shipped it is migrated
+  silently. If you edited rauf's own text, the previous file is first saved verbatim as
+  `.rauf/RAUF.md.pre-ownership.md`; move those edits below the Project-Specific Instructions
+  anchor, then delete the copy.
 - **`author-backlog` no longer names Claude's `Task tool`.** The `agentDelegation` guidance now says the loop agent uses its host's subagent or delegation mechanism when one is available. The Codex, Pi and Copilot copies were regenerated.
 
 ## 0.18.0
