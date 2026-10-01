@@ -285,10 +285,6 @@ _Released 2026-09-30._
   feature-forge's). Fixed by passing the already-extracted value through as a parameter, with
   a warning instead of a silent no-op on failure. (#114)
 
-### Changed
-
-- **`author-backlog` no longer names Claude's `Task tool`.** The `agentDelegation` guidance now says the loop agent uses its host's subagent or delegation mechanism when one is available. The Codex, Pi and Copilot copies were regenerated.
-
 ## 0.14.0
 
 ### Added

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { buildBundle, findDrift } from "./build-copilot-bundle";
+import { buildBundle, findDrift, parseFrontmatter } from "./build-copilot-bundle";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
@@ -61,6 +61,9 @@ describe("buildBundle", () => {
     expect(driver).toContain("You do NOT behave as a loop iteration");
     expect(driver).toContain("Required canonical skill contract: `drive-rauf-loop`");
     expect(driver).toContain("### The stream never decides");
+    for (const content of [reviewer, driver]) {
+      expect(content).toContain("the agent boundary above always wins");
+    }
   });
 
   it("fails on unknown Copilot tool aliases", () => {
@@ -106,6 +109,29 @@ describe("buildBundle", () => {
   it("is deterministic by generated path", () => {
     const paths = [...bundle.keys()];
     expect(paths).toEqual([...paths].sort((left, right) => left.localeCompare(right)));
+  });
+});
+
+describe("parseFrontmatter", () => {
+  it("folds block-scalar descriptions instead of keeping the indicator", () => {
+    const document = parseFrontmatter(
+      "---\nname: demo\ndescription: >\n  First line\n  second line.\n---\nBody\n",
+      "demo.md",
+    );
+    expect(document.description).toBe("First line second line.");
+    expect(document.body).toBe("Body\n");
+  });
+
+  it("parses the canonical skills' folded descriptions", () => {
+    const text = fs.readFileSync(path.join(REPO_ROOT, "skills/drive-rauf-loop/SKILL.md"), "utf-8");
+    const { description } = parseFrontmatter(text, "skills/drive-rauf-loop/SKILL.md");
+    expect(description).toMatch(/^Operate the rauf CLI/);
+  });
+
+  it("fails on indented lines outside a block scalar", () => {
+    expect(() =>
+      parseFrontmatter("---\nname: demo\n  hidden: true\ndescription: x\n---\n", "demo.md"),
+    ).toThrow("unsupported frontmatter line 'hidden: true'");
   });
 });
 
