@@ -32,7 +32,7 @@ iteration, not a review pass.
 
 ## Required canonical skill contract: `review-backlog`
 
-The Copilot custom-agent schema has no declarative skill-dependency field. The generator therefore composes the complete canonical `review-backlog` skill below so its contract is always present in this agent context. Follow it as the authoritative procedure while retaining the agent boundary above.
+The Copilot custom-agent schema has no declarative skill-dependency field. The generator therefore composes the complete canonical `review-backlog` skill below so its contract is always present in this agent context. Follow it as the authoritative procedure, except that the agent boundary above always wins: where the skill describes a step outside that boundary (for example, applying or writing changes), do not perform it, by any tool including shell execution. Report what would be done and hand that step back to the caller.
 
 # Review Rauf Backlog
 

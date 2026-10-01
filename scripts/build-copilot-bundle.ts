@@ -33,16 +33,21 @@ const AGENT_POLICIES: Readonly<Record<string, AgentPolicy>> = {
   },
 };
 
-function parseFrontmatter(text: string, source: string): CanonicalDocument {
+export function parseFrontmatter(text: string, source: string): CanonicalDocument {
   const match = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match?.[1] || match[2] === undefined) {
     throw new Error(`${source}: missing YAML frontmatter (expected leading --- block)`);
   }
 
   const fields = new Map<string, string>();
-  for (const line of match[1].split("\n")) {
+  const lines = match[1].split("\n");
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
     const field = line.match(/^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$/);
-    if (!field?.[1] || field[2] === undefined) continue;
+    if (!field?.[1] || field[2] === undefined) {
+      throw new Error(`${source}: unsupported frontmatter line '${line.trim()}'`);
+    }
     if (!SUPPORTED_FRONTMATTER_KEYS.has(field[1])) {
       throw new Error(
         `${source}: unsupported canonical field '${field[1]}'; add an explicit Copilot mapping or drop record`,
@@ -51,7 +56,18 @@ function parseFrontmatter(text: string, source: string): CanonicalDocument {
     if (fields.has(field[1]))
       throw new Error(`${source}: duplicate frontmatter field '${field[1]}'`);
     let value = field[2].trim();
-    if (
+    const blockScalar = value.match(/^([>|])[+-]?$/);
+    if (blockScalar) {
+      // Block scalar (`>` folded or `|` literal): consume the indented lines that follow.
+      const blockLines: string[] = [];
+      while (index + 1 < lines.length && /^(\s|$)/.test(lines[index + 1] ?? "")) {
+        blockLines.push((lines[++index] ?? "").trim());
+      }
+      value =
+        blockScalar[1] === ">"
+          ? blockLines.filter((blockLine) => blockLine !== "").join(" ")
+          : blockLines.join("\n").trim();
+    } else if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
     ) {
@@ -95,7 +111,7 @@ function renderAgent(
     "",
     `## Required canonical skill contract: \`${requiredSkill.name}\``,
     "",
-    `The Copilot custom-agent schema has no declarative skill-dependency field. The generator therefore composes the complete canonical \`${requiredSkill.name}\` skill below so its contract is always present in this agent context. Follow it as the authoritative procedure while retaining the agent boundary above.`,
+    `The Copilot custom-agent schema has no declarative skill-dependency field. The generator therefore composes the complete canonical \`${requiredSkill.name}\` skill below so its contract is always present in this agent context. Follow it as the authoritative procedure, except that the agent boundary above always wins: where the skill describes a step outside that boundary (for example, applying or writing changes), do not perform it, by any tool including shell execution. Report what would be done and hand that step back to the caller.`,
     "",
     requiredSkill.body.trim(),
     "",
