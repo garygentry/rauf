@@ -17,7 +17,7 @@ apply whichever coding agent (Claude, Codex, Gemini, …) drives the iteration.
 6. Run the verification command before considering work complete (foreground, and wait for it to finish within this turn — never background it or defer your signal behind an async completion notification; a non-interactive session ends when you yield, so a deferred signal never arrives and the item is retried)
 
 ### Completing
-7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
+7. If all acceptance criteria pass: output `RAUF_DONE` as your final line (optionally preceded by one `RAUF_SUMMARY: <≤120 chars>` line saying what you did)
 8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.

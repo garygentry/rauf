@@ -276,6 +276,49 @@ The current SKILL.md §4 `--ndjson --pause-on-needs-human` supervisor snippet is
 retained **here** as the optional narration example, clearly labelled as an
 optimization, not the control loop.
 
+### 3.7 Amendment (2026-10, rauf#152/#153) — `rauf loop wait` paces the poll
+
+The fixed 5s sleep between polls (§3.3) assumes the supervising agent can sit in
+a tight loop. Hosts that cannot wake the agent when a background process prints
+(Codex has no such wake; a bash tool call has a timeout) need a **bounded,
+blocking** pace instead. `rauf loop wait` supplies it:
+
+```
+rauf loop wait <root> --backlog <dir> --since-seq <nextSeq> --run-id <runId> [--timeout 240s] [--json]
+```
+
+It blocks until the next *significant* event (item completed/blocked,
+needs-human, stuck warning, review failure, long sleep/weekly limit, loop end)
+or the timeout, prints one deterministic card, and exits `0` (event), `10`
+(timeout, loop live) or `11` (loop ended, caller caught up). The default timeout
+(240s) fits one Codex exec yield and typical bash-tool limits. The full flag and
+output contract is in `docs/SPEC-CLI.md` (`rauf loop wait`).
+
+**This does not move the decision surface.** `loop wait` is narration and pacing
+only — the §3.6 rule holds unchanged:
+
+- Print each card as it arrives (the per-item progress report).
+- On an **exception card or exit 11**, make the decision from
+  `rauf status <root> --backlog <dir> --json` via the §3.4 tree — never from the
+  card or the event payload.
+- On exit `10`, nothing significant happened in the window; loop again (an
+  optional `status --json` check here is the §3.3 poll at a longer interval).
+- Pass back `nextSeq` and `runId` every call, so nothing is lost or repeated
+  across calls or a run rotation.
+
+So the canonical loop becomes: launch `--detached` → repeat `loop wait` → on an
+exception or terminal, poll `status --json` and branch per §3.4. The §3.3 5s
+`status --json` poll remains valid where a host can sustain it. The
+`drive-rauf-loop` skill rewrite that adopts the wait loop (with per-host
+supervision recipes) is a follow-up (rauf#155), not part of this amendment.
+
+**Item cards.** `item_completed` now carries optional `commitSha`,
+`filesChanged`, `durationMs`, `attempt`, `doneCount`/`totalCount` and the
+iteration agent's sanitized `RAUF_SUMMARY:` line, and is emitted after the
+per-item commit. `formatSupervisionCard` / `formatItemCard` in `@rauf/core`
+render the one line that `loop wait`, `follow` and the host extensions all
+print, e.g. `[7/26] ✓ 008 Add login form — wired the form to /api/login · abc1234 · 5 files · 6m`.
+
 ---
 
 ## 4. Skill document structure (both copies)

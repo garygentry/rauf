@@ -271,4 +271,48 @@ describe("parseSignal", () => {
       });
     });
   });
+
+  describe("RAUF_SUMMARY (#153)", () => {
+    it("reads the summary on the line directly above RAUF_DONE", () => {
+      expect(parseSignal("work\nRAUF_SUMMARY: Added the login form\nRAUF_DONE\n")).toEqual({
+        signal: "done",
+        summary: "Added the login form",
+      });
+    });
+
+    it("skips blank lines between the summary and RAUF_DONE", () => {
+      expect(parseSignal("RAUF_SUMMARY: did it\n\n  \nRAUF_DONE").summary).toBe("did it");
+    });
+
+    it("is absent when there is no summary line", () => {
+      expect(parseSignal("Some output\nRAUF_DONE")).toEqual({ signal: "done" });
+    });
+
+    it("ignores a summary that is not adjacent to RAUF_DONE", () => {
+      const out = "RAUF_SUMMARY: earlier quote\nmore output\nRAUF_DONE";
+      expect(parseSignal(out)).toEqual({ signal: "done" });
+    });
+
+    it("is absent when the summary is empty or whitespace", () => {
+      expect(parseSignal("RAUF_SUMMARY:   \nRAUF_DONE")).toEqual({ signal: "done" });
+    });
+
+    it("sanitizes control characters and caps the length", () => {
+      const long = "x".repeat(300);
+      const parsed = parseSignal(`RAUF_SUMMARY: a\u001b[31mb\tc ${long}\nRAUF_DONE`);
+      expect(parsed.summary).toMatch(/^a b c x+…$/);
+      expect(Array.from(parsed.summary ?? "")).toHaveLength(120);
+    });
+
+    it("never attaches a summary to a non-done signal", () => {
+      expect(parseSignal("RAUF_SUMMARY: tried\nRAUF_BLOCKED:no db")).toEqual({
+        signal: "blocked",
+        reason: "no db",
+      });
+    });
+
+    it("does not treat a lone RAUF_SUMMARY line as a signal", () => {
+      expect(parseSignal("RAUF_SUMMARY: only this")).toEqual({ signal: "none" });
+    });
+  });
 });

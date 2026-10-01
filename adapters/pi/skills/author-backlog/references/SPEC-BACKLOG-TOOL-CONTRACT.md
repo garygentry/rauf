@@ -76,6 +76,13 @@ appear, the last one wins.
 These tokens are part of the contract; an alternative runner that reuses rauf's
 artifacts MUST emit the same tokens (or supply its own artifact templates).
 
+**Optional item summary (#153).** On success the agent MAY put one line
+`RAUF_SUMMARY: <text>` as the nearest non-blank line above `RAUF_DONE`. The
+runner sanitizes it (single line, control characters stripped, capped at 120
+characters) and carries it on the `item_completed` event's `summary` field for
+supervisors. It is not a signal: alone it means nothing, a summary anywhere else
+(or above a non-done signal) is ignored, and when absent the item title is shown.
+
 ## A.3 State-directory layout (authoritative)
 
 A runner keeps per-backlog state in a **state directory**, resolved as follows:
@@ -208,23 +215,34 @@ ignore any `type` they do not recognize, per the promise below):
 
 **Consumer-critical event payloads** (fields beyond the base three) follow:
 
-| Event               | Payload fields                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------ |
-| `item_completed`    | `itemId`, `title`                                                                          |
-| `item_blocked`      | `itemId`, `reason`                                                                         |
-| `needs_human`       | `itemId`, `reason`                                                                         |
-| `loop_paused`       | `reason` (`needs_human`), `itemId`                                                         |
-| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `review` \| `none`), `reason?` |
-| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                       |
-| `loop_error`        | `error`                                                                                    |
-| `loop_cancelled`    | _(base fields only)_                                                                       |
-| `usage_limit_hit`   | `limitType` (`5h` \| `7d`), `utilization`, `reason?`, `consecutiveDisagreements?`          |
-| `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`) |
+| Event               | Payload fields                                                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `item_completed`    | `itemId`, `title`; optional `commitSha`, `filesChanged`, `durationMs`, `attempt`, `doneCount`, `totalCount`, `summary` (#153) |
+| `item_blocked`      | `itemId`, `reason`                                                                                                            |
+| `needs_human`       | `itemId`, `reason`                                                                                                            |
+| `loop_paused`       | `reason` (`needs_human`), `itemId`                                                                                            |
+| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `review` \| `none`), `reason?`                                    |
+| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                                                          |
+| `loop_error`        | `error`                                                                                                                       |
+| `loop_cancelled`    | _(base fields only)_                                                                                                          |
+| `usage_limit_hit`   | `limitType` (`5h` \| `7d`), `utilization`, `reason?`, `consecutiveDisagreements?`                                             |
+| `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`)                                    |
 
 `usage_limit_hit.reason` is present only as `"usage_api_disagreement"`. It means the limit
 was **assumed** after `consecutiveDisagreements` (3) consecutive usage-limit banners the usage
 API did not confirm (#146). Without `reason`, the limit was API-confirmed or banner-only with
 no token. Either way the loop then sleeps (`SLEEPING_LIMIT`) or halts (`PAUSED_USAGE_LIMIT`).
+
+`item_completed` is emitted **after** the runner's per-item commit (#153), so it can name it:
+`commitSha` is the full sha of the `[rauf] <id>:` commit (absent when nothing was committed),
+`filesChanged` its file count, `durationMs` the completing iteration's wall time (item
+selection to completion, commit included), `attempt` the 1-based number of agent spawns for
+the item in this run, `doneCount`/`totalCount` the backlog progress right after it was marked
+done, and `summary` the sanitized `RAUF_SUMMARY:` line (§A.2). A commit-recovered completion
+carries the agent's own commit and no summary. All seven are optional and additive: older
+records parse unchanged, and the event still precedes the next `item_selected`. `state.json`
+already reads `done` when it arrives. `rauf loop wait` and `follow` render these fields as a
+one-line card (SPEC-CLI `loop wait`).
 
 `llm_stuck_warning` fires once the stream has been silent for `options.stuckThresholdMs`
 (default 5 min), **unless** a quiet tool call (in flight, with no nested activity: e.g. a

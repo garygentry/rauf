@@ -78,3 +78,28 @@ function isNothingToCommit(e: unknown): boolean {
   const stdout = (errWithStderr.stdout ?? "").toLowerCase();
   return msg.includes("nothing to commit") || stdout.includes("nothing to commit");
 }
+
+/** A commit's full sha and how many files it touched. */
+export interface CommitDescription {
+  sha: string;
+  filesChanged: number;
+}
+
+/**
+ * Resolve `ref` (a full or abbreviated sha) to its full sha and file count, for
+ * the item_completed supervision card (#153). One `git show --name-only` call.
+ * Best-effort: returns null on any git failure — the card just omits the fields.
+ */
+export async function describeCommit(
+  projectPath: string,
+  ref: string,
+): Promise<CommitDescription | null> {
+  try {
+    const stdout = await execGit(projectPath, ["show", "--name-only", "--format=%H", ref, "--"]);
+    const [sha, ...files] = stdout.split("\n").filter((l) => l.trim() !== "");
+    if (!sha || !/^[0-9a-f]{7,64}$/.test(sha.trim())) return null;
+    return { sha: sha.trim(), filesChanged: files.length };
+  } catch {
+    return null;
+  }
+}

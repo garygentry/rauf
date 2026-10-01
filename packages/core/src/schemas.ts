@@ -584,6 +584,28 @@ const ItemCompletedSchema = LoopEventBaseSchema.extend({
   type: z.literal("item_completed"),
   itemId: z.string(),
   title: z.string(),
+  // ── Supervision-card enrichment (#153). All optional and additive: records
+  // written by older runners parse unchanged, and a field the runner could not
+  // determine (no git repo, failed commit, unreadable backlog) is omitted, not
+  // faked. `formatItemCard` renders whatever is present.
+  /** Full sha of the item's `[rauf] <id>:` commit; absent when nothing was committed. */
+  commitSha: z.string().optional(),
+  /** Files touched by that commit (`git show --name-only` count). */
+  filesChanged: z.number().int().nonnegative().optional(),
+  /** Wall time of the completing iteration, item selection → completion (incl. commit). */
+  durationMs: z.number().nonnegative().optional(),
+  /** 1-based attempt number of the completing iteration within this run. */
+  attempt: z.number().int().positive().optional(),
+  /** Backlog `done` count right after this item was marked done. */
+  doneCount: z.number().int().nonnegative().optional(),
+  /** Backlog item count at the same moment (the `[done/total]` card prefix). */
+  totalCount: z.number().int().nonnegative().optional(),
+  /**
+   * The iteration agent's one-line `RAUF_SUMMARY:` (sanitized: single line, no
+   * control chars, ≤ ITEM_SUMMARY_MAX_LEN). Absent when the agent wrote none or
+   * the item was recovered from a commit without a parsed signal.
+   */
+  summary: z.string().optional(),
 });
 
 const ItemBlockedSchema = LoopEventBaseSchema.extend({

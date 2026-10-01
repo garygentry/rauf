@@ -61,6 +61,31 @@ rauf follow . --backlog specs/feature-x
 each run, and `follow` never stitches them back in. It runs until the loop reaches a terminal
 state or you press Ctrl+C.
 
+### `rauf loop wait [path]`
+
+A bounded wait for supervising agents. It blocks until the next **significant** event (an item
+completed or blocked, needs-human, a stuck warning, a review failure, a long sleep, or the loop
+ending), prints a one-line card, and exits. Call it in a loop and pass back the cursor it prints:
+
+```bash
+rauf loop wait . --backlog specs/feature-x                    # wait for the next event (≤240s)
+rauf loop wait . --backlog specs/feature-x --since-seq 14 --run-id 2026-10-01T10:00:00.000Z
+rauf loop wait . --json --timeout 90s                         # one JSON object: event, card, nextSeq, runId…
+rauf loop wait . --notify-cmd 'notify-send rauf "$RAUF_CARD"' # desktop ping on exceptions / loop end
+```
+
+```text
+[7/26] ✓ 008 Add login form — wired the form to /api/login · abc1234 · 5 files · 6m
+next: --since-seq 14 --run-id 2026-10-01T10:00:00.000Z
+```
+
+Exit codes: `0` an event, `10` timeout while the loop is still running, `11` the loop has ended
+and you have seen everything. The card is narration only. To decide what to do next, read
+`rauf status --json` (see [Detecting a stall](#detecting-a-stall)).
+
+The summary after the dash comes from the iteration agent, which may write one
+`RAUF_SUMMARY: <text>` line just above `RAUF_DONE`. Without one, the card shows the item title.
+
 ### `rauf log [path]`
 
 Tail the human log file `.rauf/rauf.log`.
@@ -167,6 +192,7 @@ the right `--backlog <dir>`, or use `rauf status --all` to find where the live l
 | ------------------------------------ | ------------------------------------------------------------------ |
 | A quick snapshot of one loop         | `rauf status .`                                                    |
 | To watch one loop live in a terminal | `rauf follow .`                                                    |
+| An agent to wait for the next event  | `rauf loop wait . --since-seq N --run-id ID`                       |
 | Just the human log                   | `rauf log . -f`                                                    |
 | Everything running on the machine    | `rauf status --all`                                                |
 | A programmatic observer              | `rauf status --json`, `loop run --ndjson`, or tail `events.ndjson` |

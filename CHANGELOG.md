@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Upgrade notes / behavior changes
+
+- **`item_completed` is now emitted after the per-item commit, not before it.** The event can then name the commit. It still comes before the next `item_selected`, and `state.json` already reads the item as done when it arrives. A consumer that ran `git log` on `item_completed` expecting the commit not to exist yet will now find it. (#153)
+
+### Added
+
+- **`rauf loop wait` (#152).** A bounded, blocking wait for supervising agents: it returns at the first _significant_ loop event after `--since-seq` (an item completed or blocked, needs-human, a stuck warning, a review failure, a long sleep or weekly limit, the loop ending), or at `--timeout` (default 240s). It prints one card, or with `--json` an object `{event, card, nextSeq, runId, runChanged, loopState, progress, terminal, timedOut}`. Exit codes: `0` event, `10` timeout while the loop is live, `11` the loop ended and you are caught up, `2` usage. Pass back `nextSeq` and `runId` each call. A new run (log rotation) is replayed from seq 0, not skipped. A live `.loop.lock` counts as running even while `state.json` still reads the previous run's end. `--notify-cmd <cmd>` runs a shell command with `$RAUF_CARD` on exceptions and loop end. The decision surface stays `rauf status --json`. See SPEC-CLI and the monitoring guide.
+- **Enriched `item_completed` (#153).** New optional fields: `commitSha` (full sha of the `[rauf] <id>:` commit), `filesChanged`, `durationMs` (item selection → completion), `attempt` (agent spawns for the item in this run), `doneCount`/`totalCount` (backlog progress) and `summary`. A commit-recovered completion carries the agent's own commit. Older records parse unchanged; the events `schemaVersion` stays `1`.
+- **`RAUF_SUMMARY:` iteration contract line (#153).** On success the iteration agent may put one `RAUF_SUMMARY: <text>` line directly above `RAUF_DONE`. It is sanitized (single line, no control characters, ≤120 chars) and carried as `item_completed.summary`. It is optional, and is read only on the nearest non-blank line above `RAUF_DONE`. The runner's prompt now mentions it, so already-installed projects get it without re-installing. The RAUF.md template and the CLAUDE/AGENTS addons describe it too.
+- **Shared supervision cards in `@rauf/core` (#153).** `formatItemCard`, `formatSupervisionCard`, `formatLoopEndedCard`, `isSignificantEvent`, `isRunEndingEvent` and `sanitizeSummary` render one deterministic line per event, e.g. `[7/26] ✓ 008 Add login form — wired the form to /api/login · abc1234 · 5 files · 6m`. `loop wait` prints it, and `follow` now uses it for `item_completed`.
+
+### Fixed
+
+- **Usage-limit percentages were shown 100× too large.** `usage_limit_hit.utilization` is already a 0–100 percentage, but `follow` and the web status page multiplied it by 100 (`util 10000%`). They now print it as is, as the new supervision card does.
+
 ## 0.17.1
 
 _Released 2026-09-30._

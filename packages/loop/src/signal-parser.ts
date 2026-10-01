@@ -1,4 +1,9 @@
-import { ReviewPayloadSchema, type ReviewPayload } from "@rauf/core";
+import {
+  ReviewPayloadSchema,
+  SUMMARY_MARKER,
+  sanitizeSummary,
+  type ReviewPayload,
+} from "@rauf/core";
 
 /** Signal types that can be parsed from Claude's stdout */
 export type SignalType = "done" | "blocked" | "needs_human" | "review" | "none";
@@ -8,6 +13,13 @@ export interface ParsedSignal {
   signal: SignalType;
   reason?: string;
   reviewPayload?: ReviewPayload;
+  /**
+   * The agent's optional one-line item summary (#153): a `RAUF_SUMMARY: <text>`
+   * line that is the nearest non-blank line BEFORE a `RAUF_DONE`. Sanitized
+   * (single line, no control chars, length-capped). Only ever set on `done`;
+   * absent when the line is missing, misplaced, or empty once cleaned.
+   */
+  summary?: string;
 }
 
 /**
@@ -22,6 +34,9 @@ export interface ParsedSignal {
  * - RAUF_NEEDS_HUMAN:<reason> → { signal: 'needs_human', reason }
  * - RAUF_REVIEW:{json} → { signal: 'review', reviewPayload }
  *
+ * A `done` signal also picks up an optional `RAUF_SUMMARY:<text>` from the
+ * nearest non-blank line above it (see ParsedSignal.summary).
+ *
  * Returns { signal: 'none' } if no recognized signal found.
  */
 export function parseSignal(stdout: string): ParsedSignal {
@@ -31,10 +46,31 @@ export function parseSignal(stdout: string): ParsedSignal {
     if (!trimmed) continue;
 
     const result = matchSignal(trimmed);
-    if (result) return result;
+    if (result) {
+      if (result.signal === "done") {
+        const summary = summaryAbove(lines, i);
+        if (summary !== undefined) result.summary = summary;
+      }
+      return result;
+    }
   }
 
   return { signal: "none" };
+}
+
+/**
+ * The sanitized `RAUF_SUMMARY:` text on the nearest non-blank line above
+ * `signalIndex`, or undefined. Strictly adjacent (blank lines aside), so a
+ * summary quoted earlier in the transcript is never picked up.
+ */
+function summaryAbove(lines: string[], signalIndex: number): string | undefined {
+  for (let j = signalIndex - 1; j >= 0; j--) {
+    const trimmed = lines[j]!.trim();
+    if (!trimmed) continue;
+    if (!trimmed.startsWith(SUMMARY_MARKER)) return undefined;
+    return sanitizeSummary(trimmed.slice(SUMMARY_MARKER.length));
+  }
+  return undefined;
 }
 
 function matchSignal(line: string): ParsedSignal | null {

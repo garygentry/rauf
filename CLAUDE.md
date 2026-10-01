@@ -260,7 +260,7 @@ When running as a rauf loop iteration, follow these operational rules:
 
 ### Completing
 
-7. If all acceptance criteria pass: output `RAUF_DONE` as your final line
+7. If all acceptance criteria pass: output `RAUF_DONE` as your final line (optionally preceded by one `RAUF_SUMMARY: <≤120 chars>` line saying what you did)
 8. If blocked (missing dependency, unclear requirement): output `RAUF_BLOCKED:<reason>`
 9. If human input needed (API key, design decision): output `RAUF_NEEDS_HUMAN:<reason>`
 10. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. Leave your changes in the working tree.

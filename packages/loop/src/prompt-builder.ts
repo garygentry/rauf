@@ -253,7 +253,7 @@ ${progressContent}
   const relBacklog = path.relative(paths.projectPath, paths.backlog);
   const relState = path.relative(paths.projectPath, paths.state);
   sections.push(`---
-**IMPORTANT:** You are working on item ${item.id} ONLY. Do NOT modify ${relBacklog} or ${relState} — the loop runner manages status. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. When done, output your exit signal as the LAST line of your response.`);
+**IMPORTANT:** You are working on item ${item.id} ONLY. Do NOT modify ${relBacklog} or ${relState} — the loop runner manages status. Do NOT commit or stage — the iteration agent never commits or stages; the loop runner owns the commit. When done, output your exit signal as the LAST line of your response. On success you may put one short line \`RAUF_SUMMARY: <what you did, ≤120 chars>\` directly above \`RAUF_DONE\` — the loop shows it to whoever is supervising.`);
 
   return ok(sections.join("\n\n\n"));
 }

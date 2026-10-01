@@ -15,7 +15,7 @@ describe("describeEvent — usage_limit_hit (#146)", () => {
       ...envelope,
       type: "usage_limit_hit",
       limitType: "5h",
-      utilization: 0.97,
+      utilization: 97, // the runner emits a 0–100 percentage, not a fraction
     };
     expect(describeEvent(e)).toEqual({ label: "Usage limit hit", detail: "5h · 97%" });
   });
@@ -25,7 +25,7 @@ describe("describeEvent — usage_limit_hit (#146)", () => {
       ...envelope,
       type: "usage_limit_hit",
       limitType: "5h",
-      utilization: 0.4,
+      utilization: 40,
       reason: "usage_api_disagreement",
       consecutiveDisagreements: 3,
     };

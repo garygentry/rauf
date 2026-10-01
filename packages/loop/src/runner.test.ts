@@ -264,6 +264,64 @@ describe("LoopRunner", () => {
       );
     });
 
+    it("enriches item_completed with commit, timing, progress and the RAUF_SUMMARY line (#153)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Test task"), pendingItem("002", "Later task")]);
+      writeMockClaude(
+        binDir,
+        `printf 'x\\n' > "${tmpDir}/work.txt"
+echo "RAUF_SUMMARY: Added work.txt"
+echo "RAUF_DONE"`,
+      );
+
+      const order: string[] = [];
+      const completed: Extract<LoopEvent, { type: "item_completed" }>[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("item_completed", (e) => {
+        order.push("item_completed");
+        completed.push(e);
+      });
+      runner.on("item_selected", () => order.push("item_selected"));
+      await runner.start();
+
+      expect(completed).toHaveLength(1);
+      const ev = completed[0]!;
+      // The emit follows the auto-commit, so the event names the commit it made.
+      const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+      expect(ev.commitSha).toBe(head);
+      expect(ev.filesChanged).toBeGreaterThanOrEqual(1);
+      expect(ev.durationMs).toBeGreaterThanOrEqual(0);
+      expect(ev.attempt).toBe(1);
+      expect(ev.doneCount).toBe(1);
+      expect(ev.totalCount).toBe(2);
+      expect(ev.summary).toBe("Added work.txt");
+      expect(order).toEqual(["item_selected", "item_completed"]);
+
+      // And it is what lands on disk for file-based observers.
+      const persisted = fs
+        .readFileSync(path.join(tmpDir, ".rauf", "events.ndjson"), "utf-8")
+        .trim()
+        .split("\n")
+        .map((l) => JSON.parse(l) as { type: string; commitSha?: string; summary?: string });
+      const onDisk = persisted.find((r) => r.type === "item_completed");
+      expect(onDisk?.commitSha).toBe(head);
+      expect(onDisk?.summary).toBe("Added work.txt");
+    });
+
+    it("omits summary when the agent writes no RAUF_SUMMARY line", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Test task")]);
+      writeMockClaude(binDir, 'echo "RAUF_DONE"');
+
+      const completed: Extract<LoopEvent, { type: "item_completed" }>[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("item_completed", (e) => completed.push(e));
+      await runner.start();
+
+      expect(completed).toHaveLength(1);
+      expect(completed[0]!.summary).toBeUndefined();
+      expect(completed[0]!.doneCount).toBe(1);
+      expect(completed[0]!.totalCount).toBe(1);
+    });
+
     it("processes multiple items sequentially", async () => {
       setupProject(tmpDir, [pendingItem("001", "First task"), pendingItem("002", "Second task")]);
       writeMockClaude(binDir, 'echo "RAUF_DONE"');
@@ -1831,6 +1889,18 @@ echo "work finished but no signal printed"`,
       expect(result.completedCount).toBe(1);
       expect(result.blockedCount).toBe(0);
       expect(events.some((e) => e.type === "item_completed")).toBe(true);
+      // The recovered event carries the agent's own commit (#153); no summary —
+      // there was no RAUF_DONE for a RAUF_SUMMARY to sit above.
+      const recovered = events.find((e) => e.type === "item_completed") as Extract<
+        LoopEvent,
+        { type: "item_completed" }
+      >;
+      const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+      expect(recovered.commitSha).toBe(head);
+      expect(recovered.filesChanged).toBeGreaterThanOrEqual(1);
+      expect(recovered.attempt).toBe(1);
+      expect(recovered.doneCount).toBe(1);
+      expect(recovered.summary).toBeUndefined();
 
       // Logged as a commit recovery, and the runner did NOT commit a second time.
       const log = fs.readFileSync(path.join(tmpDir, ".rauf", "rauf.log"), "utf-8");
