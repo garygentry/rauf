@@ -185,6 +185,12 @@ describe("formatSupervisionCard", () => {
     ).toBe("⏸ sleeping until 2026-10-01T14:00:00.000Z (4h) — 5h limit");
   });
 
+  it("prints usage utilization as the percentage it already is", () => {
+    expect(
+      formatSupervisionCard(ev("usage_limit_hit", { limitType: "7d", utilization: 100 })),
+    ).toBe("⏸ usage limit (7d, 100%)");
+  });
+
   it("delegates item_completed to formatItemCard", () => {
     const done = ev("item_completed", { itemId: "1", title: "T", summary: "s" });
     expect(formatSupervisionCard(done, p)).toBe(formatItemCard(done, p));

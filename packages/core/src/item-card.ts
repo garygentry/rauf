@@ -193,7 +193,7 @@ export function formatSupervisionCard(ev: CardEvent, progress?: CardProgress): s
     case "review_failed":
       return `${p}✗ review failed — ${clip(ev.reason)}`;
     case "usage_limit_hit":
-      return `${p}⏸ usage limit (${ev.limitType}, ${Math.round(ev.utilization * 100)}%)`;
+      return `${p}⏸ usage limit (${ev.limitType}, ${Math.round(ev.utilization)}%)`;
     case "sleep_start":
       return `${p}⏸ sleeping until ${ev.sleepUntil} (${formatCardDuration(sleepLengthMs(ev))}) — ${clip(ev.reason)}`;
     case "loop_completed": {

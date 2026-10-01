@@ -33,6 +33,29 @@ describe("formatEvent", () => {
     expect(out).toContain("p1");
   });
 
+  it("prints usage_limit_hit utilization as the percentage the runner emits (0–100)", () => {
+    const out = formatEvent(
+      ev({ seq: 3, type: "usage_limit_hit", limitType: "5h", utilization: 100 }),
+    );
+    expect(out).toContain("(util 100%)");
+  });
+
+  it("renders item_completed as the shared supervision card", () => {
+    const out = formatEvent(
+      ev({
+        seq: 9,
+        type: "item_completed",
+        itemId: "008",
+        title: "Add login form",
+        summary: "wired it",
+        commitSha: "abc1234def",
+        doneCount: 7,
+        totalCount: 26,
+      }),
+    );
+    expect(out).toContain("[7/26] ✓ 008 Add login form — wired it · abc1234");
+  });
+
   it("renders the signal and reason on signal_parsed", () => {
     const out = formatEvent(
       ev({

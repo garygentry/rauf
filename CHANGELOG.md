@@ -13,6 +13,10 @@
 - **`RAUF_SUMMARY:` iteration contract line (#153).** On success the iteration agent may put one `RAUF_SUMMARY: <text>` line directly above `RAUF_DONE`. It is sanitized (single line, no control characters, ≤120 chars) and carried as `item_completed.summary`. It is optional, and is read only on the nearest non-blank line above `RAUF_DONE`. The runner's prompt now mentions it, so already-installed projects get it without re-installing. The RAUF.md template and the CLAUDE/AGENTS addons describe it too.
 - **Shared supervision cards in `@rauf/core` (#153).** `formatItemCard`, `formatSupervisionCard`, `formatLoopEndedCard`, `isSignificantEvent`, `isRunEndingEvent` and `sanitizeSummary` render one deterministic line per event, e.g. `[7/26] ✓ 008 Add login form — wired the form to /api/login · abc1234 · 5 files · 6m`. `loop wait` prints it, and `follow` now uses it for `item_completed`.
 
+### Fixed
+
+- **Usage-limit percentages were shown 100× too large.** `usage_limit_hit.utilization` is already a 0–100 percentage, but `follow` and the web status page multiplied it by 100 (`util 10000%`). They now print it as is, as the new supervision card does.
+
 ## 0.17.1
 
 _Released 2026-09-30._

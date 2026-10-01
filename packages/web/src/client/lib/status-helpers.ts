@@ -60,7 +60,7 @@ export function describeEvent(e: PersistedEvent): { label: string; detail: strin
       return {
         label: "Usage limit hit",
         detail:
-          `${e.limitType} · ${Math.round(e.utilization * 100)}%` +
+          `${e.limitType} · ${Math.round(e.utilization)}%` +
           // A banner the usage API did not confirm (#146) — mirrors the CLI event view.
           (e.reason === "usage_api_disagreement"
             ? ` — banner unconfirmed by usage API ×${e.consecutiveDisagreements ?? "?"}`
