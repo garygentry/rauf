@@ -9,6 +9,12 @@ exposes agent selection through `--agent`, `.rauf.json`, and per-item config.
 The default agent is unchanged: with no selection, the loop runs `claude-cli` exactly
 as before.
 
+> **Current state (since #131).** This document describes the feature as first built. `codex`
+> and `copilot` have since moved off the `CliAgent` engine onto dedicated JSONL-streaming
+> adapters (`packages/loop/src/providers/codex-cli.ts`, `copilot-cli.ts`); the shipped presets
+> are now `gemini`, `cursor`, and `pi`. Selection (`--agent <id>`) is unchanged. For the current
+> provider table see [SPEC-BACKLOG-TOOL-CONTRACT.md §5](../../SPEC-BACKLOG-TOOL-CONTRACT.md#5-provider-specifications).
+
 > **Vocabulary.** Internally the code says `provider` / `LLMProvider`; the
 > epic-`agent-agnostic` contract surface says `agent` / `AgentAdapter`. `AgentAdapter`
 > is a type alias of `LLMProvider` — they are the same shape. The user-facing key is

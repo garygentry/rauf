@@ -615,7 +615,7 @@ The adapter layer abstracts over both models behind a single interface.
 import type { Result } from "@rauf/core";
 
 /** Uniquely identifies a provider */
-type ProviderId = string; // "claude-cli" | "claude-sdk" | "codex" | "gemini" | "pi" | "generic-cli" | string
+type ProviderId = string; // "claude-cli" | "claude-sdk" | "codex" | "copilot" | "gemini" | "pi" | "generic-cli" | string
 
 interface LLMProvider {
   /** Unique identifier (e.g., "claude-cli", "generic-cli") */
@@ -910,6 +910,62 @@ model aliases such as `opus` or `sonnet`; otherwise rauf forwards the resolved m
 - `"stdin"` (default): Pipe prompt to stdin, close stdin
 - `"file"`: Write prompt to temp file, pass path as `{{prompt_file}}` arg
 - `"arg"`: Pass prompt as `{{prompt}}` arg (for short prompts only)
+
+### 5.7 `copilot`: GitHub Copilot CLI
+
+| Aspect      | Detail                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Binary      | `copilot`                                                                                                                       |
+| Flags       | see argv below; `--model <m>` when a model resolves                                                                             |
+| Credentials | Copilot CLI's own login (`COPILOT_HOME`, `COPILOT_GITHUB_TOKEN`); rauf has no safe auth probe, so `rauf agents` shows `unknown` |
+| Signal      | Last valid signal in the text reconstructed from `assistant.message` JSONL records (`RAUF_DONE` convention)                     |
+| Usage       | None: Copilot JSONL carries no token telemetry                                                                                  |
+| Billing     | Whatever GitHub Copilot plan the `copilot` CLI is signed in to                                                                  |
+
+**Dedicated adapter, not a preset** (`packages/loop/src/providers/copilot-cli.ts`, #131). Until
+#131 `copilot` was a plain-text `generic-cli` preset. The dedicated adapter exists because:
+
+- **Prompt transport.** Copilot accepts a prompt only as `--prompt <text>`, and a full iteration
+  prompt can exceed `ARG_MAX` (a 3 MiB argv fails with `E2BIG`). rauf writes the prompt to a
+  private (`0600`) file in a `.rauf-copilot-prompt-*` temp directory under the project, passes a
+  one-line bootstrap telling the agent to read it, and removes the directory on every exit path.
+- **Least-authority tools.** The argv is fixed:
+
+  ```text
+  copilot --no-auto-update -C <cwd> --output-format json --stream on \
+    --allow-tool=read --allow-tool=write --allow-tool=shell \
+    --deny-tool='shell(git commit:*)' --deny-tool='shell(git push:*)' \
+    --no-ask-user --no-remote --no-remote-export --no-custom-instructions \
+    --disable-builtin-mcps [--model <m>] --prompt <bootstrap>
+  ```
+
+  It never uses `--allow-all-tools`/`--yolo`. Commit and push are denied so the runner still owns
+  the commit. Copilot has no path-level deny, so the agent _can_ technically write
+  `.rauf/backlog.json`/`state.json`; the "do not modify" rule there is instruction-level only.
+
+- **Environment.** `COPILOT_*` variables are stripped from the child environment except
+  `COPILOT_HOME` and `COPILOT_GITHUB_TOKEN`, so a caller's Copilot settings can't widen the
+  profile above.
+- **Telemetry.** `tool.execution_start`/`tool.execution_complete` pairs become `llm_tool_activity`
+  events and feed the stuck detector (see [SCHEMAS.md](./SCHEMAS.md)).
+
+**Failure classification.** `classifyCopilotFailure` reads only Copilot's own diagnostics (its
+stderr on a non-zero exit and in-band `error` records), never tool output or assistant text:
+
+| Kind                                                                      | Exit class      |
+| ------------------------------------------------------------------------- | --------------- |
+| `authentication`, `invalid_model`, `permission_denied`, `limit_exhausted` | `infra_error`   |
+| `infrastructure` (non-zero exit faster than the infra fast-death window)  | `infra_error`   |
+| `timeout`                                                                 | `timeout`       |
+| `malformed_output` (every stdout line is invalid JSON), `missing_signal`  | `genuine_retry` |
+
+`infra_error` outcomes count toward the infrastructure circuit breaker rather than burning item
+retries. A permission denial can arrive with exit `0` (an in-band denial record), so exit code
+alone is not the classifier's input.
+
+**Configuration.** None: `.rauf.json` rejects `providerConfig` when `provider` is `"copilot"`.
+Select it with `--agent copilot` (or `rauf install --agent copilot` to make it the project
+default). Use `--no-model` when backlog items carry Claude-only model aliases.
 
 ---
 

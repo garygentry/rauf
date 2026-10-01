@@ -135,13 +135,19 @@ function readTree(root: string): Map<string, string> {
   return files;
 }
 
+/**
+ * Build the bundle in memory. The plugin version tracks the root `package.json`; `version`
+ * overrides it so tests can simulate a release-prep bump without touching the manifest.
+ */
 export function buildBundle(
   agentPolicies: Readonly<Record<string, AgentPolicy>> = AGENT_POLICIES,
+  options: { version?: string } = {},
 ): Map<string, string> {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
     version: string;
     description: string;
   };
+  const version = options.version ?? pkg.version;
   const files = new Map<string, string>();
   files.set(
     "plugin.json",
@@ -149,7 +155,7 @@ export function buildBundle(
       {
         name: "rauf",
         description: pkg.description,
-        version: pkg.version,
+        version,
         agents: "agents/",
         skills: "skills/",
       },
@@ -263,6 +269,24 @@ export function findDrift(expected: Map<string, string>, outputDirectory: string
   return drift.sort();
 }
 
+/**
+ * Regenerate `adapters/copilot/` (or `outputDirectory`) on disk, returning the number of files
+ * written. Exported so scripts/release/prepare.ts can regenerate the bundle in-process after the
+ * version bump (the Copilot twin of issue #119), keeping `plugin.json` in lockstep.
+ */
+export function writeBundle(
+  bundle: Map<string, string> = buildBundle(),
+  outputDirectory: string = OUTPUT_DIR,
+): number {
+  fs.rmSync(outputDirectory, { recursive: true, force: true });
+  for (const [relative, content] of bundle) {
+    const absolute = path.join(outputDirectory, relative);
+    fs.mkdirSync(path.dirname(absolute), { recursive: true });
+    fs.writeFileSync(absolute, content);
+  }
+  return bundle.size;
+}
+
 function main(): void {
   const check = process.argv.includes("--check");
   const bundle = buildBundle();
@@ -279,13 +303,7 @@ function main(): void {
     return;
   }
 
-  fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
-  for (const [relative, content] of bundle) {
-    const absolute = path.join(OUTPUT_DIR, relative);
-    fs.mkdirSync(path.dirname(absolute), { recursive: true });
-    fs.writeFileSync(absolute, content);
-  }
-  console.log(`Generated adapters/copilot/ with ${bundle.size} files.`);
+  console.log(`Generated adapters/copilot/ with ${writeBundle(bundle)} files.`);
 }
 
 if (import.meta.main) main();
