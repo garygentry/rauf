@@ -27,6 +27,7 @@ import {
 } from "./backlog-commands.js";
 import { handleStatus, handleLog, handleProgress } from "./status-commands.js";
 import { handleFollow } from "./follow-command.js";
+import { handleLoopWait } from "./wait-command.js";
 import {
   handleProfileShow,
   handleProfileDetect,
@@ -254,6 +255,42 @@ export const COMMANDS: CommandDef[] = [
           },
         ],
         handler: handleLoopRun,
+      },
+      {
+        name: "wait",
+        description:
+          "Block until the next significant loop event (or a timeout), print its one-line card, and exit — a bounded wait for supervising agents",
+        usage:
+          "rauf loop wait [path] [--backlog <dir>] [--since-seq N] [--run-id ID] [--timeout <dur>] [--json] [--notify-cmd <cmd>]",
+        flags: [
+          { name: "--backlog <dir>", description: "Backlog directory for multi-backlog projects" },
+          {
+            name: "--since-seq <N>",
+            description:
+              "Return the first significant event with seq >= N (pass back the previous call's nextSeq). Default: only events after this call starts",
+          },
+          {
+            name: "--run-id <id>",
+            description:
+              "The previous call's runId; if the loop has started a new run since, it is replayed from seq 0",
+          },
+          {
+            name: "--timeout <dur>",
+            description: "Give up after this long with exit 10 (e.g. 240, 90s, 4m; default 240s)",
+          },
+          { name: "--interval <N>", description: "Poll interval in seconds (default: 1)" },
+          {
+            name: "--json",
+            description:
+              "Print {event, card, nextSeq, runId, runChanged, loopState, progress, terminal, timedOut}",
+          },
+          {
+            name: "--notify-cmd <cmd>",
+            description:
+              "Shell command run on an exception or loop end, with the card in $RAUF_CARD (e.g. a desktop notification)",
+          },
+        ],
+        handler: handleLoopWait,
       },
       {
         name: "review",

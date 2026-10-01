@@ -7,7 +7,7 @@
 // reduction. The `--json` paths are unaffected — they emit the full record and
 // never call this.
 
-import type { DerivedStatus, PersistedEvent } from "@rauf/core";
+import { formatItemCard, type DerivedStatus, type PersistedEvent } from "@rauf/core";
 
 import { c } from "./formatter.js";
 
@@ -84,7 +84,9 @@ export function formatEvent(ev: PersistedEvent): string {
         `${item(ev.itemId)} ${c.bold(ev.signal)}${ev.reason ? ` ${c.dim(`— ${clip(ev.reason)}`)}` : ""}`,
       );
     case "item_completed":
-      return line(c.green("item completed"), `${item(ev.itemId)} ${clip(ev.title)}`);
+      // The shared supervision card (#153), so `follow` prints the same line
+      // as `loop wait` and the host extensions.
+      return line(c.green("item completed"), formatItemCard(ev));
     case "item_blocked":
       return line(
         c.yellow("item blocked"),

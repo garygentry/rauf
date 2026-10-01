@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { gitCommit } from "./git-commit.js";
+import { describeCommit, gitCommit } from "./git-commit.js";
 
 describe("gitCommit", () => {
   let tmpDir: string;
@@ -175,5 +175,37 @@ describe("gitCommit", () => {
     expect(files).not.toContain(".rauf/state.json");
     expect(files).not.toContain(".rauf/DONE");
     expect(files).not.toContain("backlog.json.bak");
+  });
+});
+
+describe("describeCommit", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "ralph-git-describe-"));
+    execSync("git init", { cwd: tmpDir, stdio: "ignore" });
+    execSync('git config user.email "test@test.com"', { cwd: tmpDir, stdio: "ignore" });
+    execSync('git config user.name "Test"', { cwd: tmpDir, stdio: "ignore" });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("resolves an abbreviated hash to the full sha and counts the files it touched", async () => {
+    fs.writeFileSync(path.join(tmpDir, "a.txt"), "a");
+    fs.mkdirSync(path.join(tmpDir, "sub"));
+    fs.writeFileSync(path.join(tmpDir, "sub", "b.txt"), "b");
+    const commit = await gitCommit(tmpDir, "001", "two files");
+    expect(commit.ok).toBe(true);
+    const short = commit.ok ? commit.value.commitHash : "";
+
+    const described = await describeCommit(tmpDir, short);
+    const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+    expect(described).toEqual({ sha: head, filesChanged: 2 });
+  });
+
+  it("returns null for an unknown ref instead of throwing", async () => {
+    expect(await describeCommit(tmpDir, "deadbeef")).toBeNull();
   });
 });

@@ -48,6 +48,17 @@ clean run and will be misread.)
    - `RAUF_REVIEW:<json>` — review pass only (a normal work iteration does not
      emit this); JSON matching the `ReviewPayload` schema.
 
+   Optionally, put a one-line summary of what you did directly above
+   `RAUF_DONE`, for whoever is supervising the loop:
+
+   ```
+   RAUF_SUMMARY: Added the login form and wired it to /api/login
+   RAUF_DONE
+   ```
+
+   Keep it to one line (it is cut at 120 characters). It is read only on the
+   nearest non-blank line above `RAUF_DONE`; without it, the item title is shown.
+
    Putting the signal last is the safest habit, but it does not have to be
    strictly the final line: the runner scans backwards from the end and uses the
    **last** signal line, so trailing text after it (a commit message, a summary)

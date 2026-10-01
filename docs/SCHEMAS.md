@@ -436,32 +436,32 @@ interface LoopEventBase {
 
 ### All 24 Event Types
 
-| Type                  | Additional Fields                                                                 | Emitted When                                             |
-| --------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `loop_started`        | `maxIterations`, `model?`                                                         | Loop begins                                              |
-| `iteration_start`     | `iteration`, `maxIterations`                                                      | Each iteration starts                                    |
-| `item_selected`       | `itemId`, `title`, `priority`                                                     | Next item picked from backlog                            |
-| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                                  | LLM process launched                                     |
-| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                        | LLM process exits                                        |
-| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`              | Exit signal extracted from stdout                        |
-| `item_completed`      | `itemId`, `title`                                                                 | Item marked done                                         |
-| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                                  | Item marked blocked                                      |
-| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`                   | Item re-queued for retry                                 |
-| `needs_human`         | `itemId`, `reason`                                                                | Loop paused for human input                              |
-| `loop_paused`         | `reason` ("needs_human"), `itemId`                                                | Loop halted in `paused_human` (`--pause-on-needs-human`) |
-| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`, `reason?`, `consecutiveDisagreements?` | Claude API usage limit detected (see below)              |
-| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                        | Usage limit window reset                                 |
-| `sleep_start`         | `sleepUntil`, `reason`                                                            | Loop enters sleep (usage limit)                          |
-| `sleep_end`           | _(base only)_                                                                     | Loop wakes from sleep                                    |
-| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                              | Loop finishes normally                                   |
-| `loop_error`          | `error`                                                                           | Unexpected error terminates loop                         |
-| `loop_cancelled`      | _(base only)_                                                                     | Loop cancelled via AbortController or CANCEL file        |
-| `review_started`      | `completedItemIds`                                                                | Post-loop review pass begins                             |
-| `review_completed`    | `itemsCreated`, `summary`                                                         | Review pass finished                                     |
-| `review_failed`       | `reason`                                                                          | Review pass failed (non-fatal)                           |
-| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?`         | Tool call starts or finishes in child session            |
-| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                           | Token count update from child session                    |
-| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                              | Child session silent for too long (see below)            |
+| Type                  | Additional Fields                                                                                                      | Emitted When                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `loop_started`        | `maxIterations`, `model?`                                                                                              | Loop begins                                              |
+| `iteration_start`     | `iteration`, `maxIterations`                                                                                           | Each iteration starts                                    |
+| `item_selected`       | `itemId`, `title`, `priority`                                                                                          | Next item picked from backlog                            |
+| `llm_spawned`         | `itemId`, `provider`, `model?`, `timeoutMinutes`                                                                       | LLM process launched                                     |
+| `llm_exited`          | `itemId`, `provider`, `exitCode`, `timedOut`, `durationMs`                                                             | LLM process exits                                        |
+| `signal_parsed`       | `itemId`, `signal` (done/blocked/needs_human/review/none), `reason?`                                                   | Exit signal extracted from stdout                        |
+| `item_completed`      | `itemId`, `title`; optional `commitSha`, `filesChanged`, `durationMs`, `attempt`, `doneCount`, `totalCount`, `summary` | Item marked done (emitted after its commit, #153)        |
+| `item_blocked`        | `itemId`, `reason`, `stdoutTail?`, `stderrTail?`                                                                       | Item marked blocked                                      |
+| `item_retried`        | `itemId`, `attempt`, `maxRetries`, `stdoutTail?`, `stderrTail?`                                                        | Item re-queued for retry                                 |
+| `needs_human`         | `itemId`, `reason`                                                                                                     | Loop paused for human input                              |
+| `loop_paused`         | `reason` ("needs_human"), `itemId`                                                                                     | Loop halted in `paused_human` (`--pause-on-needs-human`) |
+| `usage_limit_hit`     | `limitType` ("5h" \| "7d"), `utilization`, `reason?`, `consecutiveDisagreements?`                                      | Claude API usage limit detected (see below)              |
+| `usage_limit_cleared` | `limitType` ("5h" \| "7d")                                                                                             | Usage limit window reset                                 |
+| `sleep_start`         | `sleepUntil`, `reason`                                                                                                 | Loop enters sleep (usage limit)                          |
+| `sleep_end`           | _(base only)_                                                                                                          | Loop wakes from sleep                                    |
+| `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                                                                   | Loop finishes normally                                   |
+| `loop_error`          | `error`                                                                                                                | Unexpected error terminates loop                         |
+| `loop_cancelled`      | _(base only)_                                                                                                          | Loop cancelled via AbortController or CANCEL file        |
+| `review_started`      | `completedItemIds`                                                                                                     | Post-loop review pass begins                             |
+| `review_completed`    | `itemsCreated`, `summary`                                                                                              | Review pass finished                                     |
+| `review_failed`       | `reason`                                                                                                               | Review pass failed (non-fatal)                           |
+| `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?`                                              | Tool call starts or finishes in child session            |
+| `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                                                                | Token count update from child session                    |
+| `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                                                                   | Child session silent for too long (see below)            |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -521,6 +521,14 @@ type LoopEvent =
       projectPath: string;
       itemId: string;
       title: string;
+      // Supervision-card enrichment (#153) — optional, omitted when unknown
+      commitSha?: string; // full sha of the [rauf] <id>: commit
+      filesChanged?: number;
+      durationMs?: number; // item selection → completion, commit included
+      attempt?: number; // 1-based agent spawns for this item in this run
+      doneCount?: number; // backlog progress right after the item was marked done
+      totalCount?: number;
+      summary?: string; // sanitized RAUF_SUMMARY: line, ≤120 chars
     }
   | {
       type: "item_blocked";

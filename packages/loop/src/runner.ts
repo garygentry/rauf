@@ -81,7 +81,7 @@ import {
 } from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import type { UsageLimitResult } from "./usage-checker.js";
-import { gitCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
+import { gitCommit, describeCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -241,6 +241,10 @@ export class LoopRunner extends TypedEventEmitter {
   private currentItemId: string | null = null;
   private startedAt: string = "";
   private retryCounts: Map<string, number> = new Map();
+  /** Agent spawns per item in this run — the item_completed `attempt` (#153). */
+  private attemptCounts: Map<string, number> = new Map();
+  /** Date.now() when the current item was selected — the item_completed `durationMs`. */
+  private itemSelectedAtMs = 0;
   /**
    * Item id left PENDING by the just-finished iteration's outcome
    * (usage_limited / infra_error / a genuine_retry that hasn't exhausted
@@ -1048,6 +1052,7 @@ export class LoopRunner extends TypedEventEmitter {
     }
 
     this.currentItemId = item.id;
+    this.itemSelectedAtMs = Date.now();
     this.emitEvent("item_selected", {
       itemId: item.id,
       title: item.title,
@@ -1196,6 +1201,7 @@ export class LoopRunner extends TypedEventEmitter {
     const provider = providerResult.value;
 
     // Spawn the agent with streaming
+    this.attemptCounts.set(item.id, (this.attemptCounts.get(item.id) ?? 0) + 1);
     this.emitEvent("llm_spawned", {
       itemId: item.id,
       provider: provider.id,
@@ -1470,10 +1476,6 @@ export class LoopRunner extends TypedEventEmitter {
         }
         this.completedCount++;
         this.completedItemIds.push(item.id);
-        this.emitEvent("item_completed", {
-          itemId: item.id,
-          title: item.title,
-        });
         appendLog(this.paths, `Item ${item.id} completed: ${item.title}`);
         this.writeState("running", null, "clean");
 
@@ -1482,6 +1484,14 @@ export class LoopRunner extends TypedEventEmitter {
         if (commitResult.ok && commitResult.value.commitHash) {
           appendLog(this.paths, `Committed: ${commitResult.value.commitHash}`);
         }
+        // Emitted AFTER the commit (#153) so the event can carry its sha. Still
+        // before the next item_selected, and state.json already reads done — the
+        // event narrates a completion the status surface has recorded.
+        await this.emitItemCompleted(
+          item,
+          commitResult.ok ? commitResult.value.commitHash : "",
+          parsed.summary,
+        );
         break;
       }
 
@@ -2101,7 +2111,7 @@ export class LoopRunner extends TypedEventEmitter {
     updateItem(this.paths, item.id, { status: "done" });
     this.completedCount++;
     this.completedItemIds.push(item.id);
-    this.emitEvent("item_completed", { itemId: item.id, title: item.title });
+    await this.emitItemCompleted(item, commit.commitHash);
     appendLog(this.paths, `recovered_via_commit: ${commit.commitHash}`);
     appendLog(this.paths, `Item ${item.id} recovered from commit (signal lost): ${item.title}`);
     this.writeState("running", null, "clean");
@@ -2208,6 +2218,36 @@ export class LoopRunner extends TypedEventEmitter {
 
     this.persistEvent(event);
     this.emit(type, event);
+  }
+
+  /**
+   * Emit item_completed with the supervision-card fields (#153): the commit's
+   * full sha + file count (when `commitRef` names a commit), the iteration's
+   * wall time and attempt number, backlog progress, and the agent's summary.
+   * Every lookup is best-effort — a field that can't be determined is omitted,
+   * and nothing here can fail the iteration.
+   */
+  private async emitItemCompleted(
+    item: Backlog["items"][number],
+    commitRef: string,
+    summary?: string,
+  ): Promise<void> {
+    const commit = commitRef ? await describeCommit(this.projectPath, commitRef) : null;
+    const backlog = readBacklog(this.paths);
+    this.emitEvent("item_completed", {
+      itemId: item.id,
+      title: item.title,
+      ...(commit ? { commitSha: commit.sha, filesChanged: commit.filesChanged } : {}),
+      ...(this.itemSelectedAtMs > 0 ? { durationMs: Date.now() - this.itemSelectedAtMs } : {}),
+      ...(this.attemptCounts.has(item.id) ? { attempt: this.attemptCounts.get(item.id) } : {}),
+      ...(backlog.ok
+        ? {
+            doneCount: backlog.value.items.filter((i) => i.status === "done").length,
+            totalCount: backlog.value.items.length,
+          }
+        : {}),
+      ...(summary ? { summary } : {}),
+    });
   }
 
   /**

@@ -21,6 +21,7 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 | ------------------------------------- | --------------------------------------------------------- |
 | [loop run](#rauf-loop-run-path)       | Run a loop (in-process or detached via `--detached`/`-d`) |
 | [loop stop](#rauf-loop-stop-path)     | Stop a running loop gracefully                            |
+| [loop wait](#rauf-loop-wait-path)     | Wait (bounded) for the next significant loop event        |
 | [loop review](#rauf-loop-review-path) | Run a standalone review pass over completed backlog items |
 
 ### [server](#server): Manage the rauf web server
@@ -189,6 +190,38 @@ When a commit/`Stop`-triggered review hook (e.g. a globally-installed security-r
 `--suppress-iteration-review` (also settable via the `suppressIterationReview` loop option / `POST /loop/start` body) opts into this. It merges a documented set of hook-suppression environment variables (`REVIEW_HOOK_SUPPRESSION_ENV` in `@rauf/loop`) into every child session the loop spawns. The mechanism is **generic, not hardcoded to one plugin**: the env map is the extension point (currently `ENABLE_CODE_SECURITY_REVIEW=0`), and the lower-level `childEnv` loop option lets callers suppress any hook that honors an env opt-out. Default behavior (flag absent) is unchanged: child sessions inherit the parent environment as-is.
 
 The gate review itself is a deliberate, post-loop step over the branch diff: run `git diff main..HEAD`, open a PR (let a review hook / CI run there), or use `rauf loop review`, never per item inside the loop.
+
+### rauf loop wait [path]
+
+Block until the next **significant** loop event, or until a timeout, print its one-line card, and exit (#152). It is the bounded counterpart of [`follow`](#rauf-follow-path) (which never exits), built for supervising agents whose harness cannot wake them when a background process prints something: they call `loop wait` in a loop, passing back the cursor from the previous call. Like `follow` it reads files only (`events.ndjson` and the derived status), so it works for any loop, whoever started it.
+
+```
+rauf loop wait [path] [--backlog <dir>] [--since-seq N] [--run-id ID] [--timeout <dur>] [--interval N] [--json] [--notify-cmd <cmd>]
+```
+
+It is **narration, not a decision surface.** Decide what to do next from `rauf status --json` (see the supervision recipe); `loop wait` tells you _when_ to look.
+
+- **Significant events:** `item_completed`, `item_blocked`, `needs_human`, `llm_stuck_warning`, `review_failed`, `loop_error`, `loop_paused`, `loop_completed`, `loop_cancelled`, a weekly (`7d`) `usage_limit_hit`, and a `sleep_start` of 15 minutes or more. The firehose (spawn/exit, tool and token activity) and routine milestones (`item_selected`, short sleeps, review start/finish) are skipped.
+- **Cursor:** `--since-seq N` returns the first significant event with `seq >= N`; pass back the previous call's `nextSeq`. Without it, the wait starts at the end of the current log (new events only).
+- **Run identity:** each run restarts `events.ndjson` at seq 0, so pass back `--run-id` too (the timestamp of the run's first event). If the loop has started a new run since, that run is replayed from seq 0 instead of being skipped (`runChanged: true`). Without `--run-id`, a cursor past the end of the log is also read as a new run. A rotation during the call is caught the same way.
+- **Already ended:** if the loop has ended (not `RUNNING`/`REVIEWING`/`SLEEPING_LIMIT` and no live lock holder), the call returns at once — first any unseen significant events of the ended run, one per call, then a `■ loop ended — <STATE>` card. A live `.loop.lock` counts as running even while `state.json` still reads a previous run's ended state (the launch race).
+- `--timeout <dur>`: give up after this long (`240`, `90s`, `4m`, `500ms`; bare numbers are seconds). Default **240s**, which fits one Codex exec yield (300s) and typical bash-tool timeouts. `--interval N`: poll interval in seconds (default 1).
+- `--json`: print one JSON object: `{ event, card, nextSeq, runId, runChanged, loopState, progress, terminal, timedOut }` (`event` is the `PersistedEvent` or `null`; `progress` is `{ done, total }`).
+- Human output: the card, then `next: --since-seq N --run-id ID` (omitted once terminal). On a timeout the first line reads `… no new events in 240s — RUNNING · 7/26 done`.
+- `--notify-cmd <cmd>`: on an exception or loop end (not a routine `item_completed`, not a timeout), run `<cmd>` through the shell with the card in `$RAUF_CARD`, the event type in `$RAUF_EVENT_TYPE` (`loop_ended` when no event) and the state in `$RAUF_LOOP_STATE`, e.g. `--notify-cmd 'notify-send rauf "$RAUF_CARD"'`. Output is discarded; a failure only warns on stderr.
+- **Exit codes** (specific to this verb): `0` an event was returned (the loop may still be running), `10` timeout with no event while the loop is live, `11` the loop has ended and you are caught up, `2` usage error (bad flag, missing/ambiguous target), `1` the backlog root could not be resolved. A terminal outcome is never exit 0.
+
+**Cards.** One plain-text line per event, the same line `follow` and the host extensions print (`formatSupervisionCard` in `@rauf/core`):
+
+```
+[7/26] ✓ 008 Add login form — wired the form to /api/login · abc1234 · 5 files · 6m
+[7/26] ✗ 009 blocked — no database in the sandbox
+? 010 needs human — which payment provider?
+⚠ 010 stuck — silent 12m (Bash running 11m)
+■ loop completed — 25 done · 1 blocked
+```
+
+The completion card is built from `item_completed`'s optional fields (commit sha, file count, duration, attempt, `[done/total]`, and the iteration agent's `RAUF_SUMMARY:` line); missing fields are left out.
 
 ### rauf loop review [path]
 

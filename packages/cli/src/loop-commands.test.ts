@@ -238,7 +238,7 @@ describe("loop command registration", () => {
     const loop = findCommand("loop")!;
     expect(loop.subcommands).toBeDefined();
     const subNames = loop.subcommands!.map((s) => s.name);
-    expect(subNames).toEqual(["stop", "run", "review"]);
+    expect(subNames).toEqual(["stop", "run", "wait", "review"]);
   });
 
   it("no longer registers the removed monitor verbs (clean break, no aliases)", () => {
