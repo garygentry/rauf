@@ -1,5 +1,11 @@
 # API Reference
 
+> **Current state (since #131).** This document describes the feature as first built. `codex`
+> and `copilot` have since moved off the `CliAgent` engine onto dedicated JSONL-streaming
+> adapters (`packages/loop/src/providers/codex-cli.ts`, `copilot-cli.ts`); the shipped presets
+> are now `gemini`, `cursor`, and `pi`. Selection (`--agent <id>`) is unchanged. For the current
+> provider table see [SPEC-BACKLOG-TOOL-CONTRACT.md §5](../../SPEC-BACKLOG-TOOL-CONTRACT.md#5-provider-specifications).
+
 All symbols are exported from the `@rauf/loop` package barrel. Signatures below are taken
 from the implementation (`packages/loop/src/providers/*`, `packages/loop/src/agent-selection.ts`,
 `packages/loop/src/constants.ts`).

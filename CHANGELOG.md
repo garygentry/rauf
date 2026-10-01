@@ -2,17 +2,21 @@
 
 ## Unreleased
 
+### GitHub Copilot support (#131)
+
+- **`copilot` is now a dedicated provider, not a plain-text preset.** `--agent copilot` drives `copilot --output-format json` (JSONL), reconstructs the agent's text from `assistant.message` records for signal parsing, and emits tool activity (`tool.execution_start`/`complete`) to events and the stuck detector. Token telemetry is not available. The prompt is delivered by a private temp file the agent is told to read, not on stdin. Copilot is allowed read/write/shell tools but `git commit`/`git push` are denied: rauf still owns the commit. `providerConfig` is rejected for `copilot` in `.rauf.json`.
+- **Copilot failure classification.** Auth, invalid-model, permission, malformed-output and no-signal Copilot exits are classified and logged (`copilot failure classified as …`); startup failures count toward the existing infrastructure circuit breaker instead of burning retries.
+- **Native Copilot operator bundle.** `adapters/copilot/` is an Agent Plugins bundle generated from the canonical skills and agents by `pnpm copilot:generate` (`pnpm copilot:check` reports drift). It ships all four skills and the `rauf-backlog-reviewer` and `rauf-loop-driver` custom agents. Each agent is limited to `read`/`search`/`execute` (no edit tool), cannot call subagents, is not user-invocable, and has its required canonical skill (`review-backlog` / `drive-rauf-loop`) written into its body, because Copilot agents have no skill-dependency field. Unknown frontmatter keys, tool aliases or required skills fail generation. `COPILOT-BUNDLE-REPORT.md` lists each source, mapping and dropped field. Load it with `copilot --plugin-dir <abs path>/adapters/copilot`.
+- **Copilot distribution is release-blocking.** `pnpm gate` runs `copilot:check` (bundle drift) and `copilot:package:check`, which verifies the generated plugin, the built `copilot` provider and embedded instruction templates, and that the npm launcher's file set stays exactly the launcher plus the Pi package (the Copilot plugin is distributed from the repository only). `version:check` includes `adapters/copilot/plugin.json`, and `release:prepare` regenerates `adapters/copilot/` after the version bump so the release-prep PR stays green. `bun run scripts/check-copilot-distribution.ts --binary <path>` also smoke-tests a compiled binary.
+
 ### Upgrade notes / behavior changes
 
-- **`copilot` is now a dedicated provider, not a plain-text preset (#131).** `--agent copilot` drives `copilot --output-format json` (JSONL), reconstructs the agent's text from `assistant.message` records for signal parsing, and emits tool activity (`tool.execution_start`/`complete`) to events and the stuck detector. Token telemetry is not available. The prompt is delivered by a private temp file the agent is told to read, not on stdin. Copilot is allowed read/write/shell tools but `git commit`/`git push` are denied: rauf still owns the commit. `providerConfig` is rejected for `copilot` in `.rauf.json`.
 - **`rauf agents` table columns changed.** `AVAILABLE` is split into `BINARY` (`present`/`missing`) and `AUTH` (`ready`/`not ready`/`unknown`). `--json` rows gain `binaryAvailable` and `authenticated` (`true`/`false`/`null`); `available` is unchanged.
 - **The web start body is now strict.** `POST /api/projects/:id/loop/start` rejects unknown fields (400) instead of ignoring them.
 
 ### Added
 
-- **Copilot failure classification (#131).** Auth, invalid-model, permission, malformed-output and no-signal Copilot exits are classified and logged (`copilot failure classified as …`); startup failures count toward the existing infrastructure circuit breaker instead of burning retries.
 - **Portable provider selection (#131).** `rauf loop review --agent <id>` and `--no-model`; `rauf install`/`init --agent <id>` set the project default agent; the web review and resume bodies accept `provider` and `ignoreItemModel` (a resume's pending-review rerun honors them too).
-- **Native Copilot operator bundle (#131).** `adapters/copilot/` is an Agent Plugins bundle generated from the canonical skills and agents by `pnpm copilot:generate` (`pnpm copilot:check` reports drift). It ships all four skills and the `rauf-backlog-reviewer` and `rauf-loop-driver` custom agents. Each agent is limited to `read`/`search`/`execute` (no edit tool), cannot call subagents, is not user-invocable, and has its required canonical skill (`review-backlog` / `drive-rauf-loop`) written into its body, because Copilot agents have no skill-dependency field. Unknown frontmatter keys, tool aliases or required skills fail generation. `COPILOT-BUNDLE-REPORT.md` lists each source, mapping and dropped field.
 - **`AgentStreamEvent`** is the provider-neutral name for the loop's stream event union; `ClaudeStreamEvent` remains as a deprecated alias.
 
 ### Changed
