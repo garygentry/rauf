@@ -47,11 +47,16 @@ for (const rel of manifests) {
 // explicit even though copilot:check also regenerates from package.json: version:check should name
 // a stale plugin version directly, before any adapter drift command runs.
 const copilotManifest = "adapters/copilot/plugin.json";
-const copilot = JSON.parse(readFileSync(join(repoRoot, copilotManifest), "utf8")) as {
-  version?: string;
-};
-if (copilot.version !== expected) {
-  mismatches.push(`  ${copilotManifest}: ${copilot.version ?? "(none)"} (expected ${expected})`);
+let copilotVersion: string | undefined;
+try {
+  copilotVersion = (
+    JSON.parse(readFileSync(join(repoRoot, copilotManifest), "utf8")) as { version?: string }
+  ).version;
+} catch (error) {
+  copilotVersion = `unreadable (${(error as Error).message.split("\n")[0]})`;
+}
+if (copilotVersion !== expected) {
+  mismatches.push(`  ${copilotManifest}: ${copilotVersion ?? "(none)"} (expected ${expected})`);
 }
 
 if (mismatches.length > 0) {
