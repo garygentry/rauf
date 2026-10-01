@@ -28,6 +28,39 @@ describe("classifyCopilotFailure", () => {
     });
   });
 
+  it.each([
+    [
+      "tool output",
+      '{"type":"tool.execution_complete","data":{"toolCallId":"1","result":{"content":"ls: /root: Permission denied"}}}',
+    ],
+    [
+      "assistant text",
+      '{"type":"assistant.message","data":{"content":"The API returned a rate limit error."}}',
+    ],
+  ])("ignores failure phrases in %s (agent work, not Copilot diagnostics)", (_label, line) => {
+    expect(classifyCopilotFailure(makeResult({ stdout: `${line}\n` }))).toEqual({
+      kind: "missing_signal",
+      exitClass: "genuine_retry",
+    });
+  });
+
+  it("ignores stderr warnings when Copilot exits 0", () => {
+    expect(
+      classifyCopilotFailure(makeResult({ stderr: "warning: rate limit approaching" })),
+    ).toEqual({
+      kind: "missing_signal",
+      exitClass: "genuine_retry",
+    });
+  });
+
+  it("treats a long non-zero exit without diagnostics as a genuine retry", () => {
+    expect(
+      classifyCopilotFailure(
+        makeResult({ stderr: "socket closed", exitCode: 1, durationMs: 20 * 60_000 }),
+      ),
+    ).toEqual({ kind: "missing_signal", exitClass: "genuine_retry" });
+  });
+
   it("maps timeout to the existing timeout outcome before inspecting diagnostics", () => {
     expect(
       classifyCopilotFailure(

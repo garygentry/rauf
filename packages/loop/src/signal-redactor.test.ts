@@ -147,6 +147,15 @@ describe("neutralizeForDetection", () => {
     expect(parseSignal(result).signal).toBe("done");
   });
 
+  it("does not let an unclosed fence swallow the genuine final signal", () => {
+    const input = ["First message:", "```ts", "const x = 1;", "Second message.", "RAUF_DONE"].join(
+      "\n",
+    );
+    const result = neutralizeForDetection(input);
+
+    expect(parseSignal(result)).toEqual({ signal: "done" });
+  });
+
   it("preserves the last valid signal when earlier signal lines are present", () => {
     const input = ["RAUF_BLOCKED:earlier outcome", "work continued", "RAUF_DONE"].join("\n");
     const result = neutralizeForDetection(input);

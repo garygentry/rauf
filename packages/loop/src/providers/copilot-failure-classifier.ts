@@ -1,4 +1,4 @@
-import type { ExitResult } from "../exit-classifier.js";
+import { INFRA_FAST_MS, type ExitResult } from "../exit-classifier.js";
 import type { ProviderFailureClassification } from "./types.js";
 
 export type CopilotFailureKind =
@@ -45,29 +45,57 @@ const LIMIT_PATTERNS = [
 export function classifyCopilotFailure(result: ExitResult): CopilotFailureClassification {
   if (result.timedOut) return { kind: "timeout", exitClass: "timeout" };
 
-  const output = [result.reconstructedText, result.stdout, result.stderr]
-    .filter((value): value is string => typeof value === "string" && value.length > 0)
-    .join("\n");
+  // Only Copilot's OWN diagnostics are evidence of an infrastructure failure: its
+  // stderr when it exits non-zero, and its in-band error records. Tool output
+  // (`tool.execution_*` results) and assistant text are the agent's work — a test that
+  // prints "Permission denied" or a grep hitting "rate limit" must not turn a
+  // no-signal run into infra_error and trip the circuit breaker.
+  const diagnostics = [
+    ...(result.exitCode !== 0 && result.stderr ? [result.stderr] : []),
+    ...copilotErrorRecords(result.stdout),
+  ].join("\n");
 
-  if (matchesAny(output, AUTH_PATTERNS)) {
+  if (matchesAny(diagnostics, AUTH_PATTERNS)) {
     return { kind: "authentication", exitClass: "infra_error" };
   }
-  if (matchesAny(output, INVALID_MODEL_PATTERNS)) {
+  if (matchesAny(diagnostics, INVALID_MODEL_PATTERNS)) {
     return { kind: "invalid_model", exitClass: "infra_error" };
   }
-  if (matchesAny(output, PERMISSION_PATTERNS)) {
+  if (matchesAny(diagnostics, PERMISSION_PATTERNS)) {
     return { kind: "permission_denied", exitClass: "infra_error" };
   }
-  if (matchesAny(output, LIMIT_PATTERNS)) {
+  if (matchesAny(diagnostics, LIMIT_PATTERNS)) {
     return { kind: "limit_exhausted", exitClass: "infra_error" };
   }
   if (hasMalformedJsonl(result.stdout)) {
     return { kind: "malformed_output", exitClass: "genuine_retry" };
   }
-  if (result.exitCode !== 0) {
+  // Same fast-death rule as the shared classifyExit: only a quick non-zero exit is
+  // environmental; a long attempt that dies without a signal is a genuine retry.
+  if (result.exitCode !== 0 && result.durationMs < INFRA_FAST_MS) {
     return { kind: "infrastructure", exitClass: "infra_error" };
   }
   return { kind: "missing_signal", exitClass: "genuine_retry" };
+}
+
+/** Raw JSONL lines of Copilot's own error records (`error` / `*.error`, or a top-level `error`). */
+function copilotErrorRecords(stdout: string): string[] {
+  const records: string[] = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let record: unknown;
+    try {
+      record = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof record !== "object" || record === null) continue;
+    const { type, error } = record as { type?: unknown; error?: unknown };
+    const isErrorType = typeof type === "string" && (type === "error" || type.endsWith(".error"));
+    if (isErrorType || (type === undefined && error !== undefined)) records.push(trimmed);
+  }
+  return records;
 }
 
 function matchesAny(text: string, patterns: readonly RegExp[]): boolean {
