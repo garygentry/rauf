@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { buildBundle, findDrift, parseFrontmatter } from "./build-copilot-bundle";
+import { buildBundle, findDrift, parseFrontmatter, writeBundle } from "./build-copilot-bundle";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
@@ -151,5 +151,25 @@ describe("findDrift", () => {
       "missing.txt",
       "stale.txt (stale — not produced by generator)",
     ]);
+  });
+});
+
+describe("release-prep version bump (#131, issue #119 twin)", () => {
+  it("regenerating after a simulated bump leaves the bundle in sync with only plugin.json changed", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-copilot-bump-"));
+    temporaryDirectories.push(directory);
+    const current = buildBundle();
+    // The bundle as committed before release:prepare runs.
+    writeBundle(current, directory);
+    const bumped = buildBundle(undefined, { version: "99.0.0" });
+
+    // Before regeneration the bump is detected as drift, and only in plugin.json.
+    expect(findDrift(bumped, directory)).toEqual(["plugin.json"]);
+
+    // release:prepare's §3.2c step: regenerate via the generator.
+    writeBundle(bumped, directory);
+    expect(findDrift(bumped, directory)).toEqual([]);
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, "plugin.json"), "utf-8"));
+    expect(manifest.version).toBe("99.0.0");
   });
 });

@@ -80,7 +80,9 @@ non-incrementing version; empty changelog — each failure prints a distinct
 `refusing: …` line and leaves the repo untouched). It then creates a
 `release/X.Y.Z` branch, bumps all eight version locations, regenerates the Pi
 adapter bundle (`adapters/pi/`, whose version tracks `package.json`, so
-`pnpm pi:check` stays green), renames `## Unreleased` to `## X.Y.Z` in the
+`pnpm pi:check` stays green) and the Copilot plugin bundle (`adapters/copilot/`,
+whose `plugin.json` version is checked by `pnpm version:check` and
+`pnpm copilot:check`), renames `## Unreleased` to `## X.Y.Z` in the
 changelog, commits `chore(release): vX.Y.Z`, and pushes the **branch**. It does **not** tag and does **not** push `main` —
 tagging a pre-merge branch commit would orphan the tag on the squash-merge.
 

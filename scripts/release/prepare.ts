@@ -23,6 +23,7 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { writeBundle as writeCopilotBundle } from "../build-copilot-bundle";
 import { writeBundle } from "../build-pi-bundle";
 import {
   PACKAGE_JSON_PATHS,
@@ -93,12 +94,16 @@ export function dryRunLines(plan: PreparePlan): string[] {
     const drift = loc.version !== canonical ? "   (corrects drift)" : "";
     lines.push(`  ${`${loc.file}:`.padEnd(width)} ${loc.version} → ${plan.version}${drift}`);
   }
-  // Mirror the real flow's order: the Pi bundle is regenerated right after the
+  // Mirror the real flow's order: the Pi and Copilot bundles are regenerated right after the
   // version bump (its manifest version tracks package.json) and before the
-  // changelog roll, or `pnpm pi:check` fails on the release PR (issue #119).
+  // changelog roll, or `pnpm pi:check` / `pnpm copilot:check` fail on the release PR (issue #119).
   lines.push(
     `  adapters/pi/: regenerate bundle so its version tracks ${plan.version}` +
       ` (scripts/build-pi-bundle.ts)`,
+  );
+  lines.push(
+    `  adapters/copilot/: regenerate bundle so plugin.json tracks ${plan.version}` +
+      ` (scripts/build-copilot-bundle.ts)`,
   );
   lines.push(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
   lines.push(`  branch: ${releaseBranchName(plan.version)} (commit "chore(release): ${plan.tag}")`);
@@ -252,6 +257,20 @@ function main(): void {
     const detail = e instanceof Error ? e.message : String(e);
     fail(
       `Pi bundle regeneration failed: ${detail}\n` +
+        `version bumps were written on ${releaseBranch} but NOT committed.\n` +
+        `  abort:  git checkout main && git branch -D ${releaseBranch}`,
+    );
+  }
+
+  // §3.2c — regenerate the Copilot Agent Plugins bundle for the same reason: its
+  // generated `adapters/copilot/plugin.json` version tracks the root package.json,
+  // and both `pnpm version:check` and `pnpm copilot:check` gate on it (#131).
+  try {
+    writeCopilotBundle();
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    fail(
+      `Copilot bundle regeneration failed: ${detail}\n` +
         `version bumps were written on ${releaseBranch} but NOT committed.\n` +
         `  abort:  git checkout main && git branch -D ${releaseBranch}`,
     );
