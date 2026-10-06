@@ -149,7 +149,9 @@ Prereleases (`0.3.0-rc.1`) are marked **prerelease** and never become
 
 A `workflow_dispatch` run with an existing tag (Actions → Release → Run workflow)
 re-releases a tag whose run failed before publishing. It goes through the same
-`verify` → approval → `publish` path.
+`verify` → approval → `publish` path. Set **Use workflow from** to the tag itself
+(`gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`), not `main`: the `release`
+environment only deploys `v*` refs, and `verify` refuses a dispatch from any other ref.
 
 ### 2.1 After the approval: verify
 
