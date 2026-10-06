@@ -269,7 +269,8 @@ silence threshold. See [SCHEMAS.md](./SCHEMAS.md) for per-agent tool boundaries.
    distinct `circuit_breaker` event type. When the loop halts because
    consecutive infra-failure spawns trip the circuit breaker, it emits
    `loop_error` whose `error` string begins `Circuit breaker: …`. Match on the
-   message, not on a dedicated type.
+   message, not on a dedicated type. `loop run` then exits **`1`** (`ERROR`), and
+   the trailing `LoopResult` line carries the same message as `haltReason` (#164).
 
 **Pause-on-needs-human (live supervision).** With `rauf loop run
 --pause-on-needs-human`, when an item emits `RAUF_NEEDS_HUMAN` the runner sets

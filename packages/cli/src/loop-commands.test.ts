@@ -206,6 +206,23 @@ describe("loopRunExitCode (terminal LoopResult → unified exit code, 00 §2a)",
       expected: ExitCode.SUCCESS,
     },
     {
+      name: "haltReason (circuit breaker / git-safety halt, #164) → ERROR(1)",
+      result: { ...base, haltReason: "Circuit breaker: 3 consecutive infra failures — halting" },
+      expected: ExitCode.ERROR,
+    },
+    {
+      name: "haltReason precedes needs-human, limit and blocked (order, #164)",
+      result: {
+        ...base,
+        completedCount: 1,
+        blockedCount: 1,
+        needsHumanCount: 1,
+        limitReached: true,
+        haltReason: "Git tree not clean before item 002",
+      },
+      expected: ExitCode.ERROR,
+    },
+    {
       name: "setupFailed → ERROR(1) (fail-fast agent unavailable, REQ-DET-02/SC-3)",
       result: { ...base, setupFailed: true },
       expected: ExitCode.ERROR,
