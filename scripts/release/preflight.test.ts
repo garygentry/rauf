@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanupRepoFixtures, makeRepoFixture } from "./__fixtures__";
 import { isPrerelease, readVersionLocations } from "./lib";
-import { detectDrift } from "./preflight";
+import { detectDrift, resolveTagRef } from "./preflight";
 
 afterEach(() => {
   cleanupRepoFixtures();
@@ -59,5 +59,20 @@ describe("prerelease classification (drives the is_prerelease output)", () => {
 
   it("classifies a stable tag version as stable", () => {
     expect(isPrerelease("0.3.0")).toBe(false);
+  });
+});
+
+describe("resolveTagRef", () => {
+  it("uses GITHUB_REF_NAME on a tag push (INPUT_TAG empty)", () => {
+    expect(resolveTagRef({ GITHUB_REF_NAME: "v0.3.0", INPUT_TAG: "" })).toBe("v0.3.0");
+    expect(resolveTagRef({ GITHUB_REF_NAME: "v0.3.0" })).toBe("v0.3.0");
+  });
+
+  it("prefers the dispatch INPUT_TAG over the branch GITHUB_REF_NAME", () => {
+    expect(resolveTagRef({ GITHUB_REF_NAME: "main", INPUT_TAG: "v0.3.0" })).toBe("v0.3.0");
+  });
+
+  it("returns empty when neither is set", () => {
+    expect(resolveTagRef({})).toBe("");
   });
 });

@@ -56,12 +56,21 @@ export function detectDrift(tagVersion: string, locations: VersionLocation[]): s
   return null;
 }
 
+/**
+ * Resolve the release tag from the Actions env. A workflow_dispatch re-release
+ * forwards its `tag` input as INPUT_TAG, which must win: GITHUB_REF_NAME is
+ * always set, and on a dispatch it names the branch the run was started from
+ * (e.g. "main"), not the tag. On a tag push INPUT_TAG is empty and
+ * GITHUB_REF_NAME is the tag (e.g. "v0.3.0").
+ */
+export function resolveTagRef(env: Record<string, string | undefined>): string {
+  return env.INPUT_TAG || env.GITHUB_REF_NAME || "";
+}
+
 // ── Main (Actions-only flow) ────────────────────────────────────────────────
 
 function main(): void {
-  // Tag comes from the push trigger (GITHUB_REF_NAME = "v0.3.0") or the
-  // workflow_dispatch `tag` input forwarded as INPUT_TAG.
-  const ref = process.env.GITHUB_REF_NAME ?? process.env.INPUT_TAG ?? "";
+  const ref = resolveTagRef(process.env);
   if (!ref.startsWith("v")) fail(`drift: expected a v* tag, got "${ref}"`);
   const tagVersion = ref.slice(1);
   if (!isValidVersion(tagVersion)) fail(`drift: tag ${ref} is not a valid version`);
@@ -75,6 +84,7 @@ function main(): void {
   const isPre = isPrerelease(tagVersion);
   const outFile = process.env.GITHUB_OUTPUT;
   if (!outFile) fail("drift: GITHUB_OUTPUT not set (must run inside Actions)");
+  fs.appendFileSync(outFile, `tag=${ref}\n`);
   fs.appendFileSync(outFile, `version=${tagVersion}\n`);
   fs.appendFileSync(outFile, `is_prerelease=${isPre}\n`);
   console.log(`preflight OK: ${ref} (${isPre ? "prerelease" : "stable"})`);

@@ -288,13 +288,14 @@ function main(): void {
     `Release-prep PR for **${tag}**. Bumps all eight version locations to \`${version}\` and rolls the`,
     "`CHANGELOG.md` `## Unreleased` section.",
     "",
-    "## After merge (owner-only)",
+    "## After merge",
     "1. Tag the squash-merged commit and push (triggers `release.yml`):",
     "   ```",
     "   git checkout main && git pull",
     `   git tag -m ${tag} ${tag} && git push origin ${tag}`,
     "   ```",
-    `2. Once the \`${tag}\` GitHub Release exists, publish the npm launcher: Actions → "npm Publish (manual)" (or \`gh workflow run npm-publish.yml --ref main\`).`,
+    "2. The operator approves the `release` environment once; `publish` then attests the binaries, creates the GitHub Release and publishes `@garygentry/rauf` to npm.",
+    `3. Verify: \`npm view @garygentry/rauf@${version} version\` and \`npx -y @garygentry/rauf@${version} version\`.`,
     "",
     "See docs/RELEASING.md.",
   ].join("\n");
@@ -322,10 +323,12 @@ function main(): void {
   if (!prOpened) {
     console.log(`  Open the PR:  gh pr create --base main --title "${prTitle}"`);
   }
-  console.log("  After the PR merges on green CI, the OWNER cuts the release:");
+  console.log("  After the PR merges on green CI, tag the merged commit:");
   console.log("    git checkout main && git pull");
   console.log(`    git tag -m ${tag} ${tag} && git push origin ${tag}   # triggers release.yml`);
-  console.log(`  Then publish the npm launcher: Actions → "npm Publish (manual)".`);
+  console.log(
+    "  Then the operator approves the `release` environment once (GitHub Release + npm).",
+  );
 }
 
 if (meta.main) {

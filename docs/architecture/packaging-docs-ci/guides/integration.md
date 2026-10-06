@@ -126,19 +126,12 @@ The `skill` value must match an existing `skills/<name>/` directory (the harness
 raises on an unknown skill). The eval never blocks a PR — to see its score on
 CI, trigger the workflow manually (`workflow_dispatch`) or wait for the weekly run.
 
-## Cut a release (maintainer, manual)
+## Cut a release
 
-This feature ships the **machinery**, not a release. When ready to publish rauf:
-
-1. Confirm `pnpm gate` is green and the version is set (`packages/core/src/version.ts`).
-2. Trigger `.github/workflows/npm-publish.yml` via `workflow_dispatch` (it is
-   intentionally **not** on the PR gate).
-3. Resolve OQ-A (the published distribution form — Bun-required npm package vs.
-   compiled binary) when authoring the actual publish step; the Bun shebang means a
-   plain `npm install` needs Bun present.
-4. Once rauf `0.6.0` is published, the installer's `npx rauf@0.6.0` provisioning
-   path becomes live and the "available once published" caveats in the docs can be
-   dropped.
+The manual `npm-publish.yml` this feature introduced was replaced by the gated,
+tag-triggered `release.yml` (#166): a tag push runs `verify`, then `publish` waits for
+one approval of the `release` environment and ships the binaries and the npm launcher
+together. See [`docs/RELEASING.md`](../../../RELEASING.md).
 
 Marketplace submission/refresh for the Claude plugin is a separate manual step —
 this feature documents the marketplace install but does not submit the entry.

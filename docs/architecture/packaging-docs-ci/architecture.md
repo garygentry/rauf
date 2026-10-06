@@ -145,7 +145,8 @@ is a separately npm-published sub-package with its own release cadence.
 ## What this feature deliberately does _not_ do
 
 - **No live release.** No `npm publish` of rauf, no git tag/release cut. The
-  `npm-publish.yml` workflow is `workflow_dispatch`-only machinery; rauf's
+  `npm-publish.yml` workflow was `workflow_dispatch`-only machinery (since replaced
+  by the gated `release.yml`, #166); rauf's
   `package.json` gets publishability metadata but no version change.
 - **No new product features.** No new installer flags, adapter formats, or loop
   capabilities — it documents and gates the _existing_ assembled system.
