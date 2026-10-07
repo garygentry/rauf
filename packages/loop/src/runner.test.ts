@@ -250,6 +250,7 @@ describe("LoopRunner", () => {
       expect(result.completedCount).toBe(1);
       expect(result.blockedCount).toBe(0);
       expect(result.cancelled).toBe(false);
+      expect(result.haltReason).toBeUndefined();
 
       // Check events
       const selectedEvents = events.filter((e) => e.type === "item_selected");
@@ -1406,6 +1407,8 @@ echo '{"type":"result","result":"RAUF_DONE"}'`,
       // Halted with no work done, the item left pending (never blocked on a
       // flaky spawn), and an error state + DONE summary written.
       expect(result.completedCount).toBe(0);
+      // The halt is on the result too, so `loop run` exits ERROR, not SUCCESS (#164).
+      expect(result.haltReason).toBe("Circuit breaker: 3 consecutive infra failures — halting");
       const backlog = JSON.parse(
         fs.readFileSync(path.join(tmpDir, ".rauf", "backlog.json"), "utf-8"),
       ) as Backlog;
@@ -2210,6 +2213,8 @@ echo "RAUF_DONE"`,
       expect(done.toLowerCase()).toContain("not clean");
 
       expect(loopErrorEvents.length).toBeGreaterThan(0);
+      // The git-safety halt is surfaced on the result as well (#164).
+      expect(result.haltReason).toBe(state.error);
 
       // The stray file is untouched (not silently swept into a commit).
       expect(fs.existsSync(strayFile)).toBe(true);

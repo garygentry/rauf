@@ -574,7 +574,8 @@ export MOCK_CLAUDE_SCENARIO="fast-infra-death"
 # Generous iteration budget so the breaker (not maxIterations) is what halts.
 # Run in the background and poll for the error halt so a regressed breaker
 # (which would loop indefinitely) can't hang the suite.
-rauf loop run "$SANDBOX_DIR" --iterations 25 --timeout 1 >/dev/null 2>&1 &
+BREAKER_OUT="$(mktemp)"
+rauf loop run "$SANDBOX_DIR" --iterations 25 --timeout 1 >"$BREAKER_OUT" 2>&1 &
 LOOP_PID=$!
 
 breaker_halted=0
@@ -590,14 +591,34 @@ for _ in $(seq 1 40); do
   sleep 0.5
 done
 
+# After the halt the process exits on its own; give it a moment before
+# force-killing a regressed (spinning) loop.
+for _ in $(seq 1 20); do
+  kill -0 "$LOOP_PID" 2>/dev/null || break
+  sleep 0.5
+done
 kill "$LOOP_PID" 2>/dev/null || true
-wait "$LOOP_PID" 2>/dev/null || true
+breaker_rc=0
+wait "$LOOP_PID" 2>/dev/null || breaker_rc=$?
 
 if [ "$breaker_halted" -eq 1 ]; then
   pass "circuit breaker halted the loop (state = error)"
 else
   fail "circuit breaker did not halt (state never reached error)"
 fi
+
+# A breaker halt is an error terminal: exit 1, never a "✓ Loop finished" (#164).
+if [ "$breaker_rc" -eq 1 ]; then
+  pass "breaker halt exits 1 (ERROR)"
+else
+  fail "breaker halt exit code was $breaker_rc, expected 1"
+fi
+if grep -q "Loop finished" "$BREAKER_OUT"; then
+  fail "breaker halt still reported \"Loop finished\""
+else
+  pass "breaker halt does not report a clean finish"
+fi
+rm -f "$BREAKER_OUT"
 
 # Item must stay pending — a flaky spawn must never block a real work item.
 assert_item_status "001" "pending"

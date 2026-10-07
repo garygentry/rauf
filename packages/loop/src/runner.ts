@@ -170,6 +170,13 @@ export interface LoopResult {
    * pending review, #146) is left untouched. The error is on `loop_error`.
    */
   lockConflict?: boolean;
+  /**
+   * The loop halted on an error mid-run: the circuit breaker tripped, or a git
+   * safety check failed (#83). Carries the same message as `state.json` `error`
+   * and the `loop_error` event, so `loop run` can map it to ExitCode.ERROR
+   * instead of reporting a clean finish (#164).
+   */
+  haltReason?: string;
 }
 
 /** Result of a review pass */
@@ -292,6 +299,8 @@ export class LoopRunner extends TypedEventEmitter {
   private pausedReason: "needs_human" | null = null;
   /** Set when the loop wrote a terminal limit state; surfaced as LoopResult.limitReached. */
   private limitTerminal = false;
+  /** Set by the error halts (circuit breaker, git safety); surfaced as LoopResult.haltReason. */
+  private haltReason: string | null = null;
   /** Per-run dense sequence counter for persisted events (assigned only when a record is written). */
   private eventSeq = 0;
   /** Last wall-clock ms an llm_token_update was persisted to FILE (coalescing window). */
@@ -539,6 +548,7 @@ export class LoopRunner extends TypedEventEmitter {
             cancelled: this.isCancelled(),
             ...(this.pausedReason ? { pausedReason: this.pausedReason } : {}),
             ...(this.limitTerminal ? { limitReached: true } : {}),
+            ...(this.haltReason ? { haltReason: this.haltReason } : {}),
           };
         }
 
@@ -551,6 +561,7 @@ export class LoopRunner extends TypedEventEmitter {
               blockedCount: this.blockedCount,
               cancelled: this.isCancelled(),
               ...(this.limitTerminal ? { limitReached: true } : {}),
+              ...(this.haltReason ? { haltReason: this.haltReason } : {}),
             };
           }
         }
@@ -881,6 +892,7 @@ export class LoopRunner extends TypedEventEmitter {
       cancelled: this.isCancelled(),
       ...(this.pausedReason ? { pausedReason: this.pausedReason } : {}),
       ...(this.limitTerminal ? { limitReached: true } : {}),
+      ...(this.haltReason ? { haltReason: this.haltReason } : {}),
       ...(this.reviewItemsCreated > 0 ? { reviewItemsCreated: this.reviewItemsCreated } : {}),
       ...(this.reviewSummary ? { reviewSummary: this.reviewSummary } : {}),
     };
@@ -2368,6 +2380,7 @@ export class LoopRunner extends TypedEventEmitter {
    */
   private haltForCircuitBreaker(): "exit" {
     const message = `Circuit breaker: ${this.consecutiveInfraFailures} consecutive infra failures — halting`;
+    this.haltReason = message;
     appendLog(this.paths, message);
     this.emitEvent("loop_error", { error: message });
     this.writeState("error", null, "error", message);
@@ -2387,6 +2400,7 @@ export class LoopRunner extends TypedEventEmitter {
    * summary, emits a loop_error, and signals the caller to exit.
    */
   private haltForGitSafetyFailure(reason: string): "exit" {
+    this.haltReason = reason;
     appendLog(this.paths, reason);
     this.emitEvent("loop_error", { error: reason });
     this.writeState("error", null, "error", reason);

@@ -772,7 +772,8 @@ function isLimitTerminal(result: LoopResult): boolean {
 /**
  * Map a terminal `loop run` LoopResult to the unified exit code
  * (00-core-definitions §2a). Pure over the resolved result. Order is
- * significant — needs-human → limit → blocked → clean; the first match wins.
+ * significant — lock conflict → setup failure → mid-run halt (`haltReason`, #164) →
+ * needs-human → limit → review failed → blocked → clean; the first match wins.
  * The non-Result error path (the caller's catch) covers the ERROR(1) row.
  * RUNNING(6) is NEVER returned here — a finished run is not running.
  */
@@ -782,6 +783,9 @@ export function loopRunExitCode(result: LoopResult): ExitCode {
   }
   if (result.setupFailed) {
     return ExitCode.ERROR; // 1 — pre-loop setup aborted (e.g. agent unavailable, REQ-DET-02/SC-3)
+  }
+  if (result.haltReason) {
+    return ExitCode.ERROR; // 1 — halted mid-run: circuit breaker or git-safety failure (#164)
   }
   const needsHuman = (result.needsHumanCount ?? 0) > 0 || result.pausedReason === "needs_human";
   if (needsHuman) {
@@ -1190,7 +1194,13 @@ export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {})
       if (result.cancelled && result.reviewPending) {
         info(`The review pass did not finish — ${c.cyan("rauf resume .")} re-runs it.`);
       }
-      if (!result.cancelled) {
+      if (result.haltReason) {
+        // state.json is `error`; never report a halt as a clean finish (#164).
+        // The reason itself was already rendered from the loop_error event.
+        error(
+          `Loop halted on an error: ${result.completedCount} completed, ${result.blockedCount} blocked. See ${c.cyan(".rauf/rauf.log")}.`,
+        );
+      } else if (!result.cancelled) {
         let msg = `Loop finished: ${result.completedCount} completed, ${result.blockedCount} blocked`;
         if (result.needsHumanCount !== undefined && result.needsHumanCount > 0) {
           msg += `, ${result.needsHumanCount} needs human`;

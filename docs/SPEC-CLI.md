@@ -133,15 +133,15 @@ A quick-reference summary of all rauf commands organized by group. Click a group
 
 ## Exit Codes
 
-| Code | Meaning                                                                                                                    |
-| ---- | -------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Success: clean terminal (idle / complete / iteration budget reached)                                                       |
-| 1    | Error: generic failure (incl. a failed review pass in `loop run --review` / `loop review`; the review stays pending, #146) |
-| 2    | Usage: bad args / failed precondition (incl. loop-already-running 409)                                                     |
-| 3    | Needs human: loop halted in `paused_human` state                                                                           |
-| 4    | Limit: usage limit reached / usage-paused / sleeping                                                                       |
-| 5    | Blocked: terminal state with genuinely blocked items                                                                       |
-| 6    | Running: loop is currently running (query-time only; `status` command)                                                     |
+| Code | Meaning                                                                                                                                                                    |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success: clean terminal (idle / complete / iteration budget reached)                                                                                                       |
+| 1    | Error: generic failure (incl. a circuit-breaker or git-safety halt, #164, and a failed review pass in `loop run --review` / `loop review`; the review stays pending, #146) |
+| 2    | Usage: bad args / failed precondition (incl. loop-already-running 409)                                                                                                     |
+| 3    | Needs human: loop halted in `paused_human` state                                                                                                                           |
+| 4    | Limit: usage limit reached / usage-paused / sleeping                                                                                                                       |
+| 5    | Blocked: terminal state with genuinely blocked items                                                                                                                       |
+| 6    | Running: loop is currently running (query-time only; `status` command)                                                                                                     |
 
 ---
 

@@ -21,15 +21,15 @@ built-in surface does.
 `rauf status` and `rauf loop run` share **one unified exit-code scheme**. Branch on `$?`
 without touching stdout — the code alone tells you what happened.
 
-| Exit | Meaning                                                      |
-| ---- | ------------------------------------------------------------ |
-| `0`  | Success — clean terminal                                     |
-| `1`  | Error — generic failure, or a failed/pending review pass     |
-| `2`  | Usage — bad args / precondition (incl. loop-already-running) |
-| `3`  | Needs human                                                  |
-| `4`  | Limit / usage-paused / sleeping                              |
-| `5`  | Blocked — clean terminal with genuinely blocked items        |
-| `6`  | Running (query-time only — `status`)                         |
+| Exit | Meaning                                                                                        |
+| ---- | ---------------------------------------------------------------------------------------------- |
+| `0`  | Success — clean terminal                                                                       |
+| `1`  | Error — generic failure, a circuit-breaker or git-safety halt, or a failed/pending review pass |
+| `2`  | Usage — bad args / precondition (incl. loop-already-running)                                   |
+| `3`  | Needs human                                                                                    |
+| `4`  | Limit / usage-paused / sleeping                                                                |
+| `5`  | Blocked — clean terminal with genuinely blocked items                                          |
+| `6`  | Running (query-time only — `status`)                                                           |
 
 :::note[Exit 6 is query-time only]
 `6` is reported by `rauf status` when a loop is currently running. A `rauf loop run` invocation
