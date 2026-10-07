@@ -3,7 +3,7 @@ import type { Result } from "@rauf/core";
 
 import { spawnClaude } from "../claude-process.js";
 import { checkUsageLimit } from "../usage-checker.js";
-import { registerAgent } from "./registry.js";
+import { probeBinaryOnPath, registerAgent } from "./registry.js";
 import type {
   LLMProvider,
   ExecuteOptions,
@@ -67,12 +67,25 @@ export function createClaudeCliProvider(): LLMProvider {
  * credential check `createClaudeCliProvider().validateCredentials()`. Never throws.
  */
 async function detectClaudeCli(): Promise<DetectionResult> {
+  const binary = await probeBinaryOnPath("claude");
+  if (!binary.binaryAvailable) return binary;
+
   const provider = createClaudeCliProvider();
   const result = provider.validateCredentials();
   if (result.ok) {
-    return { available: true, detail: "Claude OAuth credentials present" };
+    return {
+      available: true,
+      binaryAvailable: true,
+      authenticated: true,
+      detail: "claude found in PATH; Claude OAuth credentials present",
+    };
   }
-  return { available: false, detail: result.error.message };
+  return {
+    available: false,
+    binaryAvailable: true,
+    authenticated: false,
+    detail: result.error.message,
+  };
 }
 
 // Register as the default agent (migrated from registerProvider — behavior preserved).

@@ -10,11 +10,6 @@ import { registerAgent } from "./registry.js";
  *
  * OQ-2 verification status (real-CLI checked 2026-06-27; a wrong flag is a one-line config fix
  * here, never an engine change):
- *  - `copilot` (@github/copilot 1.0.65) — VERIFIED end-to-end: `copilot --allow-all-tools` with
- *    the prompt on stdin runs headlessly and emits the agent's text on stdout (real run exited 0
- *    with the expected sentinel). All three CLIs auto-detect a non-TTY stdin and go headless, so
- *    the engine's stdin/arg delivery is enough — no explicit `-p/--prompt` is needed for copilot
- *    or gemini.
  *  - `gemini` (@google/gemini-cli 0.49.0) — argv VERIFIED to reach headless execution: `gemini
  *    --yolo` with the prompt on stdin parses, enters non-interactive mode, and consumes the
  *    prompt (run reached the auth wall — `GEMINI_API_KEY` not set in this env). Completion +
@@ -26,7 +21,7 @@ import { registerAgent } from "./registry.js";
  *    CAVEAT — `promptDelivery: "file"`, not `"stdin"` (GH #108): cursor-agent's own docs
  *    (cursor.com/docs/cli/headless) show the prompt passed as a positional argv argument, and
  *    their piped-stdin examples use stdin as additional context ALONGSIDE an argv `-p "..."`
- *    string, not as a full prompt replacement — unlike gemini/copilot/pi above, nothing confirms
+ *    string, not as a full prompt replacement — unlike gemini/pi, nothing confirms
  *    cursor-agent reads a whole prompt from stdin alone. A large aggregated prompt (e.g. the
  *    post-loop review prompt) as a single argv element can still exceed the OS per-argument limit
  *    and fail with E2BIG (the same bug GH #90 fixed for `pi`), so the real prompt is written to a
@@ -70,15 +65,6 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     modelFlag: (m) => ["-m", m],
   },
   {
-    id: "copilot",
-    displayName: "GitHub Copilot CLI",
-    binary: "copilot",
-    promptDelivery: "stdin",
-    buildArgs: () => [],
-    nonInteractive: ["--allow-all-tools"],
-    modelFlag: (m) => ["--model", m],
-  },
-  {
     id: "cursor",
     displayName: "Cursor Agent CLI",
     // NOTE: the binary ("cursor-agent") deliberately differs from the agent id ("cursor").
@@ -105,7 +91,7 @@ export const PRESET_CONFIGS: readonly CliAgentConfig[] = [
     binary: "pi",
     // stdin (not "arg"): a large aggregated prompt (e.g. the post-loop review prompt) as a single
     // argv element can exceed the OS per-argument limit and fail with E2BIG before Pi even starts
-    // (GH #90). Pi, like gemini/copilot above, auto-detects non-TTY stdin and goes headless in
+    // (GH #90). Pi, like gemini above, auto-detects non-TTY stdin and goes headless in
     // print mode, so this is a pure config change — no engine change required.
     promptDelivery: "stdin",
     // `-p` is the print-mode trigger. Keep `--no-tools` out of the production preset: loop

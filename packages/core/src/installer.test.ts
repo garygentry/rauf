@@ -128,10 +128,20 @@ describe("preflight", () => {
     expect(installedCheck?.passed).toBe(false);
   });
 
-  it("returns 4 checks total", () => {
+  it("checks the selected provider binary without naming Claude", () => {
+    createFakeProject(tmpDir, { git: true });
+    const result = preflight(tmpDir, { id: "copilot", binaryName: "missing-copilot-test-binary" });
+    expect(result.checks).toHaveLength(4);
+    const agentCheck = result.checks.find((check) => check.name === "agent_binary_available");
+    expect(agentCheck?.passed).toBe(false);
+    expect(agentCheck?.message).toContain('agent "copilot"');
+    expect(agentCheck?.message).not.toContain("claude");
+  });
+
+  it("omits a binary check when no provider is selected", () => {
     createFakeProject(tmpDir, { git: true });
     const result = preflight(tmpDir);
-    expect(result.checks).toHaveLength(4);
+    expect(result.checks).toHaveLength(3);
   });
 });
 
@@ -452,6 +462,32 @@ describe("install — idempotency", () => {
     });
     expect(markerResult.value.options.model).toBe("gpt-5");
     expect(markerResult.value.options.runtime).toBe("global");
+  });
+
+  it("reinstall with a different provider drops the stale providerConfig", () => {
+    createFakeProject(tmpDir, { git: true });
+    install(tmpDir, installOpts({ projectName: "orig" }));
+
+    const markerPath = path.join(tmpDir, ".rauf.json");
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+    marker.options.provider = "codex";
+    marker.options.providerConfig = { binary: "codex", promptDelivery: "arg" };
+    marker.options.model = "gpt-5";
+    fs.writeFileSync(markerPath, JSON.stringify(marker, null, 2));
+
+    // e.g. `rauf install . --agent copilot` — copilot rejects any providerConfig.
+    const r2 = install(
+      tmpDir,
+      installOpts({ projectName: "orig", options: { provider: "copilot" } }),
+    );
+    expect(r2.ok).toBe(true);
+
+    const markerResult = readMarkerFile(tmpDir);
+    expect(markerResult.ok).toBe(true);
+    if (!markerResult.ok) return;
+    expect(markerResult.value.options.provider).toBe("copilot");
+    expect(markerResult.value.options.providerConfig).toBeUndefined();
+    expect(markerResult.value.options.model).toBe("gpt-5");
   });
 
   it("second install preserves existing backlog.json", () => {
@@ -1054,10 +1090,10 @@ describe("edge cases", () => {
 // ─── preflight checks (updated) ────────────────────────────────────────
 
 describe("preflight — no jq check", () => {
-  it("returns 4 checks total (no jq check)", () => {
+  it("returns 3 checks total when no provider is selected (no jq check)", () => {
     createFakeProject(tmpDir, { git: true });
     const result = preflight(tmpDir);
-    expect(result.checks).toHaveLength(4);
+    expect(result.checks).toHaveLength(3);
     expect(result.checks.find((c) => c.name === "jq_available")).toBeUndefined();
   });
 });

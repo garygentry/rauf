@@ -666,8 +666,10 @@ still open. Every `start` therefore gets an `end`.
 
 Tool boundaries per agent: **claude** starts a tool at its assistant `tool_use` block and ends
 it when the matching `tool_result` arrives, which is the real execution window. **codex** uses
-`item.started`/`item.completed` (open items close at `turn.completed`). The plain-text
-agents (**gemini, copilot, cursor, pi, generic-cli**) produce no stream events at all, so they
+`item.started`/`item.completed` (open items close at `turn.completed`). **copilot** uses
+its `--output-format json` JSONL `tool.execution_start`/`tool.execution_complete` pairs (no
+token telemetry). The plain-text agents (**gemini, cursor, pi, generic-cli**) produce no
+stream events at all, so they
 keep the pre-#141 behavior: no tool is ever in flight, and the warning fires once the
 iteration has run `stuckThresholdMs` with no events.
 
