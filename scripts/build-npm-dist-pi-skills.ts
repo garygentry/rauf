@@ -18,10 +18,9 @@
  * copied skills once the package is installed.
  *
  * The copy is committed (like `adapters/pi/` and `.codex-plugin/` are), not
- * generated at publish time, because the npm-publish workflow
- * (`.github/workflows/npm-publish.yml`) runs `npm publish` directly against the
- * checked-out `npm-dist/` with no build step — this PR intentionally does not add
- * one, since it must not touch the publish/release mechanism. `--check` is the
+ * generated at publish time, because the publish job in
+ * `.github/workflows/release.yml` runs `npm publish` directly against the
+ * checked-out `npm-dist/` with no build step. `--check` is the
  * drift guard, wired into `pnpm gate` the same way `pi:check`/`codex:check` are.
  *
  * Usage:

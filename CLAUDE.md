@@ -231,14 +231,16 @@ This project has exactly one backlog home: `.rauf/`. Do **not** create parallel 
 
 ## Publishing & Releasing
 
-Two separate, **manual, owner-gated** flows — a routine merge to `main` never publishes anything. Both are **PR-based**: like all changes, a release reaches `main` via a PR (see [Branching & merging](#branching--merging)), and only the owner cuts the actual release.
+One flow, **one human approval** (ADR 0046 A4, #166) — a routine merge to `main` never publishes anything. `.github/workflows/release.yml` is the **only** workflow that publishes; npm Trusted Publishing trusts it by filename + the `release` environment, so never rename it, and never add an npm token.
 
-- **Binary release** (the `rauf` CLI binaries + GitHub Release): a **release-prep PR** then an **owner tag**. Run `pnpm release:prepare X.Y.Z` — it bumps all eight version locations, rolls the changelog, commits on a `release/X.Y.Z` branch, and pushes it for a PR (it does **not** push `main` or tag). After the PR merges on green CI, the **owner** tags the merged commit (`git tag -m vX.Y.Z vX.Y.Z && git push origin vX.Y.Z`); the `v*` tag triggers `release.yml`. Full mechanics in `docs/RELEASING.md`.
-- **npm launcher** (`@garygentry/rauf` — the `npx @garygentry/rauf` shim in `npm-dist/`): published by `.github/workflows/npm-publish.yml`, whose **only** trigger is `workflow_dispatch` (Actions → "npm Publish (manual)"). The published version is `npm-dist/package.json`'s version, kept in lockstep with the binary release by the version guards — so publish the launcher **after** the matching `vX.Y.Z` GitHub release exists, so `npx @garygentry/rauf@X.Y.Z` resolves to that release's binary.
+1. **Release-prep PR.** `pnpm release:prepare X.Y.Z` bumps all eight version locations, rolls the changelog, commits on a `release/X.Y.Z` branch and pushes it for a PR (it does **not** push `main` or tag). Squash-merge on green CI.
+2. **Tag.** Tag the merged commit and push it (`git tag -m vX.Y.Z vX.Y.Z && git push origin vX.Y.Z`). The agent may do steps 1–2.
+3. **Gate.** The tag runs `release.yml`: `verify` (no credentials — preflight, quality gate, binaries, smoke, a release summary on the run page) then `publish` (`environment: release`), which waits for the operator's single approval and then attests the binaries, creates the GitHub Release and publishes `@garygentry/rauf` (`npm-dist/`) with provenance. The agent **cannot and must not** approve.
+4. **Verify.** After the approval the agent checks `npm view @garygentry/rauf@X.Y.Z` and runs an install smoke (`npx -y @garygentry/rauf@X.Y.Z version`). Full mechanics in `docs/RELEASING.md`.
 
-> rauf and **feature-forge** are versioned **independently** — there is no lockstep. The only coupling is feature-forge's dependency pin on a published rauf coordinate (`RAUF_PIN`) plus its `COMPATIBILITY.md`. Both repos share the same release _process_ (PR-only merges, manual owner-gated publish, bump-before-publish, offer-don't-act).
+> rauf and **feature-forge** are versioned **independently** — there is no lockstep. The only coupling is feature-forge's dependency pin on a published rauf coordinate (`RAUF_PIN`) plus its `COMPATIBILITY.md`. Both repos share the same release _process_ (PR-only merges, tag-triggered `release.yml`, one `release`-environment approval, bump-before-publish).
 
-**Agent guidance — offer, don't act.** When merged changes are user-facing and worth getting to end users, proactively **suggest** the appropriate release/publish and outline the steps; never tag, `npm publish`, or dispatch a publish yourself. These are deliberate, owner-only acts.
+**Agent guidance — offer, then drive to the gate.** When merged changes are user-facing and worth getting to end users, proactively **suggest** a release. Once the operator agrees, you may run the release-prep PR, merge it and push the tag; then tell the operator the run is waiting for their approval. Never run `npm publish` yourself, never approve the `release` environment, and never create a GitHub Release outside `release.yml`.
 
 ---
 

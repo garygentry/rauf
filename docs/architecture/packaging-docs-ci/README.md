@@ -27,7 +27,8 @@ docs, and (d) finalize `.gitattributes`, MIT licensing, and version reconciliati
 >   - `eval/fixtures/`, `docs/agents/{claude,codex,copilot,cursor,gemini}.md`,
 >     `README.md`, `LICENSE`, `.gitattributes`, `CHANGELOG.md`.
 > - **rauf** (this repo): `.gitattributes`, `README.md` cross-agent section,
->   `.github/workflows/npm-publish.yml` (manual-dispatch publish machinery),
+>   `.github/workflows/npm-publish.yml` (manual-dispatch publish machinery; since
+>   replaced by the gated `release.yml`, #166),
 >   `CHANGELOG.md`.
 >
 > The pipeline/backlog state for the feature lives in **this** repo

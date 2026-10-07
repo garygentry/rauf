@@ -32,7 +32,21 @@ repository's code):
 Verification: Settings → Rules shows an **Active** `release-tags` ruleset, and a
 `v*` tag push by a non-owner is rejected by GitHub before any workflow run.
 
-### 1.2 Pre-release setup checklist
+### 1.2 The `release` environment and npm Trusted Publishing
+
+The publish gate (ADR 0046 A4, #166). Also manual, repo-admin configuration:
+
+- **Settings → Environments → `release`:** required reviewer `garygentry`; "Prevent
+  self-review" **off** (agent-pushed tags run as the operator, so with it on they could
+  never be approved); admin bypass disallowed; deployment branches/tags limited to `v*`
+  tags.
+- **npmjs.com → `@garygentry/rauf` → Settings → Trusted publishing:** GitHub Actions,
+  owner `garygentry`, repo `rauf`, workflow `release.yml`, environment `release`.
+  npm trusts the workflow by filename, so `release.yml` must not be renamed.
+- Same page → **Publishing access → "Require two-factor authentication and disallow
+  tokens"**. No npm token exists anywhere.
+
+### 1.3 Pre-release setup checklist
 
 Run through this once before the **first** release (items 1 and 2 are blockers):
 
@@ -51,9 +65,10 @@ Run through this once before the **first** release (items 1 and 2 are blockers):
 
 ## 2. Cutting a Release (maintainer)
 
-A release is **a release-prep PR + an owner tag**. There are two human-driven
-phases: (1) anyone can prepare and merge the version-bump PR; (2) only the owner
-tags the merged commit, which triggers the binary build.
+A release is **a release-prep PR + a tag + one approval**. The agent can do
+everything up to the gate: prepare and merge the version-bump PR, then push the
+`vX.Y.Z` tag, which starts `release.yml`. Nothing is published until the operator
+approves the `release` environment once.
 
 ### Why a PR, not a direct push
 
@@ -87,48 +102,69 @@ tagging a pre-merge branch commit would orphan the tag on the squash-merge.
 Open the PR (the command is printed, or use `--open-pr`), let CI's `check` go
 green, and **squash-merge** it to `main`.
 
-### Phase 2 — cut the release (owner-only)
+### Phase 2 — tag, then one approval
 
-After the PR merges on green CI, the owner tags the merged commit:
+After the PR merges on green CI, the merged commit is tagged. The agent may do this
+(ADR 0046 A4): the tag only _starts_ the release, and nothing ships without the
+operator's approval.
 
 ```bash
 git checkout main && git pull
 git tag -m v0.3.0 v0.3.0 && git push origin v0.3.0
 ```
 
-The `v*` tag push triggers `.github/workflows/release.yml`, which:
+The `v*` tag push triggers `.github/workflows/release.yml`, the **only** workflow that
+publishes anything. It has two jobs:
+
+**`verify`** (no publish credentials):
 
 1. Verifies the actor is the repository owner (defense-in-depth behind the
    ruleset).
 2. Runs preflight: the tag must match `version.ts` and all seven `package.json`
-   versions exactly. Any drift fails the run before any build.
+   versions exactly. Any drift fails the run before any build. It also refuses if
+   the GitHub Release or `@garygentry/rauf@X.Y.Z` on npm already exists.
 3. Runs the full quality gate (build, schema:check, typecheck, lint,
    format:check, test).
-4. Cross-compiles five platform binaries, generates `SHA256SUMS` and release
-   notes from the changelog section.
-5. Publishes everything atomically in a single `gh release create`. A failure
-   anywhere earlier creates no release object.
+4. Cross-compiles five platform binaries, smoke-tests linux-x64, generates
+   `SHA256SUMS` and release notes from the changelog section.
+5. Writes the release summary to the run page: version, what ships, the changelog
+   section, `git diff --stat <prev-tag>..<tag>`, and a loud **CAUTION** block if
+   `.github/` changed since the previous tag.
+
+**`publish`** (`environment: release`, waits for one approval by `garygentry`):
+
+6. Attests the binaries and `SHA256SUMS` (`actions/attest-build-provenance`).
+7. Creates the GitHub Release in a single `gh release create`.
+8. Publishes the npm launcher `@garygentry/rauf` from `npm-dist/` with
+   `--provenance` via npm Trusted Publishing (OIDC — no token). Stable versions go
+   to dist-tag `latest`, prereleases to `next`. The release is created first because
+   the launcher downloads that release's binary on first run.
+
+The operator reviews the summary and approves once (web or GitHub Mobile). The agent
+cannot approve: its App has no Deployments write. If `publish` fails part-way, use
+**Re-run failed jobs**; each publish step skips work that already landed.
 
 Prereleases (`0.3.0-rc.1`) are marked **prerelease** and never become
 `latest`; stable versions are published as `latest`.
 
-### 2.1 Publishing the npm launcher (`@garygentry/rauf`)
+A `workflow_dispatch` run with an existing tag (Actions → Release → Run workflow)
+re-releases a tag whose run failed before publishing. It goes through the same
+`verify` → approval → `publish` path. Set **Use workflow from** to the tag itself
+(`gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`), not `main`: the `release`
+environment only deploys `v*` refs, and `verify` refuses a dispatch from any other ref.
 
-The `npx @garygentry/rauf` launcher (`npm-dist/`) is published **separately and
-manually**, after the binary release above. It is _not_ part of the tag-driven
-flow and has no automatic trigger:
+### 2.1 After the approval: verify
 
-1. Confirm the `vX.Y.Z` GitHub release exists (the launcher downloads that
-   release's platform binary on first run).
-2. Trigger `.github/workflows/npm-publish.yml`: **Actions → "npm Publish
-   (manual)" → Run workflow** (optionally set a `dist-tag`; default `latest`).
+```bash
+npm view @garygentry/rauf@X.Y.Z version          # the version is live
+npm view @garygentry/rauf@X.Y.Z dist.attestations # provenance present
+npx -y @garygentry/rauf@X.Y.Z version             # install smoke: launcher fetches the vX.Y.Z binary
+gh attestation verify <downloaded-binary> --repo garygentry/rauf
+```
 
 `release:prepare` already bumped `npm-dist/package.json` to `X.Y.Z` (one of the
-eight version locations), so the launcher publishes in lockstep with the binary
-release: `npx @garygentry/rauf@X.Y.Z` resolves to the `vX.Y.Z` binary. Publishing
-uses npm Trusted Publishing (OIDC): no token, owner-dispatched only.
-Re-publishing an already-published version is rejected by npm, so a new publish
-always follows a new release/version bump.
+eight version locations), so the launcher always ships in lockstep with the binary
+release: `npx @garygentry/rauf@X.Y.Z` resolves to the `vX.Y.Z` binary.
 
 > **Worked example:** [`RELEASE-AUTOMATION-RUNBOOK.md` §7–8](./RELEASE-AUTOMATION-RUNBOOK.md)
 > walks the same PR → merge → owner-tag sequence end-to-end for a feature built
@@ -203,13 +239,17 @@ unaffected and need no workaround.
 - x64 binaries are built with Bun's `-baseline` runtime so they run on every x64
   CPU (no AVX2 requirement); the default runtime SIGILLs on non-AVX2 hosts. This
   changes only the compile target, not the published asset names.
-- Publishing uses only the workflow's built-in `GITHUB_TOKEN` with
-  `contents: write`: no personal access tokens or extra secrets.
+- Publishing happens only in `release.yml`'s `publish` job, behind the `release`
+  environment's required reviewer. It uses the built-in `GITHUB_TOKEN`
+  (`contents: write`) and OIDC (`id-token: write`) for npm Trusted Publishing and
+  attestations: no personal access tokens, npm tokens or extra secrets.
 - Release notes are sourced verbatim from the human-curated changelog section;
   no CI environment values are interpolated.
-- **Code signing / SLSA provenance is deferred** (REQ-INTEGRITY-03): v1 ships
-  unsigned binaries with checksum verification as the integrity mechanism. The
-  macOS quarantine workaround above exists because of this stance.
+- Binaries and `SHA256SUMS` carry GitHub build-provenance attestations
+  (`gh attestation verify <file> --repo garygentry/rauf`); the npm launcher is
+  published with npm provenance. The install scripts don't check attestations yet
+  (checksums only; #166 follow-up). **Code signing is deferred** (REQ-INTEGRITY-03):
+  the macOS quarantine workaround above exists because of this.
 
 ---
 

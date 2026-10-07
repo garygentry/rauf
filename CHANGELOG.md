@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- **Publishing now goes through one approval (#166, ADR 0046 A4).** `release.yml` is the only workflow that publishes. A `v*` tag runs a credential-free `verify` job, which writes a release summary (changelog, diff stat, a warning if `.github/` changed) to the run page. A `publish` job behind the `release` environment then waits for the operator's approval. It attests the binaries and `SHA256SUMS` with build provenance, creates the GitHub Release and publishes `@garygentry/rauf` with npm provenance (prereleases to dist-tag `next`). The launcher no longer ships separately from the binaries. `npm-publish.yml` (manual dispatch) is removed.
+
+### Fixed
+
+- **A `workflow_dispatch` re-release now uses its `tag` input.** Preflight had read `GITHUB_REF_NAME` first, which on a dispatch is the branch name, so a re-release always failed with `drift: expected a v* tag`.
+
 ## 0.18.0
 
 ### Upgrade notes / behavior changes

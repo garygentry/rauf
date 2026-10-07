@@ -199,5 +199,5 @@ cursor→`~/.cursor`, gemini→`~/.gemini`.
 | `.gitattributes`                    | both    | `* text=auto eol=lf`; `*.png`/`*.jpg` binary; `export-ignore` for `specs/`, `tests/`, `.github/` (+ `eval/`,`plans/` in feature-forge; `test-sandbox/` in rauf) |
 | `LICENSE` (MIT)                     | both    | feature-forge net-new; rauf already MIT                                                                                                                         |
 | `CHANGELOG.md`                      | both    | feature-forge `[0.10.0]`; rauf `## Unreleased`                                                                                                                  |
-| `.github/workflows/npm-publish.yml` | rauf    | `workflow_dispatch`-only publish machinery; **no live publish**                                                                                                 |
+| `.github/workflows/npm-publish.yml` | rauf    | removed in #166; publishing moved into the gated `release.yml`                                                                                                  |
 | `package.json` publishability prep  | rauf    | metadata only (`publishConfig`/`files`/`bin`); no `version` change                                                                                              |
