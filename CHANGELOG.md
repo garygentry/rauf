@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.0
+
 ### Upgrade notes / behavior changes
 
 - **`rauf agents` table columns changed.** `AVAILABLE` is split into `BINARY` (`present`/`missing`) and `AUTH` (`ready`/`not ready`/`unknown`). `--json` rows gain `binaryAvailable` and `authenticated` (`true`/`false`/`null`); `available` is unchanged.
