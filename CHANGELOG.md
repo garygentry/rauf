@@ -17,7 +17,6 @@
 
 ### Changed
 
-
 - **`author-backlog` no longer names Claude's `Task tool`.** The `agentDelegation` guidance now says the loop agent uses its host's subagent or delegation mechanism when one is available. The Codex, Pi and Copilot copies were regenerated.
 
 ### Fixed
