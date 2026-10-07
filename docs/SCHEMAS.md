@@ -767,7 +767,7 @@ interface LoopResult {
   reviewPending?: boolean; // Review stopped by a usage limit; `rauf resume` re-runs it (#146)
   reviewFailed?: boolean; // Review pass failed; still pending (#146)
   pausedReason?: "needs_human"; // Halted by --pause-on-needs-human
-  limitReached?: boolean; // Terminal usage/iteration-limit state
+  limitReached?: boolean; // Terminal usage-limit state (not the iteration budget, which exits 0)
   setupFailed?: boolean; // Pre-loop setup aborted (e.g. agent unavailable)
   lockConflict?: boolean; // A live loop holds .loop.lock; nothing ran (#149)
   haltReason?: string; // Halted on an error mid-run: circuit breaker or git-safety failure (#164)

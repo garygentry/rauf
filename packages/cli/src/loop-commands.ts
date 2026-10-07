@@ -772,7 +772,8 @@ function isLimitTerminal(result: LoopResult): boolean {
 /**
  * Map a terminal `loop run` LoopResult to the unified exit code
  * (00-core-definitions §2a). Pure over the resolved result. Order is
- * significant — needs-human → limit → blocked → clean; the first match wins.
+ * significant — lock conflict → setup failure → mid-run halt (`haltReason`, #164) →
+ * needs-human → limit → review failed → blocked → clean; the first match wins.
  * The non-Result error path (the caller's catch) covers the ERROR(1) row.
  * RUNNING(6) is NEVER returned here — a finished run is not running.
  */
