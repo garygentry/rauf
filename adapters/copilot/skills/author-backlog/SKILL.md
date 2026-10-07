@@ -1,4 +1,5 @@
 ---
+# GENERATED — DO NOT EDIT. Source: skills/author-backlog/SKILL.md. Regenerate: bun run scripts/build-copilot-bundle.ts
 name: author-backlog
 description: >
   Author a high-quality rauf backlog.json — well-scoped, verifiable items for the
@@ -23,7 +24,7 @@ This skill is the canonical home for backlog-authoring craft. It serves two flow
 
 Throughout this document, `<backlogDir>` means the chosen target directory and `<project>` means the project root.
 
-The full machine contract — CLI flags, exit codes, JSON shape, schema source rules — is specified in `references/SPEC-BACKLOG-TOOL-CONTRACT.md` (Part A). Read it if you need the authoritative details; this skill summarizes the authoring-relevant parts.
+The full machine contract — CLI flags, exit codes, JSON shape, schema source rules — is specified in `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` (Part A). Read it if you need the authoritative details; this skill summarizes the authoring-relevant parts.
 
 ## Target Backlog Directory
 
@@ -387,7 +388,7 @@ Use `agentDelegation` when a task has clearly independent subtasks that can run 
 
 ### `specReferences` — Pointing the agent to docs
 
-List file paths **relative to the project root** (e.g., `specs/auth/00-core-definitions.md`, `references/SPEC-CORE.md`), NOT relative to the backlog file. `rauf backlog validate --specs-dir …` resolves these from the project root and flags any that don't exist (or that are absolute / escape the project root), so make sure each file actually exists. Use this when the item implements a specific spec section or relies on architectural context not in the description.
+List file paths **relative to the project root** (e.g., `specs/auth/00-core-definitions.md`, `docs/SPEC-CORE.md`), NOT relative to the backlog file. `rauf backlog validate --specs-dir …` resolves these from the project root and flags any that don't exist (or that are absolute / escape the project root), so make sure each file actually exists. Use this when the item implements a specific spec section or relies on architectural context not in the description.
 
 ### `model` — Right-sizing the intelligence (opt-in, Claude-only)
 
@@ -491,4 +492,4 @@ After drafting (or before writing JSON for a large pipeline backlog), present a 
 
 Wait for the user to approve before writing the file — the backlog is the plan and should be reviewed before execution. After writing, run `rauf backlog validate`, fix any findings, and confirm the validated result.
 
-See `references/backlog-examples.md` for gold-standard items, and `references/SPEC-BACKLOG-TOOL-CONTRACT.md` (Part A) for the full machine contract.
+See `references/backlog-examples.md` for gold-standard items, and `docs/SPEC-BACKLOG-TOOL-CONTRACT.md` (Part A) for the full machine contract.

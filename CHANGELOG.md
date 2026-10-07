@@ -12,11 +12,14 @@
 
 - **Copilot failure classification (#131).** Auth, invalid-model, permission, malformed-output and no-signal Copilot exits are classified and logged (`copilot failure classified as …`); startup failures count toward the existing infrastructure circuit breaker instead of burning retries.
 - **Portable provider selection (#131).** `rauf loop review --agent <id>` and `--no-model`; `rauf install`/`init --agent <id>` set the project default agent; the web review and resume bodies accept `provider` and `ignoreItemModel` (a resume's pending-review rerun honors them too).
+- **Native Copilot operator bundle (#131).** `adapters/copilot/` is an Agent Plugins bundle generated from the canonical skills and agents by `pnpm copilot:generate` (`pnpm copilot:check` reports drift). It ships all four skills and the `rauf-backlog-reviewer` and `rauf-loop-driver` custom agents. Each agent is limited to `read`/`search`/`execute` (no edit tool), cannot call subagents, is not user-invocable, and has its required canonical skill (`review-backlog` / `drive-rauf-loop`) written into its body, because Copilot agents have no skill-dependency field. Unknown frontmatter keys, tool aliases or required skills fail generation. `COPILOT-BUNDLE-REPORT.md` lists each source, mapping and dropped field.
 - **`AgentStreamEvent`** is the provider-neutral name for the loop's stream event union; `ClaudeStreamEvent` remains as a deprecated alias.
 
 ### Changed
 
 - **Publishing now goes through one approval (#166, ADR 0046 A4).** `release.yml` is the only workflow that publishes. A `v*` tag runs a credential-free `verify` job, which writes a release summary (changelog, diff stat, a warning if `.github/` changed) to the run page. A `publish` job behind the `release` environment then waits for the operator's approval. It attests the binaries and `SHA256SUMS` with build provenance, creates the GitHub Release and publishes `@garygentry/rauf` with npm provenance (prereleases to dist-tag `next`). The launcher no longer ships separately from the binaries. `npm-publish.yml` (manual dispatch) is removed.
+
+- **`author-backlog` no longer names Claude's `Task tool`.** The `agentDelegation` guidance now says the loop agent uses its host's subagent or delegation mechanism when one is available. The Codex, Pi and Copilot copies were regenerated.
 
 ### Fixed
 
