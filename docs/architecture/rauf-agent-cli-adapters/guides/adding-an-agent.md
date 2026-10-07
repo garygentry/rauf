@@ -1,11 +1,17 @@
 # Adding an Agent
 
+> **Current state (since #131).** This document describes the feature as first built. `codex`
+> and `copilot` have since moved off the `CliAgent` engine onto dedicated JSONL-streaming
+> adapters (`packages/loop/src/providers/codex-cli.ts`, `copilot-cli.ts`); the shipped presets
+> are now `gemini`, `cursor`, and `pi`. Selection (`--agent <id>`) is unchanged. For the current
+> provider table see [SPEC-BACKLOG-TOOL-CONTRACT.md §5](../../SPEC-BACKLOG-TOOL-CONTRACT.md#5-provider-specifications).
+
 There are three ways to drive a new coding-agent CLI from the rauf loop, in increasing
 order of effort. Reach for the lightest one that works.
 
 ```mermaid
 graph TD
-  Q1{Is it one of<br/>codex/gemini/copilot/cursor?} -->|yes| P[Use the preset: --agent id]
+  Q1{Is it one of<br/>codex/copilot/gemini/cursor/pi?} -->|yes| P[Select it: --agent id]
   Q1 -->|no| Q2{Can a binary + flags +<br/>prompt-delivery describe it?}
   Q2 -->|yes| G[generic-cli + providerConfig]
   Q2 -->|no, needs streaming/usage/SDK| A[Write a full adapter + registerAgent]
@@ -13,8 +19,8 @@ graph TD
 
 ## Option 1 — a shipped preset
 
-If the agent is `codex`, `gemini`, `copilot`, or `cursor`, you do nothing but select it.
-The preset is already registered at import time.
+If the agent is `codex`, `copilot`, `gemini`, `cursor`, or `pi`, you do nothing but select it.
+Its adapter (dedicated for `codex`/`copilot`, a preset otherwise) is already registered at import time.
 
 ```bash
 rauf loop run . --agent codex
@@ -166,6 +172,7 @@ rauf loop run . --agent mytool    # drive a run
 bash test-sandbox/verify.sh       # per-agent end-to-end sandbox assertions (manual; not in `pnpm gate`)
 ```
 
-The sandbox ships plain-text mock agents (`test-sandbox/codex`, `gemini`, `copilot`,
+The sandbox ships mock agents (`test-sandbox/codex`, `gemini`, `copilot` — which replays
+captured Copilot JSONL —
 `cursor-agent`, `mock-generic-agent.sh`) so you can exercise the wiring without installing
 the real CLIs.
