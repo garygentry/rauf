@@ -29,6 +29,7 @@ yield your turn, so a deferred notification never arrives — no signal is
 printed and the entire item is retried from scratch. (A backgrounded
 verify command also exits immediately with no output, which looks like a
 clean run and will be misread.)
+<!-- rauf:managed:end -->
 
 ## Workflow
 
@@ -46,17 +47,6 @@ clean run and will be misread.)
    - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
    - `RAUF_REVIEW:<json>` — review pass only (a normal work iteration does not
      emit this); JSON matching the `ReviewPayload` schema.
-
-   Optionally, put a one-line summary of what you did directly above
-   `RAUF_DONE`, for whoever is supervising the loop:
-
-   ```
-   RAUF_SUMMARY: Added the login form and wired it to /api/login
-   RAUF_DONE
-   ```
-
-   Keep it to one line (it is cut at 120 characters). It is read only on the
-   nearest non-blank line above `RAUF_DONE`; without it, the item title is shown.
 
    Putting the signal last is the safest habit, but it does not have to be
    strictly the final line: the runner scans backwards from the end and uses the
@@ -111,7 +101,6 @@ Items may also include a `specReferences` field listing paths to specification d
 - DO append new learnings to `progress.md` if you discover important patterns
 - The backlog.json file is your source of truth for what to work on
 - Any subagents/subtasks you run internally are your own planning — they don't affect the backlog
-<!-- rauf:managed:end -->
 
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive rauf update and uninstall -->
+<!-- Add custom instructions below this line — they survive rauf update -->

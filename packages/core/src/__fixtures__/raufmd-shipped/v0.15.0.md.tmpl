@@ -20,15 +20,12 @@ Individual commands:
 If any command is not configured (empty), skip it.{{verificationWarning}}
 
 Do NOT background, `nohup`, or `&`-detach the verification command (or
-any command inside it), and do NOT yield your turn to wait for an
-asynchronous "completion notification" from a long-running test. Run
-every command in the foreground, wait for it to exit **within this
-turn**, then emit your exit signal in the SAME turn as your final
-output. You run non-interactively: the session ends the moment you
-yield your turn, so a deferred notification never arrives — no signal is
-printed and the entire item is retried from scratch. (A backgrounded
-verify command also exits immediately with no output, which looks like a
-clean run and will be misread.)
+any command inside it). Run it in the foreground and wait for it to
+exit before reading its result or emitting your exit signal — a
+backgrounded verify command exits immediately with no output, which
+looks like a clean run and will be misread (or produce no signal at
+all, wasting a retry).
+<!-- rauf:managed:end -->
 
 ## Workflow
 
@@ -38,25 +35,14 @@ clean run and will be misread.)
 3. Read the item's `acceptanceCriteria` — each must pass
 4. Read `progress.md` for context from previous iterations
 5. Implement the task
-6. Run verification: `{{verifyCommand}}` (foreground, and wait for it to finish **within this turn** — never background it or defer your signal behind an async completion notification)
+6. Run verification: `{{verifyCommand}}` (run it in the foreground and wait — do not background it)
 7. Leave your changes in the working tree — do NOT commit. The iteration agent never commits or stages; the loop runner owns the commit (it commits as `[rauf] <id>: <title>` after you signal `RAUF_DONE`).
-8. Output your exit signal on a line by itself, as your final line **in this same turn** (do not yield the turn first, then plan to signal later):
+8. Output your exit signal on a line by itself, as your final line:
    - `RAUF_DONE` — all criteria met, verification passes
    - `RAUF_BLOCKED:<reason>` — cannot proceed, explain why
    - `RAUF_NEEDS_HUMAN:<reason>` — need human decision or input
    - `RAUF_REVIEW:<json>` — review pass only (a normal work iteration does not
      emit this); JSON matching the `ReviewPayload` schema.
-
-   Optionally, put a one-line summary of what you did directly above
-   `RAUF_DONE`, for whoever is supervising the loop:
-
-   ```
-   RAUF_SUMMARY: Added the login form and wired it to /api/login
-   RAUF_DONE
-   ```
-
-   Keep it to one line (it is cut at 120 characters). It is read only on the
-   nearest non-blank line above `RAUF_DONE`; without it, the item title is shown.
 
    Putting the signal last is the safest habit, but it does not have to be
    strictly the final line: the runner scans backwards from the end and uses the
@@ -111,7 +97,6 @@ Items may also include a `specReferences` field listing paths to specification d
 - DO append new learnings to `progress.md` if you discover important patterns
 - The backlog.json file is your source of truth for what to work on
 - Any subagents/subtasks you run internally are your own planning — they don't affect the backlog
-<!-- rauf:managed:end -->
 
 ## Project-Specific Instructions
-<!-- Add custom instructions below this line — they survive rauf update and uninstall -->
+<!-- Add custom instructions below this line — they survive rauf update -->
