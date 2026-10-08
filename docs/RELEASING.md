@@ -42,6 +42,10 @@ The publish gate (ADR 0046 A4, #166). Also manual, repo-admin configuration:
   tags.
 - **npmjs.com → `@garygentry/rauf` → Settings → Trusted publishing:** GitHub Actions,
   owner `garygentry`, repo `rauf`, workflow `release.yml`, environment `release`.
+  Under **Allowed actions**, check **"Allow npm publish"**: the workflow runs
+  `npm publish`, not `npm stage publish`, and npm (which marks it "not recommended")
+  rejects it otherwise. The `release` environment approval is the human gate (ADR 0046
+  A4), so staged publishing would only add a second approval.
   npm trusts the workflow by filename, so `release.yml` must not be renamed.
 - Same page → **Publishing access → "Require two-factor authentication and disallow
   tokens"**. No npm token exists anywhere.
@@ -115,6 +119,9 @@ git checkout main && git pull
 git tag -m v0.3.0 v0.3.0 && git push origin v0.3.0
 ```
 
+If the push is rejected with `GH007` (private email protection), the pusher's git
+`user.email` is a private address; set it to the GitHub noreply address and retry.
+
 The `v*` tag push triggers `.github/workflows/release.yml`, the **only** workflow that
 publishes anything. It has two jobs:
 
@@ -157,7 +164,11 @@ environment only deploys `v*` refs, and `verify` refuses a dispatch from any oth
 
 ### 2.1 After the approval: verify
 
+The registry can lag a few minutes behind a successful `publish` (E404 on read-back is
+normal at first; seen on v0.18.0), so poll before treating a miss as a failure:
+
 ```bash
+until npm view @garygentry/rauf@X.Y.Z version; do sleep 30; done
 npm view @garygentry/rauf@X.Y.Z version          # the version is live
 npm view @garygentry/rauf@X.Y.Z dist.attestations # provenance present
 npx -y @garygentry/rauf@X.Y.Z version             # install smoke: launcher fetches the vX.Y.Z binary
