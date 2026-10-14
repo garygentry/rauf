@@ -152,6 +152,10 @@ publishes anything. It has two jobs:
 The operator reviews the summary and approves once (web or GitHub Mobile). The agent
 cannot approve: its App has no Deployments write. If `publish` fails part-way, use
 **Re-run failed jobs**; each publish step skips work that already landed.
+An `npm publish` that fails with **E404 on the PUT right after "Provenance statement
+published"** means the npm Trusted Publisher entry doesn't match (repo, `release.yml`,
+environment `release`). Fix it on npmjs.com and re-run the failed job; nothing was
+published, so no new tag or version is needed (seen on feature-forge 0.3.11).
 
 Prereleases (`0.3.0-rc.1`) are marked **prerelease** and never become
 `latest`; stable versions are published as `latest`.
