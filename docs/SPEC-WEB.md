@@ -107,7 +107,12 @@ POST   /api/projects/:id/loop/start   → { data: { started: true, projectPath }
        Defaults: maxIterations=20, maxRetries=3, sessionTimeoutMinutes=60
        409 Conflict: Loop already running for this project — in this server, or another process holds
                      the root's .loop.lock (taken synchronously at launch, #149, so a start is never
-                     reported for a run that then loses the lock)
+                     reported for a run that then loses the lock). Only a real conflict is a 409.
+       400 LOOP_START_FAILED: the runner could not be created (e.g. no backlog at the root) — #178
+       Header (optional): X-Rauf-Project-Path: <URI-encoded absolute project path> — sent by
+                     `rauf loop run --detached`. When present and `:id` resolves (under rootDirectory)
+                     to a different path → 400 PROJECT_MISMATCH, nothing started (#178). Absent →
+                     id-only resolution (web UI, older CLIs).
        Note (v0.5.0): This route is the backend for `rauf loop run --detached`. URL and contract unchanged.
 
 POST   /api/projects/:id/loop/stop    → { data: { stopped: true, projectPath } }

@@ -239,6 +239,85 @@ describe("POST /:id/loop/start", () => {
     expect(rejected.status).toBe(400);
   });
 
+  describe("caller project path (#178)", () => {
+    const start = (app: ReturnType<typeof makeApp>, id: string, claimed: string) =>
+      app.request(`/api/projects/${id}/loop/start`, {
+        method: "POST",
+        headers: {
+          "X-Rauf-Request": "true",
+          "Content-Type": "application/json",
+          "X-Rauf-Project-Path": encodeURIComponent(claimed),
+        },
+        body: JSON.stringify({ maxIterations: 1 }),
+      });
+
+    it("refuses, without starting, a caller outside rootDirectory whose basename matches a project under it", async () => {
+      // A same-named project exists under the root — before #178 the loop
+      // started on IT instead of the caller's project.
+      createProject("e2e", [pendingItem]);
+      const outside = fs.mkdtempSync(path.join(os.tmpdir(), "rauf-outside-"));
+      try {
+        const callerProject = path.join(outside, "e2e");
+        fs.mkdirSync(callerProject);
+        const manager = getLoopManager();
+        const startLoop = vi.spyOn(manager, "startLoop");
+        const res = await start(makeApp(tmpDir), "e2e", callerProject);
+
+        expect(res.status).toBe(400);
+        const body = (await json(res)) as { error: { code: string; message: string } };
+        expect(body.error.code).toBe("PROJECT_MISMATCH");
+        expect(body.error.message).toContain(callerProject);
+        expect(body.error.message).toContain("without --detached");
+        expect(startLoop).not.toHaveBeenCalled();
+      } finally {
+        fs.rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a caller outside rootDirectory with no same-named project (no misleading backlog error)", async () => {
+      const res = await start(makeApp(tmpDir), "e2e", path.join(os.tmpdir(), "elsewhere", "e2e"));
+      expect(res.status).toBe(400);
+      const body = (await json(res)) as { error: { code: string } };
+      expect(body.error.code).toBe("PROJECT_MISMATCH");
+    });
+
+    it("starts when the caller's path is the resolved project (including a non-ASCII path)", async () => {
+      const projectPath = createProject("Über-proj", [pendingItem]);
+      const manager = getLoopManager();
+      const startLoop = vi.spyOn(manager, "startLoop").mockReturnValue({ ok: true });
+      const res = await start(makeApp(tmpDir), encodeURIComponent("Über-proj"), projectPath);
+      expect(res.status).toBe(200);
+      expect(startLoop).toHaveBeenCalledOnce();
+    });
+
+    it("rejects a relative project path header", async () => {
+      createProject("test-project", [pendingItem]);
+      const res = await start(makeApp(tmpDir), "test-project", "test-project");
+      expect(res.status).toBe(400);
+      const body = (await json(res)) as { error: { code: string } };
+      expect(body.error.code).toBe("VALIDATION_ERROR");
+    });
+  });
+
+  it("returns 400, not 409, when the runner cannot be created (not a conflict, #178)", async () => {
+    createProject("test-project", [pendingItem]);
+    const manager = getLoopManager();
+    vi.spyOn(manager, "startLoop").mockReturnValue({
+      ok: false,
+      error: "Backlog root directory not found: /nope",
+      conflict: false,
+    });
+    const res = await makeApp(tmpDir).request("/api/projects/test-project/loop/start", {
+      method: "POST",
+      headers: { "X-Rauf-Request": "true", "Content-Type": "application/json" },
+      body: JSON.stringify({ maxIterations: 1 }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await json(res)) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("LOOP_START_FAILED");
+    expect(body.error.message).toContain("Backlog root directory not found");
+  });
+
   it("starts a loop and returns 200", async () => {
     createProject("test-project", [pendingItem]);
     setupMockClaude();

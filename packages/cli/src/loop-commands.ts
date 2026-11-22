@@ -479,6 +479,11 @@ async function runDetached(ctx: CommandContext): Promise<number> {
       headers: {
         "Content-Type": "application/json",
         "X-Rauf-Request": "true",
+        // The server resolves `id` (a basename) under ITS rootDirectory; naming
+        // the real path lets it refuse a project that resolves elsewhere instead
+        // of starting a loop on a same-named one (#178). URI-encoded: header
+        // values must be Latin-1. Mirrors PROJECT_PATH_HEADER in @rauf/web.
+        "X-Rauf-Project-Path": encodeURIComponent(path.resolve(projectPath)),
       },
       body: JSON.stringify(body),
     });
@@ -515,15 +520,24 @@ async function runDetached(ctx: CommandContext): Promise<number> {
     }
 
     const errBody = (await resp.json().catch(() => ({ error: { message: resp.statusText } }))) as {
-      error?: { message?: string };
+      error?: { code?: string; message?: string };
     };
     const errMsg = errBody?.error?.message ?? resp.statusText;
 
-    if (resp.status === 409) {
-      // Loop already running — a correctable precondition, not a hard error.
-      error(`Loop already running for ${id}.`);
+    // Only a real conflict (a loop/lock already holding this backlog root) is
+    // "already running"; any other refusal prints the server's own reason
+    // (#178 — every 409 used to say "already running" and drop the message).
+    if (resp.status === 409 && errBody?.error?.code === "CONFLICT") {
+      // A correctable precondition, not a hard error.
+      error(`Loop already running for ${id}: ${errMsg}`);
       info(`Use ${c.cyan("rauf loop stop")} to stop it first.`);
       return ExitCode.USAGE; // 2 (00-core-definitions §1)
+    }
+    if (errBody?.error?.code === "PROJECT_MISMATCH") {
+      // The project is outside the server's rootDirectory — correctable by the
+      // operator (run in-process, or widen rootDirectory).
+      error(`Failed to start loop: ${errMsg}`);
+      return ExitCode.USAGE;
     }
     error(`Failed to start loop: ${errMsg}`);
     return ExitCode.ERROR;

@@ -1219,12 +1219,14 @@ describe("loop run --detached", () => {
    * A throwaway server that answers GET /api/health (so ensureServerRunning
    * no-ops) and records POST .../loop/start so the test can assert delegation.
    */
-  async function startMockServer(): Promise<{
+  async function startMockServer(
+    respond: { status: number; body: unknown } = { status: 200, body: { data: { started: true } } },
+  ): Promise<{
     port: number;
     close: () => Promise<void>;
-    startCalls: Array<{ id: string; body: unknown }>;
+    startCalls: Array<{ id: string; body: unknown; headers: http.IncomingHttpHeaders }>;
   }> {
-    const startCalls: Array<{ id: string; body: unknown }> = [];
+    const startCalls: Array<{ id: string; body: unknown; headers: http.IncomingHttpHeaders }> = [];
     const server = http.createServer((req, res) => {
       if (req.url === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -1236,9 +1238,13 @@ describe("loop run --detached", () => {
         let raw = "";
         req.on("data", (chunk) => (raw += chunk));
         req.on("end", () => {
-          startCalls.push({ id: decodeURIComponent(m[1]!), body: raw ? JSON.parse(raw) : {} });
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ data: { started: true } }));
+          startCalls.push({
+            id: decodeURIComponent(m[1]!),
+            body: raw ? JSON.parse(raw) : {},
+            headers: req.headers,
+          });
+          res.writeHead(respond.status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(respond.body));
         });
         return;
       }
@@ -1414,6 +1420,96 @@ describe("loop run --detached", () => {
       removeServerState();
       await close();
     }
+  });
+
+  describe("start refusals and the caller's project path (#178)", () => {
+    async function runAgainst(respond: { status: number; body: unknown }, projName: string) {
+      const mock = await startMockServer(respond);
+      try {
+        writeServerState({
+          pid: process.pid,
+          port: mock.port,
+          startedAt: new Date().toISOString(),
+        });
+        const proj = path.join(tmpDir, projName);
+        fs.mkdirSync(proj, { recursive: true });
+        const ctx = makeCtx({
+          args: [proj],
+          flags: new Map<string, string | true>([["detached", true]]),
+        });
+        let code = -1;
+        const output = await captureOutput(async () => {
+          code = await handleLoopRun(ctx);
+        });
+        return { code, output, proj, calls: mock.startCalls };
+      } finally {
+        removeServerState();
+        await mock.close();
+      }
+    }
+
+    it("sends the absolute project path, URI-encoded, in X-Rauf-Project-Path", async () => {
+      const { code, proj, calls } = await runAgainst(
+        { status: 200, body: { data: { started: true } } },
+        "Über-proj",
+      );
+      expect(code).toBe(ExitCode.SUCCESS);
+      const header = calls[0]!.headers["x-rauf-project-path"];
+      expect(typeof header).toBe("string");
+      expect(decodeURIComponent(header as string)).toBe(path.resolve(proj));
+    });
+
+    it("reports a real conflict as already running, with the server's reason", async () => {
+      const { code, output } = await runAgainst(
+        {
+          status: 409,
+          body: {
+            error: { code: "CONFLICT", message: "Loop already running for this backlog root" },
+          },
+        },
+        "proj-conflict",
+      );
+      expect(code).toBe(ExitCode.USAGE);
+      expect(output.stderr).toContain("Loop already running for proj-conflict");
+      expect(output.stderr).toContain("Loop already running for this backlog root");
+    });
+
+    it("prints the server's PROJECT_MISMATCH reason, not 'already running'", async () => {
+      const { code, output } = await runAgainst(
+        {
+          status: 400,
+          body: {
+            error: {
+              code: "PROJECT_MISMATCH",
+              message: "Project /x/e2e is outside the rauf server's rootDirectory (/root)",
+            },
+          },
+        },
+        "e2e",
+      );
+      expect(code).toBe(ExitCode.USAGE);
+      expect(output.stderr).toContain("outside the rauf server's rootDirectory");
+      expect(output.stderr).not.toContain("already running");
+      expect(output.stdout).not.toContain("rauf loop stop");
+    });
+
+    it("prints a non-conflict start failure as-is (no stop hint)", async () => {
+      const { code, output } = await runAgainst(
+        {
+          status: 400,
+          body: {
+            error: {
+              code: "LOOP_START_FAILED",
+              message: "Backlog root directory not found: /r/e2e/specs/x",
+            },
+          },
+        },
+        "proj-fail",
+      );
+      expect(code).toBe(ExitCode.ERROR);
+      expect(output.stderr).toContain("Backlog root directory not found");
+      expect(output.stderr).not.toContain("already running");
+    });
   });
 
   it("forwards --agent copilot as body.provider in the detached POST (REQ-SEL-01)", async () => {
