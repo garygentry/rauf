@@ -4,6 +4,10 @@
  *
  * - Repository: the generated `adapters/copilot/` Agent Plugins bundle (plugin + four skills + two
  *   agents), version-locked to `packages/core/src/version.ts`.
+ * - Copilot marketplace: `.github/plugin/marketplace.json` serves that bundle (`source:
+ *   ./adapters/copilot`), and no higher-precedence manifest (`marketplace.json`,
+ *   `.plugin/marketplace.json`) shadows it — otherwise `copilot plugin marketplace add
+ *   garygentry/rauf` would fall through to `.claude-plugin/` and install the Claude bundle.
  * - Built packages (what the compiled release binary bundles): the dedicated `copilot` provider and
  *   the embedded installed-child instruction templates.
  * - npm launcher (`npm-dist/`): stays a launcher + the Pi package surface. The Copilot plugin is a
@@ -31,6 +35,10 @@ export const COPILOT_REPOSITORY_ARTIFACTS = [
   "adapters/copilot/skills/review-backlog/SKILL.md",
   "adapters/copilot/skills/review-rauf-guidance/SKILL.md",
 ];
+
+/** The Copilot marketplace manifest, and the higher-precedence paths that would shadow it. */
+export const COPILOT_MARKETPLACE = ".github/plugin/marketplace.json";
+export const COPILOT_MARKETPLACE_SHADOWS = ["marketplace.json", ".plugin/marketplace.json"];
 
 /** Exact `files` allowlist of the npm launcher (plus the always-included package.json). */
 export const NPM_LAUNCHER_FILES = [
@@ -74,6 +82,28 @@ export function checkCopilotDistribution(
   }
   for (const relative of COPILOT_REPOSITORY_ARTIFACTS) {
     if (!fs.existsSync(path.join(root, relative))) fail(`repository artifact missing: ${relative}`);
+  }
+
+  // Copilot reads the first of these that exists; ours must be the first present.
+  for (const shadow of COPILOT_MARKETPLACE_SHADOWS) {
+    if (fs.existsSync(path.join(root, shadow))) {
+      fail(`${shadow} shadows ${COPILOT_MARKETPLACE} in Copilot's marketplace lookup`);
+    }
+  }
+  const marketplace = readJson(root, COPILOT_MARKETPLACE);
+  const plugins = marketplace["plugins"];
+  if (!Array.isArray(plugins) || plugins.length !== 1) {
+    fail(`${COPILOT_MARKETPLACE} must list exactly one plugin`);
+  }
+  const entry = plugins[0] as Record<string, unknown>;
+  if (entry["name"] !== "rauf" || entry["source"] !== "./adapters/copilot") {
+    fail(
+      `${COPILOT_MARKETPLACE} must serve plugin "rauf" from ./adapters/copilot ` +
+        `(found ${String(entry["name"])} from ${String(entry["source"])})`,
+    );
+  }
+  if (entry["version"] !== version) {
+    fail(`${COPILOT_MARKETPLACE} version ${String(entry["version"])} != ${version}`);
   }
 
   // `pnpm gate` runs build first. These files prove the release binary's static entry graph carries

@@ -1,0 +1,14 @@
+{
+  "name": "rauf",
+  "owner": {
+    "name": "Gary Gentry"
+  },
+  "plugins": [
+    {
+      "name": "rauf",
+      "source": "./adapters/copilot",
+      "description": "Management tool for rauf autonomous coding loops",
+      "version": "0.19.0"
+    }
+  ]
+}

@@ -59,6 +59,24 @@ if (copilotVersion !== expected) {
   mismatches.push(`  ${copilotManifest}: ${copilotVersion ?? "(none)"} (expected ${expected})`);
 }
 
+// The Copilot marketplace entry advertises the same plugin version (#131).
+const copilotMarketplace = ".github/plugin/marketplace.json";
+let marketplaceVersion: string | undefined;
+try {
+  marketplaceVersion = (
+    JSON.parse(readFileSync(join(repoRoot, copilotMarketplace), "utf8")) as {
+      plugins?: { version?: string }[];
+    }
+  ).plugins?.[0]?.version;
+} catch (error) {
+  marketplaceVersion = `unreadable (${(error as Error).message.split("\n")[0]})`;
+}
+if (marketplaceVersion !== expected) {
+  mismatches.push(
+    `  ${copilotMarketplace}: ${marketplaceVersion ?? "(none)"} (expected ${expected})`,
+  );
+}
+
 if (mismatches.length > 0) {
   console.error(
     `✗ Version mismatch — version.ts is ${expected}, but these disagree:\n${mismatches.join("\n")}\n` +
