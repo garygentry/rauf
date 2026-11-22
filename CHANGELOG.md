@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.1
+
 ### Added
 
 - **Copilot plugin marketplace (#175).** `.github/plugin/marketplace.json` serves the Copilot bundle (`./adapters/copilot`), so `copilot plugin marketplace add garygentry/rauf` + `copilot plugin install rauf@rauf` installs it. Before, Copilot fell through to `.claude-plugin/marketplace.json` and got the Claude bundle. `pnpm copilot:generate` writes the manifest and `release:prepare` regenerates it with the version bump; `copilot:check` reports drift; `copilot:package:check` requires exactly one `rauf` entry from `./adapters/copilot` and no shadowing `marketplace.json` or `.plugin/marketplace.json`; `version:check` includes its version.
