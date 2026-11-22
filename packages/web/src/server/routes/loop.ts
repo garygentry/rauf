@@ -7,7 +7,10 @@
 // All mutation routes require X-Rauf-Request: true (enforced by
 // app-level CSRF middleware).
 
-import { Hono } from "hono";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 
@@ -33,6 +36,22 @@ import {
 } from "../loop-defaults.js";
 import { getLoopManager } from "../loop-manager.js";
 import { resolveProjectPath as resolveProjectPathShared } from "../resolve-project.js";
+
+/**
+ * Header a CLI `loop run --detached` sends with the caller's absolute project
+ * path (URI-encoded: header values must be Latin-1). A header, not a body
+ * field, because the start body is `.strict()` — an older daemon would 400 a
+ * new field, while it simply ignores an unknown header (#178).
+ */
+export const PROJECT_PATH_HEADER = "X-Rauf-Project-Path";
+
+function canonicalPath(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
 
 // ─── Request body schema ─────────────────────────────────────────
 
@@ -122,6 +141,45 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     return pathResult.ok ? null : pathResult.error.code;
   }
 
+  /**
+   * #178: a project id is the project's basename, resolved under the server's
+   * rootDirectory. A caller whose project lives OUTSIDE that root therefore got
+   * a different path — a confusing "Backlog root directory not found" or, if a
+   * same-named project exists under the root, a loop started on THAT project.
+   * When the caller names its real path (PROJECT_PATH_HEADER), refuse any id
+   * that resolves elsewhere. Callers without the header (web UI, older CLIs)
+   * keep the id-only behavior.
+   */
+  function projectMismatch(c: Context, id: string, resolved: string): Response | null {
+    const header = c.req.header(PROJECT_PATH_HEADER);
+    if (header === undefined || header === "") return null;
+    let claimed: string;
+    try {
+      claimed = decodeURIComponent(header);
+    } catch {
+      return c.json(errorResponse("VALIDATION_ERROR", `Malformed ${PROJECT_PATH_HEADER}`), 400);
+    }
+    if (!path.isAbsolute(claimed)) {
+      return c.json(
+        errorResponse("VALIDATION_ERROR", `${PROJECT_PATH_HEADER} must be an absolute path`),
+        400,
+      );
+    }
+    if (canonicalPath(claimed) === canonicalPath(resolved)) return null;
+    const root = getRootDirectory();
+    const underRoot = validatePath(claimed, [root]).ok;
+    const why = underRoot
+      ? `it is under the rauf server's rootDirectory (${root}) but not a direct child, so ` +
+        `project id '${id}' resolves to ${resolved} instead. Run the loop without --detached.`
+      : `it is outside the rauf server's rootDirectory (${root}): project id '${id}' ` +
+        `resolves to ${resolved} there. Run the loop without --detached, or set ` +
+        `rootDirectory in the rauf config to the project's parent directory.`;
+    return c.json(
+      errorResponse("PROJECT_MISMATCH", `Project ${claimed} cannot be addressed by id: ${why}`),
+      400,
+    );
+  }
+
   // ── POST /:id/loop/start ──────────────────────────────────────
 
   router.post("/:id/loop/start", async (c) => {
@@ -130,6 +188,8 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     if (!projectPath) {
       return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
+    const mismatch = projectMismatch(c, id, projectPath);
+    if (mismatch) return mismatch;
     const violation = validateProjectPath(projectPath);
     if (violation) {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
@@ -176,7 +236,11 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     const result = manager.startLoop(projectPath, options);
 
     if (!result.ok) {
-      return c.json(errorResponse("CONFLICT", result.error), 409);
+      // 409 only for a real conflict (loop/lock already held, #178); a runner
+      // that could not be created (e.g. no backlog at the root) is a 400.
+      return result.conflict
+        ? c.json(errorResponse("CONFLICT", result.error), 409)
+        : c.json(errorResponse("LOOP_START_FAILED", result.error), 400);
     }
 
     // Non-blocking: warn (never fail the start) when the project's stored
@@ -204,6 +268,8 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     if (!projectPath) {
       return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
+    const mismatch = projectMismatch(c, id, projectPath);
+    if (mismatch) return mismatch;
     const violation = validateProjectPath(projectPath);
     if (violation) {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
@@ -247,6 +313,8 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     if (!projectPath) {
       return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
+    const mismatch = projectMismatch(c, id, projectPath);
+    if (mismatch) return mismatch;
     const violation = validateProjectPath(projectPath);
     if (violation) {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);
@@ -288,8 +356,10 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     const manager = getLoopManager();
     const result = manager.startReviewLoop(projectPath, options);
     if (!result.ok) {
-      // Inherits the start path's loop-already-running 409.
-      return c.json(errorResponse("CONFLICT", result.error), 409);
+      // Same mapping as the start route: 409 only for a real conflict (#178).
+      return result.conflict
+        ? c.json(errorResponse("CONFLICT", result.error), 409)
+        : c.json(errorResponse("LOOP_START_FAILED", result.error), 400);
     }
 
     return c.json({ data: { started: true } });
@@ -311,6 +381,8 @@ export function createLoopRouter(rootDirectoryOverride?: string): Hono {
     if (!projectPath) {
       return c.json(errorResponse("INVALID_ID", `Invalid project ID: ${id}`), 400);
     }
+    const mismatch = projectMismatch(c, id, projectPath);
+    if (mismatch) return mismatch;
     const violation = validateProjectPath(projectPath);
     if (violation) {
       return c.json(errorResponse("PATH_VIOLATION", "Project ID escapes root directory"), 400);

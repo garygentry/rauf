@@ -21,7 +21,13 @@
 import * as path from "node:path";
 
 import type { LoopEvent, LoopStartOptions } from "@rauf/core";
-import { discoverProjects, resetStalledItems, defaultBacklogPaths, checkLock } from "@rauf/core";
+import {
+  discoverProjects,
+  resetStalledItems,
+  defaultBacklogPaths,
+  checkLock,
+  ErrorCodes,
+} from "@rauf/core";
 import { LoopRunner } from "@rauf/loop";
 import type { LoopResult } from "@rauf/loop";
 
@@ -122,7 +128,15 @@ export class LoopManager {
     const runner = runnerResult.value;
 
     const lock = launchOpts.adoptLock ? runner.adoptRunLock() : runner.acquireRunLock();
-    if (!lock.ok) return { ok: false, error: lock.error.message, conflict: true };
+    if (!lock.ok) {
+      // Only a lock another live loop holds is a conflict; an I/O failure taking
+      // the lock (EACCES, ENOSPC, …) is a start failure, not "already running".
+      return {
+        ok: false,
+        error: lock.error.message,
+        conflict: lock.error.code === ErrorCodes.LOCK_CONFLICT,
+      };
+    }
 
     // Subscribe to all event types and fan out to listeners
     for (const eventType of LOOP_EVENT_TYPES) {
