@@ -95,15 +95,20 @@ export function checkCopilotDistribution(
   if (!Array.isArray(plugins) || plugins.length !== 1) {
     fail(`${COPILOT_MARKETPLACE} must list exactly one plugin`);
   }
-  const entry = plugins[0] as Record<string, unknown>;
-  if (entry["name"] !== "rauf" || entry["source"] !== "./adapters/copilot") {
+  const entry: unknown = plugins[0];
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    fail(`${COPILOT_MARKETPLACE} plugin entry must be an object`);
+  }
+  const { name, source } = entry as Record<string, unknown>;
+  if (name !== "rauf" || source !== "./adapters/copilot") {
     fail(
       `${COPILOT_MARKETPLACE} must serve plugin "rauf" from ./adapters/copilot ` +
-        `(found ${String(entry["name"])} from ${String(entry["source"])})`,
+        `(found ${String(name)} from ${String(source)})`,
     );
   }
-  if (entry["version"] !== version) {
-    fail(`${COPILOT_MARKETPLACE} version ${String(entry["version"])} != ${version}`);
+  const entryVersion = (entry as Record<string, unknown>)["version"];
+  if (entryVersion !== version) {
+    fail(`${COPILOT_MARKETPLACE} version ${String(entryVersion)} != ${version}`);
   }
 
   // `pnpm gate` runs build first. These files prove the release binary's static entry graph carries

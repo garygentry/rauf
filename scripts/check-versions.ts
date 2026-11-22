@@ -59,15 +59,15 @@ if (copilotVersion !== expected) {
   mismatches.push(`  ${copilotManifest}: ${copilotVersion ?? "(none)"} (expected ${expected})`);
 }
 
-// The Copilot marketplace entry advertises the same plugin version (#131).
+// The Copilot marketplace's `rauf` entry advertises the same plugin version (#175).
 const copilotMarketplace = ".github/plugin/marketplace.json";
 let marketplaceVersion: string | undefined;
 try {
   marketplaceVersion = (
     JSON.parse(readFileSync(join(repoRoot, copilotMarketplace), "utf8")) as {
-      plugins?: { version?: string }[];
+      plugins?: { name?: string; version?: string }[];
     }
-  ).plugins?.[0]?.version;
+  ).plugins?.find((plugin) => plugin.name === "rauf")?.version;
 } catch (error) {
   marketplaceVersion = `unreadable (${(error as Error).message.split("\n")[0]})`;
 }

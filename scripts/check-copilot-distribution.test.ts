@@ -109,6 +109,12 @@ describe("checkCopilotDistribution", () => {
     );
   });
 
+  it("fails cleanly on a non-object marketplace entry", () => {
+    const root = makeFixture();
+    write(root, COPILOT_MARKETPLACE, JSON.stringify({ plugins: [null] }));
+    expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow("plugin entry must be an object");
+  });
+
   it("fails on a stale Copilot marketplace version", () => {
     const root = makeFixture();
     write(

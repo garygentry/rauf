@@ -9,6 +9,7 @@ import {
   findDrift,
   parseFrontmatter,
   writeBundle,
+  writeMarketplace,
 } from "./build-copilot-bundle";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
@@ -177,6 +178,12 @@ describe("release-prep version bump (#131, issue #119 twin)", () => {
     expect(findDrift(bumped, directory)).toEqual([]);
     const manifest = JSON.parse(fs.readFileSync(path.join(directory, "plugin.json"), "utf-8"));
     expect(manifest.version).toBe("99.0.0");
+
+    // ...and the marketplace manifest written beside it tracks the same bump.
+    const marketplacePath = path.join(directory, "marketplace.json");
+    writeMarketplace(buildMarketplace({ version: "99.0.0" }), marketplacePath);
+    const marketplace = JSON.parse(fs.readFileSync(marketplacePath, "utf-8"));
+    expect(marketplace.plugins[0].version).toBe("99.0.0");
   });
 });
 
