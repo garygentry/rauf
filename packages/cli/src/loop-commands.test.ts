@@ -1225,12 +1225,24 @@ describe("loop run --detached", () => {
     port: number;
     close: () => Promise<void>;
     startCalls: Array<{ id: string; body: unknown; headers: http.IncomingHttpHeaders }>;
+    stopCalls: Array<{ id: string; headers: http.IncomingHttpHeaders }>;
   }> {
     const startCalls: Array<{ id: string; body: unknown; headers: http.IncomingHttpHeaders }> = [];
+    const stopCalls: Array<{ id: string; headers: http.IncomingHttpHeaders }> = [];
     const server = http.createServer((req, res) => {
       if (req.url === "/api/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ data: { uptime: 1, version: "test", pid: process.pid } }));
+        return;
+      }
+      const stopMatch = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/stop$/);
+      if (req.method === "POST" && stopMatch) {
+        stopCalls.push({ id: decodeURIComponent(stopMatch[1]!), headers: req.headers });
+        req.resume();
+        req.on("end", () => {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ data: { stopped: true } }));
+        });
         return;
       }
       const m = req.url?.match(/^\/api\/projects\/([^/]+)\/loop\/start$/);
@@ -1257,6 +1269,7 @@ describe("loop run --detached", () => {
     return {
       port,
       startCalls,
+      stopCalls,
       close: () => new Promise<void>((resolve) => server.close(() => resolve())),
     };
   }
@@ -1441,7 +1454,7 @@ describe("loop run --detached", () => {
         const output = await captureOutput(async () => {
           code = await handleLoopRun(ctx);
         });
-        return { code, output, proj, calls: mock.startCalls };
+        return { code, output, proj, calls: mock.startCalls, stops: mock.stopCalls };
       } finally {
         removeServerState();
         await mock.close();
@@ -1491,6 +1504,29 @@ describe("loop run --detached", () => {
       expect(output.stderr).toContain("outside the rauf server's rootDirectory");
       expect(output.stderr).not.toContain("already running");
       expect(output.stdout).not.toContain("rauf loop stop");
+    });
+
+    it("stops and reports a loop an older server started on a different (same-named) project", async () => {
+      // A pre-#178 daemon ignores the header and echoes the path it resolved.
+      const { code, output, stops } = await runAgainst(
+        { status: 200, body: { data: { started: true, projectPath: "/srv/root/e2e" } } },
+        "e2e",
+      );
+      expect(code).toBe(ExitCode.ERROR);
+      expect(stops).toHaveLength(1);
+      expect(stops[0]!.id).toBe("e2e");
+      expect(output.stderr).toContain("started a loop on /srv/root/e2e");
+      expect(output.stderr).toContain("That loop was stopped.");
+    });
+
+    it("does not stop anything when the server echoes the caller's own path", async () => {
+      const proj = path.join(tmpDir, "proj-echo");
+      const { code, stops } = await runAgainst(
+        { status: 200, body: { data: { started: true, projectPath: proj } } },
+        "proj-echo",
+      );
+      expect(code).toBe(ExitCode.SUCCESS);
+      expect(stops).toHaveLength(0);
     });
 
     it("prints a non-conflict start failure as-is (no stop hint)", async () => {

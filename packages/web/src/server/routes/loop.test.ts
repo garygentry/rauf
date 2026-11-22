@@ -290,6 +290,55 @@ describe("POST /:id/loop/start", () => {
       expect(startLoop).toHaveBeenCalledOnce();
     });
 
+    it("says 'not a direct child' (not 'outside') for a project nested under rootDirectory", async () => {
+      createProject("proj", [pendingItem]);
+      const nested = path.join(tmpDir, "clients", "proj");
+      fs.mkdirSync(nested, { recursive: true });
+      const res = await start(makeApp(tmpDir), "proj", nested);
+      expect(res.status).toBe(400);
+      const body = (await json(res)) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe("PROJECT_MISMATCH");
+      expect(body.error.message).toContain("not a direct child");
+      expect(body.error.message).not.toContain("outside");
+    });
+
+    it("reports an invalid id as INVALID_ID even when the header is present", async () => {
+      const res = await start(makeApp(tmpDir), encodeURIComponent("a\\b"), "/abs/x");
+      expect(res.status).toBe(400);
+      const body = (await json(res)) as { error: { code: string } };
+      expect(body.error.code).toBe("INVALID_ID");
+    });
+
+    it("guards stop and events the same way (never acts on a same-named project)", async () => {
+      createProject("e2e", [pendingItem]);
+      const elsewhere = path.join(os.tmpdir(), "elsewhere", "e2e");
+      const headers = {
+        "X-Rauf-Request": "true",
+        "Content-Type": "application/json",
+        "X-Rauf-Project-Path": encodeURIComponent(elsewhere),
+      };
+      const manager = getLoopManager();
+      const stopLoop = vi.spyOn(manager, "stopLoop");
+      const app = makeApp(tmpDir);
+
+      const stop = await app.request("/api/projects/e2e/loop/stop", {
+        method: "POST",
+        headers,
+        body: "{}",
+      });
+      expect(stop.status).toBe(400);
+      expect(((await json(stop)) as { error: { code: string } }).error.code).toBe(
+        "PROJECT_MISMATCH",
+      );
+      expect(stopLoop).not.toHaveBeenCalled();
+
+      const events = await app.request("/api/projects/e2e/loop/events", { headers });
+      expect(events.status).toBe(400);
+      expect(((await json(events)) as { error: { code: string } }).error.code).toBe(
+        "PROJECT_MISMATCH",
+      );
+    });
+
     it("rejects a relative project path header", async () => {
       createProject("test-project", [pendingItem]);
       const res = await start(makeApp(tmpDir), "test-project", "test-project");

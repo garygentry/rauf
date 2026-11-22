@@ -10,6 +10,7 @@
 // The live-view verb is the top-level `follow` command (follow-command.ts);
 // the old `loop follow` / `loop watch` monitor verbs were removed (clean break).
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
@@ -305,6 +306,25 @@ function getPort(): number {
 }
 
 /** Build an API URL for loop endpoints */
+/**
+ * The server resolves a project id (a basename) under ITS rootDirectory, so a
+ * project outside that root resolves to a different — possibly same-named —
+ * project. Naming the caller's real path lets the server refuse instead (400
+ * PROJECT_MISMATCH, #178). URI-encoded: header values must be Latin-1. Mirrors
+ * PROJECT_PATH_HEADER in @rauf/web; an older server ignores it.
+ */
+function projectPathHeader(projectPath: string): Record<string, string> {
+  return { "X-Rauf-Project-Path": encodeURIComponent(path.resolve(projectPath)) };
+}
+
+function canonicalPath(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 function apiUrl(port: number, id: string, endpoint: string): string {
   return `http://127.0.0.1:${port}/api/projects/${encodeURIComponent(id)}/loop/${endpoint}`;
 }
@@ -479,17 +499,42 @@ async function runDetached(ctx: CommandContext): Promise<number> {
       headers: {
         "Content-Type": "application/json",
         "X-Rauf-Request": "true",
-        // The server resolves `id` (a basename) under ITS rootDirectory; naming
-        // the real path lets it refuse a project that resolves elsewhere instead
-        // of starting a loop on a same-named one (#178). URI-encoded: header
-        // values must be Latin-1. Mirrors PROJECT_PATH_HEADER in @rauf/web.
-        "X-Rauf-Project-Path": encodeURIComponent(path.resolve(projectPath)),
+        ...projectPathHeader(projectPath),
       },
       body: JSON.stringify(body),
     });
 
     if (resp.ok) {
-      const data = (await resp.json()) as { data?: { warnings?: string[] } };
+      const data = (await resp.json()) as {
+        data?: { warnings?: string[]; projectPath?: string };
+      };
+      // A server older than #178 ignores the header and may have started a
+      // same-named project under its rootDirectory. It echoes the path it
+      // resolved: on a mismatch, stop that loop rather than leave it running.
+      const startedPath = data.data?.projectPath;
+      if (startedPath && canonicalPath(startedPath) !== canonicalPath(projectPath)) {
+        const stopBody = backlogFlag !== null ? { backlogRoot: backlogFlag } : {};
+        const stopped = await fetch(apiUrl(port, id, "stop"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Rauf-Request": "true" },
+          body: JSON.stringify(stopBody),
+        }).then(
+          (r) => r.ok,
+          () => false,
+        );
+        error(
+          `The rauf server started a loop on ${startedPath}, not ${path.resolve(projectPath)}: ` +
+            `the project is outside the server's rootDirectory, and this server predates the ` +
+            `check that refuses that (#178). ` +
+            (stopped
+              ? "That loop was stopped."
+              : `Stopping it failed — run ${c.cyan(`rauf loop stop ${startedPath}`)}.`),
+        );
+        info(
+          `Run without ${c.cyan("--detached")}, or restart the server (${c.cyan("rauf server stop")}) so it matches this CLI.`,
+        );
+        return ExitCode.ERROR;
+      }
       if (ctx.globalFlags.json) {
         outputJson(data);
       } else {
@@ -567,7 +612,7 @@ async function followDetached(ctx: CommandContext, projectPath: string): Promise
     json: ctx.globalFlags.json,
     noColor: ctx.globalFlags.noColor,
   });
-  return streamEventsUntilDone(eventsUrl, statusLine);
+  return streamEventsUntilDone(eventsUrl, statusLine, projectPathHeader(projectPath));
 }
 
 // ─── handleLoopStop ─────────────────────────────────────────────────
@@ -595,6 +640,7 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
       headers: {
         "Content-Type": "application/json",
         "X-Rauf-Request": "true",
+        ...projectPathHeader(projectPath),
       },
       body: JSON.stringify(stopBody),
     });
@@ -610,10 +656,15 @@ export async function handleLoopStop(ctx: CommandContext): Promise<number> {
     }
 
     const errBody = (await resp.json().catch(() => ({ error: { message: resp.statusText } }))) as {
-      error?: { message?: string };
+      error?: { code?: string; message?: string };
     };
     const errMsg = errBody?.error?.message ?? resp.statusText;
 
+    if (errBody?.error?.code === "PROJECT_MISMATCH") {
+      // Refused instead of stopping a same-named project's loop (#178).
+      error(`Failed to stop loop: ${errMsg}`);
+      return ExitCode.USAGE;
+    }
     if (resp.status === 404) {
       error(`No active loop for ${id}.`);
       return ExitCode.USAGE; // 2 — no-loop-to-stop is a misuse (00-core-definitions §1)
@@ -639,7 +690,11 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
  * auto-disconnect when a terminal event is received.
  * Returns the exit code.
  */
-async function streamEventsUntilDone(url: string, sl?: StatusLine): Promise<number> {
+async function streamEventsUntilDone(
+  url: string,
+  sl?: StatusLine,
+  headers: Record<string, string> = {},
+): Promise<number> {
   let currentItemId = "";
   let currentItemTitle = "";
 
@@ -664,7 +719,7 @@ async function streamEventsUntilDone(url: string, sl?: StatusLine): Promise<numb
     process.on("SIGINT", stop);
     process.on("SIGTERM", stop);
 
-    connectSSE(url, controller.signal, (event) => {
+    connectSSE(url, controller.signal, headers, (event) => {
       sl?.pause();
       formatAndPrintEvent(event);
 
@@ -718,15 +773,21 @@ async function streamEventsUntilDone(url: string, sl?: StatusLine): Promise<numb
 async function connectSSE(
   url: string,
   signal: AbortSignal,
+  headers: Record<string, string>,
   onEvent: (event: LoopEvent) => void,
 ): Promise<void> {
   const resp = await fetch(url, {
-    headers: { Accept: "text/event-stream" },
+    headers: { Accept: "text/event-stream", ...headers },
     signal,
   });
 
   if (!resp.ok) {
-    throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    // Surface the server's reason (e.g. PROJECT_MISMATCH, #178) when it sent one.
+    const errBody = (await resp.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
+    const reason = errBody?.error?.message;
+    throw new Error(`HTTP ${resp.status}: ${reason ?? resp.statusText}`);
   }
 
   if (!resp.body) {
