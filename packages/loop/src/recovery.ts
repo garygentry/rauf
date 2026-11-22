@@ -95,7 +95,12 @@ async function findInterruptedItems(
 
   for (const item of items) {
     if (item.status !== "in_progress") continue;
-    const commitResult = await findItemCommit(projectPath, item.id, baseCommitHash ?? undefined);
+    const commitResult = await findItemCommit(
+      projectPath,
+      item.id,
+      baseCommitHash ?? undefined,
+      item.title,
+    );
     if (!commitResult.ok) return commitResult;
     if (!commitResult.value) {
       interrupted.push({ id: item.id, title: item.title });
@@ -204,7 +209,12 @@ export async function reconcileAndRequeue(paths: BacklogPaths): Promise<Result<R
     const isGenuineBlock = item.status === "blocked" && !item.deferred;
     const allowCommitPromotion = treeClean && (baseCommitHash !== null || !isGenuineBlock);
     if (allowCommitPromotion) {
-      const commitResult = await findItemCommit(projectPath, item.id, baseCommitHash ?? undefined);
+      const commitResult = await findItemCommit(
+        projectPath,
+        item.id,
+        baseCommitHash ?? undefined,
+        item.title,
+      );
       if (!commitResult.ok) return commitResult;
       if (commitResult.value) {
         item.status = "done";

@@ -69,7 +69,7 @@ function createProject(items: object[]): string {
 function commitItemWork(projectDir: string, id: string): void {
   fs.writeFileSync(path.join(projectDir, `work-${id}.txt`), `work for ${id}\n`);
   git(projectDir, "add -A");
-  git(projectDir, `commit -m "[rauf] ${id}: did the work"`);
+  git(projectDir, `commit -m "[rauf] ${id}: Item ${id}"`); // the exact subject rauf writes (#165)
 }
 
 /** Current HEAD hash of the project's git repo. */

@@ -10,6 +10,7 @@ import {
   acquireRecoveryLock,
   releaseRecoveryLock,
   recoverInterruptedLoop,
+  reconcileAndRequeue,
   readPendingReview,
   restorePendingReview,
 } from "./recovery.js";
@@ -189,6 +190,53 @@ describe("recoverInterruptedLoop", () => {
       items: { id: string; status: string }[];
     };
     expect(backlog.items[0]?.status).toBe("pending");
+  });
+});
+
+// ─── reconcileAndRequeue: ids collide across backlogs (#165) ────────
+
+describe("reconcileAndRequeue commit matching (#165)", () => {
+  const item = (id: string, title: string, dependsOn: string[] = []) => ({
+    id,
+    type: "feature",
+    priority: 1,
+    title,
+    description: "d",
+    acceptanceCriteria: ["a"],
+    status: "pending",
+    completedAt: null,
+    dependsOn,
+  });
+  const commitAs = (message: string) => {
+    fs.writeFileSync(path.join(projectDir, `${Math.random()}.txt`), message);
+    execSync("git add -A", { cwd: projectDir, stdio: "ignore" });
+    execSync(`git commit -q -m ${JSON.stringify(message)}`, { cwd: projectDir, stdio: "ignore" });
+  };
+
+  it("recovers only the item whose exact [rauf] <id>: <title> commit landed, not other backlogs' same-id commits", async () => {
+    // The issue's repro: 001 → 002 → 003, all pending, no run baseline (an
+    // unbounded history search). Sibling backlogs in the same repo committed
+    // their OWN 001–003; only this backlog's 001 has a commit.
+    writeBacklogItems([
+      item("001", "Engine scaffold"),
+      item("002", "Engine queries", ["001"]),
+      item("003", "Engine wiring", ["001", "002"]),
+    ]);
+    initGitCommitted();
+    commitAs("[rauf] 001: Design tokens"); // another backlog's 001
+    commitAs("[rauf] 002: Button component"); // another backlog's 002
+    commitAs("[rauf] 003: Layout grid"); // another backlog's 003
+    commitAs("[rauf] 001: Engine scaffold"); // THIS backlog's 001
+
+    const result = await reconcileAndRequeue(paths);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.recovered).toEqual(["001"]);
+
+    const backlog = JSON.parse(fs.readFileSync(paths.backlog, "utf-8")) as {
+      items: { id: string; status: string }[];
+    };
+    expect(backlog.items.map((i) => i.status)).toEqual(["done", "pending", "pending"]);
   });
 });
 

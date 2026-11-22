@@ -1896,7 +1896,7 @@ echo "RAUF_DONE"`,
         binDir,
         `printf 'recovered\\n' > "${tmpDir}/recovered.txt"
 git -C "${tmpDir}" -c commit.gpgsign=false add -A
-git -C "${tmpDir}" -c commit.gpgsign=false commit -q -m "[rauf] 001: recovered via commit"
+git -C "${tmpDir}" -c commit.gpgsign=false commit -q -m "[rauf] 001: Recover me"
 echo "work finished but no signal printed"`,
       );
 

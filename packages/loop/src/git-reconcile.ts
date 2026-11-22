@@ -14,6 +14,20 @@ function escapeEre(value: string): string {
 }
 
 /**
+ * The `git log --grep` ERE for an item's commit subject. With a title, the
+ * whole line must match the subject gitCommit writes. git's default commit
+ * cleanup strips trailing whitespace and `-m` puts any second line in the
+ * body, so only the title's first line, right-trimmed, can appear there.
+ */
+function itemCommitPattern(itemId: string, title?: string): string {
+  const prefix = `^\\[rauf\\] ${escapeEre(itemId)}:`;
+  if (title === undefined) return prefix;
+  const subjectTitle = (title.split("\n")[0] ?? "").trimEnd();
+  // An empty title leaves `[rauf] <id>: `, whose trailing space git strips.
+  return subjectTitle === "" ? `${prefix}$` : `${prefix} ${escapeEre(subjectTitle)}$`;
+}
+
+/**
  * Finds the most recent commit whose message is a rauf per-item commit for the
  * given item id (`[rauf] <id>: <title>`).
  *
@@ -21,6 +35,14 @@ function escapeEre(value: string): string {
  * `003` does not match `030` or `0030`, and so a stray mention of `[rauf]`
  * mid-message does not count. The id itself is ERE-escaped so metacharacters in
  * it are matched literally.
+ *
+ * When `title` is provided, the match must be the EXACT subject gitCommit
+ * writes — `[rauf] <id>: <title>` — not merely the `[rauf] <id>:` prefix. Item
+ * ids restart at 001 in every backlog, so in a repo with several backlogs (a
+ * forge layout: specs/<feature>/) another backlog's `[rauf] 001:` commit used
+ * to recover THIS backlog's 001 — and, with an unbounded search, 002/003 too
+ * (#165). A false negative (e.g. the title was edited after the commit) only
+ * leaves the item pending to re-run, the safe direction.
  *
  * When `sinceRef` is provided, the search is scoped to the `<sinceRef>..HEAD`
  * commit range so only commits made AFTER that baseline can match. This bounds
@@ -34,12 +56,13 @@ export async function findItemCommit(
   projectPath: string,
   itemId: string,
   sinceRef?: string,
+  title?: string,
 ): Promise<Result<{ commitHash: string } | null>> {
   try {
     const args = [
       "log",
       "--extended-regexp",
-      `--grep=^\\[rauf\\] ${escapeEre(itemId)}:`,
+      `--grep=${itemCommitPattern(itemId, title)}`,
       "--format=%H",
       "-n",
       "1",
