@@ -26,6 +26,7 @@ import {
   extractRaufBlock,
   reconcileAgentsImportShim,
   stripClaudeMdRaufBlock,
+  type ClaudeMdShimAction,
 } from "./claude-md.js";
 import {
   mergeManagedSection,
@@ -384,15 +385,17 @@ export function install(projectPath: string, options: InstallOptions): Result<In
     });
   }
 
-  // 9. CLAUDE.md smart merge (Claude-optimized companion)
-  const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
-  if (!claudeMdResult.ok) return claudeMdResult;
-  actions.push(claudeMdResult.value);
-
-  // 9a. AGENTS.md smart merge (cross-agent instructions — Codex et al.)
+  // 9. AGENTS.md smart merge (cross-agent instructions — Codex et al.). FIRST:
+  // a CLAUDE.md that imports AGENTS.md gets the rules only from here, so its
+  // rauf block may be removed only once this has succeeded (#173).
   const agentsMdResult = deployAgentsMd(resolved, artifactsDir);
   if (!agentsMdResult.ok) return agentsMdResult;
   actions.push(agentsMdResult.value);
+
+  // 9a. CLAUDE.md smart merge (Claude-optimized companion)
+  const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
+  if (!claudeMdResult.ok) return claudeMdResult;
+  actions.push(claudeMdResult.value);
 
   // 9b. Deploy .gitignore runtime entries
   const gitignoreResult = deployGitignore(resolved);
@@ -552,15 +555,16 @@ export function update(
   if (!reviewMdResult.ok) return reviewMdResult;
   actions.push(reviewMdResult.value);
 
+  // Update AGENTS.md cross-agent section (idempotent — backfills older installs).
+  // Before CLAUDE.md: the shim cleanup below relies on it having succeeded (#173).
+  const agentsMdResult = deployAgentsMd(resolved, artifactsDir);
+  if (!agentsMdResult.ok) return agentsMdResult;
+  actions.push(agentsMdResult.value);
+
   // Update CLAUDE.md ralph section
   const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
-
-  // Update AGENTS.md cross-agent section (idempotent — backfills older installs)
-  const agentsMdResult = deployAgentsMd(resolved, artifactsDir);
-  if (!agentsMdResult.ok) return agentsMdResult;
-  actions.push(agentsMdResult.value);
 
   // Deploy .gitignore runtime entries (idempotent — backfills older installs)
   const gitignoreResult = deployGitignore(resolved);
@@ -1328,6 +1332,15 @@ function deployProgress(raufDir: string, artifactsDir?: string): Result<InstallA
   });
 }
 
+const SHIM_DETAIL: Record<ClaudeMdShimAction, string> = {
+  removed:
+    "CLAUDE.md imports AGENTS.md — removed the duplicate rauf section (kept in AGENTS.md only)",
+  "kept-out": "CLAUDE.md imports AGENTS.md — rauf section kept in AGENTS.md only",
+  "incomplete-block":
+    "CLAUDE.md imports AGENTS.md but has an incomplete rauf block (a <!-- rauf:start/end --> " +
+    "sentinel without its pair) — remove the leftover rauf text by hand",
+};
+
 /** Merge ralph section into CLAUDE.md using the CLAUDE_ADDON.md template */
 function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<InstallAction> {
   // A CLAUDE.md that imports AGENTS.md already gets rauf's cross-agent section
@@ -1338,10 +1351,7 @@ function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<Inst
     return ok({
       file: "CLAUDE.md",
       action: shimResult.value.action === "removed" ? "updated" : "skipped",
-      detail:
-        shimResult.value.action === "removed"
-          ? "CLAUDE.md imports AGENTS.md — removed the duplicate rauf section (kept in AGENTS.md only)"
-          : "CLAUDE.md imports AGENTS.md — rauf section kept in AGENTS.md only",
+      detail: SHIM_DETAIL[shimResult.value.action],
     });
   }
 

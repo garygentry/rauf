@@ -307,9 +307,10 @@ Full installation flow for existing projects:
 5. **Instruction-file smart merge** (§9.3)
    - Merge host-neutral `AGENTS.md` content within `<!-- rauf:agents:start/end -->`
    - Independently merge Claude specialization within `<!-- rauf:start/end -->` in `CLAUDE.md`
-     — except when `CLAUDE.md` has an `@AGENTS.md` / `@./AGENTS.md` import line: then the
-     Claude block is skipped (an existing one is removed) because Claude already loads the
-     AGENTS.md section through the import (#173)
+     — except when `CLAUDE.md` imports AGENTS.md (an `@AGENTS.md` / `@./AGENTS.md` token in
+     prose, not inside code): then the Claude block is skipped and any existing rauf block
+     removed, because Claude already loads the AGENTS.md section through the import (#173).
+     AGENTS.md is deployed first, so a block is never removed before AGENTS.md has the rules
    - Preserve unrelated/user-owned regions in both files
 
 6. **Write .rauf.json** with profile, hashes, options
