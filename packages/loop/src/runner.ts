@@ -81,7 +81,12 @@ import {
 } from "./codex-sandbox-diagnostics.js";
 import { checkUsageLimit, interruptibleSleep } from "./usage-checker.js";
 import type { UsageLimitResult } from "./usage-checker.js";
-import { gitCommit, describeCommit, RUNTIME_EXCLUDE_PATHSPECS } from "./git-commit.js";
+import {
+  gitCommit,
+  describeCommit,
+  exactExcludePathspec,
+  RUNTIME_EXCLUDE_PATHSPECS,
+} from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -1149,8 +1154,10 @@ export class LoopRunner extends TypedEventEmitter {
       const pathspecs = [
         ".",
         ...RUNTIME_EXCLUDE_PATHSPECS,
-        `:(exclude)${stateDirRel}`,
-        `:(exclude)${backlogRel}`,
+        // Anchored-glob, not literal: a literal exclude under a gitignored dir
+        // trips git's ignored-path error on `git stash` (#172).
+        exactExcludePathspec(stateDirRel, { dir: true }),
+        exactExcludePathspec(backlogRel, { dir: false }),
         // backlog.json.bak is covered by the shared glob exclude; a literal
         // `.bak` exclude here is redundant and, on a `git stash`, would trip the
         // ignored-file exit that halted the loop in #137. Keep it glob-only.
@@ -2170,8 +2177,13 @@ export class LoopRunner extends TypedEventEmitter {
     const pathspecs = [
       ".",
       ...RUNTIME_EXCLUDE_PATHSPECS,
-      `:(exclude)${stateDirRel}`,
-      `:(exclude)${backlogRel}`,
+      // Anchored-glob excludes, NOT literal `:(exclude)<path>`: when the backlog
+      // lives under a gitignored dir (e.g. `specs/<feature>/` with `specs/`
+      // ignored), a literal exclude makes `git stash push --include-untracked`
+      // save the stash, exit non-zero and leave the tree staged — halting the
+      // loop (#172). See exactExcludePathspec.
+      exactExcludePathspec(stateDirRel, { dir: true }),
+      exactExcludePathspec(backlogRel, { dir: false }),
       // NB: backlog.json.bak is excluded via the shared glob
       // `:(exclude,glob)**/backlog.json.bak` in RUNTIME_EXCLUDE_PATHSPECS. Do NOT
       // add a literal `:(exclude)${backlogRel}.bak` here: `git stash push

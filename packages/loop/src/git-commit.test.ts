@@ -4,7 +4,7 @@ import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { describeCommit, gitCommit } from "./git-commit.js";
+import { describeCommit, exactExcludePathspec, gitCommit } from "./git-commit.js";
 
 describe("gitCommit", () => {
   let tmpDir: string;
@@ -207,5 +207,22 @@ describe("describeCommit", () => {
 
   it("returns null for an unknown ref instead of throwing", async () => {
     expect(await describeCommit(tmpDir, "deadbeef")).toBeNull();
+  });
+});
+
+describe("exactExcludePathspec (#172)", () => {
+  it("anchors the first character so the pathspec has no literal leading directory", () => {
+    expect(exactExcludePathspec(path.join("specs", "f", "backlog.json"), { dir: false })).toBe(
+      ":(exclude,glob)[s]pecs/f/backlog.json",
+    );
+    expect(exactExcludePathspec(".rauf", { dir: true })).toBe(":(exclude,glob)[.]rauf/**");
+  });
+
+  it("escapes glob metacharacters so the path still matches literally", () => {
+    expect(exactExcludePathspec("a*b/[x]?", { dir: false })).toBe(
+      ":(exclude,glob)[a]\\*b/\\[x\\]\\?",
+    );
+    // A leading metacharacter is escaped rather than wrapped in a class.
+    expect(exactExcludePathspec("*odd", { dir: false })).toBe(":(exclude,glob)\\*odd");
   });
 });

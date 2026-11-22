@@ -2091,6 +2091,99 @@ fi`,
       expect(fs.existsSync(path.join(tmpDir, "feature.txt"))).toBe(false);
     });
 
+    // #172: a backlog root under a gitignored dir (forge layout: specs/<feature>/
+    // with `specs/` ignored). The per-run LITERAL excludes made `git stash push
+    // --include-untracked` save the stash, exit 1 and leave the work STAGED —
+    // halting the whole loop. Covers both an untracked (ignored) backlog and a
+    // force-tracked backlog inside the ignored dir (a check-ignore filter would
+    // mis-handle the latter and stash the live backlog).
+    it.each([
+      ["an ignored, untracked backlog", false],
+      ["a force-tracked backlog inside the ignored dir", true],
+    ])(
+      "continues past a revert when the backlog root is under a gitignored dir — %s (#172)",
+      async (_label, trackBacklog) => {
+        setupProject(tmpDir, [
+          pendingItem("001", "Blocks with abandoned work; backlog dir ignored"),
+          pendingItem("002", "Must be reached after 001's revert succeeds"),
+        ]);
+        const featureRoot = path.join(tmpDir, "specs", "f");
+        fs.mkdirSync(path.join(featureRoot, ".rauf"), { recursive: true });
+        fs.renameSync(
+          path.join(tmpDir, ".rauf", "backlog.json"),
+          path.join(featureRoot, "backlog.json"),
+        );
+        fs.writeFileSync(path.join(tmpDir, ".gitignore"), "specs/\n");
+        execSync(
+          `git add -A && ${trackBacklog ? "git add -f specs/f/backlog.json && " : ""}git commit -q -m 'move backlog under ignored specs/'`,
+          { cwd: tmpDir, stdio: "ignore" },
+        );
+
+        const invocationCountFile = path.join(binDir, ".invocations-172");
+        writeMockClaude(
+          binDir,
+          `n=$(cat "${invocationCountFile}" 2>/dev/null || echo 0)
+n=$((n+1))
+echo "$n" > "${invocationCountFile}"
+if [ "$n" = "1" ]; then
+  printf 'half-finished\\n' > "${tmpDir}/feature.txt"
+  echo "RAUF_BLOCKED:stopping here"
+else
+  echo "RAUF_DONE"
+fi`,
+        );
+
+        const runner = createRunner(tmpDir, {
+          ...DEFAULT_OPTIONS,
+          maxIterations: 2,
+          backlogRoot: featureRoot,
+        });
+        await runner.start();
+
+        const backlog: Backlog = JSON.parse(
+          fs.readFileSync(path.join(featureRoot, "backlog.json"), "utf-8"),
+        );
+        const byId = Object.fromEntries(backlog.items.map((i) => [i.id, i]));
+        expect(byId["001"]?.status).toBe("blocked");
+        // The loop did not halt: 002 was spawned and completed.
+        expect(byId["002"]?.status).toBe("done");
+        expect(fs.readFileSync(invocationCountFile, "utf-8").trim()).toBe("2");
+
+        const log = fs.readFileSync(path.join(featureRoot, ".rauf", "rauf.log"), "utf-8");
+        expect(log).toContain("Reverted dirty working tree");
+        expect(log).not.toContain("Failed to revert dirty tree");
+
+        // Not just the exit code: the "stash saved, tree left staged" state
+        // must not recur. Exactly one stash holds the abandoned work, and it is
+        // gone from both the working tree and the index.
+        expect(fs.existsSync(path.join(tmpDir, "feature.txt"))).toBe(false);
+        const stashes = execSync("git stash list", { cwd: tmpDir, encoding: "utf-8" })
+          .trim()
+          .split("\n")
+          .filter(Boolean);
+        expect(stashes).toHaveLength(1);
+        expect(stashes[0]).toContain("rauf: abandoned work from item 001");
+        const stashed = execSync("git show --name-only --format= stash@{0}^3", {
+          cwd: tmpDir,
+          encoding: "utf-8",
+        });
+        expect(stashed).toContain("feature.txt");
+        const staged = execSync("git diff --cached --name-only", {
+          cwd: tmpDir,
+          encoding: "utf-8",
+        });
+        expect(staged.trim()).toBe("");
+        // The live backlog was never stashed — neither its tracked nor its
+        // untracked part (its statuses are asserted above).
+        expect(stashed).not.toContain("backlog.json");
+        const stashedTracked = execSync("git stash show --name-only stash@{0}", {
+          cwd: tmpDir,
+          encoding: "utf-8",
+        });
+        expect(stashedTracked).not.toContain("backlog.json");
+      },
+    );
+
     it("halts the loop instead of continuing when the revert (git stash) itself fails (#83)", async () => {
       // Two items: 001 will be blocked with abandoned work, and forced to fail
       // its dirty-tree revert; 002 must NEVER be reached. Write against the OLD
