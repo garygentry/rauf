@@ -2106,8 +2106,9 @@ export class LoopRunner extends TypedEventEmitter {
     // so a stale `[rauf] <id>:` commit from a prior backlog cycle can't recover
     // a fresh item (rauf restarts ids at 001 each backlog). When the baseline
     // is unavailable (not a git repo), fall back to an unscoped search.
-    // Require the exact `[rauf] <id>: <title>` subject: ids collide across
-    // backlogs in one repo (#165).
+    // With no baseline the title is required (ids collide across backlogs in
+    // one repo, #165); with one, the `[rauf] <id>:` prefix still recovers an
+    // agent's own commit.
     const commitResult = await findItemCommit(
       this.projectPath,
       item.id,

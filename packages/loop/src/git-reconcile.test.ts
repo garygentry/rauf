@@ -172,6 +172,30 @@ describe("git-reconcile", () => {
         const multi = await findItemCommit(tmpDir, "002", undefined, "First line\nsecond line");
         expect(multi.ok && multi.value).not.toBeNull();
       });
+
+      it("keeps trailing whitespace under commit.cleanup=verbatim", async () => {
+        fs.writeFileSync(path.join(tmpDir, "v.txt"), "v");
+        execFileSync("git", ["add", "-A"], { cwd: tmpDir, stdio: "ignore" });
+        execFileSync(
+          "git",
+          ["-c", "commit.cleanup=verbatim", "commit", "-q", "-m", "[rauf] 003: Spaced  "],
+          { cwd: tmpDir, stdio: "ignore" },
+        );
+        const r = await findItemCommit(tmpDir, "003", undefined, "Spaced  ");
+        expect(r.ok && r.value).not.toBeNull();
+      });
+
+      it("ignores the title inside a run baseline (an agent's own subject still recovers)", async () => {
+        commitRaw(tmpDir, "base.txt", "base");
+        const baseline = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        commitRaw(tmpDir, "z.txt", "[rauf] 004: implemented it my way");
+        const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        const r = await findItemCommit(tmpDir, "004", baseline, "Backlog title");
+        expect(r.ok && r.value?.commitHash).toBe(head);
+        // …while the same commit does NOT match an unbounded, titled search.
+        const unbounded = await findItemCommit(tmpDir, "004", undefined, "Backlog title");
+        expect(unbounded.ok && unbounded.value).toBeNull();
+      });
     });
 
     describe("with sinceRef (run baseline)", () => {

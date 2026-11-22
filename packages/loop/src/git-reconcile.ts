@@ -15,16 +15,17 @@ function escapeEre(value: string): string {
 
 /**
  * The `git log --grep` ERE for an item's commit subject. With a title, the
- * whole line must match the subject gitCommit writes. git's default commit
- * cleanup strips trailing whitespace and `-m` puts any second line in the
- * body, so only the title's first line, right-trimmed, can appear there.
+ * whole line must be the subject gitCommit writes. `-m` puts any second title
+ * line in the body, so only the first line can appear there; trailing
+ * whitespace is optional so both git's default cleanup (which strips it) and
+ * `commit.cleanup=verbatim` (which keeps it) match.
  */
 function itemCommitPattern(itemId: string, title?: string): string {
   const prefix = `^\\[rauf\\] ${escapeEre(itemId)}:`;
   if (title === undefined) return prefix;
   const subjectTitle = (title.split("\n")[0] ?? "").trimEnd();
-  // An empty title leaves `[rauf] <id>: `, whose trailing space git strips.
-  return subjectTitle === "" ? `${prefix}$` : `${prefix} ${escapeEre(subjectTitle)}$`;
+  const body = subjectTitle === "" ? "" : ` ${escapeEre(subjectTitle)}`;
+  return `${prefix}${body}[[:space:]]*$`;
 }
 
 /**
@@ -36,13 +37,19 @@ function itemCommitPattern(itemId: string, title?: string): string {
  * mid-message does not count. The id itself is ERE-escaped so metacharacters in
  * it are matched literally.
  *
- * When `title` is provided, the match must be the EXACT subject gitCommit
- * writes — `[rauf] <id>: <title>` — not merely the `[rauf] <id>:` prefix. Item
- * ids restart at 001 in every backlog, so in a repo with several backlogs (a
- * forge layout: specs/<feature>/) another backlog's `[rauf] 001:` commit used
- * to recover THIS backlog's 001 — and, with an unbounded search, 002/003 too
- * (#165). A false negative (e.g. the title was edited after the commit) only
- * leaves the item pending to re-run, the safe direction.
+ * `title` tightens an UNBOUNDED search (no `sinceRef`) to the exact subject
+ * gitCommit writes, `[rauf] <id>: <title>`. Item ids restart at 001 in every
+ * backlog, so in a repo with several backlogs (a forge layout:
+ * specs/<feature>/) the whole history holds other backlogs' `[rauf] 001:`
+ * commits, which used to recover THIS backlog's items (#165). A false negative
+ * (e.g. the title was edited after the commit) leaves the item pending to
+ * re-run, the safe direction. Two backlogs sharing an id AND a title can still
+ * collide there; a run baseline is what fully scopes the search.
+ *
+ * With `sinceRef` the `[rauf] <id>:` prefix is enough and `title` is ignored:
+ * the range is this run's own commits, and the prefix is what lets the runner
+ * recover work an agent (or a subject-rewriting hook) committed under its own
+ * subject before dying without a signal.
  *
  * When `sinceRef` is provided, the search is scoped to the `<sinceRef>..HEAD`
  * commit range so only commits made AFTER that baseline can match. This bounds
@@ -62,7 +69,7 @@ export async function findItemCommit(
     const args = [
       "log",
       "--extended-regexp",
-      `--grep=${itemCommitPattern(itemId, title)}`,
+      `--grep=${itemCommitPattern(itemId, sinceRef ? undefined : title)}`,
       "--format=%H",
       "-n",
       "1",
