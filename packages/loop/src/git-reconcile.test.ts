@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -11,6 +11,13 @@ function commit(cwd: string, file: string, contents: string, message: string): v
   fs.writeFileSync(path.join(cwd, file), contents);
   execSync("git add -A", { cwd, stdio: "ignore" });
   execSync(`git commit -m ${JSON.stringify(message)}`, { cwd, stdio: "ignore" });
+}
+
+/** Like commit(), but with no shell: the message reaches git byte-for-byte. */
+function commitRaw(cwd: string, file: string, message: string): void {
+  fs.writeFileSync(path.join(cwd, file), message);
+  execFileSync("git", ["add", "-A"], { cwd, stdio: "ignore" });
+  execFileSync("git", ["commit", "-q", "-m", message], { cwd, stdio: "ignore" });
 }
 
 describe("git-reconcile", () => {
@@ -123,6 +130,72 @@ describe("git-reconcile", () => {
       } finally {
         fs.rmSync(nonGitDir, { recursive: true, force: true });
       }
+    });
+
+    describe("with title (exact subject, #165)", () => {
+      it("matches only the exact [rauf] <id>: <title> subject", async () => {
+        commit(tmpDir, "a.txt", "a", "[rauf] 001: Another backlog's item");
+        const other = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        commit(tmpDir, "b.txt", "b", "[rauf] 001: Engine scaffold");
+        const mine = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        commit(tmpDir, "c.txt", "c", "[rauf] 001: Engine scaffold v2");
+
+        const exact = await findItemCommit(tmpDir, "001", undefined, "Engine scaffold");
+        expect(exact.ok && exact.value?.commitHash).toBe(mine);
+        const theirs = await findItemCommit(tmpDir, "001", undefined, "Another backlog's item");
+        expect(theirs.ok && theirs.value?.commitHash).toBe(other);
+        const none = await findItemCommit(tmpDir, "001", undefined, "Never committed");
+        expect(none.ok && none.value).toBeNull();
+      });
+
+      it("matches a title with regex metacharacters literally", async () => {
+        commitRaw(tmpDir, "a.txt", "[rauf] 001: Fix a+b (x|y) [v1.0]? $HOME ^start \\path");
+        const ok1 = await findItemCommit(
+          tmpDir,
+          "001",
+          undefined,
+          "Fix a+b (x|y) [v1.0]? $HOME ^start \\path",
+        );
+        expect(ok1.ok && ok1.value).not.toBeNull();
+        const no = await findItemCommit(tmpDir, "001", undefined, "Fix aab (x|y) [v1.0]");
+        expect(no.ok && no.value).toBeNull();
+      });
+
+      it("matches what git actually stores: trailing whitespace stripped, first line only", async () => {
+        // gitCommit passes `[rauf] <id>: <title>` via -m; git's cleanup strips
+        // trailing whitespace, and a second title line lands in the body.
+        commitRaw(tmpDir, "a.txt", "[rauf] 001: Trailing   ");
+        const trailing = await findItemCommit(tmpDir, "001", undefined, "Trailing   ");
+        expect(trailing.ok && trailing.value).not.toBeNull();
+
+        commitRaw(tmpDir, "b.txt", "[rauf] 002: First line\nsecond line");
+        const multi = await findItemCommit(tmpDir, "002", undefined, "First line\nsecond line");
+        expect(multi.ok && multi.value).not.toBeNull();
+      });
+
+      it("keeps trailing whitespace under commit.cleanup=verbatim", async () => {
+        fs.writeFileSync(path.join(tmpDir, "v.txt"), "v");
+        execFileSync("git", ["add", "-A"], { cwd: tmpDir, stdio: "ignore" });
+        execFileSync(
+          "git",
+          ["-c", "commit.cleanup=verbatim", "commit", "-q", "-m", "[rauf] 003: Spaced  "],
+          { cwd: tmpDir, stdio: "ignore" },
+        );
+        const r = await findItemCommit(tmpDir, "003", undefined, "Spaced  ");
+        expect(r.ok && r.value).not.toBeNull();
+      });
+
+      it("ignores the title inside a run baseline (an agent's own subject still recovers)", async () => {
+        commitRaw(tmpDir, "base.txt", "base");
+        const baseline = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        commitRaw(tmpDir, "z.txt", "[rauf] 004: implemented it my way");
+        const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+        const r = await findItemCommit(tmpDir, "004", baseline, "Backlog title");
+        expect(r.ok && r.value?.commitHash).toBe(head);
+        // …while the same commit does NOT match an unbounded, titled search.
+        const unbounded = await findItemCommit(tmpDir, "004", undefined, "Backlog title");
+        expect(unbounded.ok && unbounded.value).toBeNull();
+      });
     });
 
     describe("with sinceRef (run baseline)", () => {

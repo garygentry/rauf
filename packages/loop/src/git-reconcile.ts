@@ -14,6 +14,21 @@ function escapeEre(value: string): string {
 }
 
 /**
+ * The `git log --grep` ERE for an item's commit subject. With a title, the
+ * whole line must be the subject gitCommit writes. `-m` puts any second title
+ * line in the body, so only the first line can appear there; trailing
+ * whitespace is optional so both git's default cleanup (which strips it) and
+ * `commit.cleanup=verbatim` (which keeps it) match.
+ */
+function itemCommitPattern(itemId: string, title?: string): string {
+  const prefix = `^\\[rauf\\] ${escapeEre(itemId)}:`;
+  if (title === undefined) return prefix;
+  const subjectTitle = (title.split("\n")[0] ?? "").trimEnd();
+  const body = subjectTitle === "" ? "" : ` ${escapeEre(subjectTitle)}`;
+  return `${prefix}${body}[[:space:]]*$`;
+}
+
+/**
  * Finds the most recent commit whose message is a rauf per-item commit for the
  * given item id (`[rauf] <id>: <title>`).
  *
@@ -21,6 +36,20 @@ function escapeEre(value: string): string {
  * `003` does not match `030` or `0030`, and so a stray mention of `[rauf]`
  * mid-message does not count. The id itself is ERE-escaped so metacharacters in
  * it are matched literally.
+ *
+ * `title` tightens an UNBOUNDED search (no `sinceRef`) to the exact subject
+ * gitCommit writes, `[rauf] <id>: <title>`. Item ids restart at 001 in every
+ * backlog, so in a repo with several backlogs (a forge layout:
+ * specs/<feature>/) the whole history holds other backlogs' `[rauf] 001:`
+ * commits, which used to recover THIS backlog's items (#165). A false negative
+ * (e.g. the title was edited after the commit) leaves the item pending to
+ * re-run, the safe direction. Two backlogs sharing an id AND a title can still
+ * collide there; a run baseline is what fully scopes the search.
+ *
+ * With `sinceRef` the `[rauf] <id>:` prefix is enough and `title` is ignored:
+ * the range is this run's own commits, and the prefix is what lets the runner
+ * recover work an agent (or a subject-rewriting hook) committed under its own
+ * subject before dying without a signal.
  *
  * When `sinceRef` is provided, the search is scoped to the `<sinceRef>..HEAD`
  * commit range so only commits made AFTER that baseline can match. This bounds
@@ -34,12 +63,13 @@ export async function findItemCommit(
   projectPath: string,
   itemId: string,
   sinceRef?: string,
+  title?: string,
 ): Promise<Result<{ commitHash: string } | null>> {
   try {
     const args = [
       "log",
       "--extended-regexp",
-      `--grep=^\\[rauf\\] ${escapeEre(itemId)}:`,
+      `--grep=${itemCommitPattern(itemId, sinceRef ? undefined : title)}`,
       "--format=%H",
       "-n",
       "1",
