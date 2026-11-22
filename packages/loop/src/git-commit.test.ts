@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { describeCommit, gitCommit } from "./git-commit.js";
+import { describeCommit, exactExcludePathspec, gitCommit } from "./git-commit.js";
 
 describe("gitCommit", () => {
   let tmpDir: string;
@@ -207,5 +207,61 @@ describe("describeCommit", () => {
 
   it("returns null for an unknown ref instead of throwing", async () => {
     expect(await describeCommit(tmpDir, "deadbeef")).toBeNull();
+  });
+});
+
+describe("exactExcludePathspec (#172)", () => {
+  it("backslash-anchors the first character so the pathspec has no literal leading directory", () => {
+    expect(exactExcludePathspec(path.join("specs", "f", "backlog.json"), { dir: false })).toBe(
+      ":(exclude,glob)\\specs/f/backlog.json",
+    );
+    expect(exactExcludePathspec(".rauf", { dir: true })).toBe(":(exclude,glob)\\.rauf/**");
+    // Metacharacters are escaped; one already leading is not double-anchored.
+    expect(exactExcludePathspec("a*b/[x]?", { dir: false })).toBe(
+      ":(exclude,glob)\\a\\*b/\\[x\\]\\?",
+    );
+    expect(exactExcludePathspec("*odd", { dir: false })).toBe(":(exclude,glob)\\*odd");
+  });
+
+  // String shape alone can't prove git matches it (a `[Ü]` / `[!]` class looked
+  // right but matched nothing). Ask git: each path must vanish from `status`,
+  // while a sibling with the same name elsewhere must not.
+  it.each([
+    ["ASCII", "specs"],
+    ["non-ASCII first character", "Über"],
+    ["astral first character", "\u{1F680}x"],
+    ["leading !", "!x"],
+    ["leading ^", "^y"],
+    ["glob metacharacters", "a*b[1]?"],
+  ])("excludes exactly the given path through git — %s", (_label, top) => {
+    const repo = fs.mkdtempSync(path.join(process.env.TMPDIR ?? "/tmp", "rauf-exclude-"));
+    try {
+      execSync("git init -q", { cwd: repo });
+      const backlogRel = path.join(top, "f", "backlog.json");
+      const stateRel = path.join(top, "f", ".rauf");
+      fs.mkdirSync(path.join(repo, stateRel), { recursive: true });
+      fs.writeFileSync(path.join(repo, backlogRel), "{}\n");
+      fs.writeFileSync(path.join(repo, stateRel, "state.json"), "{}\n");
+      fs.mkdirSync(path.join(repo, "other", "f"), { recursive: true });
+      fs.writeFileSync(path.join(repo, "other", "f", "backlog.json"), "{}\n");
+      const status = execFileSync(
+        "git",
+        [
+          "-c",
+          "core.quotePath=false",
+          "status",
+          "--porcelain",
+          "--untracked-files=all",
+          "--",
+          ".",
+          exactExcludePathspec(stateRel, { dir: true }),
+          exactExcludePathspec(backlogRel, { dir: false }),
+        ],
+        { cwd: repo, encoding: "utf-8" },
+      );
+      expect(status.trim().split("\n")).toEqual(["?? other/f/backlog.json"]);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
