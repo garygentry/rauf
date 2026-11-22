@@ -24,8 +24,8 @@ import { renderTemplate, updateSentinelBlock } from "./template.js";
 import {
   mergeClaudeMd,
   extractRaufBlock,
-  CLAUDE_MD_SENTINEL_START,
-  CLAUDE_MD_SENTINEL_END,
+  reconcileAgentsImportShim,
+  stripClaudeMdRaufBlock,
 } from "./claude-md.js";
 import {
   mergeManagedSection,
@@ -1330,6 +1330,21 @@ function deployProgress(raufDir: string, artifactsDir?: string): Result<InstallA
 
 /** Merge ralph section into CLAUDE.md using the CLAUDE_ADDON.md template */
 function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<InstallAction> {
+  // A CLAUDE.md that imports AGENTS.md already gets rauf's cross-agent section
+  // from there; merging the Claude block too would load the rules twice (#173).
+  const shimResult = reconcileAgentsImportShim(projectPath);
+  if (!shimResult.ok) return shimResult;
+  if (shimResult.value !== null) {
+    return ok({
+      file: "CLAUDE.md",
+      action: shimResult.value.action === "removed" ? "updated" : "skipped",
+      detail:
+        shimResult.value.action === "removed"
+          ? "CLAUDE.md imports AGENTS.md — removed the duplicate rauf section (kept in AGENTS.md only)"
+          : "CLAUDE.md imports AGENTS.md — rauf section kept in AGENTS.md only",
+    });
+  }
+
   const contentResult = readArtifact(CLAUDE_ADDON_FILE, artifactsDir);
   if (!contentResult.ok) return contentResult;
 
@@ -1425,23 +1440,8 @@ function removeClaudeMdRaufSection(projectPath: string): void {
 
   try {
     const content = fs.readFileSync(claudeMdPath, "utf-8");
-
-    const startIdx = content.indexOf(CLAUDE_MD_SENTINEL_START);
-    const endIdx = content.indexOf(CLAUDE_MD_SENTINEL_END);
-
-    if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return;
-
-    // Remove from sentinel start to sentinel end (inclusive) plus any trailing newline
-    let endOffset = endIdx + CLAUDE_MD_SENTINEL_END.length;
-    if (content[endOffset] === "\n") endOffset++;
-
-    // Also remove a leading blank line if present
-    let startOffset = startIdx;
-    if (startOffset > 0 && content[startOffset - 1] === "\n") {
-      startOffset--;
-    }
-
-    const newContent = content.slice(0, startOffset) + content.slice(endOffset);
+    const newContent = stripClaudeMdRaufBlock(content);
+    if (newContent === null) return;
 
     // If the file is now empty (or just whitespace), remove it entirely
     if (newContent.trim() === "") {

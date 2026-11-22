@@ -307,6 +307,9 @@ Full installation flow for existing projects:
 5. **Instruction-file smart merge** (§9.3)
    - Merge host-neutral `AGENTS.md` content within `<!-- rauf:agents:start/end -->`
    - Independently merge Claude specialization within `<!-- rauf:start/end -->` in `CLAUDE.md`
+     — except when `CLAUDE.md` has an `@AGENTS.md` / `@./AGENTS.md` import line: then the
+     Claude block is skipped (an existing one is removed) because Claude already loads the
+     AGENTS.md section through the import (#173)
    - Preserve unrelated/user-owned regions in both files
 
 6. **Write .rauf.json** with profile, hashes, options
@@ -319,7 +322,8 @@ Re-sync artifacts:
 
 - Re-render RAUF.md managed instructions while preserving content below the user anchor
 - Re-render REVIEW.md (preserves user-customized versions)
-- Update the independent CLAUDE.md and AGENTS.md rauf sections
+- Update the independent CLAUDE.md and AGENTS.md rauf sections (the CLAUDE.md one is removed, not
+  updated, when CLAUDE.md imports AGENTS.md — #173)
 - Never touch backlog.json or progress.md
 - Update artifactHashes for updated files
 

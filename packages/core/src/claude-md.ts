@@ -106,6 +106,65 @@ export function mergeClaudeMd(
   return ok({ action: "merged" as const, filePath: claudeMdPath });
 }
 
+// ─── AGENTS.md import shim (#173) ───────────────────────────────
+//
+// Some projects keep all agent guidance in AGENTS.md and make CLAUDE.md a thin
+// shim that imports it (`@AGENTS.md`). rauf also writes its cross-agent section
+// into AGENTS.md, so a rauf block in such a CLAUDE.md makes Claude Code load the
+// loop rules twice. The AGENTS.md block's Delegation section already covers the
+// Claude Task-tool case host-agnostically, so nothing is lost by skipping it.
+
+/** True when `content` has a line that is exactly an `@AGENTS.md` import. */
+export function claudeMdImportsAgentsMd(content: string): boolean {
+  return /^[ \t]*@(?:\.\/)?AGENTS\.md[ \t]*\r?$/m.test(content);
+}
+
+/**
+ * Remove the rauf sentinel block (and the blank line before it) from CLAUDE.md
+ * content. Returns null when there is no complete block. Shared by uninstall
+ * and the `@AGENTS.md` shim cleanup.
+ */
+export function stripClaudeMdRaufBlock(content: string): string | null {
+  const startIdx = content.indexOf(CLAUDE_MD_SENTINEL_START);
+  const endIdx = content.indexOf(CLAUDE_MD_SENTINEL_END);
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
+
+  // Sentinel start to sentinel end (inclusive) plus any trailing newline…
+  let endOffset = endIdx + CLAUDE_MD_SENTINEL_END.length;
+  if (content[endOffset] === "\n") endOffset++;
+  // …and a leading blank line if present.
+  let startOffset = startIdx;
+  if (startOffset > 0 && content[startOffset - 1] === "\n") startOffset--;
+  return content.slice(0, startOffset) + content.slice(endOffset);
+}
+
+export type ClaudeMdShimAction = "removed" | "kept-out";
+
+/**
+ * When CLAUDE.md imports AGENTS.md, keep rauf's section out of it: remove an
+ * existing rauf block (so an already-duplicated install cleans itself up) and
+ * report it. Returns null when CLAUDE.md is missing or has no such import, so
+ * the caller merges as usual.
+ */
+export function reconcileAgentsImportShim(
+  projectPath: string,
+): Result<{ action: ClaudeMdShimAction; filePath: string } | null> {
+  const claudeMdPath = path.join(path.resolve(projectPath), CLAUDE_MD_FILENAME);
+  let content: string;
+  try {
+    content = fs.readFileSync(claudeMdPath, "utf-8");
+  } catch {
+    return ok(null);
+  }
+  if (!claudeMdImportsAgentsMd(content)) return ok(null);
+
+  const stripped = stripClaudeMdRaufBlock(content);
+  if (stripped === null) return ok({ action: "kept-out", filePath: claudeMdPath });
+  const writeResult = atomicWrite(claudeMdPath, stripped);
+  if (!writeResult.ok) return writeResult;
+  return ok({ action: "removed", filePath: claudeMdPath });
+}
+
 // ─── extractRaufBlock ───────────────────────────────────────────
 //
 // Extract the ralph block content from a CLAUDE addon template file.
