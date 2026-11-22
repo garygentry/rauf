@@ -65,12 +65,13 @@ export function probeNoRemoteSupport(
 ): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    // A holder, not a `let`: finish() can run on the early-return paths before the timer exists.
+    const pending: { timer?: ReturnType<typeof setTimeout> } = {};
     let stderr = "";
     const finish = (supported: boolean): void => {
       if (settled) return;
       settled = true;
-      if (timer !== undefined) clearTimeout(timer);
+      if (pending.timer !== undefined) clearTimeout(pending.timer);
       options.signal?.removeEventListener("abort", onAbort);
       resolve(supported);
     };
@@ -90,7 +91,7 @@ export function probeNoRemoteSupport(
       return finish(false);
     }
     options.signal?.addEventListener("abort", onAbort, { once: true });
-    timer = setTimeout(() => {
+    pending.timer = setTimeout(() => {
       child.kill("SIGKILL");
       finish(false);
     }, NO_REMOTE_PROBE_TIMEOUT_MS);
