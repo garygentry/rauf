@@ -57,21 +57,56 @@ describe("CopilotCliProvider", () => {
     expect(args).toContain("--no-remote-export");
   });
 
-  it("probes --no-remote support from the CLI's exit code", async () => {
+  it("probes --no-remote support from the CLI's exit code and stderr", async () => {
     const directory = await mkdtemp(join(tmpdir(), "rauf-copilot-probe-"));
     try {
-      const accepts = join(directory, "accepts");
-      const rejects = join(directory, "rejects");
-      await writeFile(accepts, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-      await writeFile(rejects, "#!/bin/sh\necho 'error: --no-remote was removed.' >&2\nexit 2\n", {
-        mode: 0o755,
-      });
+      const script = async (name: string, body: string): Promise<string> => {
+        const file = join(directory, name);
+        await writeFile(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+        return file;
+      };
+      const accepts = await script(
+        "accepts",
+        'case "$*" in *--no-auto-update*) exit 0;; esac; exit 9',
+      );
+      const rejects = await script("rejects", "echo 'error: --no-remote was removed.' >&2; exit 1");
+      const helpWins = await script(
+        "help-wins",
+        "echo 'error: --no-remote was removed.' >&2; exit 0",
+      );
+      const hangs = await script("hangs", "sleep 30");
       expect(await probeNoRemoteSupport(accepts)).toBe(true);
       expect(await probeNoRemoteSupport(rejects)).toBe(false);
+      expect(await probeNoRemoteSupport(helpWins)).toBe(false);
       expect(await probeNoRemoteSupport(join(directory, "missing"))).toBe(false);
+      const controller = new AbortController();
+      const pending = probeNoRemoteSupport(hangs, { signal: controller.signal });
+      controller.abort();
+      expect(await pending).toBe(false);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  it("probes with the iteration's cwd, sanitized env and signal", async () => {
+    const seen: unknown[] = [];
+    const provider = new CopilotCliProvider({
+      supportsNoRemote: async (probe) => {
+        seen.push(probe);
+        return true;
+      },
+    });
+    const signal = new AbortController().signal;
+    await provider.execute("prompt", {
+      timeoutMinutes: 5,
+      signal,
+      env: { COPILOT_DEBUG_NONCE: "remove-me", RAUF_CHILD: "1" },
+    });
+    const [probe] = seen as { cwd: string; env: Record<string, string>; signal: AbortSignal }[];
+    expect(probe!.cwd).toBe(process.cwd());
+    expect(probe!.signal).toBe(signal);
+    expect(probe!.env.RAUF_CHILD).toBe("1");
+    expect(probe!.env.COPILOT_DEBUG_NONCE).toBeUndefined();
   });
 
   it("reports binary presence separately from unknown authenticated readiness", async () => {

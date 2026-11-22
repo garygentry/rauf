@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- **`--agent copilot` works on Copilot CLI 1.0.114 and later (#177).** Copilot CLI 1.0.114 removed `--no-remote` and rejects it (`error: --no-remote was removed…`), so every iteration exited at startup and the loop circuit-broke after three infra failures. rauf now probes `copilot --no-remote --help` once per process and passes the flag only when the CLI accepts it, so older CLIs keep the opt-out.
+- **`--agent copilot` works on Copilot CLI 1.0.114 and later (#177).** Copilot CLI 1.0.114 removed `--no-remote` and rejects it (`error: --no-remote was removed…`), so every iteration exited at startup and the loop circuit-broke after three infra failures. Before each iteration rauf now probes `copilot --no-auto-update --no-remote --help` (about 0.2 s) with that iteration's cwd and environment, and passes the flag only when the CLI accepts it. Older CLIs keep the opt-out, and a CLI upgraded mid-run is picked up.
 
 ## 0.19.0
 
