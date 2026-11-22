@@ -936,9 +936,13 @@ model aliases such as `opus` or `sonnet`; otherwise rauf forwards the resolved m
   copilot --no-auto-update -C <cwd> --output-format json --stream on \
     --allow-tool=read --allow-tool=write --allow-tool=shell \
     --deny-tool='shell(git commit:*)' --deny-tool='shell(git push:*)' \
-    --no-ask-user --no-remote --no-remote-export --no-custom-instructions \
+    --no-ask-user [--no-remote] --no-remote-export --no-custom-instructions \
     --disable-builtin-mcps [--model <m>] --prompt <bootstrap>
   ```
+
+  `--no-remote` is passed only when the installed CLI accepts it. Copilot CLI 1.0.114 removed it
+  and rejects it at argument parsing, so rauf probes `copilot --no-remote --help` once per process
+  (exit 0 = supported) and omits the flag otherwise, including when the probe cannot run.
 
   It never uses `--allow-all-tools`/`--yolo`. Commit and push are denied so the runner still owns
   the commit. Copilot has no path-level deny, so the agent _can_ technically write

@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
@@ -32,15 +33,57 @@ const COPILOT_FLAGS = [
   "--deny-tool=shell(git commit:*)",
   "--deny-tool=shell(git push:*)",
   "--no-ask-user",
-  "--no-remote",
   "--no-remote-export",
   "--no-custom-instructions",
   "--disable-builtin-mcps",
 ] as const;
 
+/**
+ * Copilot CLI 1.0.114 removed `--no-remote` and now rejects it at argument parsing
+ * (`error: --no-remote was removed. Use /remote off in a session…`), so passing it
+ * unconditionally fails every spawn. Older CLIs (1.0.78+) still accept it and it
+ * keeps a loop iteration from being exposed for remote control, so rauf passes it
+ * only when the installed CLI parses it: `copilot --no-remote --help` exits 0.
+ * Probed once per process. A probe that cannot run (timeout, spawn error) omits the
+ * flag, because a rejected flag fails every iteration while an omitted one only
+ * forgoes an opt-out the newer CLI no longer offers.
+ */
+const NO_REMOTE_PROBE_TIMEOUT_MS = 15_000;
+let noRemoteSupport: Promise<boolean> | undefined;
+
+export function probeNoRemoteSupport(binary: string = COPILOT_BINARY): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (supported: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(supported);
+    };
+    const child = spawn(binary, ["--no-remote", "--help"], { stdio: "ignore" });
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(false);
+    }, NO_REMOTE_PROBE_TIMEOUT_MS);
+    child.on("error", () => finish(false));
+    child.on("exit", (code) => finish(code === 0));
+  });
+}
+
+export interface CopilotCliProviderOptions {
+  /** Whether the installed CLI accepts `--no-remote` (default: probed once per process). */
+  supportsNoRemote?: () => Promise<boolean>;
+}
+
 export class CopilotCliProvider implements LLMProvider {
   readonly id = COPILOT_AGENT_ID;
   readonly displayName = "GitHub Copilot CLI";
+  readonly #supportsNoRemote: () => Promise<boolean>;
+
+  constructor(options: CopilotCliProviderOptions = {}) {
+    this.#supportsNoRemote =
+      options.supportsNoRemote ?? (() => (noRemoteSupport ??= probeNoRemoteSupport()));
+  }
 
   async execute(prompt: string, options: ExecuteOptions): Promise<Result<ExecutionResult>> {
     const cwd = process.cwd();
@@ -51,7 +94,11 @@ export class CopilotCliProvider implements LLMProvider {
       await writeFile(promptPath, prompt, { encoding: "utf-8", mode: 0o600 });
       const promptReference = relative(cwd, promptPath);
       const bootstrap = `Read the complete instructions from ${promptReference}, follow them, and do not modify that file.`;
-      const argv = ["--no-auto-update", "-C", cwd, ...COPILOT_FLAGS.slice(1)];
+      const flags: string[] = [...COPILOT_FLAGS.slice(1)];
+      if (await this.#supportsNoRemote()) {
+        flags.splice(flags.indexOf("--no-remote-export"), 0, "--no-remote");
+      }
+      const argv = ["--no-auto-update", "-C", cwd, ...flags];
       if (options.model) argv.push("--model", options.model);
       argv.push("--prompt", bootstrap);
 
