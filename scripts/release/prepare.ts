@@ -23,7 +23,10 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeBundle as writeCopilotBundle } from "../build-copilot-bundle";
+import {
+  writeBundle as writeCopilotBundle,
+  writeMarketplace as writeCopilotMarketplace,
+} from "../build-copilot-bundle";
 import { writeBundle } from "../build-pi-bundle";
 import {
   PACKAGE_JSON_PATHS,
@@ -102,7 +105,7 @@ export function dryRunLines(plan: PreparePlan): string[] {
       ` (scripts/build-pi-bundle.ts)`,
   );
   lines.push(
-    `  adapters/copilot/: regenerate bundle so plugin.json tracks ${plan.version}` +
+    `  adapters/copilot/ + .github/plugin/marketplace.json: regenerate so both track ${plan.version}` +
       ` (scripts/build-copilot-bundle.ts)`,
   );
   lines.push(`  CHANGELOG.md: roll \`## Unreleased\` → \`## ${plan.version}\``);
@@ -267,6 +270,7 @@ function main(): void {
   // and both `pnpm version:check` and `pnpm copilot:check` gate on it (#131).
   try {
     writeCopilotBundle();
+    writeCopilotMarketplace();
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     fail(

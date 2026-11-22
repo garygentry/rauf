@@ -3,7 +3,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { buildBundle, findDrift, parseFrontmatter, writeBundle } from "./build-copilot-bundle";
+import {
+  buildBundle,
+  buildMarketplace,
+  findDrift,
+  parseFrontmatter,
+  writeBundle,
+  writeMarketplace,
+} from "./build-copilot-bundle";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const temporaryDirectories: string[] = [];
@@ -171,5 +178,24 @@ describe("release-prep version bump (#131, issue #119 twin)", () => {
     expect(findDrift(bumped, directory)).toEqual([]);
     const manifest = JSON.parse(fs.readFileSync(path.join(directory, "plugin.json"), "utf-8"));
     expect(manifest.version).toBe("99.0.0");
+
+    // ...and the marketplace manifest written beside it tracks the same bump.
+    const marketplacePath = path.join(directory, "marketplace.json");
+    writeMarketplace(buildMarketplace({ version: "99.0.0" }), marketplacePath);
+    const marketplace = JSON.parse(fs.readFileSync(marketplacePath, "utf-8"));
+    expect(marketplace.plugins[0].version).toBe("99.0.0");
+  });
+});
+
+describe("Copilot marketplace manifest", () => {
+  it("serves the Copilot bundle at the plugin version", () => {
+    const manifest = JSON.parse(buildMarketplace({ version: "99.0.0" }));
+    expect(manifest.name).toBe("rauf");
+    expect(manifest.plugins).toHaveLength(1);
+    expect(manifest.plugins[0]).toMatchObject({
+      name: "rauf",
+      source: "./adapters/copilot",
+      version: "99.0.0",
+    });
   });
 });

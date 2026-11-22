@@ -64,14 +64,14 @@ Rauf spawns a coding-agent CLI each iteration. It defaults to and is optimized f
 
 > **Honest testing state.** We are candid about how far each agent's invocation is actually verified against its real CLI — not just against rauf's unit tests. A preset whose flags only pass a literal-asserting unit test can still be rejected by the real binary (this is exactly how the Codex loop shipped broken in 0.9.0, fixed in 0.10.0). Current state:
 >
-> | Agent           | Adapter                              | Verified against the real CLI                                                                                                                                                                                             |
-> | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-> | **Claude Code** | native (default)                     | ✅ Primary target — exercised continuously                                                                                                                                                                                |
-> | **Codex**       | dedicated provider + JSONL telemetry | ✅ End-to-end (codex-cli 0.141)                                                                                                                                                                                           |
-> | **Copilot**     | dedicated provider + JSONL telemetry | ✅ Invocation profile end-to-end (copilot 1.0.78: edit + shell verify, denied commit, signal from final message) outside rauf; rauf runs covered by the mock-JSONL sandbox; a real-Copilot rauf loop is not yet confirmed |
-> | **Gemini**      | preset                               | ⚠️ Argv verified to enter headless mode; full run-to-completion not yet confirmed (gemini-cli 0.49)                                                                                                                       |
-> | **Cursor**      | preset                               | ⚠️ Argv verified (incl. the `--print` headless trigger); full run-to-completion not yet confirmed (cursor-agent 2026.06)                                                                                                  |
-> | **Pi**          | preset                               | ✅ End-to-end incl. a tool-using run — `pi -p --approve --no-session` writes a file and exits 0 (Pi 0.81.1); production preset keeps tools enabled                                                                        |
+> | Agent           | Adapter                              | Verified against the real CLI                                                                                                                                                                                                                     |
+> | --------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | **Claude Code** | native (default)                     | ✅ Primary target — exercised continuously                                                                                                                                                                                                        |
+> | **Codex**       | dedicated provider + JSONL telemetry | ✅ End-to-end (codex-cli 0.141)                                                                                                                                                                                                                   |
+> | **Copilot**     | dedicated provider + JSONL telemetry | ✅ Invocation profile end-to-end (copilot 1.0.78: edit + shell verify, denied commit, signal from final message) outside rauf; rauf runs covered by the mock-JSONL sandbox; live signed-in rauf loops pass on copilot 1.0.91 (rauf-owned commits) |
+> | **Gemini**      | preset                               | ⚠️ Argv verified to enter headless mode; full run-to-completion not yet confirmed (gemini-cli 0.49)                                                                                                                                               |
+> | **Cursor**      | preset                               | ⚠️ Argv verified (incl. the `--print` headless trigger); full run-to-completion not yet confirmed (cursor-agent 2026.06)                                                                                                                          |
+> | **Pi**          | preset                               | ✅ End-to-end incl. a tool-using run — `pi -p --approve --no-session` writes a file and exits 0 (Pi 0.81.1); production preset keeps tools enabled                                                                                                |
 >
 > "Argv verified" means the real binary accepts the invocation and enters non-interactive/headless mode (no argument rejection, no interactive hang). "End-to-end" additionally means a real run completed and rauf observed the agent's output. The `⚠️` agents need provider credentials to close the last step; their flags are correct, only the authenticated round-trip is unconfirmed. If you hit a spawn or output-capture issue on any agent, please open an issue — that feedback is how these rows move to ✅.
 
@@ -227,7 +227,14 @@ Like the Claude and Codex packages, these skills are an authoring/review conveni
 
 The same four skills, plus the `rauf-backlog-reviewer` and `rauf-loop-driver` custom agents, ship as a **GitHub Copilot CLI plugin** at [`adapters/copilot/`](./adapters/copilot/), generated from the canonical sources by `scripts/build-copilot-bundle.ts` and guarded by `pnpm copilot:check`. Each agent is limited to `read`/`search`/`execute` (no edit tool), cannot call subagents, is not user-invocable, and carries its required skill contract (`review-backlog` / `drive-rauf-loop`) in its own body, since Copilot agents cannot declare skill dependencies.
 
-Load it for a session from a checkout of this repo (use an absolute path):
+Install it from this repository's Copilot plugin marketplace (`.github/plugin/marketplace.json`, which serves `adapters/copilot/`):
+
+```bash
+copilot plugin marketplace add garygentry/rauf
+copilot plugin install rauf@rauf
+```
+
+The marketplace follows the default branch; add it as `garygentry/rauf#<ref>` to pin a tag. Copilot reads a repository's marketplace from the first of `marketplace.json`, `.plugin/marketplace.json`, `.github/plugin/marketplace.json` and `.claude-plugin/marketplace.json` that exists, so Copilot gets this bundle while Claude Code keeps reading `.claude-plugin/`. To try a checkout without installing, load it for one session (use an absolute path):
 
 ```bash
 copilot --plugin-dir "$PWD/adapters/copilot" --agent rauf:rauf-backlog-reviewer

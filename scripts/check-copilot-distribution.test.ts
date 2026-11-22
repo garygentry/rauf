@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
+  COPILOT_MARKETPLACE,
   COPILOT_REPOSITORY_ARTIFACTS,
   NPM_LAUNCHER_FILES,
   checkCopilotDistribution,
@@ -29,6 +30,14 @@ function makeFixture(version = "1.2.3"): string {
   temporaryDirectories.push(root);
   for (const relative of COPILOT_REPOSITORY_ARTIFACTS) write(root, relative, "x\n");
   write(root, "adapters/copilot/plugin.json", JSON.stringify({ name: "rauf", version }));
+  write(
+    root,
+    COPILOT_MARKETPLACE,
+    JSON.stringify({
+      name: "rauf",
+      plugins: [{ name: "rauf", source: "./adapters/copilot", version }],
+    }),
+  );
   write(
     root,
     "packages/loop/dist/providers/copilot-cli.js",
@@ -79,6 +88,57 @@ describe("checkCopilotDistribution", () => {
       "repository artifact missing: adapters/copilot/agents/rauf-loop-driver.agent.md",
     );
   });
+
+  it("fails when the Copilot marketplace is missing", () => {
+    const root = makeFixture();
+    fs.rmSync(path.join(root, COPILOT_MARKETPLACE));
+    expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow(
+      "missing .github/plugin/marketplace.json",
+    );
+  });
+
+  it("fails when the Copilot marketplace serves the wrong bundle", () => {
+    const root = makeFixture();
+    write(
+      root,
+      COPILOT_MARKETPLACE,
+      JSON.stringify({ plugins: [{ name: "rauf", source: ".", version: "1.2.3" }] }),
+    );
+    expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow(
+      'must serve plugin "rauf" from ./adapters/copilot (found rauf from .)',
+    );
+  });
+
+  it("fails cleanly on a non-object marketplace entry", () => {
+    const root = makeFixture();
+    write(root, COPILOT_MARKETPLACE, JSON.stringify({ plugins: [null] }));
+    expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow("plugin entry must be an object");
+  });
+
+  it("fails on a stale Copilot marketplace version", () => {
+    const root = makeFixture();
+    write(
+      root,
+      COPILOT_MARKETPLACE,
+      JSON.stringify({
+        plugins: [{ name: "rauf", source: "./adapters/copilot", version: "9.9.9" }],
+      }),
+    );
+    expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow(
+      ".github/plugin/marketplace.json version 9.9.9 != 1.2.3",
+    );
+  });
+
+  it.each(["marketplace.json", ".plugin/marketplace.json"])(
+    "fails when %s shadows the Copilot marketplace",
+    (shadow) => {
+      const root = makeFixture();
+      write(root, shadow, "{}");
+      expect(() => checkCopilotDistribution(root, "1.2.3")).toThrow(
+        `${shadow} shadows .github/plugin/marketplace.json`,
+      );
+    },
+  );
 
   it("fails when the built loop lacks the dedicated provider", () => {
     const root = makeFixture();

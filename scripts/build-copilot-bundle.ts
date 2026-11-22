@@ -8,6 +8,13 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const SKILLS_DIR = path.join(REPO_ROOT, "skills");
 const AGENTS_DIR = path.join(REPO_ROOT, "agents");
 const OUTPUT_DIR = path.join(REPO_ROOT, "adapters", "copilot");
+/**
+ * Copilot CLI reads a repository's plugin marketplace from the first of `marketplace.json`,
+ * `.plugin/marketplace.json`, `.github/plugin/marketplace.json` and `.claude-plugin/marketplace.json`
+ * that exists. Without this file Copilot falls back to `.claude-plugin/`, whose `source: "."` is the
+ * Claude bundle. Generated here so its version tracks the plugin through `release:prepare`.
+ */
+export const MARKETPLACE_PATH = path.join(REPO_ROOT, ".github", "plugin", "marketplace.json");
 const SUPPORTED_FRONTMATTER_KEYS = new Set(["name", "description"]);
 const SUPPORTED_COPILOT_TOOL_ALIASES = new Set(["read", "search", "execute", "edit"]);
 
@@ -256,6 +263,41 @@ export function buildBundle(
   return new Map([...files].sort(([left], [right]) => left.localeCompare(right)));
 }
 
+/** The Copilot marketplace manifest: one `rauf` plugin served from `./adapters/copilot`. */
+export function buildMarketplace(options: { version?: string } = {}): string {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf-8")) as {
+    version: string;
+    description: string;
+  };
+  return (
+    JSON.stringify(
+      {
+        name: "rauf",
+        owner: { name: "Gary Gentry" },
+        plugins: [
+          {
+            name: "rauf",
+            source: "./adapters/copilot",
+            description: pkg.description,
+            version: options.version ?? pkg.version,
+          },
+        ],
+      },
+      null,
+      2,
+    ) + "\n"
+  );
+}
+
+/** Write the Copilot marketplace manifest (see MARKETPLACE_PATH). */
+export function writeMarketplace(
+  content: string = buildMarketplace(),
+  marketplacePath: string = MARKETPLACE_PATH,
+): void {
+  fs.mkdirSync(path.dirname(marketplacePath), { recursive: true });
+  fs.writeFileSync(marketplacePath, content);
+}
+
 export function findDrift(expected: Map<string, string>, outputDirectory: string): string[] {
   const drift: string[] = [];
   for (const [relative, content] of expected) {
@@ -291,10 +333,16 @@ function main(): void {
   const check = process.argv.includes("--check");
   const bundle = buildBundle();
   if (check) {
-    const drift = findDrift(bundle, OUTPUT_DIR);
+    const drift = findDrift(bundle, OUTPUT_DIR).map((item) => `adapters/copilot/${item}`);
+    if (
+      !fs.existsSync(MARKETPLACE_PATH) ||
+      fs.readFileSync(MARKETPLACE_PATH, "utf-8") !== buildMarketplace()
+    ) {
+      drift.push(".github/plugin/marketplace.json");
+    }
     if (drift.length > 0) {
       console.error(
-        `Copilot bundle drift detected:\n${drift.map((item) => `  - adapters/copilot/${item}`).join("\n")}\n\n` +
+        `Copilot bundle drift detected:\n${drift.map((item) => `  - ${item}`).join("\n")}\n\n` +
           "Run: bun run scripts/build-copilot-bundle.ts",
       );
       process.exit(1);
@@ -304,6 +352,8 @@ function main(): void {
   }
 
   console.log(`Generated adapters/copilot/ with ${writeBundle(bundle)} files.`);
+  writeMarketplace();
+  console.log("Generated .github/plugin/marketplace.json.");
 }
 
 if (import.meta.main) main();
