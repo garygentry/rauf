@@ -41,10 +41,13 @@ export const RUNTIME_EXCLUDE_PATHSPECS = [
  * ("The following paths are ignored by one of your .gitignore files") and
  * leaves the tree staged — which halted the whole loop (#172, sibling of
  * #137). git only raises that for a pathspec with a literal leading-directory
- * prefix; `:(exclude,glob)specs/...` fails the same way. Wrapping the first
- * character in a one-char class (`[s]pecs/...`) gives the pathspec no literal
- * prefix while still matching only this exact path. The repo-wide globs in
- * RUNTIME_EXCLUDE_PATHSPECS avoid the error the same way (leading `**`).
+ * prefix; `:(exclude,glob)specs/...` fails the same way. Backslash-escaping
+ * the first character (`\specs/...`) gives the pathspec no literal prefix while
+ * still matching only this exact path: wildmatch's `\` matches the next BYTE
+ * literally, so it is safe for a multi-byte first character too (a one-char
+ * class like `[Ü]` would not be, nor `[!]`, which reads as a negated class).
+ * The repo-wide globs in RUNTIME_EXCLUDE_PATHSPECS avoid the error the same way
+ * (leading `**`).
  *
  * A `git check-ignore` filter is NOT a substitute: a TRACKED backlog.json
  * inside an ignored dir reports "not ignored" yet still trips the error, and
@@ -53,9 +56,8 @@ export const RUNTIME_EXCLUDE_PATHSPECS = [
 export function exactExcludePathspec(relPath: string, opts: { dir: boolean }): string {
   const posix = relPath.split(path.sep).join("/");
   const escaped = posix.replace(/[*?[\]\\]/g, (c) => `\\${c}`);
-  // A leading escape (`\*`) already defeats the literal prefix; otherwise
-  // wrap the first character in a class.
-  const anchored = escaped.startsWith("\\") ? escaped : `[${escaped[0]}]${escaped.slice(1)}`;
+  // A path that already starts with an escaped metacharacter is anchored.
+  const anchored = escaped.startsWith("\\") ? escaped : `\\${escaped}`;
   return `:(exclude,glob)${anchored}${opts.dir ? "/**" : ""}`;
 }
 
