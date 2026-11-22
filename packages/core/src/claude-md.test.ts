@@ -9,6 +9,7 @@ import {
   CLAUDE_MD_FILENAME,
   CLAUDE_MD_SENTINEL_START,
   CLAUDE_MD_SENTINEL_END,
+  claudeMdImportsAgentsMd,
 } from "./claude-md.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -399,5 +400,24 @@ describe("mergeClaudeMd — error handling", () => {
     const result = mergeClaudeMd(path.join(tmpDir, "nonexistent-project"), SAMPLE_RAUF_BLOCK);
 
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("claudeMdImportsAgentsMd (#173)", () => {
+  it.each([
+    ["own line", "@AGENTS.md\n", true],
+    ["./ form", "@./AGENTS.md\n", true],
+    ["indented, trailing spaces", "  @AGENTS.md  \n", true],
+    ["CRLF", "# C\r\n\r\n@AGENTS.md\r\n", true],
+    ["inline prose", "See @AGENTS.md for rules.", true],
+    ["parenthesised", "(see @AGENTS.md)", true],
+    ["inline code span", "Use `@AGENTS.md` to import.", false],
+    ["fenced block", "```md\n@AGENTS.md\n```\n", false],
+    ["tilde fence, CRLF", "~~~\r\n@AGENTS.md\r\n~~~\r\n", false],
+    ["import after a closed fence", "```\ncode\n```\n\n@AGENTS.md\n", true],
+    ["email-like / other file", "me@AGENTS.md and @AGENTS.mdx and @OTHER.md", false],
+    ["no mention", "# Just Claude notes\n", false],
+  ])("%s → %s", (_label, content, expected) => {
+    expect(claudeMdImportsAgentsMd(content)).toBe(expected);
   });
 });

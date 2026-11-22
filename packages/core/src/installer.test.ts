@@ -222,6 +222,115 @@ describe("install", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
   });
 
+  describe("CLAUDE.md that imports AGENTS.md (#173)", () => {
+    const SHIM =
+      "# Claude Code\n\nProject instructions live in `AGENTS.md`; keep them there.\n\n@AGENTS.md\n";
+
+    it.each(["@AGENTS.md", "@./AGENTS.md", "  @AGENTS.md  "])(
+      "install leaves the rauf section out of a CLAUDE.md with an `%s` import line",
+      (line) => {
+        createFakeProject(tmpDir, { git: true });
+        const shim = `# Claude Code\n\n${line}\n`;
+        fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), shim);
+
+        const result = install(tmpDir, installOpts());
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+
+        expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toBe(shim);
+        const action = result.value.actions.find((a) => a.file === "CLAUDE.md");
+        expect(action?.action).toBe("skipped");
+        expect(action?.detail).toContain("kept in AGENTS.md only");
+        // The loop rules still reach Claude, through the imported AGENTS.md.
+        expect(fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8")).toContain(
+          "<!-- rauf:agents:start -->",
+        );
+      },
+    );
+
+    it("update removes a rauf block an earlier install added, and does not re-add it", () => {
+      createFakeProject(tmpDir, { git: true });
+      install(tmpDir, installOpts()); // no CLAUDE.md yet → rauf creates one with its block
+      // The project later turns CLAUDE.md into an AGENTS.md shim but keeps the
+      // rauf block (the issue's state after a pre-fix `rauf update`).
+      const withBlock = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), SHIM + "\n" + withBlock);
+
+      const first = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toBe(SHIM);
+      const removed = first.value.actions.find((a) => a.file === "CLAUDE.md");
+      expect(removed?.action).toBe("updated");
+      expect(removed?.detail).toContain("removed the duplicate rauf section");
+
+      const second = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+      expect(second.ok).toBe(true);
+      expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toBe(SHIM);
+    });
+
+    it("treats an inline prose import as an import (Claude Code resolves it)", () => {
+      createFakeProject(tmpDir, { git: true });
+      const prose = "# Notes\n\nSee @AGENTS.md for project rules.\n";
+      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), prose);
+      install(tmpDir, installOpts());
+      expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toBe(prose);
+    });
+
+    it("still merges when @AGENTS.md appears only in code (not an import)", () => {
+      createFakeProject(tmpDir, { git: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "CLAUDE.md"),
+        "# Notes\n\nUse `@AGENTS.md` to import.\n\n```md\n@AGENTS.md\n```\n",
+      );
+      install(tmpDir, installOpts());
+      expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toContain(
+        CLAUDE_MD_SENTINEL_START,
+      );
+    });
+
+    it("deploys AGENTS.md before deciding CLAUDE.md's block (never strips first)", () => {
+      createFakeProject(tmpDir, { git: true });
+      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), SHIM);
+      const result = install(tmpDir, installOpts());
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const files = result.value.actions.map((a) => a.file);
+      expect(files.indexOf("AGENTS.md")).toBeLessThan(files.indexOf("CLAUDE.md"));
+    });
+
+    it("removes every rauf block and keeps CRLF line endings intact", () => {
+      createFakeProject(tmpDir, { git: true });
+      install(tmpDir, installOpts());
+      const block = fs
+        .readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")
+        .trimEnd()
+        .replace(/\n/g, "\r\n");
+      const shimCrlf = "# C\r\n\r\n@AGENTS.md\r\n";
+      fs.writeFileSync(
+        path.join(tmpDir, "CLAUDE.md"),
+        `${shimCrlf}\r\n${block}\r\n\r\n${block}\r\n`,
+      );
+
+      expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+      expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toBe(shimCrlf);
+    });
+
+    it("reports, rather than claims clean, an incomplete rauf block", () => {
+      createFakeProject(tmpDir, { git: true });
+      install(tmpDir, installOpts());
+      const broken = `${SHIM}\n${CLAUDE_MD_SENTINEL_START}\nleftover rauf text\n`;
+      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), broken);
+
+      const result = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const action = result.value.actions.find((a) => a.file === "CLAUDE.md");
+      expect(action?.detail).toContain("incomplete rauf block");
+      expect(fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8")).toBe(broken);
+    });
+  });
+
   it("creates AGENTS.md with the cross-agent rauf section", () => {
     createFakeProject(tmpDir, { git: true });
 
