@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.2
+
 ### Fixed
 
 - **A backlog under a gitignored directory no longer halts the loop (#172).** With the backlog at e.g. `specs/<feature>/` and `specs/` in `.gitignore`, setting aside an item with uncommitted work (`needs_human`, a block, an iteration timeout) failed with `Failed to revert abandoned work … The following paths are ignored by one of your .gitignore files` and exited the whole loop. The stash was saved, but the work was left staged in the index too. rauf's own state-dir and backlog excludes now use anchored glob pathspecs, which git does not reject. That covers both an untracked backlog and a backlog force-tracked inside the ignored directory. Sibling of #137.
