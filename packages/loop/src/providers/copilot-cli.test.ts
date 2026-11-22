@@ -1,4 +1,5 @@
-import { access, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { err, ErrorCodes, ok } from "@rauf/core";
@@ -15,10 +16,15 @@ import { spawnProcessGroup } from "../process-group.js";
 import { parseSignal } from "../signal-parser.js";
 import { neutralizeForDetection } from "../signal-redactor.js";
 import type { AgentStreamEvent } from "../stream-parser.js";
-import { CopilotCliProvider } from "./copilot-cli.js";
+import { CopilotCliProvider, probeNoRemoteSupport } from "./copilot-cli.js";
 import { getAgentDescriptors } from "./registry.js";
 
 const mockSpawn = vi.mocked(spawnProcessGroup);
+
+/** A provider whose `--no-remote` probe is fixed, so tests never spawn a real CLI. */
+function newProvider(supportsNoRemote = true): CopilotCliProvider {
+  return new CopilotCliProvider({ supportsNoRemote: async () => supportsNoRemote });
+}
 const originalCwd = process.cwd();
 const originalCopilotAgent = process.env.COPILOT_AGENT;
 
@@ -41,6 +47,66 @@ describe("CopilotCliProvider", () => {
     process.chdir(originalCwd);
     if (originalCopilotAgent === undefined) delete process.env.COPILOT_AGENT;
     else process.env.COPILOT_AGENT = originalCopilotAgent;
+  });
+
+  it("omits --no-remote when the installed CLI rejects it (Copilot CLI >= 1.0.114)", async () => {
+    const result = await newProvider(false).execute("prompt", { timeoutMinutes: 5 });
+    expect(result.ok).toBe(true);
+    const [, args] = mockSpawn.mock.calls[0]!;
+    expect(args).not.toContain("--no-remote");
+    expect(args).toContain("--no-remote-export");
+  });
+
+  it("probes --no-remote support from the CLI's exit code and stderr", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "rauf-copilot-probe-"));
+    try {
+      const script = async (name: string, body: string): Promise<string> => {
+        const file = join(directory, name);
+        await writeFile(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+        return file;
+      };
+      const accepts = await script(
+        "accepts",
+        'case "$*" in *--no-auto-update*) exit 0;; esac; exit 9',
+      );
+      const rejects = await script("rejects", "echo 'error: --no-remote was removed.' >&2; exit 1");
+      const helpWins = await script(
+        "help-wins",
+        "echo 'error: --no-remote was removed.' >&2; exit 0",
+      );
+      const hangs = await script("hangs", "sleep 30");
+      expect(await probeNoRemoteSupport(accepts)).toBe(true);
+      expect(await probeNoRemoteSupport(rejects)).toBe(false);
+      expect(await probeNoRemoteSupport(helpWins)).toBe(false);
+      expect(await probeNoRemoteSupport(join(directory, "missing"))).toBe(false);
+      const controller = new AbortController();
+      const pending = probeNoRemoteSupport(hangs, { signal: controller.signal });
+      controller.abort();
+      expect(await pending).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("probes with the iteration's cwd, sanitized env and signal", async () => {
+    const seen: unknown[] = [];
+    const provider = new CopilotCliProvider({
+      supportsNoRemote: async (probe) => {
+        seen.push(probe);
+        return true;
+      },
+    });
+    const signal = new AbortController().signal;
+    await provider.execute("prompt", {
+      timeoutMinutes: 5,
+      signal,
+      env: { COPILOT_DEBUG_NONCE: "remove-me", RAUF_CHILD: "1" },
+    });
+    const [probe] = seen as { cwd: string; env: Record<string, string>; signal: AbortSignal }[];
+    expect(probe!.cwd).toBe(process.cwd());
+    expect(probe!.signal).toBe(signal);
+    expect(probe!.env.RAUF_CHILD).toBe("1");
+    expect(probe!.env.COPILOT_DEBUG_NONCE).toBeUndefined();
   });
 
   it("reports binary presence separately from unknown authenticated readiness", async () => {
@@ -68,7 +134,7 @@ describe("CopilotCliProvider", () => {
       return ok(PG_OK);
     });
 
-    const provider = new CopilotCliProvider();
+    const provider = newProvider();
     const result = await provider.execute(prompt, {
       timeoutMinutes: 5,
       signal,
@@ -129,7 +195,7 @@ describe("CopilotCliProvider", () => {
     });
     const events: AgentStreamEvent[] = [];
 
-    const result = await new CopilotCliProvider().execute("go", {
+    const result = await newProvider().execute("go", {
       timeoutMinutes: 1,
       outputFormat: "stream-json",
       onStreamEvent: (event) => events.push(event),
@@ -149,7 +215,7 @@ describe("CopilotCliProvider", () => {
   });
 
   it("classifies captured failures without claiming a usage preflight", () => {
-    const provider = new CopilotCliProvider();
+    const provider = newProvider();
 
     expect(provider.checkUsage).toBeUndefined();
     expect(
@@ -162,7 +228,7 @@ describe("CopilotCliProvider", () => {
   });
 
   it("denies child commit and push without granting unrestricted tools", async () => {
-    await new CopilotCliProvider().execute("implement the item", { timeoutMinutes: 1 });
+    await newProvider().execute("implement the item", { timeoutMinutes: 1 });
 
     const args = mockSpawn.mock.calls[0]![1];
     expect(args).toContain("--deny-tool=shell(git commit:*)");
@@ -248,7 +314,7 @@ describe("CopilotCliProvider", () => {
         if (jsonl) spawnOptions.onStdout?.(Buffer.from(jsonl));
         return ok(rawResult);
       });
-      const provider = new CopilotCliProvider();
+      const provider = newProvider();
 
       const result = await provider.execute("go", { timeoutMinutes: 1 });
 
@@ -279,7 +345,7 @@ describe("CopilotCliProvider", () => {
       return processResult;
     });
 
-    await new CopilotCliProvider().execute("go", { timeoutMinutes: 1 });
+    await newProvider().execute("go", { timeoutMinutes: 1 });
 
     expect(basename(promptDirectory)).toMatch(/^\.rauf-copilot-prompt-/);
     await expect(access(promptDirectory)).rejects.toThrow();

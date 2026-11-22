@@ -6,6 +6,10 @@
 
 - **Copilot plugin marketplace (#175).** `.github/plugin/marketplace.json` serves the Copilot bundle (`./adapters/copilot`), so `copilot plugin marketplace add garygentry/rauf` + `copilot plugin install rauf@rauf` installs it. Before, Copilot fell through to `.claude-plugin/marketplace.json` and got the Claude bundle. `pnpm copilot:generate` writes the manifest and `release:prepare` regenerates it with the version bump; `copilot:check` reports drift; `copilot:package:check` requires exactly one `rauf` entry from `./adapters/copilot` and no shadowing `marketplace.json` or `.plugin/marketplace.json`; `version:check` includes its version.
 
+### Fixed
+
+- **`--agent copilot` works on Copilot CLI 1.0.114 and later (#177).** Copilot CLI 1.0.114 removed `--no-remote` and rejects it (`error: --no-remote was removed…`), so every iteration exited at startup and the loop circuit-broke after three infra failures. Before each iteration rauf now probes `copilot --no-auto-update --no-remote --help` (about 0.2 s) with that iteration's cwd and environment, and passes the flag only when the CLI accepts it. Older CLIs keep the opt-out, and a CLI upgraded mid-run is picked up.
+
 ## 0.19.0
 
 ### GitHub Copilot support (#131)
