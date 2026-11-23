@@ -63,6 +63,7 @@ const LOOP_EVENT_TYPES: ReadonlyArray<LoopEvent["type"]> = [
   "loop_error",
   "loop_cancelled",
   "commit_warning",
+  "loop_interrupted",
 ];
 
 const MAX_BUFFER_SIZE = 100;
@@ -283,13 +284,15 @@ export class LoopManager {
   }
 
   /**
-   * Gracefully cancel all active loops. Waits for them to finish.
+   * Gracefully cancel all active loops. Waits for them to finish. `signal` names
+   * the termination signal when the server itself is shutting down (#191), so
+   * each loop records an interruption rather than a user cancel.
    */
-  async shutdownAll(): Promise<void> {
+  async shutdownAll(signal?: string): Promise<void> {
     const promises: Promise<unknown>[] = [];
 
     for (const [, active] of this.activeLoops) {
-      active.runner.cancel();
+      active.runner.cancel(signal);
       promises.push(active.promise.catch(() => {}));
     }
 

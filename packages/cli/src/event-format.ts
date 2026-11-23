@@ -131,6 +131,11 @@ export function formatEvent(ev: PersistedEvent): string {
       return line(c.red("loop error"), c.dim(clip(ev.error)));
     case "loop_cancelled":
       return line(c.yellow("loop cancelled"));
+    case "loop_interrupted":
+      return line(
+        c.yellow("loop interrupted"),
+        `${ev.signal}${ev.itemId ? ` ${c.dim(`— ${item(ev.itemId)} edits left uncommitted`)}` : ""}`,
+      );
     case "review_started":
       return line(c.cyan("review started"), c.dim(`${ev.completedItemIds.length} items`));
     case "review_completed":

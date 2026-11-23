@@ -175,6 +175,7 @@ interface LoopState {
   sleepUntil?: string | null; // ISO 8601 — present when status is sleeping_limit or weekly_limit, or during a usage-disagreement backoff (status running) (#146)
   reviewPending?: boolean; // a review pass started and has not succeeded (usage stop, failure, crash); `rauf resume` re-runs it (#146)
   reviewItemIds?: string[]; // the pending review's exact scope (done item ids), present with reviewPending (#146)
+  interrupted?: { signal: string; itemId: string | null; at: string }; // with status `paused`: a termination signal (SIGTERM/SIGHUP) stopped the loop, not a user cancel; `itemId` is the item in flight, whose edits are left uncommitted (#191)
 }
 ```
 
@@ -241,6 +242,7 @@ interface DerivedStatus {
   sleepUntil?: string | null; // ISO 8601 — present when loopState is SLEEPING_LIMIT or WEEKLY_LIMIT (or RUNNING during a usage-banner backoff)
   reviewPending?: boolean; // a review pass started and did not succeed; `rauf resume` re-runs it (#146)
   reviewItemIds?: string[]; // that review's exact scope; present with reviewPending
+  interrupted?: { signal: string; itemId: string | null; at: string }; // with loopState PAUSED: an involuntary stop (#191), from state.json
 }
 
 interface BacklogSummary {
@@ -458,6 +460,7 @@ interface LoopEventBase {
 | `loop_completed`      | `completedCount`, `blockedCount`, `needsHumanCount?`                                                                   | Loop finishes normally                                   |
 | `loop_error`          | `error`                                                                                                                | Unexpected error terminates loop                         |
 | `loop_cancelled`      | _(base only)_                                                                                                          | Loop cancelled via AbortController or CANCEL file        |
+| `loop_interrupted`    | `signal`, `itemId` (`string \| null`)                                                                                  | Termination signal stopped the loop (#191)               |
 | `review_started`      | `completedItemIds`                                                                                                     | Post-loop review pass begins                             |
 | `review_completed`    | `itemsCreated`, `summary`                                                                                              | Review pass finished                                     |
 | `review_failed`       | `reason`                                                                                                               | Review pass failed (non-fatal)                           |
@@ -589,6 +592,13 @@ type LoopEvent =
     }
   | { type: "loop_error"; timestamp: string; projectPath: string; error: string }
   | { type: "loop_cancelled"; timestamp: string; projectPath: string }
+  | {
+      type: "loop_interrupted";
+      timestamp: string;
+      projectPath: string;
+      signal: string;
+      itemId: string | null;
+    } // #191: instead of loop_cancelled on SIGTERM/SIGHUP
   | {
       type: "review_started";
       timestamp: string;

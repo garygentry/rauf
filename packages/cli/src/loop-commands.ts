@@ -38,6 +38,8 @@ import {
   recordSupervision,
   supervisorIdFromEnv,
   commitWarningDetail,
+  readJsonFile,
+  LoopStateSchema,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
 import {
@@ -284,6 +286,41 @@ export function buildPreconditionRemediation(projectArg: string): string[] {
     `  rauf loop run ${p} --create-branch <branch>  ${c.dim("# or have rauf create & switch for you")}`,
     `  rauf loop run ${p} --seed-backlog            ${c.dim("# commit an otherwise-clean backlog first")}`,
     `  rauf loop run ${p} --force                   ${c.dim("# bypass these checks (last resort)")}`,
+  ];
+}
+
+/**
+ * After SIGHUP the terminal is gone: a write to it fails with EIO/EPIPE, which
+ * would crash the process before the runner records the interruption (#191).
+ * Swallow those so the graceful stop (and its state/DONE writes) completes.
+ */
+function ignoreClosedTerminalWrites(): void {
+  const noop = () => {};
+  process.stdout.on("error", noop);
+  process.stderr.on("error", noop);
+}
+
+/**
+ * The item a termination signal interrupted (#191), from a `paused` state.json
+ * carrying `interrupted`; null otherwise. Best-effort (unreadable → null).
+ */
+function readInterruptedItem(paths: BacklogPaths): { itemId: string; signal: string } | null {
+  const state = readJsonFile(paths.state, LoopStateSchema);
+  if (!state.ok || state.value.status !== "paused") return null;
+  const intr = state.value.interrupted;
+  return intr?.itemId ? { itemId: intr.itemId, signal: intr.signal } : null;
+}
+
+/** Remediation lines for a dirty tree left by an interrupted item (#191). */
+export function buildInterruptedRemediation(
+  projectArg: string,
+  interrupted: { itemId: string; signal: string },
+): string[] {
+  const p = projectArg;
+  return [
+    `The last run was interrupted by ${interrupted.signal} while item ${interrupted.itemId} was in flight; its edits are uncommitted.`,
+    `  rauf resume ${p}                        ${c.dim(`# keep them: ${interrupted.itemId} continues on top`)}`,
+    `  rauf resume ${p} --discard-interrupted  ${c.dim("# stash them: it restarts from a clean tree")}`,
   ];
 }
 
@@ -684,6 +721,7 @@ const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
   "loop_completed",
   "loop_error",
   "loop_cancelled",
+  "loop_interrupted",
 ]);
 
 /**
@@ -990,6 +1028,16 @@ export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {})
     const preconditions = await checkLoopPreconditions(projectPath, { allowDirty });
     if (!preconditions.ok) {
       error(preconditions.error.message);
+      // Only the dirty-tree refusal: a branch refusal is not about the item's edits.
+      const dirtyRefusal = preconditions.error.message.includes("uncommitted changes");
+      const interrupted = dirtyRefusal ? readInterruptedItem(paths) : null;
+      if (interrupted !== null) {
+        // #191: the dirt is most likely the half-done edits of the item a
+        // shutdown signal interrupted — say so and point at resume.
+        for (const line of buildInterruptedRemediation(ctx.args[0] ?? ".", interrupted)) {
+          info(line);
+        }
+      }
       for (const line of buildPreconditionRemediation(ctx.args[0] ?? ".")) {
         info(line);
       }
@@ -1116,6 +1164,7 @@ export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {})
     "loop_completed",
     "loop_error",
     "loop_cancelled",
+    "loop_interrupted",
     "review_started",
     "review_completed",
     "review_failed",
@@ -1237,13 +1286,21 @@ export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {})
     }
   };
 
+  // A termination signal is an interruption, not a user cancel (#191): the runner
+  // records which item was in flight. SIGHUP is a closed terminal.
   const onSigterm = () => {
     statusLine.stop();
-    runner.cancel();
+    runner.cancel("SIGTERM");
+  };
+  const onSighup = () => {
+    statusLine.stop();
+    ignoreClosedTerminalWrites();
+    runner.cancel("SIGHUP");
   };
 
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
+  process.on("SIGHUP", onSighup);
 
   try {
     const result = await runner.start();
@@ -1318,6 +1375,7 @@ export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {})
     statusLine.stop();
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("SIGHUP", onSighup);
   }
 }
 
@@ -1393,10 +1451,15 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
     }
   };
 
-  const onSigterm = () => runner.cancel();
+  const onSigterm = () => runner.cancel("SIGTERM");
+  const onSighup = () => {
+    ignoreClosedTerminalWrites();
+    runner.cancel("SIGHUP");
+  };
 
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
+  process.on("SIGHUP", onSighup);
 
   try {
     // Explicit scope (e.g. a pending review re-run by `rauf resume`, #146).
@@ -1446,6 +1509,7 @@ export async function handleLoopReview(ctx: CommandContext): Promise<number> {
   } finally {
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
+    process.removeListener("SIGHUP", onSighup);
   }
 }
 
@@ -1669,6 +1733,15 @@ export function formatAndPrintEvent(event: LoopEvent): void {
     case "commit_warning":
       print(
         `${prefix} ${c.yellow("\u26A0")} ${c.yellow(`Commit warning #${event.itemId}`)} ${commitWarningDetail(event)}`,
+      );
+      break;
+
+    case "loop_interrupted":
+      print(
+        `${prefix} ${c.yellow("\u25A0")} ${c.yellow(`Loop interrupted by ${event.signal}`)}` +
+          (event.itemId
+            ? ` \u2014 #${event.itemId} was in flight; its edits are uncommitted (rauf resume keeps them)`
+            : ""),
       );
       break;
   }

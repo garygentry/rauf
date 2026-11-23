@@ -228,6 +228,18 @@ export const LoopStateStatusSchema = z.enum([
 
 export const LoopStateSignalSchema = z.enum(["clean", "blocked", "needs_human", "error"]);
 
+/**
+ * An involuntary stop (#191): the loop process got a termination signal (host
+ * shutdown, a closed terminal, `rauf server stop`), not a user cancel. `itemId`
+ * is the item in flight, whose partial edits are left uncommitted in the
+ * working tree, or null when the signal landed between items.
+ */
+export const LoopInterruptionSchema = z.object({
+  signal: z.string(),
+  itemId: z.string().nullable(),
+  at: z.string(),
+});
+
 export const LoopStateSchema = z.object({
   status: LoopStateStatusSchema,
   iteration: z.number().int().nonnegative(),
@@ -258,6 +270,11 @@ export const LoopStateSchema = z.object({
   reviewPending: z.boolean().optional(),
   /** The pending review's scope: exactly the done item ids it was reviewing (#146). */
   reviewItemIds: z.array(z.string()).optional(),
+  /**
+   * Set (with status `paused`) when a termination signal stopped the loop (#191);
+   * absent after a user cancel or any other stop. `rauf resume` reads it.
+   */
+  interrupted: LoopInterruptionSchema.optional(),
   /**
    * HEAD commit hash captured at loop start, used as the baseline (`sinceRef`)
    * for commit reconciliation so only commits made during THIS run can recover
@@ -374,6 +391,12 @@ export const DerivedStatusSchema = z.object({
   reviewPending: z.boolean().optional(),
   /** The pending review's exact scope (done item ids); present with `reviewPending`. */
   reviewItemIds: z.array(z.string()).optional(),
+  /**
+   * Present when a termination signal stopped the loop (#191): `loopState` is
+   * `PAUSED`, as for a cancel, and this says it was involuntary and names the
+   * item whose uncommitted edits were left behind. From state.json only.
+   */
+  interrupted: LoopInterruptionSchema.optional(),
   /** Live-iteration health hint (null when no iteration is live). */
   health: HealthSchema.nullable(),
 });
@@ -711,6 +734,17 @@ const LoopCancelledSchema = LoopEventBaseSchema.extend({
   type: z.literal("loop_cancelled"),
 });
 
+/**
+ * The loop stopped on a termination signal (#191), not a user cancel: emitted
+ * instead of `loop_cancelled`. `itemId` is the item in flight (its partial
+ * edits stay uncommitted in the working tree), or null between items.
+ */
+const LoopInterruptedSchema = LoopEventBaseSchema.extend({
+  type: z.literal("loop_interrupted"),
+  signal: z.string(),
+  itemId: z.string().nullable(),
+});
+
 const ReviewStartedSchema = LoopEventBaseSchema.extend({
   type: z.literal("review_started"),
   completedItemIds: z.array(z.string()),
@@ -811,6 +845,7 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   LoopCompletedSchema,
   LoopErrorSchema,
   LoopCancelledSchema,
+  LoopInterruptedSchema,
   ReviewStartedSchema,
   ReviewCompletedSchema,
   ReviewFailedSchema,
@@ -949,6 +984,7 @@ export type LoopState = z.infer<typeof LoopStateSchema>;
 export type ToolConfigTheme = z.infer<typeof ToolConfigThemeSchema>;
 export type ToolConfig = z.infer<typeof ToolConfigSchema>;
 export type LoopStateEnum = z.infer<typeof LoopStateEnumSchema>;
+export type LoopInterruption = z.infer<typeof LoopInterruptionSchema>;
 export type BacklogSummary = z.infer<typeof BacklogSummarySchema>;
 export type LockSummary = z.infer<typeof LockSummarySchema>;
 export type Health = z.infer<typeof HealthSchema>;

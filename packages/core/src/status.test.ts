@@ -562,6 +562,8 @@ describe("deriveStatus — Tier 2: log parsing fallback", () => {
       "PAUSED_HUMAN",
     ],
     ["cancel", "cancel", "PAUSED"],
+    // #191: "interrupted" must win over the "error"/"limit" substring fallbacks.
+    ["interrupted (signal)", "interrupted: SIGTERM item=004", "PAUSED"],
     [
       "iterations_complete (with a needs-human summary)",
       "iterations_complete: completed=1 blocked=1 iterations=1 items=001 needs_human=1 needs_human_items=003",

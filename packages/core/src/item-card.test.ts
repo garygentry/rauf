@@ -133,6 +133,12 @@ describe("isSignificantEvent / isRunEndingEvent", () => {
         }),
       ),
     ).toBe(true);
+    expect(isSignificantEvent(ev("loop_interrupted", { signal: "SIGTERM", itemId: "4" }))).toBe(
+      true,
+    );
+    expect(isRunEndingEvent(ev("loop_interrupted", { signal: "SIGTERM", itemId: null }))).toBe(
+      true,
+    );
     expect(isSignificantEvent(ev("item_selected", { itemId: "1", title: "t", priority: 1 }))).toBe(
       false,
     );
@@ -217,6 +223,12 @@ describe("formatSupervisionCard", () => {
         ev("loop_completed", { completedCount: 25, blockedCount: 1, needsHumanCount: 0 }),
       ),
     ).toBe("■ loop completed — 25 done · 1 blocked");
+    expect(
+      formatSupervisionCard(ev("loop_interrupted", { signal: "SIGTERM", itemId: "004" })),
+    ).toBe("■ loop interrupted (SIGTERM) — 004 was in flight; its edits are uncommitted");
+    expect(formatSupervisionCard(ev("loop_interrupted", { signal: "SIGHUP", itemId: null }))).toBe(
+      "■ loop interrupted (SIGHUP)",
+    );
     expect(formatSupervisionCard(ev("loop_paused", { reason: "needs_human", itemId: "9" }))).toBe(
       "■ loop paused — 9 needs human",
     );

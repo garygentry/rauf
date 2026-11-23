@@ -32,6 +32,7 @@ import {
   type BacklogPaths,
   type LoopState,
   type LoopStateEnum,
+  type LoopInterruption,
 } from "@rauf/core";
 
 import type { CommandContext } from "./commands.js";
@@ -45,6 +46,7 @@ import {
   detectInterruptedItems,
   readPendingReview,
   restorePendingReview,
+  stashNonLoopWork,
   type InterruptedItem,
 } from "@rauf/loop";
 import { reverifyAndCommitInterrupted, type VerifyRunner } from "./recovery.js";
@@ -262,6 +264,25 @@ function findNeedsHumanOwner(paths: BacklogPaths): string | null {
   return owners.length === 1 ? owners[0]!.id : null;
 }
 
+/**
+ * The termination-signal stop recorded in state.json (#191), or null. Only a
+ * `paused` state carries it, and only until the next run rewrites the state.
+ * Read BEFORE recovery clears the state file.
+ */
+function readInterruption(paths: BacklogPaths): LoopInterruption | null {
+  const state = readJsonFile(paths.state, LoopStateSchema);
+  if (!state.ok || state.value.status !== "paused") return null;
+  return state.value.interrupted ?? null;
+}
+
+/** Whether `itemId` is still unfinished (`pending`/`in_progress`) in the backlog. */
+function isSelectableAgain(paths: BacklogPaths, itemId: string): boolean {
+  const backlog = readBacklog(paths);
+  if (!backlog.ok) return false;
+  const status = backlog.value.items.find((i) => i.id === itemId)?.status;
+  return status === "pending" || status === "in_progress";
+}
+
 // ─── handleResume ────────────────────────────────────────────────
 
 export interface ResumeDeps {
@@ -303,7 +324,29 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   // order-based exemption (#109). This is the dirt's true owner, which is NOT
   // necessarily the item named in `--answer` (the user may answer a different
   // set-aside item, or several).
-  const dirtyOwnerItemId = findNeedsHumanOwner(paths);
+  const needsHumanOwner = findNeedsHumanOwner(paths);
+
+  // A shutdown signal (#191) leaves the item that was in flight half-edited and
+  // uncommitted. By default resume KEEPS those edits: the item owns the dirty
+  // tree, so it is preferred in selection and continues on top of them.
+  // `--discard-interrupted` stashes them (recoverable) before recovery instead.
+  const interruption = readInterruption(paths);
+  const discardInterrupted = extractBoolFlag(ctx.flags, "discard-interrupted");
+  // Only an item the relaunch can still select can own the dirty tree; one that
+  // is done or set aside never runs, so crediting it would leave the next item
+  // to trip the clean-baseline guard.
+  const interruptedItemId =
+    interruption?.itemId && isSelectableAgain(paths, interruption.itemId)
+      ? interruption.itemId
+      : null;
+  const keepInterrupted = interruptedItemId !== null && !discardInterrupted;
+  // Two different would-be owners is ambiguous: fall back to the order-based
+  // exemption (#109) rather than credit the wrong item with the dirt.
+  const dirtyOwnerItemId = keepInterrupted
+    ? needsHumanOwner === null || needsHumanOwner === interruptedItemId
+      ? interruptedItemId
+      : null
+    : needsHumanOwner;
 
   // 1. Acquire the loop lock for the recovery window — refuse with LOCK_CONFLICT
   // if a live loop holds it (closes the check-then-mutate TOCTOU race), clear a
@@ -326,6 +369,19 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   }
   if (acquired.value.cleared) {
     info("Cleared a stale loop lock.");
+  }
+
+  if (interruption !== null) {
+    const what = interruptedItemId ? ` while item ${interruptedItemId} was in flight` : "";
+    info(`The loop was interrupted by ${interruption.signal}${what} (${interruption.at}).`);
+  }
+  if (discardInterrupted && interruptedItemId === null) {
+    warn("--discard-interrupted: no interrupted item recorded; nothing to discard.");
+  } else if (keepInterrupted) {
+    info(
+      `Item ${interruptedItemId} resumes on top of its uncommitted edits. ` +
+        `To start it from a clean tree instead, run ${c.cyan(`rauf resume ${targetPath} --discard-interrupted`)}.`,
+    );
   }
 
   // Hold the lock across state detection, recovery, and the eligibility decision.
@@ -514,6 +570,27 @@ export async function handleResume(ctx: CommandContext, deps: ResumeDeps = {}): 
   }
 
   if (!relaunch) return exitCode;
+
+  // --discard-interrupted (#191): stash only once a relaunch is decided, so an
+  // early exit never leaves the user's tree stashed for nothing.
+  if (discardInterrupted && interruptedItemId !== null) {
+    const stashed = await stashNonLoopWork(
+      resolved,
+      paths,
+      `rauf: interrupted work from item ${interruptedItemId}`,
+    );
+    if (!stashed.ok) {
+      error(
+        `Could not stash item ${interruptedItemId}'s uncommitted edits: ${stashed.error.message}`,
+      );
+      return ExitCode.ERROR;
+    }
+    info(
+      stashed.value.stashed
+        ? `Stashed every uncommitted change outside rauf's bookkeeping (item ${interruptedItemId}'s edits, and any of your own) as "rauf: interrupted work from item ${interruptedItemId}"; ${c.cyan("git stash pop")} restores it. ${interruptedItemId} restarts from a clean tree.`
+        : `Item ${interruptedItemId} left no uncommitted edits; nothing to stash.`,
+    );
+  }
 
   // 5. Relaunch via the normal loop entrypoint. Forward the user's flags and add
   // --allow-dirty so the bookkeeping-dirty tree doesn't trip the precondition

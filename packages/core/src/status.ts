@@ -255,6 +255,7 @@ function deriveFromStateJson(paths: BacklogPaths): Result<DerivedStatus | null> 
     ...(state.reviewPending === true
       ? { reviewPending: true, reviewItemIds: state.reviewItemIds ?? [] }
       : {}),
+    ...(state.interrupted ? { interrupted: state.interrupted } : {}),
     health: buildHealth(iterationStatus, now),
   });
 }
@@ -350,7 +351,8 @@ function legacyBudgetStopState(paths: BacklogPaths): LoopStateEnum {
  * Parse DONE file content to determine terminal state.
  *
  * Status-bearing DONE files lead with a status token (`error:`, `paused_human:`,
- * `paused_usage_limit:`, `weekly_limit:`, `iterations_complete:`, `cancel`), so
+ * `paused_usage_limit:`, `weekly_limit:`, `iterations_complete:`, `cancel`,
+ * `interrupted:`), so
  * those prefixes are matched first and map to the state state.json would carry.
  * A trailing summary or error message can therefore never reclassify the file
  * (e.g. an `error:` file whose summary lists needs_human items, or whose message
@@ -371,8 +373,10 @@ function parseDoneFileState(content: string, paths: BacklogPaths): LoopStateEnum
   if (lower.startsWith("paused_usage_limit")) return "PAUSED_USAGE_LIMIT";
   if (lower.startsWith("weekly_limit")) return "WEEKLY_LIMIT";
   if (lower.startsWith("paused_human")) return "PAUSED_HUMAN";
-  // Cancel writes state.json `paused`; resumable, not a completed run.
+  // Cancel writes state.json `paused`; resumable, not a completed run. So does a
+  // termination-signal stop (`interrupted: SIGTERM …`, #191).
   if (lower.startsWith("cancel")) return "PAUSED";
+  if (lower.startsWith("interrupted")) return "PAUSED";
 
   // Completion summary with needs-human items set aside (`needs_human=N`), or an
   // older free-text needs-human note.

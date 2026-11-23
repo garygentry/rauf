@@ -81,6 +81,7 @@ export function isSignificantEvent(ev: CardEvent): boolean {
     case "loop_completed":
     case "loop_error":
     case "loop_cancelled":
+    case "loop_interrupted":
     case "loop_paused":
       return true;
     case "usage_limit_hit":
@@ -101,7 +102,9 @@ export function isSignificantEvent(ev: CardEvent): boolean {
  * those comes from the derived status.)
  */
 export function isRunEndingEvent(ev: CardEvent): boolean {
-  return ev.type === "loop_completed" || ev.type === "loop_cancelled";
+  return (
+    ev.type === "loop_completed" || ev.type === "loop_cancelled" || ev.type === "loop_interrupted"
+  );
 }
 
 function sleepLengthMs(ev: Extract<CardEvent, { type: "sleep_start" }>): number {
@@ -226,6 +229,10 @@ export function formatSupervisionCard(ev: CardEvent, progress?: CardProgress): s
       return `${p}■ loop error — ${clip(ev.error)}`;
     case "loop_cancelled":
       return `${p}■ loop cancelled`;
+    case "loop_interrupted":
+      return ev.itemId
+        ? `${p}■ loop interrupted (${ev.signal}) — ${ev.itemId} was in flight; its edits are uncommitted`
+        : `${p}■ loop interrupted (${ev.signal})`;
     case "loop_paused":
       return `${p}■ loop paused — ${ev.itemId} needs human`;
     default:
