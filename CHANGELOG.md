@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- **`rauf install --agent <non-Claude>` no longer creates `CLAUDE.md` (#188).** With a non-Claude provider (`copilot`, `codex-cli`, …) and no `CLAUDE.md`, install and update now skip it and report `Not created: agent "<id>" reads AGENTS.md. Re-run with --agent claude-cli to add one for Claude Code`. That agent gets the loop rules from `AGENTS.md`. An existing `CLAUDE.md` is still kept current, so a project shared with Claude users stays correct.
+- **A non-Claude agent no longer gets a `CLAUDE.md` (#188).** When the loop's agent isn't Claude (by the loop's own precedence: `--agent` or the project provider, then the global `defaultProvider`, then `claude-cli`) and no `CLAUDE.md` exists, `rauf install` and `rauf update` skip it. They report that the agent reads `AGENTS.md`, and that you can create an empty `CLAUDE.md` and run `rauf update` to add one for Claude Code. `rauf init --agent <non-Claude>` puts the greenfield project section (overview, requirements, commands) in `AGENTS.md` instead. An existing `CLAUDE.md` is still kept current.
 
 ## 0.19.2
 

@@ -13,7 +13,7 @@ import {
   type ProjectProfile,
   type MarkerOptions,
 } from "./schemas.js";
-import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
+import { readMarkerFile, readToolConfig, writeMarkerFile, MARKER_FILENAME } from "./config.js";
 import {
   detectProfile,
   detectVerificationWarnings,
@@ -1344,9 +1344,29 @@ const SHIM_DETAIL: Record<ClaudeMdShimAction, string> = {
     "sentinel without its pair) — remove the leftover rauf text by hand",
 };
 
-/** Merge ralph section into CLAUDE.md using the CLAUDE_ADDON.md template */
-/** The provider whose project instructions live in CLAUDE.md; an unset provider means it. */
+/** The provider whose project instructions live in CLAUDE.md (the loop's default agent). */
 const CLAUDE_PROVIDER_ID = "claude-cli";
+
+/**
+ * The agent the loop will drive for this project, by the loop's own precedence below the
+ * per-item / per-run layers: project provider, then the global `~/.rauf/config.json`
+ * `defaultProvider`, then `claude-cli`. Empty or whitespace values count as unset, as in
+ * the loop's `resolveAgentId` (#188).
+ */
+export function resolveProjectAgent(projectProvider?: string): string {
+  const pick = (v?: string): string | undefined => v?.trim() || undefined;
+  const global = readToolConfig();
+  return (
+    pick(projectProvider) ??
+    (global.ok ? pick(global.value.defaultProvider) : undefined) ??
+    CLAUDE_PROVIDER_ID
+  );
+}
+
+/** True when the project's loop agent is Claude, so a missing CLAUDE.md should be created. */
+export function projectUsesClaude(projectProvider?: string): boolean {
+  return resolveProjectAgent(projectProvider) === CLAUDE_PROVIDER_ID;
+}
 
 /**
  * Merge the Claude-optimized ralph section into CLAUDE.md.
@@ -1360,14 +1380,15 @@ function deployClaudeMd(
   artifactsDir?: string,
   provider?: string,
 ): Result<InstallAction> {
-  const isClaude = provider === undefined || provider === CLAUDE_PROVIDER_ID;
-  if (!isClaude && !fs.existsSync(path.join(projectPath, CLAUDE_MD_FILENAME))) {
+  const agent = resolveProjectAgent(provider);
+  if (agent !== CLAUDE_PROVIDER_ID && !fs.existsSync(path.join(projectPath, CLAUDE_MD_FILENAME))) {
     return ok({
       file: "CLAUDE.md",
       action: "skipped",
+      // Not "re-run with --agent claude-cli": that would switch the loop's agent.
       detail:
-        `Not created: agent "${provider}" reads AGENTS.md. ` +
-        `Re-run with --agent ${CLAUDE_PROVIDER_ID} to add one for Claude Code`,
+        `Not created: agent "${agent}" reads AGENTS.md. To add one for Claude Code, ` +
+        "create an empty CLAUDE.md and run `rauf update`",
     });
   }
 

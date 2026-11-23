@@ -233,7 +233,8 @@ describe("install", () => {
       const action = result.value.actions.find((a) => a.file === "CLAUDE.md");
       expect(action?.action).toBe("skipped");
       expect(action?.detail).toContain('agent "copilot" reads AGENTS.md');
-      expect(action?.detail).toContain("--agent claude-cli");
+      expect(action?.detail).toContain("create an empty CLAUDE.md and run `rauf update`");
+      expect(action?.detail).not.toContain("--agent");
     });
 
     it("still merges into an existing CLAUDE.md for a non-Claude provider", () => {
@@ -248,14 +249,47 @@ describe("install", () => {
     it("update does not create CLAUDE.md for a non-Claude provider", () => {
       createFakeProject(tmpDir, { git: true });
       expect(install(tmpDir, installOpts({ options: { provider: "codex-cli" } })).ok).toBe(true);
-      expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+      const updated = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+      expect(updated.ok).toBe(true);
+      if (!updated.ok) return;
       expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+      const action = updated.value.actions.find((a) => a.file === "CLAUDE.md");
+      expect(action?.action).toBe("skipped");
+      expect(action?.detail).toContain('agent "codex-cli" reads AGENTS.md');
     });
 
     it("an explicit claude-cli provider still creates CLAUDE.md", () => {
       createFakeProject(tmpDir, { git: true });
-      install(tmpDir, installOpts({ options: { provider: "claude-cli" } }));
+      expect(install(tmpDir, installOpts({ options: { provider: "claude-cli" } })).ok).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(true);
+    });
+
+    it("a whitespace provider counts as unset (the loop falls back to Claude)", () => {
+      createFakeProject(tmpDir, { git: true });
+      expect(install(tmpDir, installOpts({ options: { provider: "  " } })).ok).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(true);
+    });
+
+    it("honours the global defaultProvider when the project sets none", () => {
+      createFakeProject(tmpDir, { git: true });
+      // HOME is a hermetic temp dir for every test file (vitest.hermetic-setup.ts).
+      const raufHome = path.join(os.homedir(), ".rauf");
+      fs.mkdirSync(raufHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(raufHome, "config.json"),
+        JSON.stringify({
+          rootDirectory: tmpDir,
+          port: 3000,
+          theme: "system",
+          defaultProvider: "copilot",
+        }),
+      );
+      try {
+        expect(install(tmpDir, installOpts()).ok).toBe(true);
+        expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+      } finally {
+        fs.rmSync(path.join(raufHome, "config.json"), { force: true });
+      }
     });
   });
 

@@ -5,10 +5,17 @@ import { spawnSync } from "node:child_process";
 import { type Result, ok, err, ErrorCodes } from "./errors.js";
 import { ensureDir, atomicWrite, validatePath } from "./fs-utils.js";
 import { renderTemplate } from "./template.js";
-import { install, type InstallOptions, type PreflightAgent, readArtifact } from "./installer.js";
+import {
+  install,
+  projectUsesClaude,
+  type InstallOptions,
+  type PreflightAgent,
+  readArtifact,
+} from "./installer.js";
 import { getPreset, mergeProfileOverrides, type ProfileOverrides } from "./profile.js";
 import { writeMarkerFile, readMarkerFile } from "./config.js";
 import { addItem, type CreateItemInput } from "./backlog.js";
+import { CLAUDE_MD_SENTINEL_START } from "./claude-md.js";
 import { defaultBacklogPaths } from "./backlog-root.js";
 import {
   BacklogSchema,
@@ -140,7 +147,10 @@ export function initProject(targetPath: string, options: InitOptions): Result<In
     profile = mergeProfileOverrides(profile, options.profileOverrides);
   }
 
-  // 5. Scaffold CLAUDE.md from CLAUDE_GREENFIELD.md.tmpl
+  // 5. Scaffold the project instructions from CLAUDE_GREENFIELD.md.tmpl. Claude gets
+  // CLAUDE.md; any other agent reads AGENTS.md, so the project section (overview,
+  // requirements, commands) goes there instead and install() appends the cross-agent
+  // rauf section to it. No CLAUDE.md is created for a non-Claude agent (#188).
   const claudeMdResult = scaffoldClaudeMd(
     resolved,
     profile,
@@ -148,6 +158,7 @@ export function initProject(targetPath: string, options: InitOptions): Result<In
     options.projectDescription ?? "",
     options.requirements ?? "",
     artifactsDir,
+    projectUsesClaude(options.options?.provider) ? "CLAUDE.md" : "AGENTS.md",
   );
   if (!claudeMdResult.ok) return claudeMdResult;
   preInstallActions.push(claudeMdResult.value);
@@ -330,6 +341,7 @@ function scaffoldClaudeMd(
   projectDescription: string,
   requirements: string,
   artifactsDir?: string,
+  target: "CLAUDE.md" | "AGENTS.md" = "CLAUDE.md",
 ): Result<InstallAction> {
   const contentResult = readArtifact(CLAUDE_GREENFIELD_TEMPLATE, artifactsDir);
   if (!contentResult.ok) return contentResult;
@@ -347,16 +359,26 @@ function scaffoldClaudeMd(
     verifyCommand: profile.verify,
   };
 
-  const rendered = renderTemplate(templateContent, variables);
-  const claudeMdPath = path.join(projectPath, "CLAUDE.md");
+  let rendered = renderTemplate(templateContent, variables);
+  if (target === "AGENTS.md") {
+    // Keep the project section only: the template's trailing rauf block is the
+    // Claude-specific one; AGENTS.md gets the cross-agent section from install().
+    const cut = rendered.indexOf(CLAUDE_MD_SENTINEL_START);
+    if (cut !== -1)
+      rendered =
+        rendered
+          .slice(0, cut)
+          .replace(/\n-{3,}\s*$/, "")
+          .trimEnd() + "\n";
+  }
 
-  const writeResult = atomicWrite(claudeMdPath, rendered);
+  const writeResult = atomicWrite(path.join(projectPath, target), rendered);
   if (!writeResult.ok) return writeResult;
 
   return ok({
-    file: "CLAUDE.md",
+    file: target,
     action: "created" as const,
-    detail: "Scaffolded CLAUDE.md from greenfield template",
+    detail: `Scaffolded ${target} from greenfield template`,
   });
 }
 
