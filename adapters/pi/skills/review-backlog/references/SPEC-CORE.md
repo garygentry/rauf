@@ -138,7 +138,7 @@ Scan project directory for indicator files. Detection order per category:
 
 **Composite verify:** Join all non-null commands with " && ".
 
-**feature-forge workspaces:** When the root yields no commands and `forge.config.json` has a `workspaces[]` array, compose each member's `testCommand` / `typeCheckCommand` as `(cd '<path>' && <cmd>)`, joined with " && " in declaration order. The profile then reports `stack: "forge-workspaces"` and `monorepo: true`. Entries with an absolute path, a `..` segment, or a backslash are skipped. This runs before the dispatcher-script fallback (#187).
+**feature-forge workspaces:** When no root stack is detected and `forge.config.json` has a `workspaces[]` array, compose each member's `testCommand` / `typeCheckCommand` as `(cd '<path>' && sh -c '<cmd>')`, joined with " && " in declaration order (all tests, then all typechecks). The profile then reports `stack: "forge-workspaces"` and `monorepo: true`. Entries with an absolute path, a `..` segment, a backslash, or a leading `-` are skipped. Like the dispatcher fallback, which it precedes, this is skipped with `allowDispatcherGuess: false`, because a caller that executes the verify must not take it from a possibly uncommitted config (#187).
 
 ### getPreset(presetName) → ProjectProfile
 

@@ -95,8 +95,10 @@ export function detectProfile(
   // No root-level stack, but a feature-forge `forge.config.json` declares per-member
   // commands in `workspaces[]` (a mixed-stack monorepo with no root package.json):
   // compose them into one cross-member verify instead of reporting nothing (#187).
-  // Explicitly user-declared, so not gated by allowDispatcherGuess.
-  if (verify === "") {
+  // Gated like the dispatcher guess: a caller that EXECUTES the result (crash-recovery
+  // re-verify) passes false, because forge.config.json may itself be part of the
+  // uncommitted work being judged — it must not get to choose its own verify.
+  if (stack === "unknown" && verify === "" && allowDispatcherGuess) {
     const workspaces = deriveForgeWorkspaceCommands(resolved);
     if (workspaces) {
       commands = workspaces;
@@ -133,9 +135,12 @@ export const FORGE_WORKSPACES_STACK = "forge-workspaces";
 
 const FORGE_CONFIG_FILENAME = "forge.config.json";
 
-/** A repo-relative member path: no absolute path, no `..` segment, no backslash. */
+/**
+ * A repo-relative member path: no absolute path, no `..` segment, no backslash, and no
+ * leading `-` (which `cd` would read as an option — `cd -` goes to $OLDPWD).
+ */
 function isSafeMemberPath(p: string): boolean {
-  if (p === "" || path.isAbsolute(p) || p.includes("\\")) return false;
+  if (p === "" || p.startsWith("-") || path.isAbsolute(p) || p.includes("\\")) return false;
   return !p.split("/").includes("..");
 }
 
@@ -143,10 +148,18 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * Join members as `(cd '<path>' && sh -c '<cmd>')`. Each command runs in its own
+ * `sh -c`, so shell text that is fine on its own (a trailing `# comment`, a trailing
+ * backslash) cannot swallow the closing paren and break every other member.
+ */
 function composeMemberCommands(members: Array<{ path: string; cmd: string }>): string | null {
   if (members.length === 0) return null;
   return members
-    .map(({ path: p, cmd }) => (p === "." ? `(${cmd})` : `(cd ${shellQuote(p)} && ${cmd})`))
+    .map(({ path: p, cmd }) => {
+      const run = `sh -c ${shellQuote(cmd)}`;
+      return p === "." ? `(${run})` : `(cd ${shellQuote(p)} && ${run})`;
+    })
     .join(" && ");
 }
 
