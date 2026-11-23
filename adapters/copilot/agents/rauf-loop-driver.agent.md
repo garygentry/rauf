@@ -349,6 +349,12 @@ quiet) and `toolRunningMs` says how long it has been running. Say which case it 
 inspect the process tree to second-guess the warning. Plain-text agents (no stream events)
 never report a tool in flight.
 
+**A `commit_warning` means build output got committed.** The per-item commit stages
+everything, so a project without stack ignore rules commits `bin/`/`obj/`/`node_modules/` and
+the like. The `⚠ <id> commit …` card names the commit and sample paths. Tell the user; the
+loop keeps going. The fix is a `.gitignore` entry plus `git rm -r --cached <dir>` (do it
+between runs, not under a live loop).
+
 ### Exit codes & status vocabulary
 
 `rauf status` and `rauf loop run` share **one unified exit-code scheme** — an agent that

@@ -211,22 +211,23 @@ ignore any `type` they do not recognize, per the promise below):
 `usage_limit_cleared`, `sleep_start`, `sleep_end`, `loop_completed`,
 `loop_error`, `loop_cancelled`, `review_started`, `review_completed`,
 `review_failed`, `llm_tool_activity`, `llm_token_update`,
-`llm_stuck_warning`.
+`llm_stuck_warning`, `commit_warning`.
 
 **Consumer-critical event payloads** (fields beyond the base three) follow:
 
-| Event               | Payload fields                                                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `item_completed`    | `itemId`, `title`; optional `commitSha`, `filesChanged`, `durationMs`, `attempt`, `doneCount`, `totalCount`, `summary` (#153) |
-| `item_blocked`      | `itemId`, `reason`                                                                                                            |
-| `needs_human`       | `itemId`, `reason`                                                                                                            |
-| `loop_paused`       | `reason` (`needs_human`), `itemId`                                                                                            |
-| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `review` \| `none`), `reason?`                                    |
-| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                                                          |
-| `loop_error`        | `error`                                                                                                                       |
-| `loop_cancelled`    | _(base fields only)_                                                                                                          |
-| `usage_limit_hit`   | `limitType` (`5h` \| `7d`), `utilization`, `reason?`, `consecutiveDisagreements?`                                             |
-| `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`)                                    |
+| Event               | Payload fields                                                                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `item_completed`    | `itemId`, `title`; optional `commitSha`, `filesChanged`, `durationMs`, `attempt`, `doneCount`, `totalCount`, `summary` (#153)                        |
+| `item_blocked`      | `itemId`, `reason`                                                                                                                                   |
+| `needs_human`       | `itemId`, `reason`                                                                                                                                   |
+| `loop_paused`       | `reason` (`needs_human`), `itemId`                                                                                                                   |
+| `signal_parsed`     | `itemId`, `signal` (`done` \| `blocked` \| `needs_human` \| `review` \| `none`), `reason?`                                                           |
+| `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                                                                                 |
+| `loop_error`        | `error`                                                                                                                                              |
+| `loop_cancelled`    | _(base fields only)_                                                                                                                                 |
+| `usage_limit_hit`   | `limitType` (`5h` \| `7d`), `utilization`, `reason?`, `consecutiveDisagreements?`                                                                    |
+| `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`)                                                           |
+| `commit_warning`    | `itemId`, `commitSha`, `filesChanged`, `reasons` (`build_output` \| `large_commit`), `buildOutputCount`, `buildOutputSample`, `fileThreshold` (#192) |
 
 `usage_limit_hit.reason` is present only as `"usage_api_disagreement"`. It means the limit
 was **assumed** after `consecutiveDisagreements` (3) consecutive usage-limit banners the usage
@@ -256,6 +257,13 @@ so events persisted by pre-#141 runners still parse. `llm_tool_activity` also ga
 (`reconciled` | `aborted`), so every `start` gets an `end`. Agents with no stream events (the
 plain-text presets and `generic-cli`) never report a tool in flight and keep the plain
 silence threshold. See [SCHEMAS.md](./SCHEMAS.md) for per-agent tool boundaries.
+
+`commit_warning` follows an item's `item_completed` when that item's commit adds or modifies
+build output (`obj/`, `node_modules/`, `dist/`, a .NET `bin/…/Debug|Release/` tree, `*.dll`, …;
+the full list is in SCHEMAS.md) or more than `options.commitWarnFileThreshold` files (default
+300). Deletions never count. It is advisory (the commit stands and the loop continues) and
+significant, so `loop wait` returns it as a `⚠` card. A supervisor should tell the user to fix
+`.gitignore` and untrack the files.
 
 **Two gotchas a supervisor MUST account for:**
 

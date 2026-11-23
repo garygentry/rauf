@@ -7,7 +7,12 @@
 // reduction. The `--json` paths are unaffected — they emit the full record and
 // never call this.
 
-import { formatItemCard, type DerivedStatus, type PersistedEvent } from "@rauf/core";
+import {
+  commitWarningDetail,
+  formatItemCard,
+  type DerivedStatus,
+  type PersistedEvent,
+} from "@rauf/core";
 
 import { c } from "./formatter.js";
 
@@ -166,6 +171,8 @@ export function formatEvent(ev: PersistedEvent): string {
         `${item(ev.itemId)} ${c.dim(`silent ${fmtDuration(ev.silentMs)}`)}${tool}`,
       );
     }
+    case "commit_warning":
+      return line(c.yellow("commit warning"), `${item(ev.itemId)} ${commitWarningDetail(ev)}`);
     default: {
       // Exhaustiveness guard — if a new event type is added without a case here,
       // this still surfaces the raw type rather than rendering nothing.

@@ -312,6 +312,83 @@ echo "RAUF_DONE"`,
       expect(onDisk?.summary).toBe("Added work.txt");
     });
 
+    it("emits commit_warning after item_completed when the commit holds build output (#192)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Scaffold")]);
+      writeMockClaude(
+        binDir,
+        `mkdir -p "${tmpDir}/App/bin/Debug" "${tmpDir}/App/obj"
+printf 'x' > "${tmpDir}/App/bin/Debug/App.dll"
+printf '{}' > "${tmpDir}/App/obj/project.assets.json"
+printf 'class P {}' > "${tmpDir}/Program.cs"
+echo "RAUF_DONE"`,
+      );
+
+      const order: string[] = [];
+      const warnings: Extract<LoopEvent, { type: "commit_warning" }>[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("item_completed", () => order.push("item_completed"));
+      runner.on("commit_warning", (e) => {
+        order.push("commit_warning");
+        warnings.push(e);
+      });
+      await runner.start();
+
+      expect(order).toEqual(["item_completed", "commit_warning"]);
+      const w = warnings[0]!;
+      const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
+      expect(w.itemId).toBe("001");
+      expect(w.commitSha).toBe(head);
+      expect(w.reasons).toEqual(["build_output"]);
+      expect(w.buildOutputCount).toBe(2);
+      expect(w.buildOutputSample).toEqual(["App/bin/Debug/App.dll", "App/obj/project.assets.json"]);
+      expect(w.fileThreshold).toBe(300);
+    });
+
+    it("skips the build_output check under options.commitWarnBuildOutput: false (#192)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Build action")], {
+        markerOptions: { commitWarnBuildOutput: false },
+      });
+      writeMockClaude(
+        binDir,
+        `mkdir -p "${tmpDir}/dist"
+printf 'x' > "${tmpDir}/dist/index.js"
+echo "RAUF_DONE"`,
+      );
+
+      const warnings: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("commit_warning", (e) => warnings.push(e));
+      await runner.start();
+
+      expect(warnings).toHaveLength(0);
+    });
+
+    it("emits commit_warning large_commit past options.commitWarnFileThreshold, and none below it (#192)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Many"), pendingItem("002", "Few")], {
+        markerOptions: { commitWarnFileThreshold: 3 },
+      });
+      writeMockClaude(
+        binDir,
+        `if [ ! -f "${tmpDir}/f1.txt" ]; then
+  for i in 1 2 3 4 5; do printf 'x' > "${tmpDir}/f$i.txt"; done
+else
+  printf 'y' > "${tmpDir}/g.txt"
+fi
+echo "RAUF_DONE"`,
+      );
+
+      const warnings: Extract<LoopEvent, { type: "commit_warning" }>[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 2 });
+      runner.on("commit_warning", (e) => warnings.push(e));
+      await runner.start();
+
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]!.itemId).toBe("001");
+      expect(warnings[0]!.reasons).toEqual(["large_commit"]);
+      expect(warnings[0]!.buildOutputCount).toBe(0);
+      expect(warnings[0]!.fileThreshold).toBe(3);
+    });
+
     it("omits summary when the agent writes no RAUF_SUMMARY line", async () => {
       setupProject(tmpDir, [pendingItem("001", "Test task")]);
       writeMockClaude(binDir, 'echo "RAUF_DONE"');

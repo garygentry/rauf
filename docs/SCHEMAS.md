@@ -138,6 +138,8 @@ interface MarkerOptions {
   acknowledgeEmptyVerify?: boolean; // Silence the "no global verification commands configured" launch warning when the project verifies per item via each backlog item's acceptanceCriteria. Only suppresses that warning; a stale/misconfigured dispatcher command still warns. Default: false.
   stuckThresholdMs?: number; // Ms of stream silence before `llm_stuck_warning`; always required, tool or not. Positive integer. Default: 300000 (5 min).
   toolStuckThresholdMs?: number; // Runtime ceiling for a quiet in-flight tool call: until the oldest one has run this long (measured from its start), silence does not raise `llm_stuck_warning`. Positive integer. Default: 1800000 (30 min).
+  commitWarnFileThreshold?: number; // A per-item commit adding or modifying more files than this emits `commit_warning` (reason `large_commit`). Positive integer. Default: 300.
+  commitWarnBuildOutput?: boolean; // false turns off the `build_output` reason of `commit_warning`, for a project that commits build output on purpose. Default: true.
 }
 ```
 
@@ -462,6 +464,7 @@ interface LoopEventBase {
 | `llm_tool_activity`   | `itemId`, `toolName`, `phase` ("start" \| "end"), `toolUseId?`, `reason?`                                              | Tool call starts or finishes in child session            |
 | `llm_token_update`    | `itemId`, `inputTokens`, `outputTokens`                                                                                | Token count update from child session                    |
 | `llm_stuck_warning`   | `itemId`, `silentMs`, `currentTool`, `toolRunningMs`                                                                   | Child session silent for too long (see below)            |
+| `commit_warning`      | `itemId`, `commitSha`, `filesChanged`, `reasons`, `buildOutputCount`, `buildOutputSample`, `fileThreshold`             | Item commit holds build output or is oversized (#192)    |
 
 ```typescript
 // Full union type (inferred from Zod schema)
@@ -626,8 +629,33 @@ type LoopEvent =
       silentMs: number;
       currentTool?: string | null; // the quiet tool call in flight the warning is about, or null when the model itself went silent
       toolRunningMs?: number | null; // ms since currentTool started, or null when currentTool is null
+    }
+  | {
+      type: "commit_warning";
+      timestamp: string;
+      projectPath: string;
+      itemId: string;
+      commitSha: string; // full sha of the item's commit
+      filesChanged: number; // files the commit adds or modifies (deletions not counted)
+      reasons: ("build_output" | "large_commit")[]; // at least one
+      buildOutputCount: number; // committed paths that look like build output
+      buildOutputSample: string[]; // up to 5 of them
+      fileThreshold: number; // options.commitWarnFileThreshold in force
     };
 ```
+
+**`commit_warning` (#192).** The per-item commit stages everything (`git add -A`), so a
+project with no stack ignore rules commits its build output. Right after an item's
+`item_completed`, the runner checks the paths that commit **adds or modifies** (deletions are
+ignored, so untracking build output never warns). `build_output` fires when any is under
+`obj/`, `node_modules/`, `dist/`, `target/`, `__pycache__/`, `.next/`, `.turbo/`, `.pytest_cache/`, `.mypy_cache/`, or a .NET `bin/…/Debug|Release/` tree (`bin/Debug/`, `bin/x64/Release/`), or has a
+compiled-artifact extension (`.dll`, `.pdb`, `.exe`, `.pyc`, `.pyo`, `.class`, `.o`, `.so`, `.dylib`, `.tsbuildinfo`). `large_commit` fires when it adds or modifies more than
+`options.commitWarnFileThreshold` files (default 300); the event's `filesChanged` is that
+count. A bare `bin/` is not flagged, since it often holds hand-written scripts. The check is a
+heuristic and the warning is advisory: the commit has landed and the loop keeps going. Fix the
+`.gitignore`, then untrack the files (`git rm -r --cached <dir>`) in a follow-up commit. A
+project that commits build output on purpose (a JavaScript GitHub Action's `dist/`) sets
+`options.commitWarnBuildOutput: false`.
 
 **`usage_limit_hit` provenance (#146).** Without `reason`, the limit was confirmed by the
 usage API, or taken on the banner alone because no OAuth token was available.

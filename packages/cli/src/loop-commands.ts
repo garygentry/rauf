@@ -37,6 +37,7 @@ import {
   type Result,
   recordSupervision,
   supervisorIdFromEnv,
+  commitWarningDetail,
 } from "@rauf/core";
 import ports from "../../../config/ports.json";
 import {
@@ -1121,6 +1122,7 @@ export async function handleLoopRun(ctx: CommandContext, deps: LoopRunDeps = {})
     "llm_tool_activity",
     "llm_token_update",
     "llm_stuck_warning",
+    "commit_warning",
   ];
   // --ndjson parity (REM-10): the live stream emits the same wire shape as the
   // persisted events.ndjson — each LoopEvent enriched to a PersistedEvent with a
@@ -1661,6 +1663,12 @@ export function formatAndPrintEvent(event: LoopEvent): void {
             ? ` ${c.dim("(diagnostic tail captured \u2014 see rauf.log)")}`
             : ""
         }`,
+      );
+      break;
+
+    case "commit_warning":
+      print(
+        `${prefix} ${c.yellow("\u26A0")} ${c.yellow(`Commit warning #${event.itemId}`)} ${commitWarningDetail(event)}`,
       );
       break;
   }

@@ -105,6 +105,13 @@ export function describeEvent(e: PersistedEvent): { label: string; detail: strin
             ? ` · ${e.currentTool} running ${Math.round((e.toolRunningMs ?? e.silentMs) / 1000)}s`
             : ""),
       };
+    case "commit_warning":
+      return {
+        label: "Commit warning",
+        detail:
+          `#${e.itemId} · ${e.filesChanged} files` +
+          (e.buildOutputCount > 0 ? ` · ${e.buildOutputCount} look like build output` : ""),
+      };
     default:
       return describeUnknownEvent(e);
   }

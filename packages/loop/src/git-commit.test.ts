@@ -4,7 +4,12 @@ import { execFileSync, execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { describeCommit, exactExcludePathspec, gitCommit } from "./git-commit.js";
+import {
+  describeCommit,
+  exactExcludePathspec,
+  gitCommit,
+  isBuildOutputPath,
+} from "./git-commit.js";
 
 describe("gitCommit", () => {
   let tmpDir: string;
@@ -202,11 +207,89 @@ describe("describeCommit", () => {
 
     const described = await describeCommit(tmpDir, short);
     const head = execSync("git rev-parse HEAD", { cwd: tmpDir, encoding: "utf-8" }).trim();
-    expect(described).toEqual({ sha: head, filesChanged: 2 });
+    expect(described).toEqual({
+      sha: head,
+      filesChanged: 2,
+      filesWritten: 2,
+      buildOutputPaths: [],
+    });
+  });
+
+  it("lists committed paths that look like build output (#192)", async () => {
+    fs.writeFileSync(path.join(tmpDir, "Program.cs"), "class P {}");
+    fs.mkdirSync(path.join(tmpDir, "App", "bin", "Debug"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "App", "bin", "Debug", "App.dll"), "x");
+    fs.mkdirSync(path.join(tmpDir, "App", "obj"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "App", "obj", "project.assets.json"), "{}");
+    const commit = await gitCommit(tmpDir, "001", "scaffold");
+    const short = commit.ok ? commit.value.commitHash : "";
+
+    const described = await describeCommit(tmpDir, short);
+    expect(described?.filesChanged).toBe(3);
+    expect(described?.buildOutputPaths).toEqual([
+      "App/bin/Debug/App.dll",
+      "App/obj/project.assets.json",
+    ]);
+  });
+
+  it("does not count deleted paths as build output: untracking obj/ is the fix (#192)", async () => {
+    fs.mkdirSync(path.join(tmpDir, "App", "obj"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "App", "obj", "a.json"), "{}");
+    fs.writeFileSync(path.join(tmpDir, "App", "obj", "b.json"), "{}");
+    await gitCommit(tmpDir, "001", "oops");
+    fs.writeFileSync(path.join(tmpDir, ".gitignore"), "obj/\n");
+    execSync("git rm -r -q --cached App/obj", { cwd: tmpDir });
+    const commit = await gitCommit(tmpDir, "002", "untrack obj");
+    const short = commit.ok ? commit.value.commitHash : "";
+
+    const described = await describeCommit(tmpDir, short);
+    expect(described?.filesChanged).toBe(3); // .gitignore + two deletions
+    expect(described?.filesWritten).toBe(1);
+    expect(described?.buildOutputPaths).toEqual([]);
+  });
+
+  it("sees build output under a non-ASCII path git would otherwise quote (#192)", async () => {
+    fs.mkdirSync(path.join(tmpDir, "obj"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "obj", "café.json"), "{}");
+    const commit = await gitCommit(tmpDir, "001", "unicode");
+    const short = commit.ok ? commit.value.commitHash : "";
+
+    const described = await describeCommit(tmpDir, short);
+    expect(described?.buildOutputPaths).toEqual(["obj/café.json"]);
   });
 
   it("returns null for an unknown ref instead of throwing", async () => {
     expect(await describeCommit(tmpDir, "deadbeef")).toBeNull();
+  });
+});
+
+describe("isBuildOutputPath (#192)", () => {
+  it.each([
+    "App/obj/Debug/net8.0/App.dll",
+    "App/bin/Debug/net8.0/App.deps.json",
+    "src/App/bin/Release/App.exe",
+    "App/bin/x64/Debug/net8.0/App.deps.json",
+    "web/node_modules/vite/package.json",
+    "web/dist/index.html",
+    "target/debug/app",
+    "pkg/__pycache__/mod.cpython-312.pyc",
+    "Lib.pdb",
+    "web/tsconfig.tsbuildinfo",
+    "apps/site/.next/BUILD_ID",
+  ])("flags %s", (p) => {
+    expect(isBuildOutputPath(p)).toBe(true);
+  });
+
+  it.each([
+    "src/Program.cs",
+    "bin/cli.js", // hand-written scripts dir, not .NET output
+    "scripts/bin/setup.sh",
+    "docs/distribution.md",
+    "src/target.ts", // a file named like an output dir is not under it
+    "package.json",
+    "models/ship.obj", // Wavefront model, a source asset
+  ])("does not flag %s", (p) => {
+    expect(isBuildOutputPath(p)).toBe(false);
   });
 });
 

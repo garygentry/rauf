@@ -120,6 +120,19 @@ describe("isSignificantEvent / isRunEndingEvent", () => {
     expect(isSignificantEvent(ev("needs_human", { itemId: "1", reason: "r" }))).toBe(true);
     expect(isSignificantEvent(ev("loop_error", { error: "e" }))).toBe(true);
     expect(isSignificantEvent(ev("loop_cancelled"))).toBe(true);
+    expect(
+      isSignificantEvent(
+        ev("commit_warning", {
+          itemId: "1",
+          commitSha: "abc",
+          filesChanged: 400,
+          reasons: ["large_commit"],
+          buildOutputCount: 0,
+          buildOutputSample: [],
+          fileThreshold: 300,
+        }),
+      ),
+    ).toBe(true);
     expect(isSignificantEvent(ev("item_selected", { itemId: "1", title: "t", priority: 1 }))).toBe(
       false,
     );
@@ -170,6 +183,35 @@ describe("formatSupervisionCard", () => {
         }),
       ),
     ).toBe("⚠ 9 stuck — silent 12m (Bash running 11m)");
+    expect(
+      formatSupervisionCard(
+        ev("commit_warning", {
+          itemId: "001",
+          commitSha: "abc1234def",
+          filesChanged: 905,
+          reasons: ["build_output", "large_commit"],
+          buildOutputCount: 877,
+          buildOutputSample: ["App/bin/Debug/App.dll", "App/obj/x.json", "App/obj/y.json"],
+          fileThreshold: 300,
+        }),
+      ),
+    ).toBe(
+      "⚠ 001 commit abc1234: 877 of 905 files look like build output " +
+        "(App/bin/Debug/App.dll, App/obj/x.json, …) — add them to .gitignore",
+    );
+    expect(
+      formatSupervisionCard(
+        ev("commit_warning", {
+          itemId: "002",
+          commitSha: "fff0000aaa",
+          filesChanged: 412,
+          reasons: ["large_commit"],
+          buildOutputCount: 0,
+          buildOutputSample: [],
+          fileThreshold: 300,
+        }),
+      ),
+    ).toBe("⚠ 002 commit fff0000: 412 files (over 300)");
     expect(
       formatSupervisionCard(
         ev("loop_completed", { completedCount: 25, blockedCount: 1, needsHumanCount: 0 }),
