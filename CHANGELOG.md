@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`rauf install --agent <non-Claude>` no longer creates `CLAUDE.md` (#188).** With a non-Claude provider (`copilot`, `codex-cli`, …) and no `CLAUDE.md`, install and update now skip it and report `Not created: agent "<id>" reads AGENTS.md. Re-run with --agent claude-cli to add one for Claude Code`. That agent gets the loop rules from `AGENTS.md`. An existing `CLAUDE.md` is still kept current, so a project shared with Claude users stays correct.
+
 ## 0.19.2
 
 ### Fixed

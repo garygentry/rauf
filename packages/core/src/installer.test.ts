@@ -222,6 +222,43 @@ describe("install", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
   });
 
+  describe("non-Claude provider (#188)", () => {
+    it("does not create CLAUDE.md for --agent copilot; AGENTS.md carries the section", () => {
+      createFakeProject(tmpDir, { git: true });
+      const result = install(tmpDir, installOpts({ options: { provider: "copilot" } }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+      expect(fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8")).toContain("rauf");
+      const action = result.value.actions.find((a) => a.file === "CLAUDE.md");
+      expect(action?.action).toBe("skipped");
+      expect(action?.detail).toContain('agent "copilot" reads AGENTS.md');
+      expect(action?.detail).toContain("--agent claude-cli");
+    });
+
+    it("still merges into an existing CLAUDE.md for a non-Claude provider", () => {
+      createFakeProject(tmpDir, { git: true });
+      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), "# Shared\n");
+      expect(install(tmpDir, installOpts({ options: { provider: "copilot" } })).ok).toBe(true);
+      const claudeMd = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+      expect(claudeMd).toContain("# Shared");
+      expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
+    });
+
+    it("update does not create CLAUDE.md for a non-Claude provider", () => {
+      createFakeProject(tmpDir, { git: true });
+      expect(install(tmpDir, installOpts({ options: { provider: "codex-cli" } })).ok).toBe(true);
+      expect(update(tmpDir, { artifactsDir: ARTIFACTS_DIR }).ok).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+    });
+
+    it("an explicit claude-cli provider still creates CLAUDE.md", () => {
+      createFakeProject(tmpDir, { git: true });
+      install(tmpDir, installOpts({ options: { provider: "claude-cli" } }));
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(true);
+    });
+  });
+
   describe("CLAUDE.md that imports AGENTS.md (#173)", () => {
     const SHIM =
       "# Claude Code\n\nProject instructions live in `AGENTS.md`; keep them there.\n\n@AGENTS.md\n";
