@@ -147,6 +147,28 @@ describe("initProject", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_END);
   });
 
+  it("for a non-Claude agent, scaffolds the project section into AGENTS.md, not CLAUDE.md (#188)", () => {
+    const projectDir = path.join(tmpDir, "copilot-project");
+    const result = initProject(
+      projectDir,
+      baseOpts({
+        preset: "node-typescript",
+        projectName: "My Project",
+        projectDescription: "A great project",
+        requirements: "Must be fast",
+        options: { provider: "copilot" },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, "CLAUDE.md"))).toBe(false);
+    const agentsMd = fs.readFileSync(path.join(projectDir, "AGENTS.md"), "utf-8");
+    expect(agentsMd).toContain("# My Project");
+    expect(agentsMd).toContain("Must be fast");
+    // the Claude-specific block is not copied; install() appends the cross-agent one.
+    expect(agentsMd).not.toContain("Task** tool");
+    expect(agentsMd.match(/rauf:start/g)?.length ?? 0).toBeLessThanOrEqual(1);
+  });
+
   it("installs standard ralph artifacts via installer (no scripts)", () => {
     const projectDir = path.join(tmpDir, "artifacts-project");
     initProject(projectDir, baseOpts());

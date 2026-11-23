@@ -13,7 +13,7 @@ import {
   type ProjectProfile,
   type MarkerOptions,
 } from "./schemas.js";
-import { readMarkerFile, writeMarkerFile, MARKER_FILENAME } from "./config.js";
+import { readMarkerFile, readToolConfig, writeMarkerFile, MARKER_FILENAME } from "./config.js";
 import {
   detectProfile,
   detectVerificationWarnings,
@@ -23,6 +23,7 @@ import {
 import { renderTemplate, updateSentinelBlock } from "./template.js";
 import {
   mergeClaudeMd,
+  CLAUDE_MD_FILENAME,
   extractRaufBlock,
   reconcileAgentsImportShim,
   stripClaudeMdRaufBlock,
@@ -392,8 +393,10 @@ export function install(projectPath: string, options: InstallOptions): Result<In
   if (!agentsMdResult.ok) return agentsMdResult;
   actions.push(agentsMdResult.value);
 
-  // 9a. CLAUDE.md smart merge (Claude-optimized companion)
-  const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
+  // 9a. CLAUDE.md smart merge (Claude-optimized companion). Created only for a Claude
+  // provider; an existing CLAUDE.md is always kept current (#188).
+  const installProvider = options.options?.provider ?? existingOptions?.provider;
+  const claudeMdResult = deployClaudeMd(resolved, artifactsDir, installProvider);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
@@ -561,8 +564,8 @@ export function update(
   if (!agentsMdResult.ok) return agentsMdResult;
   actions.push(agentsMdResult.value);
 
-  // Update CLAUDE.md ralph section
-  const claudeMdResult = deployClaudeMd(resolved, artifactsDir);
+  // Update CLAUDE.md ralph section (created only for a Claude provider, #188)
+  const claudeMdResult = deployClaudeMd(resolved, artifactsDir, marker.options.provider);
   if (!claudeMdResult.ok) return claudeMdResult;
   actions.push(claudeMdResult.value);
 
@@ -1341,8 +1344,54 @@ const SHIM_DETAIL: Record<ClaudeMdShimAction, string> = {
     "sentinel without its pair) — remove the leftover rauf text by hand",
 };
 
-/** Merge ralph section into CLAUDE.md using the CLAUDE_ADDON.md template */
-function deployClaudeMd(projectPath: string, artifactsDir?: string): Result<InstallAction> {
+/** The provider whose project instructions live in CLAUDE.md (the loop's default agent). */
+const CLAUDE_PROVIDER_ID = "claude-cli";
+
+/**
+ * The agent the loop will drive for this project, by the loop's own precedence below the
+ * per-item / per-run layers: project provider, then the global `~/.rauf/config.json`
+ * `defaultProvider`, then `claude-cli`. Empty or whitespace values count as unset, as in
+ * the loop's `resolveAgentId` (#188).
+ */
+export function resolveProjectAgent(projectProvider?: string): string {
+  const pick = (v?: string): string | undefined => v?.trim() || undefined;
+  const global = readToolConfig();
+  return (
+    pick(projectProvider) ??
+    (global.ok ? pick(global.value.defaultProvider) : undefined) ??
+    CLAUDE_PROVIDER_ID
+  );
+}
+
+/** True when the project's loop agent is Claude, so a missing CLAUDE.md should be created. */
+export function projectUsesClaude(projectProvider?: string): boolean {
+  return resolveProjectAgent(projectProvider) === CLAUDE_PROVIDER_ID;
+}
+
+/**
+ * Merge the Claude-optimized ralph section into CLAUDE.md.
+ *
+ * For a non-Claude provider (e.g. `--agent copilot`), a missing CLAUDE.md is NOT created:
+ * that agent reads AGENTS.md, which carries the cross-agent section (#188). An existing
+ * CLAUDE.md is still kept current, so a project shared with Claude users stays correct.
+ */
+function deployClaudeMd(
+  projectPath: string,
+  artifactsDir?: string,
+  provider?: string,
+): Result<InstallAction> {
+  const agent = resolveProjectAgent(provider);
+  if (agent !== CLAUDE_PROVIDER_ID && !fs.existsSync(path.join(projectPath, CLAUDE_MD_FILENAME))) {
+    return ok({
+      file: "CLAUDE.md",
+      action: "skipped",
+      // Not "re-run with --agent claude-cli": that would switch the loop's agent.
+      detail:
+        `Not created: agent "${agent}" reads AGENTS.md. To add one for Claude Code, ` +
+        "create an empty CLAUDE.md and run `rauf update`",
+    });
+  }
+
   // A CLAUDE.md that imports AGENTS.md already gets rauf's cross-agent section
   // from there; merging the Claude block too would load the rules twice (#173).
   const shimResult = reconcileAgentsImportShim(projectPath);

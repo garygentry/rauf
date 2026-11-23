@@ -222,6 +222,77 @@ describe("install", () => {
     expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
   });
 
+  describe("non-Claude provider (#188)", () => {
+    it("does not create CLAUDE.md for --agent copilot; AGENTS.md carries the section", () => {
+      createFakeProject(tmpDir, { git: true });
+      const result = install(tmpDir, installOpts({ options: { provider: "copilot" } }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+      expect(fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8")).toContain("rauf");
+      const action = result.value.actions.find((a) => a.file === "CLAUDE.md");
+      expect(action?.action).toBe("skipped");
+      expect(action?.detail).toContain('agent "copilot" reads AGENTS.md');
+      expect(action?.detail).toContain("create an empty CLAUDE.md and run `rauf update`");
+      expect(action?.detail).not.toContain("--agent");
+    });
+
+    it("still merges into an existing CLAUDE.md for a non-Claude provider", () => {
+      createFakeProject(tmpDir, { git: true });
+      fs.writeFileSync(path.join(tmpDir, "CLAUDE.md"), "# Shared\n");
+      expect(install(tmpDir, installOpts({ options: { provider: "copilot" } })).ok).toBe(true);
+      const claudeMd = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+      expect(claudeMd).toContain("# Shared");
+      expect(claudeMd).toContain(CLAUDE_MD_SENTINEL_START);
+    });
+
+    it("update does not create CLAUDE.md for a non-Claude provider", () => {
+      createFakeProject(tmpDir, { git: true });
+      expect(install(tmpDir, installOpts({ options: { provider: "codex-cli" } })).ok).toBe(true);
+      const updated = update(tmpDir, { artifactsDir: ARTIFACTS_DIR });
+      expect(updated.ok).toBe(true);
+      if (!updated.ok) return;
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+      const action = updated.value.actions.find((a) => a.file === "CLAUDE.md");
+      expect(action?.action).toBe("skipped");
+      expect(action?.detail).toContain('agent "codex-cli" reads AGENTS.md');
+    });
+
+    it("an explicit claude-cli provider still creates CLAUDE.md", () => {
+      createFakeProject(tmpDir, { git: true });
+      expect(install(tmpDir, installOpts({ options: { provider: "claude-cli" } })).ok).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(true);
+    });
+
+    it("a whitespace provider counts as unset (the loop falls back to Claude)", () => {
+      createFakeProject(tmpDir, { git: true });
+      expect(install(tmpDir, installOpts({ options: { provider: "  " } })).ok).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(true);
+    });
+
+    it("honours the global defaultProvider when the project sets none", () => {
+      createFakeProject(tmpDir, { git: true });
+      // HOME is a hermetic temp dir for every test file (vitest.hermetic-setup.ts).
+      const raufHome = path.join(os.homedir(), ".rauf");
+      fs.mkdirSync(raufHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(raufHome, "config.json"),
+        JSON.stringify({
+          rootDirectory: tmpDir,
+          port: 3000,
+          theme: "system",
+          defaultProvider: "copilot",
+        }),
+      );
+      try {
+        expect(install(tmpDir, installOpts()).ok).toBe(true);
+        expect(fs.existsSync(path.join(tmpDir, "CLAUDE.md"))).toBe(false);
+      } finally {
+        fs.rmSync(path.join(raufHome, "config.json"), { force: true });
+      }
+    });
+  });
+
   describe("CLAUDE.md that imports AGENTS.md (#173)", () => {
     const SHIM =
       "# Claude Code\n\nProject instructions live in `AGENTS.md`; keep them there.\n\n@AGENTS.md\n";
