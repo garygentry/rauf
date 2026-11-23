@@ -89,6 +89,24 @@ export function detectProfile(
 
   // Build composite verify command
   let verify = buildVerifyCommand(commands);
+  let stackOut = stack;
+  let monorepoOut = monorepo;
+
+  // No root-level stack, but a feature-forge `forge.config.json` declares per-member
+  // commands in `workspaces[]` (a mixed-stack monorepo with no root package.json):
+  // compose them into one cross-member verify instead of reporting nothing (#187).
+  // Gated like the dispatcher guess: a caller that EXECUTES the result (crash-recovery
+  // re-verify) passes false, because forge.config.json may itself be part of the
+  // uncommitted work being judged — it must not get to choose its own verify.
+  if (stack === "unknown" && verify === "" && allowDispatcherGuess) {
+    const workspaces = deriveForgeWorkspaceCommands(resolved);
+    if (workspaces) {
+      commands = workspaces;
+      verify = buildVerifyCommand(commands);
+      stackOut = FORGE_WORKSPACES_STACK;
+      monorepoOut = true;
+    }
+  }
 
   // Last-resort fallback: normal detection found nothing. Probe for a
   // project-owned verification dispatcher script (e.g. this repo's own
@@ -102,7 +120,77 @@ export function detectProfile(
     }
   }
 
-  return { stack, packageManager, monorepo, commands, verify };
+  return { stack: stackOut, packageManager, monorepo: monorepoOut, commands, verify };
+}
+
+// ─── deriveForgeWorkspaceCommands ────────────────────────────────
+//
+// feature-forge's `forge.config.json` may carry `workspaces[]` entries of
+// `{ name, path, stack, typeCheckCommand, testCommand }` (forge-bootstrap writes them
+// for a monorepo). Each member's command runs in its own directory, so the composed
+// command is `(cd '<path>' && <cmd>) && …` in declaration order.
+
+/** The `stack` reported when the profile was composed from forge `workspaces[]`. */
+export const FORGE_WORKSPACES_STACK = "forge-workspaces";
+
+const FORGE_CONFIG_FILENAME = "forge.config.json";
+
+/**
+ * A repo-relative member path: no absolute path, no `..` segment, no backslash, and no
+ * leading `-` (which `cd` would read as an option — `cd -` goes to $OLDPWD).
+ */
+function isSafeMemberPath(p: string): boolean {
+  if (p === "" || p.startsWith("-") || path.isAbsolute(p) || p.includes("\\")) return false;
+  return !p.split("/").includes("..");
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Join members as `(cd '<path>' && sh -c '<cmd>')`. Each command runs in its own
+ * `sh -c`, so shell text that is fine on its own (a trailing `# comment`, a trailing
+ * backslash) cannot swallow the closing paren and break every other member.
+ */
+function composeMemberCommands(members: Array<{ path: string; cmd: string }>): string | null {
+  if (members.length === 0) return null;
+  return members
+    .map(({ path: p, cmd }) => {
+      const run = `sh -c ${shellQuote(cmd)}`;
+      return p === "." ? `(${run})` : `(cd ${shellQuote(p)} && ${run})`;
+    })
+    .join(" && ");
+}
+
+function deriveForgeWorkspaceCommands(projectPath: string): ProfileCommands | null {
+  const configPath = path.join(projectPath, FORGE_CONFIG_FILENAME);
+  if (!isRegularFile(configPath)) return null;
+  let config: unknown;
+  try {
+    config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch {
+    return null; // unreadable or invalid JSON: detection never throws
+  }
+  const workspaces = (config as { workspaces?: unknown } | null)?.workspaces;
+  if (!Array.isArray(workspaces)) return null;
+  const tests: Array<{ path: string; cmd: string }> = [];
+  const typechecks: Array<{ path: string; cmd: string }> = [];
+  for (const entry of workspaces) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const { path: memberPath, testCommand, typeCheckCommand } = entry as Record<string, unknown>;
+    if (typeof memberPath !== "string" || !isSafeMemberPath(memberPath)) continue;
+    if (typeof testCommand === "string" && testCommand.trim()) {
+      tests.push({ path: memberPath, cmd: testCommand.trim() });
+    }
+    if (typeof typeCheckCommand === "string" && typeCheckCommand.trim()) {
+      typechecks.push({ path: memberPath, cmd: typeCheckCommand.trim() });
+    }
+  }
+  const test = composeMemberCommands(tests);
+  const typecheck = composeMemberCommands(typechecks);
+  if (test === null && typecheck === null) return null;
+  return { test, typecheck, lint: null, build: null, format: null };
 }
 
 // ─── detectDispatcherScript ──────────────────────────────────────

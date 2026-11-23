@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 import {
+  FORGE_WORKSPACES_STACK,
   detectProfile,
   detectVerificationWarnings,
   getPreset,
@@ -915,5 +916,109 @@ describe("detectVerificationWarnings", () => {
 
     const warnings = detectVerificationWarnings(tmpDir, profile);
     expect(warnings).toEqual([]);
+  });
+});
+
+describe("detectProfile — feature-forge workspaces[] (#187)", () => {
+  function writeForgeConfig(workspaces: unknown) {
+    fs.writeFileSync(
+      path.join(tmpDir, "forge.config.json"),
+      JSON.stringify({ projectName: "demo", workspaces }, null, 2),
+    );
+  }
+
+  it("composes per-member test and typecheck from workspaces[] when root detection finds nothing", () => {
+    writeForgeConfig([
+      {
+        name: "web",
+        path: "apps/web",
+        stack: "typescript",
+        typeCheckCommand: "npx tsc --noEmit",
+        testCommand: "pnpm test",
+      },
+      {
+        name: "api",
+        path: "services/api",
+        stack: "generic",
+        typeCheckCommand: "sh -n run.sh test.sh",
+        testCommand: "./test.sh",
+      },
+    ]);
+    const profile = detectProfile(tmpDir);
+    expect(profile.stack).toBe(FORGE_WORKSPACES_STACK);
+    expect(profile.monorepo).toBe(true);
+    expect(profile.commands.test).toBe(
+      "(cd 'apps/web' && sh -c 'pnpm test') && (cd 'services/api' && sh -c './test.sh')",
+    );
+    expect(profile.commands.typecheck).toBe(
+      "(cd 'apps/web' && sh -c 'npx tsc --noEmit') && " +
+        "(cd 'services/api' && sh -c 'sh -n run.sh test.sh')",
+    );
+    expect(profile.verify).toBe(`${profile.commands.test} && ${profile.commands.typecheck}`);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "the composed command actually runs each member in its own directory",
+    async () => {
+      const { execSync } = await import("node:child_process");
+      for (const dir of ["a", "b c"]) fs.mkdirSync(path.join(tmpDir, dir));
+      writeForgeConfig([
+        { name: "a", path: "a", testCommand: "pwd >> ../log # a trailing comment" },
+        { name: "b", path: "b c", testCommand: "pwd >> ../log" },
+      ]);
+      const profile = detectProfile(tmpDir);
+      execSync(profile.verify, { cwd: tmpDir, shell: "/bin/sh" });
+      const dirs = fs.readFileSync(path.join(tmpDir, "log"), "utf-8").trim().split("\n");
+      expect(dirs.map((d) => path.basename(d))).toEqual(["a", "b c"]);
+    },
+  );
+
+  it("a root-level stack wins over workspaces[]", () => {
+    writePackageJson(tmpDir, { scripts: { test: "vitest run" } });
+    writeForgeConfig([{ name: "x", path: "x", testCommand: "./test.sh" }]);
+    const profile = detectProfile(tmpDir);
+    expect(profile.stack).not.toBe(FORGE_WORKSPACES_STACK);
+    expect(profile.verify).not.toContain("./test.sh");
+  });
+
+  it("skips unsafe or malformed entries and ignores invalid configs", () => {
+    writeForgeConfig([
+      { name: "abs", path: "/etc", testCommand: "x" },
+      { name: "up", path: "../other", testCommand: "x" },
+      { name: "dash", path: "-", testCommand: "x" },
+      { name: "nocmd", path: "ok" },
+      "not-an-object",
+      { name: "root", path: ".", testCommand: "./test.sh" },
+    ]);
+    expect(detectProfile(tmpDir).commands.test).toBe("(sh -c './test.sh')");
+
+    fs.writeFileSync(path.join(tmpDir, "forge.config.json"), "{ not json");
+    expect(detectProfile(tmpDir).stack).toBe("unknown");
+
+    writeForgeConfig("not-an-array");
+    expect(detectProfile(tmpDir).verify).toBe("");
+  });
+});
+
+describe("detectProfile — workspaces[] gating (#187 review)", () => {
+  it("a detected root stack keeps its profile even when it yields no commands", () => {
+    writePackageJson(tmpDir); // no scripts → no commands
+    fs.writeFileSync(
+      path.join(tmpDir, "forge.config.json"),
+      JSON.stringify({ workspaces: [{ path: "x", testCommand: "./test.sh" }] }),
+    );
+    const profile = detectProfile(tmpDir);
+    expect(profile.stack).toBe("node-javascript");
+    expect(profile.verify).not.toContain("test.sh");
+  });
+
+  it("is not used when the caller will execute the result (allowDispatcherGuess: false)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "forge.config.json"),
+      JSON.stringify({ workspaces: [{ path: ".", testCommand: "true" }] }),
+    );
+    const profile = detectProfile(tmpDir, { allowDispatcherGuess: false });
+    expect(profile.stack).toBe("unknown");
+    expect(profile.verify).toBe("");
   });
 });

@@ -109,7 +109,7 @@ interface MarkerFile {
 }
 
 interface ProjectProfile {
-  stack: string; // e.g., "node-typescript", "python", "go", "unknown"
+  stack: string; // e.g., "node-typescript", "python", "go", "forge-workspaces", "unknown"
   packageManager: string | null; // "pnpm" | "npm" | "yarn" | "bun" | null
   monorepo: boolean;
   commands: ProfileCommands;
