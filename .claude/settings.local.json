@@ -46,8 +46,5 @@
       "/home/gary/workspace/agent-plugins",
       "/home/gary/workspace/feature-forge"
     ]
-  },
-  "env": {
-    "OTEL_RESOURCE_ATTRIBUTES": "host.name=grace,service.namespace=gnet-lg,project.name=rauf"
   }
 }
