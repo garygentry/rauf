@@ -207,7 +207,7 @@ rauf loop wait [path] [--backlog <dir>] [--since-seq N] [--run-id ID] [--timeout
 
 It is **narration, not a decision surface.** Decide what to do next from `rauf status --json` (see the supervision recipe); `loop wait` tells you _when_ to look.
 
-- **Significant events:** `item_completed`, `item_blocked`, `needs_human`, `llm_stuck_warning`, `commit_warning`, `review_failed`, `loop_error`, `loop_paused`, `loop_completed`, `loop_cancelled`, a weekly (`7d`) `usage_limit_hit`, and a `sleep_start` of 15 minutes or more. The firehose (spawn/exit, tool and token activity) and routine milestones (`item_selected`, short sleeps, review start/finish) are skipped.
+- **Significant events:** `item_completed`, `item_blocked`, `needs_human`, `llm_stuck_warning`, `commit_warning`, `review_failed`, `loop_error`, `loop_paused`, `loop_completed`, `loop_cancelled`, `loop_interrupted`, a weekly (`7d`) `usage_limit_hit`, and a `sleep_start` of 15 minutes or more. The firehose (spawn/exit, tool and token activity) and routine milestones (`item_selected`, short sleeps, review start/finish) are skipped.
 - **Cursor:** `--since-seq N` returns the first significant event with `seq >= N`; pass back the previous call's `nextSeq`. Without it, the wait starts at the end of the current log (new events only).
 - **Run identity:** each run restarts `events.ndjson` at seq 0, so pass back `--run-id` too (the timestamp of the run's first event). If the loop has started a new run since, that run is replayed from seq 0 instead of being skipped (`runChanged: true`). Without `--run-id`, a cursor past the end of the log is also read as a new run. A rotation during the call is caught the same way.
 - **Already ended:** if the loop has ended (not `RUNNING`/`REVIEWING`/`SLEEPING_LIMIT` and no live lock holder), the call returns at once — first any unseen significant events of the ended run, one per call, then a `■ loop ended — <STATE>` card. A live `.loop.lock` counts as running even while `state.json` still reads a previous run's ended state (the launch race).
@@ -642,6 +642,7 @@ Detect an interrupted loop and continue it from where it stopped.
 - `[path]`: project path (default: `.`)
 - Refuses with exit code 2 (USAGE) if a live loop holds the lock
 - `--answer <id> "<text>"`: inject a human's answer into a paused item and resume it. Repeatable (pass `--answer` multiple times). Each pair re-queues item `<id>` to `pending` with `humanAnswer` set and the `needsHuman`/`blockedReason` state cleared, so the relaunched loop picks it up and threads the answer into its next prompt as a `## Human's Answer to Your Previous Question` section (positioned after the task, before the backlog summary). The answer is **auto-cleared when the item completes**, so a later unrelated retry never re-injects a stale answer. This is the resolve step for an item paused by `loop run --pause-on-needs-human`.
+- `--discard-interrupted`: after a shutdown signal (state.json `interrupted`, #191), stash every uncommitted change outside rauf's bookkeeping (`git stash push --include-untracked -m "rauf: interrupted work from item <id>"`; `git stash pop` restores it) once `resume` has decided to relaunch, so the item restarts from a clean tree. Without it, `resume` **keeps** those edits: the interrupted item owns the dirty tree (as `--allow-dirty-for-item`), so the loop prefers it and it continues on top of its own work. Only an item still `pending`/`in_progress` can own it. A no-op with a warning when no item was interrupted.
 - `--recover`: when a dirty working tree with an uncommitted `in_progress` item is detected (i.e. the loop was killed after verify but before the git commit), re-run the project's verify command and, on success, commit the work as `[rauf] <id>: <title>` before relaunching. Without `--recover`, interrupted items are surfaced and `resume` exits, pointing to `rauf resume --recover` to auto-repair.
 
 **Resumable states detected:**
@@ -650,7 +651,7 @@ Detect an interrupted loop and continue it from where it stopped.
 - `paused_usage_limit`: loop halted cleanly at a usage limit with `sleepOnLimit=false`
 - `iterations_complete` (or its pre-0.11 spelling `limit_reached`): iteration budget exhausted but eligible items remain (resume gets a fresh budget)
 - `error`: circuit breaker or unexpected termination
-- `paused`, `sleeping_limit`, `weekly_limit`: interrupted sleep or graceful pause
+- `paused`, `sleeping_limit`, `weekly_limit`: interrupted sleep or graceful pause. A `paused` state with `interrupted` (#191) was stopped by a termination signal; `resume` names the signal and the item that was in flight before continuing
 - Dead lock with non-done items remaining
 
 **Steps:**

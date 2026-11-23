@@ -332,6 +332,13 @@ the like. The `⚠ <id> commit …` card names the commit and sample paths. Tell
 loop keeps going. The fix is a `.gitignore` entry plus `git rm -r --cached <dir>` (do it
 between runs, not under a live loop).
 
+**`loop_interrupted` is a shutdown, not a cancel.** When a termination signal (host shutdown,
+closed terminal, `rauf server stop`) stops the loop, rauf emits `loop_interrupted` instead of
+`loop_cancelled`. `status --json` then shows `PAUSED` with `interrupted: { signal, itemId }`.
+The named item's half-done edits are uncommitted in the tree. Tell the user what happened and
+which item, then offer `rauf resume` (keep the edits and continue the item) or
+`rauf resume --discard-interrupted` (stash them and restart it clean).
+
 ### Exit codes & status vocabulary
 
 `rauf status` and `rauf loop run` share **one unified exit-code scheme** — an agent that

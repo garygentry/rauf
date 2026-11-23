@@ -5,7 +5,13 @@ import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoopEvent, Backlog, LoopStartOptions } from "@rauf/core";
-import { EVENTS_SCHEMA_VERSION, deriveStatus, ok, resolveBacklogPaths } from "@rauf/core";
+import {
+  EVENTS_SCHEMA_VERSION,
+  defaultBacklogPaths,
+  deriveStatus,
+  ok,
+  resolveBacklogPaths,
+} from "@rauf/core";
 
 import { LoopRunner } from "./runner.js";
 import type { LoopRunnerDeps } from "./runner.js";
@@ -1235,6 +1241,74 @@ fi`,
       // DONE file should say 'cancel'
       const doneContent = fs.readFileSync(path.join(tmpDir, ".rauf", "DONE"), "utf-8");
       expect(doneContent).toBe("cancel");
+    }, 15_000);
+
+    it("records a termination signal as an interruption naming the item in flight (#191)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
+      // A half-done edit, then the agent is still working when SIGTERM lands.
+      writeMockClaude(binDir, `printf 'wip' > "${tmpDir}/half.ts"\nexec sleep 999`);
+
+      const types: string[] = [];
+      const interrupted: Extract<LoopEvent, { type: "loop_interrupted" }>[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("loop_cancelled", (e) => types.push(e.type));
+      runner.on("loop_interrupted", (e) => {
+        types.push(e.type);
+        interrupted.push(e);
+      });
+      runner.on("llm_spawned", () => setTimeout(() => runner.cancel("SIGTERM"), 300));
+
+      const result = await runner.start();
+
+      expect(result.cancelled).toBe(true);
+      expect(types).toEqual(["loop_interrupted"]);
+      expect(interrupted[0]!.signal).toBe("SIGTERM");
+      expect(interrupted[0]!.itemId).toBe("001");
+      const raufDir = path.join(tmpDir, ".rauf");
+      expect(fs.readFileSync(path.join(raufDir, "DONE"), "utf-8")).toBe(
+        "interrupted: SIGTERM item=001",
+      );
+      const state = JSON.parse(fs.readFileSync(path.join(raufDir, "state.json"), "utf-8"));
+      expect(state.status).toBe("paused");
+      expect(state.interrupted).toMatchObject({ signal: "SIGTERM", itemId: "001" });
+      const derived = deriveStatus(defaultBacklogPaths(tmpDir));
+      expect(derived.ok && derived.value.loopState).toBe("PAUSED");
+      expect(derived.ok && derived.value.interrupted?.itemId).toBe("001");
+    }, 15_000);
+
+    it("names no item when the interrupted item had already committed (#191 review)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task 1"), pendingItem("002", "Task 2")]);
+      writeMockClaude(binDir, `printf 'x' > "${tmpDir}/work.txt"\necho "RAUF_DONE"`);
+
+      const interrupted: Extract<LoopEvent, { type: "loop_interrupted" }>[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("loop_interrupted", (e) => interrupted.push(e));
+      // SIGTERM lands after 001's commit, while the iteration is still winding down.
+      runner.on("item_completed", () => runner.cancel("SIGTERM"));
+      await runner.start();
+
+      expect(interrupted).toHaveLength(1);
+      expect(interrupted[0]!.itemId).toBeNull();
+      const raufDir = path.join(tmpDir, ".rauf");
+      expect(fs.readFileSync(path.join(raufDir, "DONE"), "utf-8")).toBe("interrupted: SIGTERM");
+      const state = JSON.parse(fs.readFileSync(path.join(raufDir, "state.json"), "utf-8"));
+      expect(state.interrupted.itemId).toBeNull();
+    }, 15_000);
+
+    it("keeps a plain cancel() a user cancel: no interruption recorded (#191)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Task 1")]);
+      writeMockClaude(binDir, "exec sleep 999");
+
+      const types: string[] = [];
+      const runner = createRunner(tmpDir, DEFAULT_OPTIONS);
+      runner.on("loop_cancelled", (e) => types.push(e.type));
+      runner.on("loop_interrupted", (e) => types.push(e.type));
+      runner.on("llm_spawned", () => setTimeout(() => runner.cancel(), 100));
+      await runner.start();
+
+      expect(types).toEqual(["loop_cancelled"]);
+      const state = JSON.parse(fs.readFileSync(path.join(tmpDir, ".rauf", "state.json"), "utf-8"));
+      expect(state.interrupted).toBeUndefined();
     }, 15_000);
 
     it("checks CANCEL file at iteration boundaries", async () => {

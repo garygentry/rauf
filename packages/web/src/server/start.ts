@@ -117,9 +117,14 @@ export function startServer(options?: StartServerOptions): void {
     console.error("Failed to recover stale loops:", err);
   });
 
-  // ── Graceful shutdown on SIGTERM ──────────────────────────────
-  process.on("SIGTERM", () => {
-    console.log("SIGTERM received, shutting down loops...");
+  // ── Graceful shutdown on SIGTERM / SIGHUP ─────────────────────
+  // Loops stopped here record an interruption naming the signal and the item in
+  // flight (#191), not a user cancel. SIGHUP: the controlling terminal went away.
+  let shuttingDown = false;
+  const shutdown = (signal: "SIGTERM" | "SIGHUP") => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received, shutting down loops...`);
 
     // Clean up server state file so no stale state remains
     try {
@@ -128,9 +133,11 @@ export function startServer(options?: StartServerOptions): void {
       // Already removed — fine
     }
 
-    manager.shutdownAll().then(
+    manager.shutdownAll(signal).then(
       () => process.exit(0),
       () => process.exit(1),
     );
-  });
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGHUP", () => shutdown("SIGHUP"));
 }

@@ -858,3 +858,92 @@ describe("handleResume — allow-dirty-for-item owner detection (#115)", () => {
     expect(calls[0]!.flags.has("allow-dirty-for-item")).toBe(false);
   });
 });
+
+describe("handleResume — interrupted item (#191)", () => {
+  function writeInterruptedState(projectDir: string, itemId: string | null): void {
+    writeState(projectDir, "paused");
+    const statePath = path.join(projectDir, ".rauf", "state.json");
+    const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+    // A real paused state.json carries `error` (the shared fixture omits it).
+    state.error = null;
+    state.interrupted = { signal: "SIGTERM", itemId, at: "2026-11-23T10:00:00.000Z" };
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n");
+  }
+
+  it("keeps the interrupted item's edits by default and makes it the dirty-tree owner", async () => {
+    const projectDir = createProject([
+      item("001", "pending", { priority: 1 }),
+      item("004", "pending", { priority: 2 }),
+    ]);
+    writeInterruptedState(projectDir, "004");
+    fs.writeFileSync(path.join(projectDir, "half-done.ts"), "export const x = 1;\n");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.flags.get("allow-dirty-for-item")).toBe("004");
+    expect(fs.existsSync(path.join(projectDir, "half-done.ts"))).toBe(true);
+  });
+
+  it("does not credit an interrupted item that is no longer selectable (#191 review)", async () => {
+    const projectDir = createProject([
+      item("001", "pending", { priority: 1 }),
+      item("004", "done", { priority: 2 }),
+    ]);
+    writeInterruptedState(projectDir, "004");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(makeCtx({ args: [projectDir] }), { runLoop });
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    // Fall back to the order-based exemption (#109) instead of a done item.
+    expect(calls[0]!.flags.has("allow-dirty-for-item")).toBe(false);
+  });
+
+  it("--discard-interrupted stashes nothing when resume does not relaunch (#191 review)", async () => {
+    const projectDir = createProject([item("004", "pending"), item("005", "done")]);
+    writeInterruptedState(projectDir, "004");
+    // Make 004 ineligible so the eligibility decision exits without relaunching.
+    const backlogPath = path.join(projectDir, ".rauf", "backlog.json");
+    const backlog = JSON.parse(fs.readFileSync(backlogPath, "utf-8"));
+    backlog.items[0].status = "blocked";
+    backlog.items[0].blockedReason = "genuine";
+    fs.writeFileSync(backlogPath, JSON.stringify(backlog, null, 2) + "\n");
+    fs.writeFileSync(path.join(projectDir, "mine.ts"), "export {};\n");
+
+    const { calls, runLoop } = captureRunLoop();
+    await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["discard-interrupted", true]]) }),
+      { runLoop },
+    );
+
+    expect(calls).toHaveLength(0);
+    expect(fs.existsSync(path.join(projectDir, "mine.ts"))).toBe(true);
+  });
+
+  it("--discard-interrupted stashes the edits (recoverably) and does not credit the item", async () => {
+    const projectDir = createProject([item("004", "pending")]);
+    writeInterruptedState(projectDir, "004");
+    fs.writeFileSync(path.join(projectDir, "half-done.ts"), "export const x = 1;\n");
+
+    const { calls, runLoop } = captureRunLoop();
+    const code = await handleResume(
+      makeCtx({ args: [projectDir], flags: new Map([["discard-interrupted", true]]) }),
+      { runLoop },
+    );
+
+    expect(code).toBe(ExitCode.SUCCESS);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.flags.has("allow-dirty-for-item")).toBe(false);
+    // Not forwarded to `loop run`, which does not know the flag.
+    expect(calls[0]!.flags.has("discard-interrupted")).toBe(false);
+    expect(fs.existsSync(path.join(projectDir, "half-done.ts"))).toBe(false);
+    const stashes = execSync("git stash list", { cwd: projectDir, encoding: "utf-8" });
+    expect(stashes).toContain("rauf: interrupted work from item 004");
+    // The backlog is loop bookkeeping: never stashed.
+    expect(fs.existsSync(path.join(projectDir, ".rauf", "backlog.json"))).toBe(true);
+  });
+});

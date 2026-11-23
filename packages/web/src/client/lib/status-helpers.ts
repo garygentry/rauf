@@ -112,6 +112,11 @@ export function describeEvent(e: PersistedEvent): { label: string; detail: strin
           `#${e.itemId} · ${e.filesChanged} files` +
           (e.buildOutputCount > 0 ? ` · ${e.buildOutputCount} look like build output` : ""),
       };
+    case "loop_interrupted":
+      return {
+        label: "Loop interrupted",
+        detail: e.itemId ? `${e.signal} · #${e.itemId} edits uncommitted` : e.signal,
+      };
     default:
       return describeUnknownEvent(e);
   }

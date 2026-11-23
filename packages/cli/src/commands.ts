@@ -532,9 +532,9 @@ export const COMMANDS: CommandDef[] = [
   {
     name: "resume",
     description:
-      'Continue an interrupted loop: recover state, then relaunch from the next item. Use --answer <id> "<text>" (repeatable) to inject a human answer into a paused needs-human item and re-queue it.',
+      'Continue an interrupted loop: recover state, then relaunch from the next item. Use --answer <id> "<text>" (repeatable) to inject a human answer into a paused needs-human item and re-queue it. After a shutdown signal (state `interrupted`), the item that was in flight resumes on top of its uncommitted edits; --discard-interrupted stashes those edits first.',
     usage:
-      'rauf resume [path] [--recover] [--answer <id> "<text>"] [--backlog <dir>] [--iterations N] [--json]',
+      'rauf resume [path] [--recover] [--answer <id> "<text>"] [--discard-interrupted] [--backlog <dir>] [--iterations N] [--json]',
     handler: handleResume,
   },
   {

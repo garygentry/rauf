@@ -209,7 +209,7 @@ ignore any `type` they do not recognize, per the promise below):
 `llm_exited`, `signal_parsed`, `item_completed`, `item_blocked`,
 `item_retried`, `needs_human`, `loop_paused`, `usage_limit_hit`,
 `usage_limit_cleared`, `sleep_start`, `sleep_end`, `loop_completed`,
-`loop_error`, `loop_cancelled`, `review_started`, `review_completed`,
+`loop_error`, `loop_cancelled`, `loop_interrupted`, `review_started`, `review_completed`,
 `review_failed`, `llm_tool_activity`, `llm_token_update`,
 `llm_stuck_warning`, `commit_warning`.
 
@@ -225,6 +225,7 @@ ignore any `type` they do not recognize, per the promise below):
 | `loop_completed`    | `completedCount`, `blockedCount`, `needsHumanCount?`                                                                                                 |
 | `loop_error`        | `error`                                                                                                                                              |
 | `loop_cancelled`    | _(base fields only)_                                                                                                                                 |
+| `loop_interrupted`  | `signal`, `itemId` (`string \| null`) (#191)                                                                                                         |
 | `usage_limit_hit`   | `limitType` (`5h` \| `7d`), `utilization`, `reason?`, `consecutiveDisagreements?`                                                                    |
 | `llm_stuck_warning` | `itemId`, `silentMs`, `currentTool` (`string \| null`), `toolRunningMs` (`number \| null`)                                                           |
 | `commit_warning`    | `itemId`, `commitSha`, `filesChanged`, `reasons` (`build_output` \| `large_commit`), `buildOutputCount`, `buildOutputSample`, `fileThreshold` (#192) |
@@ -264,6 +265,16 @@ the full list is in SCHEMAS.md) or more than `options.commitWarnFileThreshold` f
 300). Deletions never count. It is advisory (the commit stands and the loop continues) and
 significant, so `loop wait` returns it as a `⚠` card. A supervisor should tell the user to fix
 `.gitignore` and untrack the files.
+
+`loop_interrupted` replaces `loop_cancelled` when a termination signal stopped the loop (#191):
+the host shut down, the terminal closed, or `rauf server stop` ran. State is `paused`, as for
+a cancel, and state.json (and `status --json`) carries `interrupted: { signal, itemId, at }`.
+DONE reads `interrupted: <SIGNAL> item=<id>`. `itemId` names the item that was in flight. It
+is back to `pending`, and its partial, unverified edits are still in the working tree.
+`itemId` is null when the signal landed between items, or after the item had already
+committed or had its work reverted. A
+supervisor must not report this as a user cancel. `rauf resume` continues the item on top
+of those edits, and `rauf resume --discard-interrupted` stashes them first.
 
 **Two gotchas a supervisor MUST account for:**
 

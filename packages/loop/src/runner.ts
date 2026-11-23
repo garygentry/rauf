@@ -5,6 +5,7 @@ import type {
   LoopStartOptions,
   LoopEvent,
   LoopState,
+  LoopInterruption,
   Backlog,
   BacklogItem,
   IterationStatus,
@@ -87,6 +88,8 @@ import {
   exactExcludePathspec,
   RUNTIME_EXCLUDE_PATHSPECS,
   DEFAULT_COMMIT_WARN_FILE_THRESHOLD,
+  stashNonLoopWork,
+  hasNonLoopWork,
 } from "./git-commit.js";
 import type { CommitDescription } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
@@ -336,6 +339,8 @@ export class LoopRunner extends TypedEventEmitter {
   private commitWarnFileThreshold = DEFAULT_COMMIT_WARN_FILE_THRESHOLD;
   /** `options.commitWarnBuildOutput` (#192): false turns off the `build_output` check. */
   private commitWarnBuildOutput = true;
+  /** Set by `cancel(signal)` (#191): the stop is an interruption, not a user cancel. */
+  private interruption: LoopInterruption | null = null;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -385,8 +390,17 @@ export class LoopRunner extends TypedEventEmitter {
     this.abortController = new AbortController();
   }
 
-  /** Trigger graceful cancellation via AbortController signal */
-  cancel(): void {
+  /**
+   * Trigger cancellation via the AbortController signal. Pass the termination
+   * signal (`"SIGTERM"`, `"SIGHUP"`) when the process is being shut down rather
+   * than cancelled by its user (#191): the stop is then recorded as an
+   * interruption (`loop_interrupted`, state `interrupted`, DONE `interrupted:`)
+   * naming the item in flight, not as a user cancel.
+   */
+  cancel(signal?: string): void {
+    if (signal && !this.interruption && !this.abortController.signal.aborted) {
+      this.interruption = { signal, itemId: this.currentItemId, at: new Date().toISOString() };
+    }
     this.abortController.abort();
   }
 
@@ -539,10 +553,7 @@ export class LoopRunner extends TypedEventEmitter {
       // (5) Main loop
       while (this.iterationCount < this.options.maxIterations) {
         if (this.isCancelled()) {
-          appendLog(this.paths, "Loop cancelled");
-          this.emitEvent("loop_cancelled", {});
-          this.writeState("paused", null);
-          writeDoneFile(this.paths, "cancel");
+          await this.recordStop("Loop cancelled");
           return {
             completedCount: this.completedCount,
             blockedCount: this.blockedCount,
@@ -602,10 +613,7 @@ export class LoopRunner extends TypedEventEmitter {
           // Cancelled during the review (between attempts or mid-sleep): the
           // same on-request stop as a main-loop cancel — `paused`, DONE
           // `cancel` — with the review still pending for `rauf resume` (#146).
-          appendLog(this.paths, "Loop cancelled during review pass (review pending)");
-          this.emitEvent("loop_cancelled", {});
-          this.writeState("paused", null);
-          writeDoneFile(this.paths, "cancel");
+          await this.recordStop("Loop cancelled during review pass (review pending)");
           return {
             completedCount: this.completedCount,
             blockedCount: this.blockedCount,
@@ -2178,59 +2186,23 @@ export class LoopRunner extends TypedEventEmitter {
    * continuing with a possibly-dirty tree. (item 009, #83)
    */
   private async revertAbandonedWork(itemId: string): Promise<Result<{ reverted: boolean }>> {
-    // Positive `.` plus exclude pathspecs so the loop's own state is never
-    // touched. Layers the shared repo-wide RUNTIME_EXCLUDE_PATHSPECS (also used
-    // by gitCommit) with this run's own state dir + backlog (+ .bak) — relative
-    // to projectPath. The shared list keeps OTHER backlog roots' `.rauf/` dirs
-    // (e.g. specs/<feature>/.rauf/ in a multi-backlog-root project) out of this
-    // stash too, fixing a drift bug where this method's own exclude list only
-    // ever covered THIS run's `.rauf/` dir. (item 019, #83)
-    const stateDirRel = path.relative(this.projectPath, this.paths.stateDir);
-    const backlogRel = path.relative(this.projectPath, this.paths.backlog);
-    const pathspecs = [
-      ".",
-      ...RUNTIME_EXCLUDE_PATHSPECS,
-      // Anchored-glob excludes, NOT literal `:(exclude)<path>`: when the backlog
-      // lives under a gitignored dir (e.g. `specs/<feature>/` with `specs/`
-      // ignored), a literal exclude makes `git stash push --include-untracked`
-      // save the stash, exit non-zero and leave the tree staged — halting the
-      // loop (#172). See exactExcludePathspec.
-      exactExcludePathspec(stateDirRel, { dir: true }),
-      exactExcludePathspec(backlogRel, { dir: false }),
-      // NB: backlog.json.bak is excluded via the shared glob
-      // `:(exclude,glob)**/backlog.json.bak` in RUNTIME_EXCLUDE_PATHSPECS. Do NOT
-      // add a literal `:(exclude)${backlogRel}.bak` here: `git stash push
-      // --include-untracked` exits non-zero when a LITERAL exclude names an
-      // existing gitignored file (the installer ignores **/backlog.json.bak, and
-      // atomicWrite always leaves one beside the backlog), which since #105 halts
-      // the whole loop even though the stash was saved (#137).
-    ];
-    try {
-      const status = await execGit(this.projectPath, ["status", "--porcelain", "--", ...pathspecs]);
-      if (status.trim() === "") {
-        // Only loop bookkeeping is dirty (normal between iterations) — nothing
-        // to revert.
-        return ok({ reverted: false });
-      }
-      await execGit(this.projectPath, [
-        "stash",
-        "push",
-        "--include-untracked",
-        "-m",
-        `rauf: abandoned work from item ${itemId}`,
-        "--",
-        ...pathspecs,
-      ]);
+    const stashed = await stashNonLoopWork(
+      this.projectPath,
+      this.paths,
+      `rauf: abandoned work from item ${itemId}`,
+    );
+    if (!stashed.ok) {
+      const message = `Failed to revert dirty tree after item ${itemId}: ${stashed.error.message}`;
+      appendLog(this.paths, message);
+      return err({ code: ErrorCodes.CONFLICT, message });
+    }
+    if (stashed.value.stashed) {
       appendLog(
         this.paths,
         `Reverted dirty working tree after item ${itemId} (stashed abandoned uncommitted work)`,
       );
-      return ok({ reverted: true });
-    } catch (e) {
-      const message = `Failed to revert dirty tree after item ${itemId}: ${e instanceof Error ? e.message : String(e)}`;
-      appendLog(this.paths, message);
-      return err({ code: ErrorCodes.CONFLICT, message });
     }
+    return ok({ reverted: stashed.value.stashed });
   }
 
   // ─── Private helpers ──────────────────────────────────────────────
@@ -2358,6 +2330,47 @@ export class LoopRunner extends TypedEventEmitter {
     void appendEvent(this.paths, record);
   }
 
+  /**
+   * The one place a cancelled run records its stop. A user cancel (CANCEL file,
+   * Ctrl+C, `loop stop`) is `loop_cancelled` + DONE `cancel`. A termination
+   * signal (#191) is `loop_interrupted` + DONE `interrupted: <SIG> item=<id>`,
+   * and state.json carries `interrupted` so `rauf resume` can find the item
+   * whose partial edits were left uncommitted. Both leave state `paused`
+   * (an interrupted usage sleep too, so resume sees the interruption).
+   *
+   * The item recorded at signal time is re-checked here: it may have committed,
+   * or had its work reverted, before the iteration wound down. It is named only
+   * while it is still unfinished (`pending`/`in_progress`) and the tree outside
+   * loop bookkeeping is actually dirty; otherwise `itemId` is null.
+   */
+  private async recordStop(message: string, opts: { writeState?: boolean } = {}): Promise<void> {
+    let intr = this.interruption;
+    if (intr?.itemId) {
+      const backlog = readBacklog(this.paths);
+      const status = backlog.ok
+        ? backlog.value.items.find((i) => i.id === intr!.itemId)?.status
+        : undefined;
+      const unfinished = status === "pending" || status === "in_progress";
+      if (!unfinished || !(await hasNonLoopWork(this.projectPath, this.paths))) {
+        intr = { ...intr, itemId: null };
+        this.interruption = intr;
+      }
+    }
+    if (intr) {
+      const item = intr.itemId ? ` while item ${intr.itemId} was in flight` : "";
+      appendLog(this.paths, `${message}: interrupted by ${intr.signal}${item}`);
+      this.emitEvent("loop_interrupted", { signal: intr.signal, itemId: intr.itemId });
+    } else {
+      appendLog(this.paths, message);
+      this.emitEvent("loop_cancelled", {});
+    }
+    if (opts.writeState !== false || intr) this.writeState("paused", null);
+    writeDoneFile(
+      this.paths,
+      intr ? `interrupted: ${intr.signal}${intr.itemId ? ` item=${intr.itemId}` : ""}` : "cancel",
+    );
+  }
+
   /** Write state.json via core helper */
   private writeState(
     status: LoopState["status"],
@@ -2390,6 +2403,7 @@ export class LoopRunner extends TypedEventEmitter {
       ...(this.reviewPending
         ? { reviewPending: true, reviewItemIds: this.reviewItemIds ?? [] }
         : {}),
+      ...(this.interruption && status === "paused" ? { interrupted: this.interruption } : {}),
     });
     // Advisory registry refresh (REQ-OBS-02). state.json (just written) stays
     // authoritative; this keeps the cross-root summary's status roughly current.
@@ -2559,9 +2573,7 @@ export class LoopRunner extends TypedEventEmitter {
     this.emitEvent("sleep_end", {});
     appendLog(this.paths, "Woke from usage limit sleep");
     if (this.isCancelled()) {
-      appendLog(this.paths, "Loop cancelled during sleep");
-      this.emitEvent("loop_cancelled", {});
-      writeDoneFile(this.paths, "cancel");
+      await this.recordStop("Loop cancelled during sleep", { writeState: false });
       return "exit";
     }
     return "continue";
@@ -2864,10 +2876,7 @@ export class LoopRunner extends TypedEventEmitter {
   private async checkBetweenIterations(checkUsage: boolean): Promise<"continue" | "exit"> {
     // Check cancellation (NOT gated — orthogonal to usage)
     if (this.isCancelled()) {
-      appendLog(this.paths, "Loop cancelled between iterations");
-      this.emitEvent("loop_cancelled", {});
-      this.writeState("paused", null);
-      writeDoneFile(this.paths, "cancel");
+      await this.recordStop("Loop cancelled between iterations");
       return "exit";
     }
 

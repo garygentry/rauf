@@ -84,6 +84,7 @@ export function eventAltitude(ev: PersistedEvent): EventAltitude {
     case "loop_completed":
     case "loop_error":
     case "loop_cancelled":
+    case "loop_interrupted":
     case "review_started":
     case "review_completed":
     case "review_failed":

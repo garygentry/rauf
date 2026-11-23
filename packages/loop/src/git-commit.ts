@@ -208,3 +208,77 @@ export async function describeCommit(
     return null;
   }
 }
+
+/**
+ * Stash every uncommitted change except the loop's own bookkeeping (anything
+ * under a `.rauf/` dir, this backlog and its `.bak`), as a recoverable stash
+ * named `message`. Used to revert an abandoned iteration (item 009, #83) and by
+ * `rauf resume --discard-interrupted` for an interrupted item's edits (#191).
+ *
+ * Positive `.` plus exclude pathspecs: the shared RUNTIME_EXCLUDE_PATHSPECS
+ * (which also keep OTHER backlog roots' `.rauf/` dirs out, item 019) plus this
+ * backlog's state dir and file. Those two are anchored-glob excludes, NOT
+ * literal `:(exclude)<path>`: under a gitignored dir (a backlog at
+ * `specs/<feature>/` with `specs/` ignored), a literal exclude makes
+ * `git stash push --include-untracked` save the stash, exit non-zero and leave
+ * the tree staged (#172). Likewise never add a literal `backlog.json.bak`
+ * exclude: the shared glob covers it, and a literal one naming an existing
+ * ignored file fails the same way (#137).
+ *
+ * Returns `ok({ stashed: false })` when only bookkeeping is dirty, and `err`
+ * when git status/stash fails.
+ */
+/** The pathspecs selecting every path except loop bookkeeping (see stashNonLoopWork). */
+function nonLoopPathspecs(projectPath: string, paths: { stateDir: string; backlog: string }) {
+  return [
+    ".",
+    ...RUNTIME_EXCLUDE_PATHSPECS,
+    exactExcludePathspec(path.relative(projectPath, paths.stateDir), { dir: true }),
+    exactExcludePathspec(path.relative(projectPath, paths.backlog), { dir: false }),
+  ];
+}
+
+/**
+ * Whether anything outside loop bookkeeping is uncommitted (#191). Best-effort:
+ * a git failure reads as "not dirty".
+ */
+export async function hasNonLoopWork(
+  projectPath: string,
+  paths: { stateDir: string; backlog: string },
+): Promise<boolean> {
+  try {
+    const status = await execGit(projectPath, [
+      "status",
+      "--porcelain",
+      "--",
+      ...nonLoopPathspecs(projectPath, paths),
+    ]);
+    return status.trim() !== "";
+  } catch {
+    return false;
+  }
+}
+
+export async function stashNonLoopWork(
+  projectPath: string,
+  paths: { stateDir: string; backlog: string },
+  message: string,
+): Promise<Result<{ stashed: boolean }>> {
+  const pathspecs = nonLoopPathspecs(projectPath, paths);
+  try {
+    const status = await execGit(projectPath, ["status", "--porcelain", "--", ...pathspecs]);
+    if (status.trim() === "") return ok({ stashed: false });
+    await execGit(projectPath, [
+      "stash",
+      "push",
+      "--include-untracked",
+      "-m",
+      message,
+      "--",
+      ...pathspecs,
+    ]);
+    return ok({ stashed: true });
+  } catch (e) {
+    return err({ code: ErrorCodes.CONFLICT, message: e instanceof Error ? e.message : String(e) });
+  }
+}
