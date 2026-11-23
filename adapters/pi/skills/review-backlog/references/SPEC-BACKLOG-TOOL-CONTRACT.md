@@ -258,11 +258,12 @@ so events persisted by pre-#141 runners still parse. `llm_tool_activity` also ga
 plain-text presets and `generic-cli`) never report a tool in flight and keep the plain
 silence threshold. See [SCHEMAS.md](./SCHEMAS.md) for per-agent tool boundaries.
 
-`commit_warning` follows an item's `item_completed` when that item's commit holds build output
-(`obj/`, `node_modules/`, `dist/`, a .NET `bin/Debug|Release/` tree, `*.dll`, …) or touches
-more than `options.commitWarnFileThreshold` files (default 300). It is advisory (the commit
-stands and the loop continues) and significant, so `loop wait` returns it as a `⚠` card. A
-supervisor should tell the user to fix `.gitignore` and untrack the files (SCHEMAS.md).
+`commit_warning` follows an item's `item_completed` when that item's commit adds or modifies
+build output (`obj/`, `node_modules/`, `dist/`, a .NET `bin/…/Debug|Release/` tree, `*.dll`, …;
+the full list is in SCHEMAS.md) or more than `options.commitWarnFileThreshold` files (default
+300). Deletions never count. It is advisory (the commit stands and the loop continues) and
+significant, so `loop wait` returns it as a `⚠` card. A supervisor should tell the user to fix
+`.gitignore` and untrack the files.
 
 **Two gotchas a supervisor MUST account for:**
 

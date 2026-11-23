@@ -172,6 +172,12 @@ export const MarkerOptionsSchema = z
      * (reason `large_commit`). Default 300. (#192)
      */
     commitWarnFileThreshold: z.number().int().positive().optional(),
+    /**
+     * Set false to turn off the `build_output` reason of `commit_warning`, for a
+     * project that commits build output on purpose (e.g. a JavaScript GitHub
+     * Action's `dist/`). `large_commit` still applies. Default true. (#192)
+     */
+    commitWarnBuildOutput: z.boolean().optional(),
   })
   .superRefine((options, ctx) => {
     if (options.provider === "copilot" && options.providerConfig !== undefined) {
@@ -774,6 +780,7 @@ const CommitWarningSchema = LoopEventBaseSchema.extend({
   itemId: z.string(),
   /** Full sha of the item's commit. */
   commitSha: z.string(),
+  /** Files the commit adds or modifies (deletions are not counted). */
   filesChanged: z.number().int().nonnegative(),
   /** Why it fired; at least one entry. */
   reasons: z.array(z.enum(["build_output", "large_commit"])).min(1),

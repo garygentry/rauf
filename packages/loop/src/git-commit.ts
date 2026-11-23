@@ -116,8 +116,14 @@ function isNothingToCommit(e: unknown): boolean {
 /** A commit's full sha, how many files it touched, and which look like build output. */
 export interface CommitDescription {
   sha: string;
+  /** Every path the commit touches, deletions included (the card's file count). */
   filesChanged: number;
-  /** Committed paths matching {@link isBuildOutputPath} (#192), in commit order. */
+  /** Paths the commit adds or modifies, i.e. not deletions (#192). */
+  filesWritten: number;
+  /**
+   * Added or modified paths matching {@link isBuildOutputPath} (#192), in commit
+   * order. Deletions are excluded: `git rm -r --cached obj/` is the fix, not the fault.
+   */
   buildOutputPaths: string[];
 }
 
@@ -142,21 +148,21 @@ const BUILD_OUTPUT_DIRS = new Set([
 ]);
 
 /** File extensions that are compiled artifacts, never source. */
-const BUILD_OUTPUT_EXTENSIONS = /\.(dll|pdb|exe|pyc|pyo|class|o|obj|so|dylib|tsbuildinfo)$/i;
+const BUILD_OUTPUT_EXTENSIONS = /\.(dll|pdb|exe|pyc|pyo|class|o|so|dylib|tsbuildinfo)$/i;
 
 /**
  * Whether a repo-relative path looks like build output (#192): a path under a
- * well-known output/deps directory, a .NET `bin/Debug|Release/` tree (a bare
- * `bin/` is often hand-written scripts, so it alone is not flagged), or a
- * compiled-artifact extension. A heuristic for a warning, not a filter.
+ * well-known output/deps directory, a .NET `bin/…/Debug|Release/` tree
+ * (`bin/Debug/`, `bin/x64/Release/`; a bare `bin/` is often hand-written
+ * scripts, so it alone is not flagged), or a compiled-artifact extension. A
+ * heuristic for an advisory warning, not a filter.
  */
 export function isBuildOutputPath(relPath: string): boolean {
   const segments = relPath.split("/");
   const dirs = segments.slice(0, -1);
   if (dirs.some((d) => BUILD_OUTPUT_DIRS.has(d))) return true;
-  for (let i = 0; i < dirs.length - 1; i++) {
-    if (dirs[i] === "bin" && /^(debug|release)$/i.test(dirs[i + 1] ?? "")) return true;
-  }
+  const bin = dirs.indexOf("bin");
+  if (bin !== -1 && dirs.slice(bin + 1).some((d) => /^(debug|release)$/i.test(d))) return true;
   return BUILD_OUTPUT_EXTENSIONS.test(segments[segments.length - 1] ?? "");
 }
 
@@ -171,13 +177,32 @@ export async function describeCommit(
   ref: string,
 ): Promise<CommitDescription | null> {
   try {
-    const stdout = await execGit(projectPath, ["show", "--name-only", "--format=%H", ref, "--"]);
-    const [sha, ...files] = stdout.split("\n").filter((l) => l.trim() !== "");
+    // core.quotePath=false: git would otherwise C-quote a non-ASCII path
+    // ("obj/caf\303\251.json"), hiding its segments from isBuildOutputPath.
+    const stdout = await execGit(projectPath, [
+      "-c",
+      "core.quotePath=false",
+      "show",
+      "--name-status",
+      "--format=%H",
+      ref,
+      "--",
+    ]);
+    const [sha, ...rows] = stdout.split("\n").filter((l) => l.trim() !== "");
     if (!sha || !/^[0-9a-f]{7,64}$/.test(sha.trim())) return null;
+    // Each row is `<status>\t<path>` (or `R100\t<old>\t<new>` for a rename/copy).
+    const written: string[] = [];
+    for (const row of rows) {
+      const fields = row.split("\t");
+      const status = fields[0] ?? "";
+      const file = fields[fields.length - 1] ?? "";
+      if (!status.startsWith("D")) written.push(file);
+    }
     return {
       sha: sha.trim(),
-      filesChanged: files.length,
-      buildOutputPaths: files.filter(isBuildOutputPath),
+      filesChanged: rows.length,
+      filesWritten: written.length,
+      buildOutputPaths: written.filter(isBuildOutputPath),
     };
   } catch {
     return null;

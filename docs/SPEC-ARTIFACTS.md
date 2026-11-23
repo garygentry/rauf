@@ -182,7 +182,9 @@ MarkerOptions fields:
 - `stuckThresholdMs?: number`: default `300000`. Must be a positive integer.
 - `toolStuckThresholdMs?: number`: default `1800000`. Must be a positive integer.
 - `commitWarnFileThreshold?: number`: default `300`. Must be a positive integer. A per-item
-  commit touching more files emits `commit_warning` (#192; see SCHEMAS.md).
+  commit adding or modifying more files emits `commit_warning` (#192; see SCHEMAS.md).
+- `commitWarnBuildOutput?: boolean`: default `true`. `false` turns off `commit_warning`'s
+  `build_output` reason, for a project that commits build output on purpose.
 
 ### Graceful Cancel
 

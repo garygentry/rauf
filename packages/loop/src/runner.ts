@@ -334,6 +334,8 @@ export class LoopRunner extends TypedEventEmitter {
   };
   /** `options.commitWarnFileThreshold` (#192), read once at loop start. */
   private commitWarnFileThreshold = DEFAULT_COMMIT_WARN_FILE_THRESHOLD;
+  /** `options.commitWarnBuildOutput` (#192): false turns off the `build_output` check. */
+  private commitWarnBuildOutput = true;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -472,6 +474,7 @@ export class LoopRunner extends TypedEventEmitter {
         };
         this.commitWarnFileThreshold =
           opts.commitWarnFileThreshold ?? DEFAULT_COMMIT_WARN_FILE_THRESHOLD;
+        this.commitWarnBuildOutput = opts.commitWarnBuildOutput ?? true;
       }
       // Read the global default agent once (ToolConfig.defaultProvider, schemas.ts:222).
       // Hoisted out of the iteration loop — it does not vary per item.
@@ -2307,22 +2310,25 @@ export class LoopRunner extends TypedEventEmitter {
    * commit stands; we warn rather than rewrite history the agent may build on.
    */
   private maybeEmitCommitWarning(itemId: string, commit: CommitDescription): void {
+    // Deletions are ignored throughout: a commit that untracks build output
+    // (`git rm -r --cached obj/`) is the cleanup, so it must not warn.
+    const buildOutput = this.commitWarnBuildOutput ? commit.buildOutputPaths : [];
     const reasons: ("build_output" | "large_commit")[] = [];
-    if (commit.buildOutputPaths.length > 0) reasons.push("build_output");
-    if (commit.filesChanged > this.commitWarnFileThreshold) reasons.push("large_commit");
+    if (buildOutput.length > 0) reasons.push("build_output");
+    if (commit.filesWritten > this.commitWarnFileThreshold) reasons.push("large_commit");
     if (reasons.length === 0) return;
     appendLog(
       this.paths,
-      `Commit warning for ${itemId}: ${commit.filesChanged} files, ` +
-        `${commit.buildOutputPaths.length} look like build output`,
+      `Commit warning for ${itemId}: ${commit.filesWritten} files added/modified, ` +
+        `${buildOutput.length} look like build output`,
     );
     this.emitEvent("commit_warning", {
       itemId,
       commitSha: commit.sha,
-      filesChanged: commit.filesChanged,
+      filesChanged: commit.filesWritten,
       reasons,
-      buildOutputCount: commit.buildOutputPaths.length,
-      buildOutputSample: commit.buildOutputPaths.slice(0, 5),
+      buildOutputCount: buildOutput.length,
+      buildOutputSample: buildOutput.slice(0, 5),
       fileThreshold: this.commitWarnFileThreshold,
     });
   }

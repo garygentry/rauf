@@ -138,7 +138,8 @@ interface MarkerOptions {
   acknowledgeEmptyVerify?: boolean; // Silence the "no global verification commands configured" launch warning when the project verifies per item via each backlog item's acceptanceCriteria. Only suppresses that warning; a stale/misconfigured dispatcher command still warns. Default: false.
   stuckThresholdMs?: number; // Ms of stream silence before `llm_stuck_warning`; always required, tool or not. Positive integer. Default: 300000 (5 min).
   toolStuckThresholdMs?: number; // Runtime ceiling for a quiet in-flight tool call: until the oldest one has run this long (measured from its start), silence does not raise `llm_stuck_warning`. Positive integer. Default: 1800000 (30 min).
-  commitWarnFileThreshold?: number; // A per-item commit touching more files than this emits `commit_warning` (reason `large_commit`). Positive integer. Default: 300.
+  commitWarnFileThreshold?: number; // A per-item commit adding or modifying more files than this emits `commit_warning` (reason `large_commit`). Positive integer. Default: 300.
+  commitWarnBuildOutput?: boolean; // false turns off the `build_output` reason of `commit_warning`, for a project that commits build output on purpose. Default: true.
 }
 ```
 
@@ -635,7 +636,7 @@ type LoopEvent =
       projectPath: string;
       itemId: string;
       commitSha: string; // full sha of the item's commit
-      filesChanged: number;
+      filesChanged: number; // files the commit adds or modifies (deletions not counted)
       reasons: ("build_output" | "large_commit")[]; // at least one
       buildOutputCount: number; // committed paths that look like build output
       buildOutputSample: string[]; // up to 5 of them
@@ -645,14 +646,16 @@ type LoopEvent =
 
 **`commit_warning` (#192).** The per-item commit stages everything (`git add -A`), so a
 project with no stack ignore rules commits its build output. Right after an item's
-`item_completed`, the runner checks that commit: `build_output` when any path is under
-`obj/`, `node_modules/`, `dist/`, `target/`, `__pycache__/`, `.next/`, `.turbo/`, or a .NET
-`bin/Debug|Release/` tree, or has a compiled-artifact extension (`.dll`, `.pdb`, `.exe`,
-`.pyc`, `.class`, `.o`, `.so`, `.dylib`, `.tsbuildinfo`); `large_commit` when it touches more
-than `options.commitWarnFileThreshold` files (default 300). It is advisory: the commit has
-landed and the loop keeps going. Fix the `.gitignore`, then remove the files from the index
-(`git rm -r --cached <dir>`) in a follow-up commit. A bare `bin/` is not flagged, since it
-often holds hand-written scripts.
+`item_completed`, the runner checks the paths that commit **adds or modifies** (deletions are
+ignored, so untracking build output never warns). `build_output` fires when any is under
+`obj/`, `node_modules/`, `dist/`, `target/`, `__pycache__/`, `.next/`, `.turbo/`, `.pytest_cache/`, `.mypy_cache/`, or a .NET `bin/…/Debug|Release/` tree (`bin/Debug/`, `bin/x64/Release/`), or has a
+compiled-artifact extension (`.dll`, `.pdb`, `.exe`, `.pyc`, `.pyo`, `.class`, `.o`, `.so`, `.dylib`, `.tsbuildinfo`). `large_commit` fires when it adds or modifies more than
+`options.commitWarnFileThreshold` files (default 300); the event's `filesChanged` is that
+count. A bare `bin/` is not flagged, since it often holds hand-written scripts. The check is a
+heuristic and the warning is advisory: the commit has landed and the loop keeps going. Fix the
+`.gitignore`, then untrack the files (`git rm -r --cached <dir>`) in a follow-up commit. A
+project that commits build output on purpose (a JavaScript GitHub Action's `dist/`) sets
+`options.commitWarnBuildOutput: false`.
 
 **`usage_limit_hit` provenance (#146).** Without `reason`, the limit was confirmed by the
 usage API, or taken on the banner alone because no OAuth token was available.

@@ -344,6 +344,25 @@ echo "RAUF_DONE"`,
       expect(w.fileThreshold).toBe(300);
     });
 
+    it("skips the build_output check under options.commitWarnBuildOutput: false (#192)", async () => {
+      setupProject(tmpDir, [pendingItem("001", "Build action")], {
+        markerOptions: { commitWarnBuildOutput: false },
+      });
+      writeMockClaude(
+        binDir,
+        `mkdir -p "${tmpDir}/dist"
+printf 'x' > "${tmpDir}/dist/index.js"
+echo "RAUF_DONE"`,
+      );
+
+      const warnings: LoopEvent[] = [];
+      const runner = createRunner(tmpDir, { ...DEFAULT_OPTIONS, maxIterations: 1 });
+      runner.on("commit_warning", (e) => warnings.push(e));
+      await runner.start();
+
+      expect(warnings).toHaveLength(0);
+    });
+
     it("emits commit_warning large_commit past options.commitWarnFileThreshold, and none below it (#192)", async () => {
       setupProject(tmpDir, [pendingItem("001", "Many"), pendingItem("002", "Few")], {
         markerOptions: { commitWarnFileThreshold: 3 },
