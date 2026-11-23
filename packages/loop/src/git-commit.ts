@@ -113,15 +113,57 @@ function isNothingToCommit(e: unknown): boolean {
   return msg.includes("nothing to commit") || stdout.includes("nothing to commit");
 }
 
-/** A commit's full sha and how many files it touched. */
+/** A commit's full sha, how many files it touched, and which look like build output. */
 export interface CommitDescription {
   sha: string;
   filesChanged: number;
+  /** Committed paths matching {@link isBuildOutputPath} (#192), in commit order. */
+  buildOutputPaths: string[];
 }
 
 /**
- * Resolve `ref` (a full or abbreviated sha) to its full sha and file count, for
- * the item_completed supervision card (#153). One `git show --name-only` call.
+ * Default `options.commitWarnFileThreshold` (#192): a per-item commit touching
+ * more files than this is flagged `large_commit`. A scaffold item with a
+ * lockfile stays well under it; a committed build tree does not.
+ */
+export const DEFAULT_COMMIT_WARN_FILE_THRESHOLD = 300;
+
+/** Directory segments that only ever hold generated build output or installed deps. */
+const BUILD_OUTPUT_DIRS = new Set([
+  "obj",
+  "node_modules",
+  "dist",
+  "target",
+  "__pycache__",
+  ".next",
+  ".turbo",
+  ".pytest_cache",
+  ".mypy_cache",
+]);
+
+/** File extensions that are compiled artifacts, never source. */
+const BUILD_OUTPUT_EXTENSIONS = /\.(dll|pdb|exe|pyc|pyo|class|o|obj|so|dylib|tsbuildinfo)$/i;
+
+/**
+ * Whether a repo-relative path looks like build output (#192): a path under a
+ * well-known output/deps directory, a .NET `bin/Debug|Release/` tree (a bare
+ * `bin/` is often hand-written scripts, so it alone is not flagged), or a
+ * compiled-artifact extension. A heuristic for a warning, not a filter.
+ */
+export function isBuildOutputPath(relPath: string): boolean {
+  const segments = relPath.split("/");
+  const dirs = segments.slice(0, -1);
+  if (dirs.some((d) => BUILD_OUTPUT_DIRS.has(d))) return true;
+  for (let i = 0; i < dirs.length - 1; i++) {
+    if (dirs[i] === "bin" && /^(debug|release)$/i.test(dirs[i + 1] ?? "")) return true;
+  }
+  return BUILD_OUTPUT_EXTENSIONS.test(segments[segments.length - 1] ?? "");
+}
+
+/**
+ * Resolve `ref` (a full or abbreviated sha) to its full sha, file count and
+ * build-output paths, for the item_completed card (#153) and commit_warning
+ * (#192). One `git show --name-only` call.
  * Best-effort: returns null on any git failure — the card just omits the fields.
  */
 export async function describeCommit(
@@ -132,7 +174,11 @@ export async function describeCommit(
     const stdout = await execGit(projectPath, ["show", "--name-only", "--format=%H", ref, "--"]);
     const [sha, ...files] = stdout.split("\n").filter((l) => l.trim() !== "");
     if (!sha || !/^[0-9a-f]{7,64}$/.test(sha.trim())) return null;
-    return { sha: sha.trim(), filesChanged: files.length };
+    return {
+      sha: sha.trim(),
+      filesChanged: files.length,
+      buildOutputPaths: files.filter(isBuildOutputPath),
+    };
   } catch {
     return null;
   }

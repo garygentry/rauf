@@ -167,6 +167,11 @@ export const MarkerOptionsSchema = z
      * stream activity never extends it. Default 1800000 (30 minutes). (#141)
      */
     toolStuckThresholdMs: z.number().int().positive().optional(),
+    /**
+     * A per-item commit touching more files than this emits `commit_warning`
+     * (reason `large_commit`). Default 300. (#192)
+     */
+    commitWarnFileThreshold: z.number().int().positive().optional(),
   })
   .superRefine((options, ctx) => {
     if (options.provider === "copilot" && options.providerConfig !== undefined) {
@@ -758,6 +763,28 @@ const LlmStuckWarningSchema = LoopEventBaseSchema.extend({
   toolRunningMs: z.number().nonnegative().nullable().optional(),
 });
 
+/**
+ * A per-item commit that looks wrong (#192): it committed build output
+ * (`bin/Debug/`, `obj/`, `node_modules/`, `*.dll`, …) or more files than
+ * `options.commitWarnFileThreshold`. Advisory: the commit has already landed
+ * and the loop keeps going. Emitted right after the item's `item_completed`.
+ */
+const CommitWarningSchema = LoopEventBaseSchema.extend({
+  type: z.literal("commit_warning"),
+  itemId: z.string(),
+  /** Full sha of the item's commit. */
+  commitSha: z.string(),
+  filesChanged: z.number().int().nonnegative(),
+  /** Why it fired; at least one entry. */
+  reasons: z.array(z.enum(["build_output", "large_commit"])).min(1),
+  /** How many committed paths look like build output (0 when only `large_commit`). */
+  buildOutputCount: z.number().int().nonnegative(),
+  /** Up to 5 of those paths, for the card. */
+  buildOutputSample: z.array(z.string()),
+  /** The `large_commit` threshold in force. */
+  fileThreshold: z.number().int().positive(),
+});
+
 export const LoopEventSchema = z.discriminatedUnion("type", [
   LoopStartedSchema,
   IterationStartSchema,
@@ -783,6 +810,7 @@ export const LoopEventSchema = z.discriminatedUnion("type", [
   LlmToolActivitySchema,
   LlmTokenUpdateSchema,
   LlmStuckWarningSchema,
+  CommitWarningSchema,
 ]);
 
 // ─── PersistedEvent (events.ndjson) ──────────────────────────────

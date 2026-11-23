@@ -86,7 +86,9 @@ import {
   describeCommit,
   exactExcludePathspec,
   RUNTIME_EXCLUDE_PATHSPECS,
+  DEFAULT_COMMIT_WARN_FILE_THRESHOLD,
 } from "./git-commit.js";
+import type { CommitDescription } from "./git-commit.js";
 import { findItemCommit, isTreeClean } from "./git-reconcile.js";
 import { execGit } from "./git-exec.js";
 import { resolveChildEnv } from "./review-hooks.js";
@@ -330,6 +332,8 @@ export class LoopRunner extends TypedEventEmitter {
     stuckThresholdMs: DEFAULT_STUCK_THRESHOLD_MS,
     toolStuckThresholdMs: DEFAULT_TOOL_STUCK_THRESHOLD_MS,
   };
+  /** `options.commitWarnFileThreshold` (#192), read once at loop start. */
+  private commitWarnFileThreshold = DEFAULT_COMMIT_WARN_FILE_THRESHOLD;
 
   /**
    * Create a new LoopRunner for the given project and options.
@@ -466,6 +470,8 @@ export class LoopRunner extends TypedEventEmitter {
           stuckThresholdMs: opts.stuckThresholdMs ?? DEFAULT_STUCK_THRESHOLD_MS,
           toolStuckThresholdMs: opts.toolStuckThresholdMs ?? DEFAULT_TOOL_STUCK_THRESHOLD_MS,
         };
+        this.commitWarnFileThreshold =
+          opts.commitWarnFileThreshold ?? DEFAULT_COMMIT_WARN_FILE_THRESHOLD;
       }
       // Read the global default agent once (ToolConfig.defaultProvider, schemas.ts:222).
       // Hoisted out of the iteration loop — it does not vary per item.
@@ -2290,6 +2296,34 @@ export class LoopRunner extends TypedEventEmitter {
           }
         : {}),
       ...(summary ? { summary } : {}),
+    });
+    if (commit) this.maybeEmitCommitWarning(item.id, commit);
+  }
+
+  /**
+   * #192: the per-item commit is `git add -A`, so a project without stack ignore
+   * rules commits its build output. Flag it (and any oversized commit) with an
+   * advisory commit_warning — a significant event, so `loop wait` cards it. The
+   * commit stands; we warn rather than rewrite history the agent may build on.
+   */
+  private maybeEmitCommitWarning(itemId: string, commit: CommitDescription): void {
+    const reasons: ("build_output" | "large_commit")[] = [];
+    if (commit.buildOutputPaths.length > 0) reasons.push("build_output");
+    if (commit.filesChanged > this.commitWarnFileThreshold) reasons.push("large_commit");
+    if (reasons.length === 0) return;
+    appendLog(
+      this.paths,
+      `Commit warning for ${itemId}: ${commit.filesChanged} files, ` +
+        `${commit.buildOutputPaths.length} look like build output`,
+    );
+    this.emitEvent("commit_warning", {
+      itemId,
+      commitSha: commit.sha,
+      filesChanged: commit.filesChanged,
+      reasons,
+      buildOutputCount: commit.buildOutputPaths.length,
+      buildOutputSample: commit.buildOutputPaths.slice(0, 5),
+      fileThreshold: this.commitWarnFileThreshold,
     });
   }
 

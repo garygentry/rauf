@@ -181,6 +181,8 @@ MarkerOptions fields:
 
 - `stuckThresholdMs?: number`: default `300000`. Must be a positive integer.
 - `toolStuckThresholdMs?: number`: default `1800000`. Must be a positive integer.
+- `commitWarnFileThreshold?: number`: default `300`. Must be a positive integer. A per-item
+  commit touching more files emits `commit_warning` (#192; see SCHEMAS.md).
 
 ### Graceful Cancel
 

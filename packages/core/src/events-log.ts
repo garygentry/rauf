@@ -88,6 +88,7 @@ export function eventAltitude(ev: PersistedEvent): EventAltitude {
     case "review_completed":
     case "review_failed":
     case "llm_stuck_warning":
+    case "commit_warning":
       return "item";
     default: {
       // Compile-time exhaustiveness: a new LoopEvent type without a case fails

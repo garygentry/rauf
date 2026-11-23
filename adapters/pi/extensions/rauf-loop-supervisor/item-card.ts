@@ -82,6 +82,7 @@ export function isSignificantEvent(ev: CardEvent): boolean {
     case "item_blocked":
     case "needs_human":
     case "llm_stuck_warning":
+    case "commit_warning":
     case "review_failed":
     case "loop_completed":
     case "loop_error":
@@ -168,6 +169,24 @@ export function formatItemCard(ev: ItemCompletedEvent, progress?: CardProgress):
   return [summary ? `${head} — ${summary}` : head, ...tail].join(" · ");
 }
 
+/**
+ * The body of a commit_warning card (#192), after `⚠ <itemId> commit `, e.g.
+ * `abc1234: 877 of 905 files look like build output (bin/Debug/a.dll, obj/x, …) — add them to .gitignore`
+ * or `abc1234: 412 files (over 300)`. Shared so every surface words it the same way.
+ */
+export function commitWarningDetail(ev: Extract<CardEvent, { type: "commit_warning" }>): string {
+  const sha = ev.commitSha.slice(0, 7);
+  if (ev.reasons.includes("build_output")) {
+    const shown = ev.buildOutputSample.slice(0, 2).map((s: string) => clip(s, 60));
+    const more = ev.buildOutputCount > shown.length ? ", …" : "";
+    return (
+      `${sha}: ${ev.buildOutputCount} of ${ev.filesChanged} files look like build output ` +
+      `(${shown.join(", ")}${more}) — add them to .gitignore`
+    );
+  }
+  return `${sha}: ${ev.filesChanged} files (over ${ev.fileThreshold})`;
+}
+
 // ─── formatSupervisionCard ──────────────────────────────────────
 
 /**
@@ -196,6 +215,8 @@ export function formatSupervisionCard(ev: CardEvent, progress?: CardProgress): s
           : "";
       return `${p}⚠ ${ev.itemId} stuck — silent ${formatCardDuration(ev.silentMs)}${tool}`;
     }
+    case "commit_warning":
+      return `${p}⚠ ${ev.itemId} commit ${commitWarningDetail(ev)}`;
     case "review_failed":
       return `${p}✗ review failed — ${clip(ev.reason)}`;
     case "usage_limit_hit":
