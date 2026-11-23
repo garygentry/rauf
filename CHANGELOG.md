@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.20.0
+
 ### Fixed
 
 - **rauf warns when an item's commit holds build output (#192).** The per-item commit stages everything (`git add -A`), so a fresh .NET solution with no `bin/`/`obj/` ignore rules committed 877 build files in its first item without a word. After each item's commit, rauf now checks the paths the commit adds or modifies. Paths under `obj/`, `node_modules/`, `dist/`, `target/`, `__pycache__/`, `.next/`, `.turbo/`, `.pytest_cache/`, `.mypy_cache/` or a .NET `bin/…/Debug|Release/` tree, and compiled artifacts (`.dll`, `.pdb`, `.exe`, `.pyc`, `.pyo`, `.class`, `.o`, `.so`, `.dylib`, `.tsbuildinfo`), produce a `commit_warning` event, as does a commit adding or modifying more than `options.commitWarnFileThreshold` files (default 300). Deletions never count, so untracking the files afterwards doesn't warn. The event follows the item's `item_completed`. `loop wait` returns it as a `⚠ <id> commit <sha>: 877 of 905 files look like build output (…) — add them to .gitignore` card, and `--notify-cmd` fires on it. `follow`, `loop run` and the web UI show it too. The warning is advisory: the commit stands and the loop continues. A project that commits build output on purpose (a GitHub Action's `dist/`) sets `options.commitWarnBuildOutput: false`.

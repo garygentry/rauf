@@ -8,7 +8,7 @@
       "name": "rauf",
       "source": "./adapters/copilot",
       "description": "Management tool for rauf autonomous coding loops",
-      "version": "0.19.2"
+      "version": "0.20.0"
     }
   ]
 }
