@@ -62,6 +62,7 @@ const LOOP_EVENT_TYPES: ReadonlyArray<LoopEvent["type"]> = [
   "loop_completed",
   "loop_error",
   "loop_cancelled",
+  "commit_warning",
 ];
 
 const MAX_BUFFER_SIZE = 100;
