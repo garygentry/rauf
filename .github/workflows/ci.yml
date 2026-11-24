@@ -32,3 +32,157 @@ jobs:
       # acceptance check, where the runner's `git add -A` would commit them.
       - name: Sandbox scenarios
         run: pnpm sandbox:verify
+
+  # Windows Phase 0 baseline (#197, epic #196). NON-BLOCKING by design: the job is
+  # `continue-on-error`, so a red Windows run never fails the workflow. Its check
+  # still shows red on a PR (it is not a required check). It is evidence, not a gate — install, build, the full vitest suite (JUnit per
+  # package), the sandbox scenarios, a compiled-exe smoke, and two small probes
+  # (Q5 line endings / dirty tree, Q6 atomic-rename errors). Every step records its
+  # outcome and the run still reaches the summary + artifact upload; the last step
+  # turns the job red if anything failed so the baseline stays visible. Promote to
+  # blocking only at M3 (PLAN-windows-native-support §7).
+  windows:
+    name: windows baseline (non-blocking)
+    runs-on: windows-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: pnpm/action-setup@v6
+
+      # Toolchain + git line-ending config as the runner ships it (Q5 context).
+      - name: Record environment
+        continue-on-error: true
+        run: |
+          mkdir -p win-logs
+          set +e +o pipefail # diagnostics only: one failing probe must not skip the baseline
+          {
+            echo "## versions"
+            echo "bun $(bun --version)"; echo "node $(node --version)"; echo "pnpm $(pnpm --version)"
+            git --version; bash --version | head -n1
+            pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | sed 's/^/pwsh /'
+            echo "## core.autocrlf (with origin)"
+            git config --show-origin --get-all core.autocrlf || echo "(unset)"
+            echo "## tracked files checked out with CRLF in the working tree"
+            git ls-files --eol | awk '$2 == "w/crlf"' | wc -l
+            echo "## Defender real-time protection (Q6 context)"
+            pwsh -NoProfile -Command 'try { (Get-MpComputerStatus).RealTimeProtectionEnabled } catch { "unavailable: $_" }'
+          } 2>&1 | tee win-logs/probe-environment.txt
+
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile 2>&1 | tee win-logs/install.log
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: pnpm build 2>&1 | tee win-logs/build.log
+
+      # Q5: git status after each phase, so line-ending effects are not mixed up with
+      # files a phase rewrites on purpose (build regenerates and prettier-formats
+      # embedded-artifacts.ts / embedded-assets.ts; sandbox:verify edits test-sandbox/).
+      - name: Probe — git status after build (Q5)
+        if: always()
+        run: git status --porcelain -- . ':!win-logs' ':!win-out' > win-logs/probe-q5-status-1-after-build.txt 2>&1 || true
+
+      # Same suites as `pnpm test` (each package's `vitest run`, then the root
+      # script tests), run one by one so a failing package never hides the next
+      # and each writes its own JUnit report.
+      - name: Test (vitest, JUnit per package)
+        id: test
+        continue-on-error: true
+        timeout-minutes: 30
+        run: |
+          rc=0
+          for d in packages/*/; do
+            pkg="$(basename "$d")"
+            [ "$(node -p "Boolean(require('./${d}package.json').scripts?.test)")" = true ] || continue
+            echo "::group::vitest $pkg"
+            ( cd "$d" && pnpm exec vitest run --reporter=default --reporter=junit \
+                --outputFile.junit="../../win-logs/junit-$pkg.xml" ) 2>&1 | tee "win-logs/test-$pkg.log" || rc=1
+            echo "::endgroup::"
+          done
+          echo "::group::vitest root"
+          pnpm exec vitest run --reporter=default --reporter=junit \
+            --outputFile.junit=win-logs/junit-root.xml 2>&1 | tee win-logs/test-root.log || rc=1
+          echo "::endgroup::"
+          exit "$rc"
+
+      - name: Probe — git status after test (Q5)
+        if: always()
+        run: git status --porcelain -- . ':!win-logs' ':!win-out' > win-logs/probe-q5-status-2-after-test.txt 2>&1 || true
+
+      - name: Sandbox scenarios
+        id: sandbox
+        continue-on-error: true
+        timeout-minutes: 15
+        run: pnpm sandbox:verify 2>&1 | tee win-logs/sandbox.log
+
+      # Q4 (partial): does the Windows exe compile on Windows and run at all? The
+      # release workflow cross-compiles it on Linux and can never execute it.
+      - name: Compiled exe smoke
+        id: exe
+        continue-on-error: true
+        run: |
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' \
+            --target=bun-windows-x64-baseline scripts/binary-entry.ts \
+            --outfile win-out/rauf-windows-x64.exe 2>&1 | tee win-logs/exe.log
+          ./win-out/rauf-windows-x64.exe version 2>&1 | tee -a win-logs/exe.log
+
+      - name: Probe — git status after sandbox (Q5)
+        if: always()
+        run: git status --porcelain -- . ':!win-logs' ':!win-out' > win-logs/probe-q5-status-3-after-sandbox.txt 2>&1 || true
+
+      # Q6: write-temp-then-rename 10k times onto one file and count the error
+      # codes. Bun runs it, as rauf does.
+      - name: Probe — atomic rename errors (Q6)
+        id: q6
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p win-out/q6
+          bun -e '
+            const fs = require("node:fs"), p = require("node:path");
+            const dir = p.resolve("win-out/q6"), target = p.join(dir, "state.json"), errs = {};
+            const t0 = Date.now();
+            for (let i = 0; i < 10000; i++) {
+              const tmp = `${target}.${i}.tmp`;
+              try { fs.writeFileSync(tmp, JSON.stringify({ i })); fs.renameSync(tmp, target); }
+              catch (e) { errs[e.code ?? "unknown"] = (errs[e.code ?? "unknown"] ?? 0) + 1; }
+            }
+            console.log(JSON.stringify({ writes: 10000, ms: Date.now() - t0, errors: errs }));
+          ' 2>&1 | tee win-logs/probe-q6-rename.json
+
+      - name: Summarize
+        if: always()
+        env:
+          OUTCOMES: >-
+            install=${{ steps.install.outcome }} build=${{ steps.build.outcome }}
+            test=${{ steps.test.outcome }} sandbox=${{ steps.sandbox.outcome }}
+            exe=${{ steps.exe.outcome }} q6-probe=${{ steps.q6.outcome }}
+        run: |
+          node .github/scripts/windows-baseline-summary.mjs win-logs | tee win-logs/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-baseline
+          path: win-logs/
+          if-no-files-found: warn
+
+      # Make the baseline visible: the job goes red when any step failed. The
+      # job-level continue-on-error keeps that from failing the workflow.
+      - name: Fail if any step failed
+        if: always()
+        run: |
+          for o in "${{ steps.install.outcome }}" "${{ steps.build.outcome }}" "${{ steps.test.outcome }}" \
+                   "${{ steps.sandbox.outcome }}" "${{ steps.exe.outcome }}"; do
+            [ "$o" = success ] || { echo "::warning::Windows baseline has failures; see the windows-baseline artifact"; exit 1; }
+          done
