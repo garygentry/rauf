@@ -42,10 +42,23 @@ const variable = (v) => /[\\/]|\d/.test(v) || v.length > 40;
 // Collapse what differs between otherwise identical failures (paths, temp
 // names, numbers), so one root cause lands in one bucket.
 const signature = (raw) => {
-  let msg = raw.split("\n")[0];
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  let msg = lines[0] ?? "";
   // pytest wraps fixture errors as: failed on setup with "<real error>".
-  const wrapped = msg.match(/^failed on (setup|teardown) with "(.*)"$/);
-  if (wrapped) msg = `${wrapped[1]}: ${wrapped[2]}`;
+  const wrapped = msg.match(/^failed on (setup|teardown) with "(.*?)"?$/);
+  const phase = wrapped ? `${wrapped[1]}: ` : "";
+  if (wrapped) msg = wrapped[2];
+  // A first line that names no cause (a traceback header, a bare "AssertionError:"):
+  // use the LAST "SomeError: detail" anywhere in the message, including inside an
+  // escaped subprocess repr; failing that, the last line.
+  if (/Traceback \(most recent call last\):?"?$|^AssertionError:?$/.test(msg)) {
+    const found = [...raw.matchAll(/\b([A-Z]\w*(?:Error|Exception)): (\S[^\n]{0,119})/g)].pop();
+    msg = found ? `${found[1]}: ${found[2].split("\\n")[0]}` : lines.slice(1, 3).join(" ") || msg;
+  }
+  msg = phase + (phase ? msg.replace(/"$/, "") : msg);
   return msg
     .replace(/'([^']*)'/g, (m, v) => (variable(v) ? "'…'" : m))
     .replace(/"([^"]*)"/g, (m, v) => (variable(v) ? '"…"' : m))
@@ -92,7 +105,11 @@ for (const file of junitFiles) {
     const failRe = /<(failure|error)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/g;
     for (const c of xml.matchAll(caseRe)) {
       for (const f of (c[2] ?? "").matchAll(failRe)) {
-        const message = attr(f[2], "message") || decode(f[3] ?? "").trim();
+        // The message attribute first; the element body (stack / captured output) after
+        // it, so signature() can find the cause when the message alone names none.
+        const message = [attr(f[2], "message"), decode(f[3] ?? "").trim()]
+          .filter(Boolean)
+          .join("\n");
         failures.push({
           pkg,
           suite: attr(c[1], "classname"),
