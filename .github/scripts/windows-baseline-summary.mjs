@@ -121,10 +121,17 @@ if (failures.length) {
   }
   out.push("");
 
-  out.push("## Failing suite files", "");
-  out.push("| package | file | failed / tests |", "|---|---|---|");
-  for (const s of suites.filter((s) => s.failures + s.errors > 0)) {
-    out.push(`| ${s.pkg} | ${s.name} | ${s.failures + s.errors} / ${s.tests} |`);
+  // Keyed on each failing case's classname (the test file for vitest, the
+  // module for pytest, whose JUnit has one <testsuite> for the whole run).
+  const byFile = new Map();
+  for (const f of failures) {
+    const key = `${f.pkg} | ${f.suite}`;
+    byFile.set(key, (byFile.get(key) ?? 0) + 1);
+  }
+  out.push("## Failing files", "");
+  out.push("| report | file | failed |", "|---|---|---:|");
+  for (const [key, n] of [...byFile].sort((a, b) => b[1] - a[1])) {
+    out.push(`| ${key} | ${n} |`);
   }
   out.push("");
 }
