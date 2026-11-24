@@ -34,8 +34,8 @@ jobs:
         run: pnpm sandbox:verify
 
   # Windows Phase 0 baseline (#197, epic #196). NON-BLOCKING by design: the job is
-  # `continue-on-error`, so a red Windows run never fails the workflow or a PR. Its
-  # job is evidence, not a gate — install, build, the full vitest suite (JUnit per
+  # `continue-on-error`, so a red Windows run never fails the workflow. Its check
+  # still shows red on a PR (it is not a required check). It is evidence, not a gate — install, build, the full vitest suite (JUnit per
   # package), the sandbox scenarios, a compiled-exe smoke, and two small probes
   # (Q5 line endings / dirty tree, Q6 atomic-rename errors). Every step records its
   # outcome and the run still reaches the summary + artifact upload; the last step
@@ -58,8 +58,10 @@ jobs:
 
       # Toolchain + git line-ending config as the runner ships it (Q5 context).
       - name: Record environment
+        continue-on-error: true
         run: |
           mkdir -p win-logs
+          set +e +o pipefail # diagnostics only: one failing probe must not skip the baseline
           {
             echo "## versions"
             echo "bun $(bun --version)"; echo "node $(node --version)"; echo "pnpm $(pnpm --version)"
@@ -71,7 +73,7 @@ jobs:
             git ls-files --eol | awk '$2 == "w/crlf"' | wc -l
             echo "## Defender real-time protection (Q6 context)"
             pwsh -NoProfile -Command 'try { (Get-MpComputerStatus).RealTimeProtectionEnabled } catch { "unavailable: $_" }'
-          } 2>&1 | tee win-logs/environment.txt
+          } 2>&1 | tee win-logs/probe-environment.txt
 
       - name: Install dependencies
         id: install
@@ -82,6 +84,13 @@ jobs:
         id: build
         continue-on-error: true
         run: pnpm build 2>&1 | tee win-logs/build.log
+
+      # Q5: git status after each phase, so line-ending effects are not mixed up with
+      # files a phase rewrites on purpose (build regenerates and prettier-formats
+      # embedded-artifacts.ts / embedded-assets.ts; sandbox:verify edits test-sandbox/).
+      - name: Probe — git status after build (Q5)
+        if: always()
+        run: git status --porcelain -- . ':!win-logs' ':!win-out' > win-logs/probe-q5-status-1-after-build.txt 2>&1 || true
 
       # Same suites as `pnpm test` (each package's `vitest run`, then the root
       # script tests), run one by one so a failing package never hides the next
@@ -106,6 +115,10 @@ jobs:
           echo "::endgroup::"
           exit "$rc"
 
+      - name: Probe — git status after test (Q5)
+        if: always()
+        run: git status --porcelain -- . ':!win-logs' ':!win-out' > win-logs/probe-q5-status-2-after-test.txt 2>&1 || true
+
       - name: Sandbox scenarios
         id: sandbox
         continue-on-error: true
@@ -118,21 +131,19 @@ jobs:
         id: exe
         continue-on-error: true
         run: |
-          bun build --compile --target=bun-windows-x64-baseline scripts/binary-entry.ts \
+          bun build --compile --define RAUF_BUILD_CHANNEL='"release-binary"' \
+            --target=bun-windows-x64-baseline scripts/binary-entry.ts \
             --outfile win-out/rauf-windows-x64.exe 2>&1 | tee win-logs/exe.log
           ./win-out/rauf-windows-x64.exe version 2>&1 | tee -a win-logs/exe.log
 
-      # Q5: which tracked files did install/build/test leave modified under the
-      # runner's line-ending config?
-      - name: Probe — dirty tree after the run (Q5)
+      - name: Probe — git status after sandbox (Q5)
         if: always()
-        run: |
-          git status --porcelain 2>&1 | tee win-logs/git-status-after.txt
-          echo "modified tracked files: $(git status --porcelain --untracked-files=no | wc -l)"
+        run: git status --porcelain -- . ':!win-logs' ':!win-out' > win-logs/probe-q5-status-3-after-sandbox.txt 2>&1 || true
 
       # Q6: write-temp-then-rename 10k times onto one file and count the error
       # codes. Bun runs it, as rauf does.
       - name: Probe — atomic rename errors (Q6)
+        id: q6
         if: always()
         continue-on-error: true
         run: |
@@ -147,16 +158,15 @@ jobs:
               catch (e) { errs[e.code ?? "unknown"] = (errs[e.code ?? "unknown"] ?? 0) + 1; }
             }
             console.log(JSON.stringify({ writes: 10000, ms: Date.now() - t0, errors: errs }));
-          ' 2>&1 | tee win-logs/q6-rename.json
+          ' 2>&1 | tee win-logs/probe-q6-rename.json
 
       - name: Summarize
         if: always()
         env:
-          OUTCOME_INSTALL: ${{ steps.install.outcome }}
-          OUTCOME_BUILD: ${{ steps.build.outcome }}
-          OUTCOME_TEST: ${{ steps.test.outcome }}
-          OUTCOME_SANDBOX: ${{ steps.sandbox.outcome }}
-          OUTCOME_EXE: ${{ steps.exe.outcome }}
+          OUTCOMES: >-
+            install=${{ steps.install.outcome }} build=${{ steps.build.outcome }}
+            test=${{ steps.test.outcome }} sandbox=${{ steps.sandbox.outcome }}
+            exe=${{ steps.exe.outcome }} q6-probe=${{ steps.q6.outcome }}
         run: |
           node .github/scripts/windows-baseline-summary.mjs win-logs | tee win-logs/summary.md >> "$GITHUB_STEP_SUMMARY"
 
